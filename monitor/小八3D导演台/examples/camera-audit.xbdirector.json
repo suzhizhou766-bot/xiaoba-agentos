@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "name": "摄影机与关键帧验收",
+  "fps": 24,
+  "shots": [
+    {
+      "id": "1fce077e-e9bf-48c1-ae9a-8afb638271d0",
+      "name": "验收运镜",
+      "objects": [
+        {
+          "id": "68b4dd97-2596-4eba-87f3-c775fd174d1f",
+          "name": "角色 A · 主角",
+          "kind": "actor",
+          "position": [
+            -0.8,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "visible": true,
+          "locked": false,
+          "color": "#c79f72",
+          "size": [
+            0.52,
+            1.8,
+            0.4
+          ],
+          "center": [
+            0,
+            0.9,
+            0
+          ]
+        },
+        {
+          "id": "b712a357-81a7-4ba3-866c-bedb5785f6dc",
+          "name": "角色 B · 对手",
+          "kind": "actor",
+          "position": [
+            1,
+            0,
+            -0.7
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "visible": true,
+          "locked": false,
+          "color": "#829bba",
+          "size": [
+            0.52,
+            1.8,
+            0.4
+          ],
+          "center": [
+            0,
+            0.9,
+            0
+          ]
+        }
+      ],
+      "camera": {
+        "position": [
+          3,
+          1.6,
+          6
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "lookAt": null,
+        "focalLength": 35,
+        "sensorWidth": 36,
+        "aperture": 2.8,
+        "focusDistance": 6,
+        "dof": false,
+        "framing": "MS"
+      },
+      "keys": [
+        {
+          "id": "33822b88-5296-42d0-b7c4-43062dca0123",
+          "target": "camera",
+          "time": 0,
+          "position": [
+            3,
+            1.6,
+            6
+          ],
+          "camera": {
+            "position": [
+              3,
+              1.6,
+              6
+            ],
+            "target": [
+              0,
+              1,
+              0
+            ],
+            "lookAt": null,
+            "focalLength": 35,
+            "sensorWidth": 36,
+            "aperture": 2.8,
+            "focusDistance": 6,
+            "dof": false,
+            "framing": "MS"
+          }
+        },
+        {
+          "id": "8e0fbd01-a3c8-4d0c-a66d-3d45f70c840b",
+          "target": "camera",
+          "time": 4,
+          "position": [
+            -3,
+            1.6,
+            6
+          ],
+          "camera": {
+            "position": [
+              -3,
+              1.6,
+              6
+            ],
+            "target": [
+              0.5,
+              1,
+              0
+            ],
+            "lookAt": null,
+            "focalLength": 55,
+            "sensorWidth": 36,
+            "aperture": 2.8,
+            "focusDistance": 6,
+            "dof": false,
+            "framing": "MS"
+          }
+        },
+        {
+          "id": "5e0a0896-b2b1-40f9-ad12-7e90ab4c8450",
+          "target": "68b4dd97-2596-4eba-87f3-c775fd174d1f",
+          "time": 0,
+          "position": [
+            -0.8,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "174e6dc2-5741-4534-a65f-0a6715e2673b",
+          "target": "68b4dd97-2596-4eba-87f3-c775fd174d1f",
+          "time": 4,
+          "position": [
+            -0.1,
+            0,
+            0
+          ]
+        }
+      ],
+      "duration": 4,
+      "in": 0,
+      "out": 4,
+      "videoModel": "omni-flash-1.1"
+    }
+  ],
+  "activeShot": "1fce077e-e9bf-48c1-ae9a-8afb638271d0",
+  "assets": []
+}

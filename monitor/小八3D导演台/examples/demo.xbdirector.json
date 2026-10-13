@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "name": "双人调度示例",
+  "fps": 24,
+  "shots": [
+    {
+      "id": "20660668-2832-4d5d-9a78-3a60c770f8cf",
+      "name": "初见 · 双人中景",
+      "objects": [
+        {
+          "id": "1f8a84db-3b2b-4efd-a550-616c9e57ce5f",
+          "name": "角色 A · 主角",
+          "kind": "actor",
+          "position": [
+            -0.8,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "visible": true,
+          "locked": false,
+          "color": "#c79f72",
+          "size": [
+            0.52,
+            1.8,
+            0.4
+          ],
+          "center": [
+            0,
+            0.9,
+            0
+          ]
+        },
+        {
+          "id": "a0f2ed73-ca99-45c3-8502-52a377e797aa",
+          "name": "角色 B · 对手",
+          "kind": "actor",
+          "position": [
+            1,
+            0,
+            -0.7
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "visible": true,
+          "locked": false,
+          "color": "#829bba",
+          "size": [
+            0.52,
+            1.8,
+            0.4
+          ],
+          "center": [
+            0,
+            0.9,
+            0
+          ]
+        }
+      ],
+      "camera": {
+        "position": [
+          3,
+          1.6,
+          6
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "lookAt": null,
+        "focalLength": 35,
+        "sensorWidth": 36,
+        "aperture": 2.8,
+        "focusDistance": 6,
+        "dof": false,
+        "framing": "MS"
+      },
+      "keys": [
+        {
+          "id": "022a8e3b-a02b-4392-b44c-745dd41e5baf",
+          "target": "camera",
+          "time": 0,
+          "position": [
+            3,
+            1.6,
+            6
+          ]
+        },
+        {
+          "id": "0c477d07-f4a5-4915-bfd3-a53e78736c6b",
+          "target": "camera",
+          "time": 8,
+          "position": [
+            1.8,
+            1.4,
+            4.5
+          ]
+        },
+        {
+          "id": "1807a4bf-e592-46ca-904a-06d0c555c7af",
+          "target": "1f8a84db-3b2b-4efd-a550-616c9e57ce5f",
+          "time": 0,
+          "position": [
+            -0.8,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "40122f97-62e2-4e79-9224-4f0d1ff06d75",
+          "target": "1f8a84db-3b2b-4efd-a550-616c9e57ce5f",
+          "time": 8,
+          "position": [
+            0.1,
+            0,
+            -0.2
+          ]
+        }
+      ],
+      "duration": 8,
+      "in": 0,
+      "out": 8,
+      "videoModel": "omni-flash-1.1"
+    }
+  ],
+  "activeShot": "20660668-2832-4d5d-9a78-3a60c770f8cf",
+  "assets": []
+}
