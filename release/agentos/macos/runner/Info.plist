@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh_CN</string>
+  <key>CFBundleDisplayName</key>
+  <string>小八 AgentOS Runner</string>
+  <key>CFBundleExecutable</key>
+  <string>XiaobaAgentOSRunner</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.xiaoba.agentos.runner</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>小八 AgentOS Runner</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSBackgroundOnly</key>
+  <true/>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>小八 AgentOS 需要读取工作区、受控 CLI 和知识库，并写入私有运行日志。</string>
+</dict>
+</plist>

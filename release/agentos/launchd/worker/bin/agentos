@@ -1,0 +1,16 @@
+#!/bin/zsh
+# Hosted by the signed AgentOS Runner. The worker never runs workspace source:
+# it goes through the stable entrypoint, which hashes the indexed immutable
+# release and then executes that release's own code.
+set -eu
+if [[ "$#" != 3 || "$1" != '--config' || "$3" != 'run' ]]; then
+  print -u2 'Unsupported worker runner invocation'
+  exit 64
+fi
+ENTRYPOINT="${HOME}/.agents/skills/xiaoba-agentos/scripts/xiaoba"
+if [[ ! -x "${ENTRYPOINT}" || -L "${ENTRYPOINT}" ]]; then
+  print -u2 'Stable AgentOS entrypoint unavailable'
+  exit 78
+fi
+unset PYTHONPATH
+exec "${ENTRYPOINT}" --config "$2" run

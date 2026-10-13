@@ -1,0 +1,7 @@
+#!/bin/zsh
+set -eu
+SCRIPT_DIR="${0:A:h}"
+PROJECT_DIR="${SCRIPT_DIR:h}"
+export PYTHONPATH="${PROJECT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+exec /usr/bin/python3 -m xiaoba_agentos.cli "$@"
+

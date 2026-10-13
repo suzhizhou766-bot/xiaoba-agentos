@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "description": "第2步乙发布分档规则（只做源码布局）。本文件由 release_policy.classify_release 读取；默认按上一版发布包里的同名文件加载，候选自带的本文件不影响档位。改动本文件至少按 regular 处理，且其哈希进入输出指纹。",
+  "tiers": ["patch", "regular", "migration"],
+  "layouts": {
+    "source": {
+      "description": "源码阶段布局：整份 agentos 源码树（对齐 build_release 的受控复制集合）",
+      "detect_file": "src/xiaoba_agentos/__init__.py",
+      "reject_if_also_present": "agentos/src/xiaoba_agentos/__init__.py",
+      "logical_prefix": "",
+      "manifest": {
+        "kind": "source_manifest",
+        "path": "SOURCE_MANIFEST.json",
+        "included_roots": [
+          ".agents",
+          "bin",
+          "config",
+          "docs",
+          "knowledge",
+          "launchd",
+          "macos",
+          "scripts",
+          "skills",
+          "src",
+          "tests"
+        ],
+        "root_files": ["README.md", "pyproject.toml", ".gitignore", "CAPABILITY.json"],
+        "excluded_names": ["__pycache__", ".DS_Store"]
+      },
+      "compared_roots": [
+        ".agents",
+        "bin",
+        "config",
+        "docs",
+        "knowledge",
+        "launchd",
+        "macos",
+        "scripts",
+        "skills",
+        "src",
+        "tests",
+        "artifacts"
+      ],
+      "compared_root_files": [
+        ".gitignore",
+        "README.md",
+        "SOURCE_MANIFEST.json",
+        "pyproject.toml",
+        "CAPABILITY.json"
+      ]
+    }
+  },
+  "path_rules": [
+    {
+      "id": "policy-self",
+      "paths": [
+        "src/xiaoba_agentos/release_policy.py",
+        "config/release_policy.json",
+        "tests/test_release_policy.py"
+      ],
+      "tier": "regular",
+      "reason": "分档规则与实现自身"
+    },
+    {
+      "id": "guardrail-marks-list",
+      "paths": ["tests/guardrail_marks.json"],
+      "tier": "regular",
+      "reason": "底线标记清单"
+    },
+    {
+      "id": "schema-fingerprint-baseline",
+      "paths": ["tests/fixtures/schema_fingerprint.json"],
+      "tier": "migration",
+      "reason": "结构指纹基线：任何改动都意味着表结构或 schema 版本已变，必须按迁移档走"
+    },
+    {
+      "id": "docs-prose",
+      "prefixes": ["docs/"],
+      "suffixes": [".md", ".markdown", ".txt", ".rst"],
+      "tier": "patch",
+      "reason": "纯文档"
+    },
+    {
+      "id": "docs-structured",
+      "prefixes": ["docs/"],
+      "tier": "regular",
+      "reason": "文档区结构化声明"
+    },
+    {
+      "id": "readme",
+      "paths": ["README.md"],
+      "tier": "patch",
+      "reason": "纯文档"
+    },
+    {
+      "id": "unmarked-tests",
+      "prefixes": ["tests/"],
+      "tier": "patch",
+      "reason": "未带底线标记的测试"
+    },
+    {
+      "id": "runtime-source",
+      "prefixes": ["src/"],
+      "tier": "regular",
+      "reason": "运行代码"
+    },
+    {
+      "id": "scripts",
+      "prefixes": ["scripts/"],
+      "tier": "regular",
+      "reason": "脚本与独立工具"
+    },
+    {
+      "id": "config",
+      "prefixes": ["config/"],
+      "tier": "regular",
+      "reason": "配置"
+    },
+    {
+      "id": "skills",
+      "prefixes": ["skills/"],
+      "tier": "regular",
+      "reason": "技能"
+    },
+    {
+      "id": "launchd",
+      "prefixes": ["launchd/"],
+      "tier": "regular",
+      "reason": "服务模板"
+    },
+    {
+      "id": "macos",
+      "prefixes": ["macos/"],
+      "tier": "regular",
+      "reason": "服务材料"
+    },
+    {
+      "id": "bin",
+      "prefixes": ["bin/"],
+      "tier": "regular",
+      "reason": "入口脚本"
+    },
+    {
+      "id": "installed-entry",
+      "prefixes": [".agents/"],
+      "tier": "regular",
+      "reason": "已安装入口与技能卡"
+    },
+    {
+      "id": "knowledge",
+      "prefixes": ["knowledge/"],
+      "tier": "regular",
+      "reason": "知识目录与索引"
+    },
+    {
+      "id": "artifacts",
+      "prefixes": ["artifacts/"],
+      "tier": "regular",
+      "reason": "发布数据工件"
+    },
+    {
+      "id": "release-declaration",
+      "paths": ["RELEASE.json", "SKILL.md"],
+      "tier": "regular",
+      "reason": "发布声明与入口技能卡（不可证明纯派生）"
+    },
+    {
+      "id": "build-config",
+      "paths": ["pyproject.toml", "CAPABILITY.json", ".gitignore"],
+      "conditional": "version_bump_only",
+      "tier": "regular",
+      "tier_if_condition_met": "patch",
+      "reason": "构建与打包配置"
+    },
+    {
+      "id": "derived-manifest",
+      "paths": ["SOURCE_MANIFEST.json"],
+      "conditional": "derived_recomputable",
+      "tier": "patch",
+      "tier_if_condition_failed": "regular",
+      "reason": "可重算验证的派生清单"
+    }
+  ],
+  "guardrail_marks": {
+    "path": "tests/guardrail_marks.json",
+    "expected_schema_version": 1,
+    "baseline_id_pattern": "^B[0-9]{2}$",
+    "allowed_statuses": ["guarded", "no_automated_test"]
+  },
+  "derived_hash_manifests": [
+    {
+      "path": "SOURCE_MANIFEST.json",
+      "covers_source_manifest": true,
+      "format": "json_manifest"
+    }
+  ],
+  "version_bump_only_paths": ["pyproject.toml"],
+  "release_declaration": {
+    "path": "RELEASE.json",
+    "version_key": "version",
+    "database_schema_key": "database_schema_version"
+  },
+  "database": {
+    "schema_source": "src/xiaoba_agentos/store.py",
+    "constant": "DATABASE_SCHEMA_VERSION"
+  },
+  "contract_declarations": [
+    {
+      "path": "src/xiaoba_agentos/store.py",
+      "kind": "python_constant",
+      "name": "DATABASE_SCHEMA_VERSION",
+      "label": "database_schema_version"
+    },
+    {
+      "path": "config/agentos.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "config_schema_version"
+    },
+    {
+      "path": "config/inventory_exclusions.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "inventory_exclusions_schema_version"
+    },
+    {
+      "path": "skills/index.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "skills_index_schema_version"
+    },
+    {
+      "path": "skills/catalog.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "skills_catalog_schema_version"
+    },
+    {
+      "path": "knowledge/catalog.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "knowledge_catalog_schema_version"
+    },
+    {
+      "path": "knowledge/index.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "knowledge_index_schema_version"
+    },
+    {
+      "path": "CAPABILITY.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "capability_schema_version"
+    },
+    {
+      "path": "docs/DEPLOYMENT.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "deployment_schema_version"
+    },
+    {
+      "path": "tests/guardrail_marks.json",
+      "kind": "json_key",
+      "key": "schema_version",
+      "label": "guardrail_marks_schema_version"
+    }
+  ]
+}

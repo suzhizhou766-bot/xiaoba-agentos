@@ -1,0 +1,220 @@
+{
+  "records": [
+    {
+      "version": "v1.4.2",
+      "release_date": "2026-09-26",
+      "summary": "AGY+DSH为唯一活动后台；当前技能、路由、双审及知识索引统一。旧系统说明不参与当前执行；历史原文移至私有归档。",
+      "tests": {
+        "source": "以RELEASE.json的同源验收记录为准"
+      },
+      "files_manifest_sha256": "见活动版本FILES.sha256及发布索引，避免自引用",
+      "source_manifest_sha256": "见活动版本SOURCE_MANIFEST.json",
+      "file_disposition": "旧版资料已退出活动技能和知识索引，归档用于回滚；不构成当前操作指令。"
+    },
+    {
+      "version": "v1.4.3",
+      "release_date": "2026-09-28",
+      "summary": "记忆晋升与检索门禁加固：store.py 引入显式经验状态机与 validate_memory_transition，活动检索只认 published；cli.py 新增 memory-receipt 晋升回执；knowledge.py 收紧 KnowLP 命中后的 Vault 原文与数据库双重门禁，读不到即 fail closed；docs/ACCEPTANCE.md 增加经验晋升状态机边界，docs/COLLABORATION.md 增加 Memory Promotion Boundary；新增 tests/test_knowledge_lock.py 与 tests/fixtures 覆盖近邻误引用回归。后台拓扑、成功门槛2、数据库 schema=7 均不变。本版提升时未同步软件版本声明与正文版本标识，活动包 pyproject.toml 仍为 1.4.2，该缺陷由 v1.4.3 元数据同步候选修复。",
+      "tests": {
+        "count": 360,
+        "subtests_passed": 75,
+        "result": "passed",
+        "runner": "pytest 9.1.1 on cpython 3.11.16，正式包临时副本，隔离 HOME，PYTHONPATH 指向副本 src",
+        "executed_at": "2026-09-30T19:39+08:00",
+        "executed_at_source": "测试日志文件 mtime（Asia/Shanghai）",
+        "log_sha256": "5a67a9f9f773ab04b7b600d68ae028bd9b936bc87d7860066132b2fa2cf6296e",
+        "exit_code": 0,
+        "not_covered": "端到端双后台生产验收任务、冻结任务恢复的生产验证"
+      },
+      "files_manifest_sha256": "023402d7a2cdb9c5cec98d6b4132547e7ac40e65b38d8d2727c8163113ae1d79",
+      "source_manifest_sha256": "a60f38c0f51adb4a33efb7fcda797b8115a8930112919b03ccd6e12c52574ce9",
+      "file_disposition": "v1.4.2 发布包与回滚归档原样保留，可回滚；未删除业务技能、媒体知识与素材原件。第二大脑 Vault 物理目录名与根笔记文件名继续作为兼容标识保留。"
+    },
+    {
+      "version": "v1.4.4",
+      "release_date": "2026-10-01",
+      "summary": "版本标识与验收元数据同步：pyproject.toml 成为软件版本唯一声明点，新增 scripts/agentos_version.py 统一读取，create_skill_index.py、create_knowledge_index.py、build_second_brain.py、build_release.py 四个生成器不再内联版本字面量；配置、发布索引、README、入口 SKILL、docs 与索引 release 字段统一到 v1.4.4，修复活动 v1.4.3 包内 pyproject.toml 仍写 1.4.2 的遗留缺陷；新增 docs/VERSIONING.md 四层版本模型与冻结兼容名清单，补入活动 v1.4.3 包内缺失的 docs/RELEASE_V1.4.3.md 与 docs/ACCEPTANCE_V1.4.3_EVIDENCE.md；tests/test_current_release.py 由 5 项扩充到 9 项，新增四项版本契约断言，把版本漂移变成可失败断言，离线套件由 360 项增至 364 项。后台拓扑仍为 AGY+DSH，成功门槛2、数据库 schema=7、索引 schema_version=1、知识协议族 v1.4、记忆两阶段人工审批均不变。相对活动 v1.4.3 受管清单 a60f38c0f51adb4a33efb7fcda797b8115a8930112919b03ccd6e12c52574ce9（122 个文件），本候选清单为 128 个文件，新增 6、修改 17、删除 0。本记录为候选态，尚未提升为活动发布；离线测试与验收结论以 docs/ACCEPTANCE_V1.4.4_EVIDENCE.md 与候选 evidence 目录中的原始日志为准，v1.4.3 的通过证据绑定不同源码清单，不得继承。",
+      "tests": {
+        "count": 364,
+        "result": "pending",
+        "note": "本候选的离线测试、发布绑定与 KnowLP 校验结果以 docs/ACCEPTANCE_V1.4.4_EVIDENCE.md 与候选 evidence 目录中的原始日志为准；v1.4.3 的 360 项通过记录绑定不同源码清单，不得继承。"
+      },
+      "files_manifest_sha256": "pending：以本候选包 FILES.sha256 为准，避免自引用",
+      "source_manifest_sha256": "pending：以本候选 SOURCE_MANIFEST.json 为准",
+      "file_disposition": "v1.4.2、v1.4.3 发布包与回滚归档原样保留，未删除业务技能与素材原件；第二大脑 Vault 物理目录名 第二大脑_小八AgentOS_v1.4.1、根笔记 00_小八AgentOS_v1.4.md、knowlp-v1.4 图目录名以及已安装 skill 目录 ~/.agents/skills/xiaoba-agentos 与 ~/.codex/skills/xiaoba-agentos 作为冻结兼容标识继续保留，不随软件版本变化。"
+    },
+    {
+      "version": "v1.4.5",
+      "release_date": "2026-10-02",
+      "status": "candidate",
+      "summary": "AGY 增加 Antigravity 桌面全局模型跟随；取消固定 effort low；桌面读取失败停止调用。DSH 路由、双后台门槛与数据库不变。",
+      "tests": {
+        "source": "以验收记录为准"
+      },
+      "files_manifest_sha256": "见候选 FILES.sha256",
+      "source_manifest_sha256": "见候选 SOURCE_MANIFEST.json",
+      "file_disposition": "新补丁在候选目录验收；未提升活动发布。历史版本保留用于回滚。"
+    },
+    {
+      "version": "v1.4.6",
+      "release_date": "2026-10-02",
+      "status": "candidate",
+      "summary": "AGY 直接转交 desktop 选择的模型名称，由 CLI 自行解析；取消 agy models 前置请求。DSH 原样复用 Web 设置，移除 AgentOS 模型覆盖和备用模型切换。本地后台禁止主控模型池和上游配置。",
+      "tests": {
+        "source": "以验收数据库与本次报告为准"
+      },
+      "files_manifest_sha256": "见发布包 FILES.sha256",
+      "source_manifest_sha256": "见发布包 SOURCE_MANIFEST.json",
+      "file_disposition": "候选隔离验收；v1.4.5 保留用于回滚。"
+    },
+    {
+      "version": "v1.4.7",
+      "release_date": "2026-10-04",
+      "status": "candidate",
+      "summary": "入口先独立校验不可变发布再加载其代码；Worker 经入口运行不可变发布。审核流程统一为单一模块，完成任务与写入候选合并为单事务，扣留释放同理。intake 在后台无法执行时默认拒绝入队。AGY 提示词改走标准输入，桌面读取失败给出原因并可按路由配置自动启动。空闲轮询先查队列。新增宿主撰写候选命令与配置一致性检查。会话在任一审核决定后均可关闭。",
+      "tests": {
+        "source": "以验收数据库与本次报告为准"
+      },
+      "files_manifest_sha256": "见发布包 FILES.sha256",
+      "source_manifest_sha256": "见发布包 SOURCE_MANIFEST.json",
+      "file_disposition": "候选隔离验收；v1.4.6 保留用于回滚。"
+    },
+    {
+      "version": "v1.4.8",
+      "release_date": "2026-10-04",
+      "summary": "DSH 跟随 DeepSeek Harness Desktop 保存的模型与上游配置；不固定模型、不配置备用模型或上游凭据；CLI 独立调用，Web 服务可停止。验收证据独立保存在 work/v1.4.8-desktop-follow-20261004。",
+      "source_manifest_sha256": "pending: see immutable RELEASE.json",
+      "files_manifest_sha256": "pending: see release index",
+      "tests": {
+        "result": "pending: see immutable RELEASE.json"
+      },
+      "note": "历史记录只追加。正式状态以活动发布索引及 RELEASE.json 为准。",
+      "file_disposition": "候选隔离验收；v1.4.7 保留用于回滚，历史Web入口保留备份。"
+    },
+    {
+      "version": "v1.4.9",
+      "release_date": "2026-10-05",
+      "summary": "新增用户备份授权公共规则：未明确要求不得自主备份，可以提醒；公共后台提示词、调用入口、运行宪法使用一致规则。",
+      "tests": {
+        "source": "见本次独立验收与RELEASE.json"
+      },
+      "files_manifest_sha256": "见发布包FILES.sha256",
+      "source_manifest_sha256": "见发布包SOURCE_MANIFEST.json",
+      "file_disposition": "v1.4.8现有发布保留；本次不创建备份。"
+    },
+    {
+      "version": "v1.4.10",
+      "release_date": "2026-10-05",
+      "summary": "裁决中心并入小八监看中心：裁决后端由监看中心按需拉起，原 8797 独立页面与常驻 LaunchAgent 停用；doctor 的配置一致性检查改为比对运行中的裁决后端；调用入口与运维文档改为新的裁决入口；知识索引按价值文件现状重建。",
+      "tests": {
+        "source": "见本次独立验收与RELEASE.json"
+      },
+      "files_manifest_sha256": "见发布包FILES.sha256",
+      "source_manifest_sha256": "见发布包SOURCE_MANIFEST.json",
+      "file_disposition": "v1.4.9现有发布保留；本次不创建备份。"
+    },
+    {
+      "version": "v1.5.0",
+      "release_date": "2026-10-08",
+      "summary": "减法版本：移除 Headroom 本机代理、CC Switch 网关、旧独立审核网关（8766）以及已停用的 Codex/Claude 后台与其优先路由、隔离路由代码；后台只剩 agy_review 与 dsh_review，各自直连本地桌面 CLI。doctor 少五个已无对象的检查项；install-service 的安装前闸门改看本地路由。新增只读诊断 build_knowlp_index.py --diagnose。测试文件按主题重新命名和归并，不再有按补丁命名的测试文件。",
+      "tests": {
+        "source": "见本次独立验收与RELEASE.json"
+      },
+      "files_manifest_sha256": "见发布包FILES.sha256",
+      "source_manifest_sha256": "见发布包SOURCE_MANIFEST.json",
+      "file_disposition": "v1.4.10现有发布保留；本次不创建备份。"
+    },
+    {
+      "version": "v1.5.1",
+      "release_date": "2026-10-10",
+      "summary": "经验笔记改用可读文件名（标题加任务编号前 8 位），新增 memory-rename-notes 给已有笔记改名并补记路径；第二大脑的目录、根笔记、索引目录三个名字去掉版本号（第二大脑、00_小八AgentOS.md、knowlp）；DSH 单轮输出达到上限归为外部原因，不再判成候选有问题、不再把后台锁在修复中；入口技能卡与私人助理 AGENTS.md 的重复项收敛；测试里的旧占位后台名换成现名。后台拓扑、成功门槛 2、数据库 schema=7 均不变。",
+      "tests": {
+        "source": "见本次独立验收与RELEASE.json"
+      },
+      "files_manifest_sha256": "见发布包FILES.sha256",
+      "source_manifest_sha256": "见发布包SOURCE_MANIFEST.json",
+      "file_disposition": "v1.5.0现有发布保留；本次不创建备份。"
+    },
+    {
+      "version": "v1.5.2",
+      "release_date": "2026-10-10",
+      "summary": "候选：保留审核标题并禁止自动备份；审美技能桥接与两篇固定笔记生成；退役同伴自动修复，保留证据冻结和用户恢复；预算失败不污染后台健康；标题围栏/括号/40字符词边界及运行/构包八标记门槛补强。正式审核、构包与提升尚未执行，历史测试经验保持退役。",
+      "tests": {
+        "source": "见工作区冻结证据与最终RELEASE.json；离线通过不代表正式验收"
+      },
+      "files_manifest_sha256": "见发布包FILES.sha256",
+      "source_manifest_sha256": "见发布包SOURCE_MANIFEST.json",
+      "file_disposition": "保留现有发布和用户数据；本次不创建备份。"
+    },
+    {
+      "version": "v1.5.3",
+      "release_date": "2026-10-11",
+      "summary": "候选：目标架构路线第 1 步，入口补写 B09/B19/B20；24 条底线测试标记；真实候选哈希测试；只读资产盘点；约束扣留期间禁止补登记经验候选。正式审核与切换尚未执行。",
+      "tests": {
+        "source": "以候选冻结后的测试与独立验收回执为准；本条不表示已通过"
+      },
+      "files_manifest_sha256": "见最终发布包 FILES.sha256；候选阶段未构包",
+      "source_manifest_sha256": "见候选 SOURCE_MANIFEST.json；最终以发布包为准",
+      "file_disposition": "现行 v1.5.2 保留；本次不创建备份。"
+    },
+    {
+      "version": "v1.5.4",
+      "release_date": "2026-10-12",
+      "summary": "候选：目标架构第2步甲，包内固定切换命令、B11绑定回归、底线交叉标记和只读盘点分类。DeepSeek终态禁令、发布前门禁及经验发布恢复留紧接下一版单独审查。",
+      "tests": {
+        "source": "见冻结后全量测试及AGY/DSH独立审查证据；本条不代表已上线"
+      },
+      "files_manifest_sha256": "见最终发布包FILES.sha256",
+      "source_manifest_sha256": "见候选SOURCE_MANIFEST.json",
+      "file_disposition": "保留既有v1.5.3及用户数据；不新建备份。"
+    },
+    {
+      "version": "v1.5.5",
+      "release_date": "2026-10-12",
+      "status": "candidate",
+      "summary": "限定集成终态重登记禁令、发布前同哈希双批准绑定、失败恢复与受限丙；人工单对象核对及持久清单，待核对不阻断接单/切换/发布。schema7及非终态语义不变。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.5.4限定集成；不自动清理保留物，不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.5.6",
+      "release_date": "2026-10-13",
+      "status": "candidate",
+      "summary": "发布分档：档位由上一版包内的工具和规则按改动路径算出（补丁、常规、迁移），只能由人调高。补丁档不过两个后台，由构包实跑全量测试；常规档与迁移档的验收要求不变。新增数据库结构指纹测试。分块验收未做。schema7不变。本版自身按现行全套验收。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.5.5；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.0",
+      "release_date": "2026-10-13",
+      "status": "candidate",
+      "summary": "第二大脑脱钩：发布只生成规则与发布状态两类笔记（29篇），方法与知识、工作流、资产与索引、能力与技能四个分支下的26篇交还笔记库，原地保留，此后直接修改不影响发布。技能卡与价值文件索引改由 content-notes-sync 从两份内容索引生成。切换时只有列入随包清单的笔记才允许不再生成。技能与价值文件仍在包内。schema7不变。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.5.6；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.1",
+      "release_date": "2026-10-13",
+      "status": "candidate",
+      "summary": "技能与价值文件索引出包：技能实体在 私人助理/skills，价值文件索引在 私人助理/系统/价值文件索引，运行包不再含 skills 与 knowledge 两个目录，两份索引不再写软件版本号。改技能不发版：在草稿里改，两个后台审过后用 skill-publish 发布；改价值文件用 knowledge-index-rebuild。切换时由三条带编号的配置步骤把三个内容路径指到固定位置。schema7不变。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.0；不创建备份，用户终端切换。"
+    }
+  ]
+}

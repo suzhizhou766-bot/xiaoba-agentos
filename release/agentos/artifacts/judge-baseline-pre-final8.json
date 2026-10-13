@@ -1,0 +1,1272 @@
+{
+ "baseline": "pre-final8",
+ "cases_scored": 24,
+ "dataset": "judge",
+ "format_inverted": [
+  "302c9408-as-delivered",
+  "control-novel-answer-no-coverage",
+  "control-structure-beats-correctness",
+  "control-terse-correct-vs-verbose-echo"
+ ],
+ "judge": "DeterministicJudge@final7+G3",
+ "rows": [
+  {
+   "candidates": {
+    "agy_review": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    },
+    "dsh_review": {
+     "answer_correct": true,
+     "chars": 289,
+     "instruction_followed": false
+    }
+   },
+   "case_id": "28787cd4-b756-45a6-ac5d-5b1571292c77",
+   "case_name": "302c9408-as-delivered",
+   "format_inverted": true,
+   "scores": {
+    "agy_review": 0.003167,
+    "dsh_review": 0.508447
+   },
+   "terms": {
+    "agy_review": {
+     "consensus": 0.014706,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.003167,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "dsh_review": {
+     "consensus": 0.014706,
+     "coverage": 0.709091,
+     "length_quality": 0.963333,
+     "output_chars": 289.0,
+     "output_tokens": 68.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.573529,
+     "score": 0.508447,
+     "shared_prompt_tokens": 39.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 1,
+   "verdict_inverted": false,
+   "winner": "dsh_review"
+  },
+  {
+   "candidates": {
+    "agy_review": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    },
+    "dsh_review": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    }
+   },
+   "case_id": "c8bcdb6b-d0d0-428f-84bb-3b4ae56b42d4",
+   "case_name": "302c9408-post-hygiene",
+   "format_inverted": false,
+   "scores": {
+    "agy_review": 0.170667,
+    "dsh_review": 0.170667
+   },
+   "terms": {
+    "agy_review": {
+     "consensus": 1.0,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.170667,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "dsh_review": {
+     "consensus": 1.0,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.170667,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 1,
+   "verdict_inverted": false,
+   "winner": "dsh_review"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": true,
+     "chars": 1001,
+     "instruction_followed": false
+    },
+    "gpt_codex": {
+     "answer_correct": true,
+     "chars": 43,
+     "instruction_followed": true
+    }
+   },
+   "case_id": "fc13861e-cca7-4607-8fc8-460549d11183",
+   "case_name": "959827b4-exact-two-lines",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.245417,
+    "gpt_codex": 0.281726
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.004762,
+     "coverage": 0.1875,
+     "length_quality": 1.0,
+     "output_chars": 1001.0,
+     "output_tokens": 630.0,
+     "prompt_tokens": 16.0,
+     "relevance_density": 0.004762,
+     "score": 0.245417,
+     "shared_prompt_tokens": 3.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.004762,
+     "coverage": 0.1875,
+     "length_quality": 0.143333,
+     "output_chars": 43.0,
+     "output_tokens": 3.0,
+     "prompt_tokens": 16.0,
+     "relevance_density": 1.0,
+     "score": 0.281726,
+     "shared_prompt_tokens": 3.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 1,
+   "verdict_inverted": false,
+   "winner": "gpt_codex"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 4825,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 3223,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "04ddefc8-c141-4e8e-88e9-38ef76560de6",
+   "case_name": "historical-041efb00",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.345779,
+    "gpt_codex": 0.412159
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.303997,
+     "coverage": 0.368421,
+     "length_quality": 0.18627,
+     "output_chars": 4825.0,
+     "output_tokens": 2190.0,
+     "prompt_tokens": 19.0,
+     "relevance_density": 0.003196,
+     "score": 0.345779,
+     "shared_prompt_tokens": 7.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.303997,
+     "coverage": 0.473684,
+     "length_quality": 0.453593,
+     "output_chars": 3223.0,
+     "output_tokens": 1692.0,
+     "prompt_tokens": 19.0,
+     "relevance_density": 0.005319,
+     "score": 0.412159,
+     "shared_prompt_tokens": 9.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "gpt_codex"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 5347,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 4070,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "217cc8a5-d06c-4241-8b44-0a4988212d2b",
+   "case_name": "historical-1f2904b8",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.544252,
+    "gpt_codex": 0.379678
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.237948,
+     "coverage": 0.789474,
+     "length_quality": 0.139379,
+     "output_chars": 5347.0,
+     "output_tokens": 2577.0,
+     "prompt_tokens": 38.0,
+     "relevance_density": 0.011641,
+     "score": 0.544252,
+     "shared_prompt_tokens": 30.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.237948,
+     "coverage": 0.447368,
+     "length_quality": 0.283339,
+     "output_chars": 4070.0,
+     "output_tokens": 2225.0,
+     "prompt_tokens": 38.0,
+     "relevance_density": 0.00764,
+     "score": 0.379678,
+     "shared_prompt_tokens": 17.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 4489,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 3738,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "e609cd45-31de-48e6-bf46-6e9f2dff448e",
+   "case_name": "historical-2461043c",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.585298,
+    "gpt_codex": 0.361532
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.203872,
+     "coverage": 0.875,
+     "length_quality": 0.224498,
+     "output_chars": 4489.0,
+     "output_tokens": 1974.0,
+     "prompt_tokens": 24.0,
+     "relevance_density": 0.010638,
+     "score": 0.585298,
+     "shared_prompt_tokens": 21.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.203872,
+     "coverage": 0.416667,
+     "length_quality": 0.340729,
+     "output_chars": 3738.0,
+     "output_tokens": 1197.0,
+     "prompt_tokens": 24.0,
+     "relevance_density": 0.008354,
+     "score": 0.361532,
+     "shared_prompt_tokens": 10.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 2848,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 81,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "c6bdcb06-f1f9-4eeb-b8f7-74db7b6e8c9f",
+   "case_name": "historical-25459a41",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.572269,
+    "gpt_codex": 0.27242
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.034907,
+     "coverage": 0.869565,
+     "length_quality": 0.558656,
+     "output_chars": 2848.0,
+     "output_tokens": 1989.0,
+     "prompt_tokens": 46.0,
+     "relevance_density": 0.020111,
+     "score": 0.572269,
+     "shared_prompt_tokens": 40.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.034907,
+     "coverage": 0.326087,
+     "length_quality": 0.27,
+     "output_chars": 81.0,
+     "output_tokens": 116.0,
+     "prompt_tokens": 46.0,
+     "relevance_density": 0.12931,
+     "score": 0.27242,
+     "shared_prompt_tokens": 15.0,
+     "structure": 0.666667,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 1745,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 126,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "43081a65-bde9-4bdc-9bc6-bcd1b994c575",
+   "case_name": "historical-2bc11ed8",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.540474,
+    "gpt_codex": 0.021213
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.00125,
+     "coverage": 0.650575,
+     "length_quality": 1.0,
+     "output_chars": 1745.0,
+     "output_tokens": 784.0,
+     "prompt_tokens": 435.0,
+     "relevance_density": 0.360969,
+     "score": 0.540474,
+     "shared_prompt_tokens": 283.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.00125,
+     "coverage": 0.0,
+     "length_quality": 0.42,
+     "output_chars": 126.0,
+     "output_tokens": 17.0,
+     "prompt_tokens": 435.0,
+     "relevance_density": 0.0,
+     "score": 0.021213,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 2066,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 1150,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "c93a95b9-0d2c-4bdb-9b11-26368e7b78ac",
+   "case_name": "historical-382598d2",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.677984,
+    "gpt_codex": 0.415219
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.193649,
+     "coverage": 1.0,
+     "length_quality": 0.862623,
+     "output_chars": 2066.0,
+     "output_tokens": 1211.0,
+     "prompt_tokens": 13.0,
+     "relevance_density": 0.010735,
+     "score": 0.677984,
+     "shared_prompt_tokens": 13.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.193649,
+     "coverage": 0.461538,
+     "length_quality": 1.0,
+     "output_chars": 1150.0,
+     "output_tokens": 706.0,
+     "prompt_tokens": 13.0,
+     "relevance_density": 0.008499,
+     "score": 0.415219,
+     "shared_prompt_tokens": 6.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 6105,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 3105,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "fdfb1bb6-3c9c-4b26-9621-f2205d1fc3b6",
+   "case_name": "historical-39f8af51",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.472959,
+    "gpt_codex": 0.454244
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.2518,
+     "coverage": 0.647059,
+     "length_quality": 0.091477,
+     "output_chars": 6105.0,
+     "output_tokens": 2898.0,
+     "prompt_tokens": 51.0,
+     "relevance_density": 0.011387,
+     "score": 0.472959,
+     "shared_prompt_tokens": 33.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.2518,
+     "coverage": 0.568627,
+     "length_quality": 0.484325,
+     "output_chars": 3105.0,
+     "output_tokens": 1795.0,
+     "prompt_tokens": 51.0,
+     "relevance_density": 0.016156,
+     "score": 0.454244,
+     "shared_prompt_tokens": 29.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 2084,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 2324,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "5202d556-fe7a-4c97-8c62-cad44cf49dd4",
+   "case_name": "historical-43281e26",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.678771,
+    "gpt_codex": 0.339905
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.209824,
+     "coverage": 1.0,
+     "length_quality": 0.85404,
+     "output_chars": 2084.0,
+     "output_tokens": 1353.0,
+     "prompt_tokens": 3.0,
+     "relevance_density": 0.002217,
+     "score": 0.678771,
+     "shared_prompt_tokens": 3.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.209824,
+     "coverage": 0.333333,
+     "length_quality": 0.747433,
+     "output_chars": 2324.0,
+     "output_tokens": 913.0,
+     "prompt_tokens": 3.0,
+     "relevance_density": 0.001095,
+     "score": 0.339905,
+     "shared_prompt_tokens": 1.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 691,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 923,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "0fb37009-5002-4412-bfd0-58cc08125fd8",
+   "case_name": "historical-56e3eb95",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.476066,
+    "gpt_codex": 0.689393
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.193476,
+     "coverage": 0.578947,
+     "length_quality": 1.0,
+     "output_chars": 691.0,
+     "output_tokens": 535.0,
+     "prompt_tokens": 19.0,
+     "relevance_density": 0.020561,
+     "score": 0.476066,
+     "shared_prompt_tokens": 11.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.193476,
+     "coverage": 1.0,
+     "length_quality": 1.0,
+     "output_chars": 923.0,
+     "output_tokens": 526.0,
+     "prompt_tokens": 19.0,
+     "relevance_density": 0.036122,
+     "score": 0.689393,
+     "shared_prompt_tokens": 19.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "gpt_codex"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 1551,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 2412,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "0ac2aaad-c6e9-4c30-8616-d86853931d04",
+   "case_name": "historical-7cd7348b",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.643512,
+    "gpt_codex": 0.425574
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.177657,
+     "coverage": 0.914286,
+     "length_quality": 1.0,
+     "output_chars": 1551.0,
+     "output_tokens": 934.0,
+     "prompt_tokens": 35.0,
+     "relevance_density": 0.034261,
+     "score": 0.643512,
+     "shared_prompt_tokens": 32.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.177657,
+     "coverage": 0.514286,
+     "length_quality": 0.71177,
+     "output_chars": 2412.0,
+     "output_tokens": 1227.0,
+     "prompt_tokens": 35.0,
+     "relevance_density": 0.01467,
+     "score": 0.425574,
+     "shared_prompt_tokens": 18.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 466,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 1243,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "dd943eee-1d16-4afb-946f-48cb79708d37",
+   "case_name": "historical-80e50eac",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.590754,
+    "gpt_codex": 0.38156
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.143813,
+     "coverage": 0.814815,
+     "length_quality": 1.0,
+     "output_chars": 466.0,
+     "output_tokens": 445.0,
+     "prompt_tokens": 27.0,
+     "relevance_density": 0.049438,
+     "score": 0.590754,
+     "shared_prompt_tokens": 22.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.143813,
+     "coverage": 0.407407,
+     "length_quality": 1.0,
+     "output_chars": 1243.0,
+     "output_tokens": 581.0,
+     "prompt_tokens": 27.0,
+     "relevance_density": 0.018933,
+     "score": 0.38156,
+     "shared_prompt_tokens": 11.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 5625,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 2946,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "ef5d52f6-6082-4a27-a910-a9de4b165b35",
+   "case_name": "historical-9210b8d3",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.535328,
+    "gpt_codex": 0.469834
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.133413,
+     "coverage": 0.777778,
+     "length_quality": 0.119433,
+     "output_chars": 5625.0,
+     "output_tokens": 2196.0,
+     "prompt_tokens": 279.0,
+     "relevance_density": 0.098816,
+     "score": 0.535328,
+     "shared_prompt_tokens": 217.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.133413,
+     "coverage": 0.555556,
+     "length_quality": 0.529053,
+     "output_chars": 2946.0,
+     "output_tokens": 650.0,
+     "prompt_tokens": 279.0,
+     "relevance_density": 0.238462,
+     "score": 0.469834,
+     "shared_prompt_tokens": 155.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 1365,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 3723,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "927fa564-34a2-4cba-a84b-b9f4a9d31a48",
+   "case_name": "historical-9c8f7b92",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.491549,
+    "gpt_codex": 0.397161
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.130435,
+     "coverage": 0.581315,
+     "length_quality": 1.0,
+     "output_chars": 1365.0,
+     "output_tokens": 1053.0,
+     "prompt_tokens": 289.0,
+     "relevance_density": 0.159544,
+     "score": 0.491549,
+     "shared_prompt_tokens": 168.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.130435,
+     "coverage": 0.557093,
+     "length_quality": 0.343581,
+     "output_chars": 3723.0,
+     "output_tokens": 2301.0,
+     "prompt_tokens": 289.0,
+     "relevance_density": 0.06997,
+     "score": 0.397161,
+     "shared_prompt_tokens": 161.0,
+     "structure": 0.666667,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 4709,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 91,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "f1c979d8-575e-4105-a16c-dae80f2c4399",
+   "case_name": "historical-abe1e8f2",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.435502,
+    "gpt_codex": 0.163057
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.037745,
+     "coverage": 0.631579,
+     "length_quality": 0.19867,
+     "output_chars": 4709.0,
+     "output_tokens": 1927.0,
+     "prompt_tokens": 57.0,
+     "relevance_density": 0.018682,
+     "score": 0.435502,
+     "shared_prompt_tokens": 36.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.037745,
+     "coverage": 0.245614,
+     "length_quality": 0.303333,
+     "output_chars": 91.0,
+     "output_tokens": 135.0,
+     "prompt_tokens": 57.0,
+     "relevance_density": 0.103704,
+     "score": 0.163057,
+     "shared_prompt_tokens": 14.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 4472,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 184,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "a49be424-df6e-4d93-93c4-f4dc6406904e",
+   "case_name": "historical-bf420a92",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.505811,
+    "gpt_codex": 0.030667
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.0,
+     "coverage": 0.755814,
+     "length_quality": 0.226628,
+     "output_chars": 4472.0,
+     "output_tokens": 2118.0,
+     "prompt_tokens": 258.0,
+     "relevance_density": 0.092068,
+     "score": 0.505811,
+     "shared_prompt_tokens": 195.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.0,
+     "coverage": 0.0,
+     "length_quality": 0.613333,
+     "output_chars": 184.0,
+     "output_tokens": 27.0,
+     "prompt_tokens": 258.0,
+     "relevance_density": 0.0,
+     "score": 0.030667,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 1286,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 56,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "0ea90ceb-53f3-4d95-8568-45bedac19371",
+   "case_name": "historical-c9893e0b",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.110329,
+    "gpt_codex": 0.055239
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.009804,
+     "coverage": 0.043478,
+     "length_quality": 1.0,
+     "output_chars": 1286.0,
+     "output_tokens": 39.0,
+     "prompt_tokens": 184.0,
+     "relevance_density": 0.205128,
+     "score": 0.110329,
+     "shared_prompt_tokens": 8.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.009804,
+     "coverage": 0.043478,
+     "length_quality": 0.186667,
+     "output_chars": 56.0,
+     "output_tokens": 64.0,
+     "prompt_tokens": 184.0,
+     "relevance_density": 0.125,
+     "score": 0.055239,
+     "shared_prompt_tokens": 8.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "claude_code": {
+     "answer_correct": null,
+     "chars": 10133,
+     "instruction_followed": null
+    },
+    "gpt_codex": {
+     "answer_correct": null,
+     "chars": 5434,
+     "instruction_followed": null
+    }
+   },
+   "case_id": "6771725f-a754-4d53-a9b1-35b92f1d08f9",
+   "case_name": "historical-feca3a4c",
+   "format_inverted": false,
+   "scores": {
+    "claude_code": 0.543864,
+    "gpt_codex": 0.534979
+   },
+   "terms": {
+    "claude_code": {
+     "consensus": 0.383681,
+     "coverage": 0.74269,
+     "length_quality": 0.00976,
+     "output_chars": 10133.0,
+     "output_tokens": 3359.0,
+     "prompt_tokens": 171.0,
+     "relevance_density": 0.037809,
+     "score": 0.543864,
+     "shared_prompt_tokens": 127.0,
+     "structure": 1.0,
+     "weight": 1.0
+    },
+    "gpt_codex": {
+     "consensus": 0.383681,
+     "coverage": 0.707602,
+     "length_quality": 0.132803,
+     "output_chars": 5434.0,
+     "output_tokens": 2339.0,
+     "prompt_tokens": 171.0,
+     "relevance_density": 0.051732,
+     "score": 0.534979,
+     "shared_prompt_tokens": 121.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 2,
+   "verdict_inverted": false,
+   "winner": "claude_code"
+  },
+  {
+   "candidates": {
+    "agent_a": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    },
+    "agent_b": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    }
+   },
+   "case_id": "cd092f10-ebbe-49b1-b0a9-46ac9ebe50ac",
+   "case_name": "control-identical-compliant-tie",
+   "format_inverted": false,
+   "scores": {
+    "agent_a": 0.170667,
+    "agent_b": 0.170667
+   },
+   "terms": {
+    "agent_a": {
+     "consensus": 1.0,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.170667,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "agent_b": {
+     "consensus": 1.0,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.170667,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 3,
+   "verdict_inverted": false,
+   "winner": "agent_b"
+  },
+  {
+   "candidates": {
+    "agent_a": {
+     "answer_correct": true,
+     "chars": 3,
+     "instruction_followed": true
+    },
+    "agent_b": {
+     "answer_correct": true,
+     "chars": 27,
+     "instruction_followed": false
+    }
+   },
+   "case_id": "d6e60300-ba20-4028-9a08-b9a28d76dd78",
+   "case_name": "control-novel-answer-no-coverage",
+   "format_inverted": true,
+   "scores": {
+    "agent_a": 0.009944,
+    "agent_b": 0.081563
+   },
+   "terms": {
+    "agent_a": {
+     "consensus": 0.055556,
+     "coverage": 0.0,
+     "length_quality": 0.01,
+     "output_chars": 3.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 21.0,
+     "relevance_density": 0.0,
+     "score": 0.009944,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "agent_b": {
+     "consensus": 0.055556,
+     "coverage": 0.095238,
+     "length_quality": 0.09,
+     "output_chars": 27.0,
+     "output_tokens": 18.0,
+     "prompt_tokens": 21.0,
+     "relevance_density": 0.111111,
+     "score": 0.081563,
+     "shared_prompt_tokens": 2.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 3,
+   "verdict_inverted": false,
+   "winner": "agent_b"
+  },
+  {
+   "candidates": {
+    "agent_a": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    },
+    "agent_b": {
+     "answer_correct": false,
+     "chars": 98,
+     "instruction_followed": false
+    }
+   },
+   "case_id": "c670ff57-3d23-47d1-85bd-f99305775484",
+   "case_name": "control-structure-beats-correctness",
+   "format_inverted": true,
+   "scores": {
+    "agent_a": 0.000667,
+    "agent_b": 0.26657
+   },
+   "terms": {
+    "agent_a": {
+     "consensus": 0.0,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.000667,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "agent_b": {
+     "consensus": 0.0,
+     "coverage": 0.236364,
+     "length_quality": 0.326667,
+     "output_chars": 98.0,
+     "output_tokens": 73.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.178082,
+     "score": 0.26657,
+     "shared_prompt_tokens": 13.0,
+     "structure": 1.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 3,
+   "verdict_inverted": true,
+   "winner": "agent_b"
+  },
+  {
+   "candidates": {
+    "agent_a": {
+     "answer_correct": true,
+     "chars": 4,
+     "instruction_followed": true
+    },
+    "agent_b": {
+     "answer_correct": true,
+     "chars": 95,
+     "instruction_followed": false
+    }
+   },
+   "case_id": "f1953ddb-5add-4a19-a40c-6d1cdcb408d0",
+   "case_name": "control-terse-correct-vs-verbose-echo",
+   "format_inverted": true,
+   "scores": {
+    "agent_a": 0.002367,
+    "agent_b": 0.605642
+   },
+   "terms": {
+    "agent_a": {
+     "consensus": 0.01,
+     "coverage": 0.0,
+     "length_quality": 0.013333,
+     "output_chars": 4.0,
+     "output_tokens": 1.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.0,
+     "score": 0.002367,
+     "shared_prompt_tokens": 0.0,
+     "structure": 0.0,
+     "weight": 1.0
+    },
+    "agent_b": {
+     "consensus": 0.01,
+     "coverage": 0.981818,
+     "length_quality": 0.316667,
+     "output_chars": 95.0,
+     "output_tokens": 100.0,
+     "prompt_tokens": 55.0,
+     "relevance_density": 0.54,
+     "score": 0.605642,
+     "shared_prompt_tokens": 54.0,
+     "structure": 0.0,
+     "weight": 1.0
+    }
+   },
+   "tier": 3,
+   "verdict_inverted": false,
+   "winner": "agent_b"
+  }
+ ],
+ "term_weights": {
+  "consensus": 0.17,
+  "coverage": 0.5,
+  "length_quality": 0.05,
+  "relevance_density": 0.18,
+  "structure": 0.1
+ },
+ "verdict_inverted": [
+  "control-structure-beats-correctness"
+ ]
+}

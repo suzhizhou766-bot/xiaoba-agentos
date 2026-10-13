@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "description": "技能出包时（基于 v1.6.0）已随历次发布审查过的技能内容指纹。内容与此逐行相同的技能无需再审；其余必须带审查任务。",
+  "skills": {
+    "aesthetics": [
+      "SKILL-ENTRY aesthetics cb14b3c8aff4c8668c9ebbb2a7f87727773ee6abdb0dccc7677cc3644f94f5dc",
+      "SKILL-FILE aesthetics/SKILL.md 7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9"
+    ],
+    "assets": [
+      "SKILL-ENTRY assets 1067ef1c3eee503cdb9b3e358d262195551334b8259cc94fbf3000c34c10267e",
+      "SKILL-FILE assets/SKILL.md ff328b0164a07e805f967c1afae5856c9a090c509408cba2f1249e3deae9140d",
+      "SKILL-FILE assets/agents/openai.yaml 7c4861f8f696bed6d802322d782791cd35c3eba7e26f3217683fcbc039e35c4f",
+      "SKILL-FILE assets/references/qc_report_schema.md 5444bc34245713be5c144e435e1ae5a38a4aec70f578bb8c84c7d27b6ddfff56",
+      "SKILL-FILE assets/scripts/asset_manifest.py b4656eb063fb3b9c698c6453b6e0152ec174b179999b6544f8f55a9e2b77b680"
+    ],
+    "bgm": [
+      "SKILL-ENTRY bgm 2b5df0a8a769e3937a14a6d7ed3ca1d8f0412ff3957f32cc8c8ff639f5c4b44c",
+      "SKILL-FILE bgm/SKILL.md cd4f0ad5bafaeeb0602bf3d4a2a86b16bf5eff200421484681dfe227d342b33d",
+      "SKILL-FILE bgm/agents/openai.yaml 76a58c9dc9bd69f8e349350148a6b5e17c2160ea15fa0c3b1529f940d9383611",
+      "SKILL-FILE bgm/references/audio_acceptance.md 502e23263e5c48855e595d76b4fb8a34a0aa304bcff3e73a4141a3e0bf47b06c",
+      "SKILL-FILE bgm/references/calibration_cases.md cc18dbe4455a77537c882f7e10f5a4a13018cd3f9f34ff4cee9b96659f05e736",
+      "SKILL-FILE bgm/references/composition_framework.md ce49ec07dfc049f184f245f7e7ba8b0322a2469d6687857328dc1a1f698a263f",
+      "SKILL-FILE bgm/references/generator_profiles.md b12f3a658e3052b228bd0368c4cf6c05960ad1cc64d1803f5651c2f903dd267a",
+      "SKILL-FILE bgm/references/story_scoring.md 2ac279a8d8996fe7a3d532d389458b8e1c3c419455554850b3d9fac024b18a24",
+      "SKILL-FILE bgm/scripts/audio_qc.py ed08d10fdf1e3eb282926c5f888a0a5bd764c1fd9559f1d0357d993ce9e35b11"
+    ],
+    "collaboration-core": [
+      "SKILL-ENTRY collaboration-core 08cef7a2d5d1757dc61f2cf0399956ff5aba89d067305a298ad480848663b5eb",
+      "SKILL-FILE collaboration-core/SKILL.md 20ff3732a97eb1d73834eedef37e2d5db435ef247fd7f34b2150069ec9191441",
+      "SKILL-FILE collaboration-core/agents/openai.yaml d14ba9e1bfa5ea8eb4c944b571537a7105ff6b58a746e5bf08e95e0badeac816"
+    ],
+    "director": [
+      "SKILL-ENTRY director f1571e691fcb8f7fe7f6c87e84ae4058b51c76303d964a25d4fc9942cbde25d7",
+      "SKILL-FILE director/SKILL.md 21411ceaf20d4c2e72be501c1341dd8d8638ca4497225ae5fb2908425a10d8df",
+      "SKILL-FILE director/agents/openai.yaml 090fdece15c50aee86b5d5a604cf88053f4dca032319c1dec7dec82e5808731e"
+    ],
+    "project": [
+      "SKILL-ENTRY project a2a69fcef8223474d59a4cd0132888caef4b77d05ae9ba69b7fbbd45822109a5",
+      "SKILL-FILE project/SKILL.md a4af1c90d39b99fc8f58f1db40046e8a18a138e1c1224dc0c565f0138a3bddda",
+      "SKILL-FILE project/agents/openai.yaml 9206008d8d47204452653b8d5ed509f17b2dfc01d806f5ed74001add771f1d3a",
+      "SKILL-FILE project/references/storyboard_schema.md 2dc3adcec0d58e8ab526bb1df8a9959c6ca22d3e4d3b92496d3dbdebbbda118f",
+      "SKILL-FILE project/scripts/check_storyboard.py 259e9f74058d75528c8833bd261b2e42bda9167880b4cc27ae0d900232cc6d4f"
+    ],
+    "remotion": [
+      "SKILL-ENTRY remotion 05147c967464c4cafebf895f409b464202a91cf3de5e2fbcdf1b5ea355cee456",
+      "SKILL-FILE remotion/SKILL.md 0a641ccd3d1eed805147c2bb4f553e00cd3a60bdc67c753d76b8a24ca77d0072",
+      "SKILL-FILE remotion/references/tutorial_sources.md 8db413ff08de812d991a8958e41eeabce1056f5fce91eb08d6811e59a41d4db9"
+    ],
+    "xiaoba-assistant": [
+      "SKILL-ENTRY xiaoba-assistant 30166f5ab10fed8ffcf22160da8a962eb0788461bed398ba0d10d80342aa3fb4",
+      "SKILL-FILE xiaoba-assistant/SKILL.md ea5f8f265550b0937f77a1c3a14a4394edfa3649e2a0ab585121db53b84042e0",
+      "SKILL-FILE xiaoba-assistant/agents/openai.yaml 394987c0e9b4ccf42dd2e4c8da43815157ec3fee351873000ac2ad719ff82c40"
+    ]
+  }
+}
