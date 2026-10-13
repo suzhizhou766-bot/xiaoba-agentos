@@ -1,0 +1,14 @@
+# 运行时产物与本机密钥不进版本历史
+keypool.json
+keypool.json.tmp-*
+monitor.log
+logs/
+run/
+__pycache__/
+*.pyc
+.director-migration-token
+.DS_Store
+# 3D 导演台的本机工程库是用户数据
+小八3D导演台/工程库/
+# 3D 导演台的验证材料（交接包、截图）体积大，留在本机，不进版本历史
+小八3D导演台/verification/

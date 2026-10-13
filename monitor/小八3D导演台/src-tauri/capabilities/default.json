@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Minimal desktop scaffold; native filesystem permissions not yet enabled",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

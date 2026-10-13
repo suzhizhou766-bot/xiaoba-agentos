@@ -9,6 +9,7 @@
 | `release/` | v1.6.1 不可变发布包的原样拷贝（232 个文件加 `FILES.sha256` 清单）。包含 `agentos/`（源码、脚本、配置、测试、文档）、`interface/`（已安装入口）、`second-brain/`（发布生成的 30 篇规则与发布状态笔记）、`RELEASE.json`。可用 `FILES.sha256` 逐文件核对 |
 | `content/skills/` | 上线时的 8 个技能，连同 `catalog.json` 与 `index.json`。自 v1.6.1 起技能不在发布包内，线上位置是 `私人助理/skills/` |
 | `content/价值文件索引/` | 价值文件的目录与索引。原文不在这里（它们是项目材料） |
+| `monitor/` | 小八监看中心与 Key 池代理的定版快照（本机仓库 `私人助理/工具/小八监看` 的提交 `24c6eb9`，2026-10-14），含冻结任务列表与单个恢复。监看中心不随 AgentOS 发布，在本机独立仓库开发，这里只是留存。`keypool.json`、`run/`、`logs/`、`monitor.log` 被 `.gitignore` 排除，不在这里 |
 
 ## 这一版的状态
 
