@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {
+      "id": "task-planning",
+      "title": "任务计划与资源择优",
+      "nodes": [
+        "user",
+        "host",
+        "resource",
+        "choose",
+        "bound",
+        "entry"
+      ],
+      "spec_path": "development/architecture-center/modules/task-planning/SPEC.md",
+      "editable_prefixes": [
+        "development/task-planning/",
+        "development/architecture-center/modules/task-planning/"
+      ],
+      "dependencies": [
+        "task-scoring",
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "execution",
+      "title": "路由与任务执行",
+      "nodes": [
+        "route",
+        "direct",
+        "queue",
+        "worker",
+        "clarify",
+        "invoke",
+        "work",
+        "qc",
+        "result",
+        "pause"
+      ],
+      "spec_path": "development/architecture-center/modules/execution/SPEC.md",
+      "editable_prefixes": [
+        "development/execution/",
+        "development/architecture-center/modules/execution/"
+      ],
+      "dependencies": [
+        "task-planning",
+        "business-tools",
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "delivery-learning",
+      "title": "交付与经验回流",
+      "nodes": [
+        "delivery",
+        "archive",
+        "new",
+        "initial",
+        "initialPassed",
+        "pendingIndex",
+        "retrieve",
+        "apply",
+        "evidence",
+        "laterDelivery",
+        "used",
+        "feedback",
+        "roundInput"
+      ],
+      "spec_path": "development/architecture-center/modules/delivery-learning/SPEC.md",
+      "editable_prefixes": [
+        "development/delivery-learning/",
+        "development/architecture-center/modules/delivery-learning/"
+      ],
+      "dependencies": [
+        "execution",
+        "experience-validation",
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "experience-validation",
+      "title": "两轮经验核验",
+      "nodes": [
+        "wait1",
+        "verificationSummary",
+        "run1",
+        "decision1",
+        "fail1",
+        "wait2",
+        "run2",
+        "decision2",
+        "compare",
+        "finalQueue",
+        "finalHuman",
+        "publish",
+        "formal",
+        "retire",
+        "retireShow",
+        "manualDelete"
+      ],
+      "spec_path": "development/architecture-center/modules/experience-validation/SPEC.md",
+      "editable_prefixes": [
+        "development/experience-validation/",
+        "development/architecture-center/modules/experience-validation/"
+      ],
+      "dependencies": [
+        "review-calls",
+        "task-scoring",
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "review-calls",
+      "title": "审查调用与回执归集",
+      "nodes": [
+        "reviewPlan",
+        "callHost",
+        "dsh",
+        "peer",
+        "receipts",
+        "reviewResult"
+      ],
+      "spec_path": "development/architecture-center/modules/review-calls/SPEC.md",
+      "editable_prefixes": [
+        "development/review-ingress/",
+        "development/architecture-center/modules/review-calls/"
+      ],
+      "dependencies": [
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "task-scoring",
+      "title": "任务综合评分与历史反馈",
+      "nodes": [
+        "score",
+        "history",
+        "memory",
+        "filter",
+        "rank"
+      ],
+      "spec_path": "development/architecture-center/modules/task-scoring/SPEC.md",
+      "editable_prefixes": [
+        "development/task-scoring/",
+        "development/architecture-center/modules/task-scoring/"
+      ],
+      "dependencies": [
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "business-tools",
+      "title": "共享业务能力",
+      "nodes": [
+        "tools"
+      ],
+      "spec_path": "development/architecture-center/modules/business-tools/SPEC.md",
+      "editable_prefixes": [
+        "development/business-tools/",
+        "development/architecture-center/modules/business-tools/"
+      ],
+      "dependencies": [
+        "data-governance"
+      ],
+      "contract_version": 1
+    },
+    {
+      "id": "data-governance",
+      "title": "数据与运行治理",
+      "nodes": [
+        "runtime",
+        "data",
+        "guards",
+        "monitor"
+      ],
+      "spec_path": "development/architecture-center/modules/data-governance/SPEC.md",
+      "editable_prefixes": [
+        "development/data-governance/",
+        "development/architecture-center/modules/data-governance/"
+      ],
+      "dependencies": [],
+      "contract_version": 1
+    },
+    {
+      "id": "architecture-center",
+      "title": "架构与升级发布中心",
+      "nodes": [
+        "upgradeCenter",
+        "moduleDraft",
+        "pendingFiles",
+        "agentHandoff",
+        "acceptedPackage",
+        "releasePreflight",
+        "releaseButton",
+        "versionRecord"
+      ],
+      "spec_path": "development/architecture-center/modules/architecture-center/SPEC.md",
+      "editable_prefixes": [
+        "development/architecture-center/",
+        "development/architecture-center/modules/architecture-center/"
+      ],
+      "dependencies": [
+        "data-governance"
+      ],
+      "contract_version": 1
+    }
+  ]
+}

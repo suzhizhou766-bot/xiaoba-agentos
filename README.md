@@ -4,6 +4,8 @@
 
 2026-10-27 用户授权在本仓库开展实现并提交。新增 [DSH＋开放第二方审查接入](development/review-ingress/README.md)：身份任务卡、外部/后台回执、来源核对、可靠归集与运行监看。验证记录见 [TEST-RESULTS](development/review-ingress/TEST-RESULTS.md)。
 
+新增 [架构与升级发布中心](development/architecture-center/README.md)：HTML 模块规范编辑、待发布文件夹、跨 Agent 接续、版本源码记录，以及受原生预检约束的正式发版按钮。
+
 这是开发代码，尚未完成真实 DSH 模型联调或本机生产切换。活动 v1.6.4 与冻结 v1.6.5 的原始材料均保留在 architecture-package-20261027，未被本次扩展改写。
 
 ## 历史 v1.6.1 定版快照

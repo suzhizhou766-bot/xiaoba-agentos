@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the extension in Xiaoba's existing monitor, with explicit source roots."""
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import signal
@@ -23,6 +24,10 @@ def main():
     parser.add_argument('--dsh-reviewer', help='已登记来源 ID；仅在明确指定时绑定真实 DSH 适配器')
     parser.add_argument('--dsh-agent', help='原配置内明确的 DSH Agent 名称')
     parser.add_argument('--inbox-offline', action='store_true')
+    parser.add_argument('--updates-workspace', type=Path, help='模块待发布与版本记录工作区')
+    parser.add_argument('--switch-script', type=Path, help='本机受信的原生发版脚本')
+    parser.add_argument('--switch-sha256', help='上述固定入口的已核对 SHA-256')
+    parser.add_argument('--switch-python', type=Path, help='本机原生发版解释器')
     args = parser.parse_args()
     sys.path[:0] = [str(args.core_source.resolve()), str(args.monitor_source.resolve())]
     from xiaoba_agentos.config import AppConfig
@@ -55,6 +60,19 @@ def main():
     settings['root'] = str(runtime)
     ctx = Context(settings, logs.setup(None), args.port)
     app = App(ctx)
+    center_root = HERE.parent / 'architecture-center'
+    module_spec = importlib.util.spec_from_file_location('xiaoba_architecture_center', center_root / '__init__.py', submodule_search_locations=[str(center_root)])
+    module = importlib.util.module_from_spec(module_spec)
+    sys.modules[module_spec.name] = module
+    module_spec.loader.exec_module(module)
+    from xiaoba_architecture_center.core import Center
+    from xiaoba_architecture_center.monitor import ArchitectureCenterModule
+    from xiaoba_architecture_center.native_release import NativeRelease
+    if bool(args.switch_script) != bool(args.switch_sha256):
+        parser.error('原生发布入口必须同时提供路径及已核对指纹')
+    release_driver = NativeRelease(args.switch_script, args.switch_sha256, args.switch_python) if args.switch_script else None
+    upgrade_center = Center(REPO, args.updates_workspace or runtime / 'upgrade-workspace', center_root / 'MODULES.json', release_driver)
+    app.register(ArchitectureCenterModule(ctx, upgrade_center))
     system = SystemModule(ctx)
     app.register(system)
     # Add a navigation entry without altering the archived monitor HTML.
@@ -64,7 +82,7 @@ def main():
         if response.code == 200:
             link = '<nav style="padding:12px"><a href="/open-review">DSH＋开放审查 · 任务卡 / 回执 / 裁决材料</a></nav>'
             response.body = response.body.replace(b'<body>', b'<body>' + link.encode(), 1)
-            response.body = response.body.replace(b'</body>', b'<script src="/open-review-native.js"></script></body>', 1)
+            response.body = response.body.replace(b'</body>', b'<script src="/open-review-native.js"></script><script src="/architecture/native-center.js"></script></body>', 1)
         return response
     app.routes[('GET', '/')].handler = index
     if native_config:
@@ -87,6 +105,8 @@ def main():
         signal.signal(signum, lambda *_: threading.Thread(target=httpd.shutdown, daemon=True).start())
     print(json.dumps({'listening': 'http://127.0.0.1:%d/open-review' % args.port,
                       'database': str(native.path), 'dsh_adapter_registered': bool(args.dsh_reviewer),
+                      'architecture': 'http://127.0.0.1:%d/architecture/' % args.port,
+                      'updates_workspace': str(upgrade_center.workspace), 'release_driver_configured': release_driver is not None,
                       'production_switch': False}), flush=True)
     try:
         httpd.serve_forever()
