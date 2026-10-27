@@ -1,0 +1,4 @@
+interface:
+  display_name: "小八助理"
+  short_description: "把小八触发词与每条消息路由到当前 AgentOS 审计工作流"
+  default_prompt: "Use $xiaoba-assistant to enter the current 小八 AgentOS intake and review workflow."

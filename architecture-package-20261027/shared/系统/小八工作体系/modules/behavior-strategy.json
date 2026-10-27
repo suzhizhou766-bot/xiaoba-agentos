@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "behavior-strategy",
+  "name": "行为记忆与策略适配",
+  "purpose": "接纳新能力和执行观察，按目标与上下文匹配历史行为并持续更新策略排序。",
+  "authority": false,
+  "implementation_status": "implemented",
+  "implementation_paths": ["${ROOT}/工具/治理/xiaoba_behavior.py"],
+  "data_contract_version": 1,
+  "capabilities": ["goal-context-matching", "behavior-recommendation", "outcome-observation", "failure-learning"],
+  "permissions": {"read": true, "write": "behavior-store-only", "network": false},
+  "health_checks": ["behavior-store", "schema-validation", "recommendation-smoke"],
+  "required_paths": ["工具/治理/xiaoba_behavior.py", "系统/小八工作体系/behavior-contract.json"],
+  "interfaces": ["xiaoba_behavior.py recommend", "xiaoba_behavior.py observe", "xiaoba_behavior.py status"],
+  "dependencies": ["learning"],
+  "failure_policy": "没有足够相似目标或上下文时返回无推荐，不把动作名称相似误当成可复用策略。"
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "协作核心"
+  short_description: "管理小八会话路由、双阶段裁决、记忆生命周期与下班交接"
+  default_prompt: "Use $collaboration-core to route each message through AgentOS and preserve two-stage review and memory boundaries."

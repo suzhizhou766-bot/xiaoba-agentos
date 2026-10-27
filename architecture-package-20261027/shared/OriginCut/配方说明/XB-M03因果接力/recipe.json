@@ -1,0 +1,96 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-M03",
+  "name": "因果接力",
+  "version": "0.1.0",
+  "status": "implemented-sample-awaiting-user-review",
+  "component": {
+    "id": "xb-m03-causal-relay",
+    "version": 1,
+    "uri": "origincut://v1/generator-component/xb-m03-causal-relay?sourceHash=sha256%3A285792e96c50adfc1edaab8fba36124419a693144f33f0eb8502df97a6fefbd8&version=1",
+    "propsSchemaPath": "components/xb-m03-causal-relay/component.json#/propsSchema",
+    "examples": [
+      {
+        "id": "default",
+        "path": "examples/default.json"
+      },
+      {
+        "id": "alternate",
+        "path": "examples/alternate.json"
+      }
+    ]
+  },
+  "canvas": [
+    1920,
+    1080
+  ],
+  "sourceClockTicksPerSecond": 1000000,
+  "sequenceClockTicksPerSecond": 720000,
+  "sequence": "origincut://v1/sequence/seq_ivhbswlltzi06v?revision=2",
+  "durationSeconds": 12,
+  "reel": {
+    "sequence": "origincut://v1/sequence/seq_mpuvhb9c2dll4i?revision=2",
+    "rangeSeconds": [
+      22,
+      34
+    ]
+  },
+  "verification": {
+    "observation": "look_mvjqw8xo_26",
+    "samples": 16,
+    "audioAudition": false,
+    "exportVerified": false,
+    "userAdopted": false
+  },
+  "filesSha256": {
+    "components/xb-m03-causal-relay/component.json": "79c6725a00b7bf033512314f911a4968730208bb86088e6475243377cb329d00",
+    "components/xb-m03-causal-relay/examples/alternate.json": "b1c2cd9a5f6a83b6a3a6d79a24ad9be845e7c1dcdf1d1f10f738735d587da505",
+    "components/xb-m03-causal-relay/examples/default.json": "a60c83ae9f67080d17de0f979b80d296b04afa99b64c850736634187bc45e993",
+    "components/xb-m03-causal-relay/jsconfig.json": "1f3b30cafe46aafee77565bab9a2bb522dfd1cc4c8f7c0ad998bebd16755f63c",
+    "components/xb-m03-causal-relay/locales/zh-CN.json": "a4753d13a4ba4bb19d277ceabff404cd47dc90a1f851cc3ffc947d388950d036",
+    "components/xb-m03-causal-relay/src/design.js": "49ce7d851c737d37f4453a428e776d27f15b708c4cb53e511c1f1689e2cfb21d",
+    "components/xb-m03-causal-relay/src/main.js": "498754d8423643dc9d06968b40de2369e8b9a69f4762e292c2d9f6f642d03df1"
+  },
+  "inputs": {
+    "kind": "constant-velocity-mathematical-model",
+    "formula": "displacement = speed * time",
+    "timeSeconds": 2,
+    "defaultBaseSpeed": 100,
+    "defaultMultiplier": 2,
+    "displayScale": 3,
+    "realWorldCausalityVerified": false
+  },
+  "timing": {
+    "baseline": [
+      2,
+      4
+    ],
+    "condition": [
+      4.7,
+      5.4
+    ],
+    "returnToStart": [
+      5.35,
+      5.95
+    ],
+    "changedRun": [
+      6,
+      8
+    ],
+    "objectHandoff": [
+      9.5,
+      10.7
+    ]
+  },
+  "sound": {
+    "cueStarts": [
+      1.92,
+      4.62,
+      5.92,
+      9.42
+    ],
+    "gain": 0.35,
+    "sourceMarkerSeconds": 0.08
+  }
+}

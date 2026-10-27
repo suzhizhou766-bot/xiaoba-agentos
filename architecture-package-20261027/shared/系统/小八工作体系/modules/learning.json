@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "learning",
+  "name": "受控学习与回流闭环",
+  "purpose": "接收任意 Agent 登记的经验候选，经用户两次裁决后由 AgentOS 发布进第二大脑。",
+  "authority": false,
+  "implementation_status": "implemented",
+  "implementation_paths": [
+    "${HOME}/.agents/skills/xiaoba-agentos/scripts/xiaoba",
+    "${ROOT}/工具/小八监看/启动监看中心.command"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "candidate-record",
+    "user-review",
+    "confirmed-publish",
+    "reuse-audit"
+  ],
+  "permissions": {
+    "read": true,
+    "write": "candidate-by-default; authority-confirmed-only",
+    "network": false
+  },
+  "health_checks": [
+    "xiaoba doctor --json: memory_probe, memory_lifecycle",
+    "监看中心裁决模块在线"
+  ],
+  "required_paths": [
+    "系统/小八工作体系/learning-loop.md"
+  ],
+  "interfaces": [
+    "xiaoba memory-candidate-create",
+    "xiaoba review-list",
+    "xiaoba review",
+    "http://127.0.0.1:8799/#review"
+  ],
+  "writes": [
+    "AgentOS 的候选与审核记录；两次批准后写第二大脑 70_复利规则/经验/"
+  ],
+  "dependencies": [
+    "brain",
+    "index"
+  ],
+  "failure_policy": "自动化最多生成候选；最高裁决和长期规则必须有用户明确确认。"
+}

@@ -1,0 +1,56 @@
+#!/bin/bash
+set -eu
+
+# Read the system proxy on every launch so this follows the VPN's current port.
+proxy_state=$(/usr/sbin/scutil --proxy)
+proxy_enabled=$(printf '%s\n' "$proxy_state" | /usr/bin/awk '$1 == "HTTPSEnable" && $2 == ":" {print $3; exit}')
+proxy_host=$(printf '%s\n' "$proxy_state" | /usr/bin/awk '$1 == "HTTPSProxy" && $2 == ":" {print $3; exit}')
+proxy_port=$(printf '%s\n' "$proxy_state" | /usr/bin/awk '$1 == "HTTPSPort" && $2 == ":" {print $3; exit}')
+
+if [ "$proxy_enabled" != '1' ]; then
+  printf 'AGY 未启动：系统 HTTPS 代理未开启。请先在 VPN 中开启系统代理。\n' >&2
+  exit 69
+fi
+case "$proxy_host" in
+  127.0.0.1|localhost) proxy_url_host="$proxy_host" ;;
+  ::1) proxy_url_host='[::1]' ;;
+  *) printf 'AGY 未启动：当前系统代理不是本机 VPN 端口，请人工核对。\n' >&2; exit 69 ;;
+esac
+case "$proxy_port" in
+  ''|*[!0-9]*) printf 'AGY 未启动：系统代理端口无效。\n' >&2; exit 69 ;;
+esac
+if [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
+  printf 'AGY 未启动：系统代理端口超出范围。\n' >&2
+  exit 69
+fi
+
+agy_real='/Users/suzhizhou/.local/bin/agy'
+agy_desktop=0
+if [ "${1-}" = '--xiaoba-launch-desktop' ]; then
+  shift
+  agy_desktop=1
+  agy_real='/Applications/Antigravity.app/Contents/MacOS/Antigravity'
+  if /bin/ps -axo comm= | /usr/bin/grep -Fxq "$agy_real"; then
+    printf 'Antigravity 已在运行。请先正常退出，再用 VPN 入口启动，避免沿用原进程的网络环境。\n' >&2
+    exit 75
+  fi
+fi
+if [ ! -x "$agy_real" ]; then
+  printf 'AGY 未启动：官方程序不存在或不可执行：%s\n' "$agy_real" >&2
+  exit 127
+fi
+if ! /usr/bin/nc -z -G 2 "$proxy_host" "$proxy_port" >/dev/null 2>&1; then
+  printf 'AGY 未启动：VPN 代理 %s:%s 不可连接；没有回退直连。\n' "$proxy_host" "$proxy_port" >&2
+  exit 69
+fi
+
+agy_proxy="http://$proxy_url_host:$proxy_port"
+agy_local_bypass='localhost,127.0.0.1,::1'
+if [ "$agy_desktop" -eq 1 ]; then
+  set -- "--proxy-server=$agy_proxy" '--proxy-bypass-list=localhost;127.0.0.1;[::1]' "$@"
+fi
+exec /usr/bin/env \
+  HTTP_PROXY="$agy_proxy" HTTPS_PROXY="$agy_proxy" ALL_PROXY="$agy_proxy" \
+  http_proxy="$agy_proxy" https_proxy="$agy_proxy" all_proxy="$agy_proxy" \
+  NO_PROXY="$agy_local_bypass" no_proxy="$agy_local_bypass" \
+  "$agy_real" "$@"

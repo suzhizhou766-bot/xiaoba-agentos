@@ -1,0 +1,131 @@
+{
+  "说明": "小八统一拦截策略。唯一的一份，各 Agent 适配器从这里生成原生配置，guard 脚本也只读这里。路径里 ~ 表示用户主目录，ROOT 表示私人助理目录。 命令规则默认只在 command_scope 目录内生效（看会话当前目录和命令里出现的路径）；标了 \"scope\": \"global\" 的命令规则和全部路径规则全局生效。",
+  "version": 4,
+  "root": "/Users/suzhizhou/Documents/私人助理",
+  "command_scope": [
+    "ROOT",
+    "/Users/suzhizhou/Documents/小八AgentOS"
+  ],
+  "deny_read": [
+    "~/.config/xiaoba/**",
+    "~/.ssh/**",
+    "~/.aws/**",
+    "~/.config/gh/**",
+    "~/.netrc",
+    "~/.codex/auth.json",
+    "**/*.env",
+    "**/.env",
+    "**/.env.*",
+    "**/auth.json",
+    "**/credentials",
+    "**/credentials.json",
+    "**/*secret*.json",
+    "**/*token*.json",
+    "**/cookies*",
+    "**/*.pem",
+    "**/*.key",
+    "**/keypool.json",
+    "~/.qoder/settings.json",
+    "~/.qoder/mcp-router.json",
+    "~/.claude/settings.json",
+    "~/.claude/settings.local.json",
+    "~/.codex/hooks.json",
+    "~/.codex/config.toml",
+    "~/.gemini/settings.json",
+    "~/.gemini/oauth_creds.json",
+    "~/.gemini/google_accounts.json",
+    "~/.gemini/config/hooks.json",
+    "~/.gemini/config/mcp_config.json"
+  ],
+  "deny_write": [
+    "~/.config/xiaoba/**",
+    "ROOT/第二大脑/70_复利规则/经验/**",
+    "ROOT/配置/python/**",
+    "~/.ssh/**",
+    "~/.codex/auth.json",
+    "ROOT/OriginCut/.origincut/**",
+    "ROOT/OriginCut/*/.origincut/**",
+    "ROOT/系统/治理/**",
+    "ROOT/工具/治理/guard.py",
+    "ROOT/工具/治理/guard.sh",
+    "~/.codex/hooks.json",
+    "~/.gemini/config/hooks.json",
+    "ROOT/AGENTS.md",
+    "~/.codex/AGENTS.md",
+    "~/.agents/AGENTS.md",
+    "ROOT/第二大脑/00_小八AgentOS.md",
+    "ROOT/第二大脑/10_治理与裁决.md",
+    "ROOT/第二大脑/10_治理与裁决/**",
+    "ROOT/第二大脑/60_当前上下文.md",
+    "ROOT/第二大脑/60_当前上下文/**",
+    "ROOT/第二大脑/70_复利规则.md",
+    "ROOT/第二大脑/70_复利规则/长期复用门禁.md",
+    "ROOT/第二大脑/70_复利规则/审核入口.md",
+    "ROOT/第二大脑/70_复利规则/待审队列.md",
+    "ROOT/第二大脑/70_复利规则/经验索引.md",
+    "ROOT/第二大脑/70_复利规则/交付记录索引.md",
+    "ROOT/第二大脑/历史版本记录.md",
+    "ROOT/第二大脑/历史版本记录/**"
+  ],
+  "ask_write": [
+    "ROOT/skills/**",
+    "ROOT/系统/**",
+    "ROOT/第二大脑/**",
+    "ROOT/配置/**",
+    "ROOT/.gitignore",
+    "ROOT/工具/密钥/**",
+    "ROOT/工具/治理/**"
+  ],
+  "deny_commands": [
+    {
+      "pattern": "(^|[;&|('\"\\s/`])\\s*(sudo\\s+)?(rm|rmdir|unlink|shred)(\\s|$|\\$\\{?IFS)",
+      "reason": "不直接删除：请移到 _待删/，由用户清空"
+    },
+    {
+      "pattern": "os\\.(remove|unlink|rmdir|removedirs)\\s*\\(|shutil\\.rmtree|\\.unlink\\s*\\(|fs\\.(rm|rmSync|unlink|unlinkSync|rmdir)\\b|fs\\.promises\\.(rm|unlink)",
+      "reason": "不直接删除（脚本里的删除调用也算）：请移到 _待删/，由用户清空"
+    },
+    {
+      "pattern": "\\bfind\\b[^;&|\\n]*\\s-delete\\b",
+      "reason": "不直接删除：请移到 _待删/，由用户清空"
+    },
+    {
+      "pattern": "\\bgit\\b[^;&|\\n]*\\spush\\b",
+      "reason": "不推送：本地 git 不设远端"
+    },
+    {
+      "pattern": "\\bgit\\b[^;&|\\n]*\\scommit\\b",
+      "reason": "commit 由用户自己执行"
+    },
+    {
+      "pattern": "\\bgit\\b[^;&|\\n]*\\sremote\\s+add\\b",
+      "reason": "不设远端"
+    },
+    {
+      "pattern": "security\\s+(find|dump)-",
+      "reason": "不读钥匙串",
+      "scope": "global"
+    },
+    {
+      "pattern": "(cat|less|head|tail|grep|cp|scp)\\s[^|;]*(\\.ssh/|\\.env\\b|auth\\.json|keypool\\.json)",
+      "reason": "不读凭据文件",
+      "scope": "global"
+    },
+    {
+      "pattern": "\\.config/xiaoba",
+      "reason": "密钥箱只能经 工具/密钥/xb-secret 使用，不直接访问",
+      "scope": "global"
+    }
+  ],
+  "ask_commands": [
+    {
+      "pattern": "(^|[\\s;&|(])/usr/bin/python3|CommandLineTools/usr/bin/python3",
+      "reason": "统一解释器：生产只用 配置/ 的 3.14.7；系统 3.9 只用于兼容性测试，需用户确认"
+    },
+    {
+      "pattern": "(^|[\\s;&|(])mv\\s",
+      "reason": "移动文件需确认"
+    }
+  ],
+  "quarantine_dir": "ROOT/_待删"
+}

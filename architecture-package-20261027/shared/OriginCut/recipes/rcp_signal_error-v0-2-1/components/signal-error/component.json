@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "kind": "origin-generator-component",
+  "componentId": "rcp_signal_error-v0-2-1--signal-error",
+  "componentVersion": 1,
+  "runtime": "web-generator",
+  "entry": "src/main.js",
+  "generatorApiVersion": 2,
+  "graphics": {
+    "backend": "webgl2",
+    "library": {
+      "id": "origin-scene",
+      "apiVersion": 2
+    }
+  },
+  "logicalSurface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "sourceDuration": {
+    "ticks": 4000000,
+    "timescale": 1000000
+  },
+  "output": {
+    "background": {
+      "mode": "solid",
+      "color": "#111415"
+    },
+    "surface": "rgba"
+  },
+  "labelKey": "components.rcp_signal_error-v0-2-1--signal-error.label",
+  "descriptionKey": "components.rcp_signal_error-v0-2-1--signal-error.description",
+  "discovery": {
+    "summaryEn": "Four-second analog signal failure bumper with heavy condensed typography, red/cyan separation, discrete horizontal tearing and a readable recovery between bursts.",
+    "previewExampleId": "default"
+  },
+  "keywords": [
+    "signal",
+    "analog",
+    "glitch",
+    "typography",
+    "scanlines",
+    "broadcast"
+  ],
+  "useCases": [
+    "Short program bumper",
+    "Fault or interruption interstitial",
+    "Cyber or analog typography insert"
+  ],
+  "propsSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 12,
+        "pattern": "^[A-Z0-9 !?._-]+$",
+        "default": "ORIGIN CUT"
+      },
+      "subtitle": {
+        "type": "string",
+        "minLength": 0,
+        "maxLength": 48,
+        "pattern": "^[\\x20-\\x7E·]*$",
+        "default": "ORIGIN STREAM · CREATIVE SIGNAL · CH 03"
+      },
+      "channel": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 99,
+        "default": 3
+      },
+      "intensity": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.86
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647,
+        "default": 41
+      },
+      "showHud": {
+        "type": "boolean",
+        "default": true
+      },
+      "showColorBars": {
+        "type": "boolean",
+        "default": true
+      },
+      "accentLeft": {
+        "type": "string",
+        "pattern": "^#[0-9A-Fa-f]{6}$",
+        "default": "#ff2a55"
+      },
+      "accentRight": {
+        "type": "string",
+        "pattern": "^#[0-9A-Fa-f]{6}$",
+        "default": "#00e6ff"
+      }
+    }
+  },
+  "examples": [
+    {
+      "id": "default",
+      "path": "examples/default.json"
+    },
+    {
+      "id": "clean",
+      "path": "examples/clean.json"
+    },
+    {
+      "id": "interrupted",
+      "path": "examples/interrupted.json"
+    }
+  ]
+}

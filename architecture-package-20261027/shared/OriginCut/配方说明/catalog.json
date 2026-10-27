@@ -1,0 +1,642 @@
+{
+  "format": "origincut-project-motion-catalog",
+  "version": 1,
+  "updated": "2026-10-23",
+  "reel": "origincut://v1/sequence/seq_mpuvhb9c2dll4i?revision=2",
+  "recipes": [
+    {
+      "id": "XB-M01",
+      "name": "实拍焦点交接",
+      "componentId": "xb-m01-focus-handoff",
+      "sequence": "origincut://v1/sequence/seq_d2jm7eorz0rrwz?revision=3",
+      "durationSeconds": 10,
+      "reelRangeSeconds": [
+        0,
+        10
+      ],
+      "documentation": "XB-M01实拍焦点交接/README.md",
+      "recipe": "XB-M01实拍焦点交接/recipe.json",
+      "status": "implemented-awaiting-user-review"
+    },
+    {
+      "id": "XB-M02",
+      "name": "证据窗口",
+      "componentId": "xb-m02-evidence-window",
+      "sequence": "origincut://v1/sequence/seq_av8w6hwvadslfp?revision=2",
+      "durationSeconds": 12,
+      "reelRangeSeconds": [
+        10,
+        22
+      ],
+      "documentation": "XB-M02证据窗口/README.md",
+      "recipe": "XB-M02证据窗口/recipe.json",
+      "status": "implemented-awaiting-user-review"
+    },
+    {
+      "id": "XB-M03",
+      "name": "因果接力",
+      "componentId": "xb-m03-causal-relay",
+      "sequence": "origincut://v1/sequence/seq_ivhbswlltzi06v?revision=2",
+      "durationSeconds": 12,
+      "reelRangeSeconds": [
+        22,
+        34
+      ],
+      "documentation": "XB-M03因果接力/README.md",
+      "recipe": "XB-M03因果接力/recipe.json",
+      "status": "implemented-awaiting-user-review"
+    },
+    {
+      "id": "XB-M04",
+      "name": "同位对照",
+      "componentId": "xb-m04-aligned-compare",
+      "sequence": "origincut://v1/sequence/seq_gouf4iut2dle7n?revision=2",
+      "durationSeconds": 10,
+      "reelRangeSeconds": [
+        34,
+        44
+      ],
+      "documentation": "XB-M04同位对照/README.md",
+      "recipe": "XB-M04同位对照/recipe.json",
+      "status": "implemented-awaiting-user-review"
+    },
+    {
+      "id": "XB-M05",
+      "name": "训练路径回看",
+      "componentId": "xb-m05-training-replay",
+      "sequence": "origincut://v1/sequence/seq_496kznv7uewnwq?revision=3",
+      "durationSeconds": 14,
+      "reelRangeSeconds": [
+        44,
+        58
+      ],
+      "documentation": "XB-M05训练路径回看/README.md",
+      "recipe": "XB-M05训练路径回看/recipe.json",
+      "status": "implemented-awaiting-user-review"
+    },
+    {
+      "id": "XB-M06",
+      "name": "论点压缩",
+      "componentId": "xb-m06-argument-compress",
+      "sequence": "origincut://v1/sequence/seq_5pspm4c2b2g4jp?revision=2",
+      "durationSeconds": 30,
+      "reelRangeSeconds": [
+        58,
+        88
+      ],
+      "documentation": "XB-M06论点压缩/README.md",
+      "recipe": "XB-M06论点压缩/recipe.json",
+      "status": "implemented-awaiting-user-review"
+    }
+  ],
+  "backgroundComponents": [
+    {
+      "id": "XB-B01",
+      "name": "3D透视点阵",
+      "componentId": "xb-b01-perspective-dotfield",
+      "sequence": "origincut://v1/sequence/seq_a0oyh4zgsjclos?revision=2",
+      "durationSeconds": 12,
+      "previewDurationSeconds": 24,
+      "documentation": "XB-B01三维透视点阵/README.md",
+      "recipe": "XB-B01三维透视点阵/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    }
+  ],
+  "vincentReel": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+  "vincentComponents": [
+    {
+      "id": "XB-V01",
+      "name": "脉冲标志",
+      "componentId": "xb-v01-pulse-logo",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        0,
+        8
+      ],
+      "documentation": "XB-V01脉冲标志/README.md",
+      "recipe": "XB-V01脉冲标志/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V02",
+      "name": "三维图层拆解",
+      "componentId": "xb-v02-exploded-layers",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        8,
+        16
+      ],
+      "documentation": "XB-V02三维图层拆解/README.md",
+      "recipe": "XB-V02三维图层拆解/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V03",
+      "name": "多轨波形",
+      "componentId": "xb-v03-multitrack-wave",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        16,
+        24
+      ],
+      "documentation": "XB-V03多轨波形/README.md",
+      "recipe": "XB-V03多轨波形/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V04",
+      "name": "错位评论",
+      "componentId": "xb-v04-staggered-comments",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        24,
+        32
+      ],
+      "documentation": "XB-V04错位评论/README.md",
+      "recipe": "XB-V04错位评论/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V05",
+      "name": "终端打字",
+      "componentId": "xb-v05-terminal-type",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        32,
+        40
+      ],
+      "documentation": "XB-V05终端打字/README.md",
+      "recipe": "XB-V05终端打字/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V06",
+      "name": "磁吸评分标尺",
+      "componentId": "xb-v06-score-ruler",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        40,
+        48
+      ],
+      "documentation": "XB-V06磁吸评分标尺/README.md",
+      "recipe": "XB-V06磁吸评分标尺/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V07",
+      "name": "评分柱状阵列",
+      "componentId": "xb-v07-demo-bars",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        48,
+        56
+      ],
+      "documentation": "XB-V07评分柱状阵列/README.md",
+      "recipe": "XB-V07评分柱状阵列/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V08",
+      "name": "关注漂浮粒子",
+      "componentId": "xb-v08-follow-plus",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+      "reelRangeSeconds": [
+        56,
+        64
+      ],
+      "documentation": "XB-V08关注漂浮粒子/README.md",
+      "recipe": "XB-V08关注漂浮粒子/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    },
+    {
+      "id": "XB-V09",
+      "name": "磨砂卡片三维拆解",
+      "componentId": "xb-v09-frosted-explode",
+      "durationSeconds": 10,
+      "sequence": "origincut://v1/sequence/seq_eh7bdj8nemn2ra?revision=3",
+      "previewDurationSeconds": 20,
+      "documentation": "XB-V09磨砂卡片三维拆解/README.md",
+      "recipe": "XB-V09磨砂卡片三维拆解/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false
+    }
+  ],
+  "referenceVideoReel": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+  "referenceVideoSource": "origincut://v1/asset/ast_77ckai9r8mg0f1",
+  "referenceVideoComponents": [
+    {
+      "id": "XB-R01",
+      "name": "光球标志与圆形遮罩",
+      "componentId": "xb-r01-orb-iris",
+      "componentSource": "origincut://v1/generator-component/xb-r01-orb-iris?sourceHash=sha256%3Ab837e1c4448e5671cbed2033a7c911c8835541b0bf76142d8941984b201d5c8b&version=1",
+      "durationSeconds": 5,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        0,
+        5
+      ],
+      "referenceRangeSeconds": [
+        0,
+        5
+      ],
+      "documentation": "XB-R01光球标志与圆形遮罩/README.md",
+      "recipe": "XB-R01光球标志与圆形遮罩/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R02",
+      "name": "空间卡片轮播",
+      "componentId": "xb-r02-spatial-gallery",
+      "componentSource": "origincut://v1/generator-component/xb-r02-spatial-gallery?sourceHash=sha256%3Ae5715a06a3f07b8d6e13e7b3f08b2f352225c0d72b6e64c6fb11e271c576c181&version=1",
+      "durationSeconds": 7,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        5,
+        12
+      ],
+      "referenceRangeSeconds": [
+        9,
+        18
+      ],
+      "documentation": "XB-R02空间卡片轮播/README.md",
+      "recipe": "XB-R02空间卡片轮播/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R03",
+      "name": "错位评论与景深",
+      "componentId": "xb-r03-comment-wall",
+      "componentSource": "origincut://v1/generator-component/xb-r03-comment-wall?sourceHash=sha256%3Aa5c636cb82380ea0f022a6b3b89d1e37047ba48ed1b98b977b33cf366257d3b9&version=1",
+      "durationSeconds": 7,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        12,
+        19
+      ],
+      "referenceRangeSeconds": [
+        18,
+        22
+      ],
+      "documentation": "XB-R03错位评论与景深/README.md",
+      "recipe": "XB-R03错位评论与景深/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R04",
+      "name": "景深文字递进",
+      "componentId": "xb-r04-focus-title",
+      "componentSource": "origincut://v1/generator-component/xb-r04-focus-title?sourceHash=sha256%3A2373474a51d335ae0374ef913fc0774d45e32addeb6f33899f833e39a53b07d2&version=1",
+      "durationSeconds": 6,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        19,
+        25
+      ],
+      "referenceRangeSeconds": [
+        22,
+        29
+      ],
+      "documentation": "XB-R04景深文字递进/README.md",
+      "recipe": "XB-R04景深文字递进/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R05",
+      "name": "阶梯卡片路线图",
+      "componentId": "xb-r05-stair-roadmap",
+      "componentSource": "origincut://v1/generator-component/xb-r05-stair-roadmap?sourceHash=sha256%3A14fc63834af0c0a973bdc157cb5076787b012386d7e07a588125803ce9b44afe&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        25,
+        33
+      ],
+      "referenceRangeSeconds": [
+        30,
+        37
+      ],
+      "documentation": "XB-R05阶梯卡片路线图/README.md",
+      "recipe": "XB-R05阶梯卡片路线图/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R06",
+      "name": "实景图层纵深拆解",
+      "componentId": "xb-r06-source-layers",
+      "componentSource": "origincut://v1/generator-component/xb-r06-source-layers?sourceHash=sha256%3A71013e2839ef93c6c0358794f8c67ebed496271c3349a2dea3c1d2d745c0f2ce&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        33,
+        41
+      ],
+      "referenceRangeSeconds": [
+        68,
+        74
+      ],
+      "documentation": "XB-R06实景图层纵深拆解/README.md",
+      "recipe": "XB-R06实景图层纵深拆解/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R07",
+      "name": "逐字终端与重点标记",
+      "componentId": "xb-r07-terminal-underline",
+      "componentSource": "origincut://v1/generator-component/xb-r07-terminal-underline?sourceHash=sha256%3Ae0a3b88f4d4c5ce26a088393925e7c5b27fd599d1b918095aa8d5213df15e85b&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        41,
+        49
+      ],
+      "referenceRangeSeconds": [
+        51,
+        67
+      ],
+      "documentation": "XB-R07逐字终端与重点标记/README.md",
+      "recipe": "XB-R07逐字终端与重点标记/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R08",
+      "name": "透视胶片与多轨展开",
+      "componentId": "xb-r08-filmstrip-audio",
+      "componentSource": "origincut://v1/generator-component/xb-r08-filmstrip-audio?sourceHash=sha256%3A26458c084672d6f736782d4539d89fe04bd6be1da7c679048bc885c64dfa0908&version=1",
+      "durationSeconds": 10,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        49,
+        59
+      ],
+      "referenceRangeSeconds": [
+        74,
+        85
+      ],
+      "documentation": "XB-R08透视胶片与多轨展开/README.md",
+      "recipe": "XB-R08透视胶片与多轨展开/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R09",
+      "name": "轮次进度与反馈",
+      "componentId": "xb-r09-round-progress",
+      "componentSource": "origincut://v1/generator-component/xb-r09-round-progress?sourceHash=sha256%3A15feee7595bcd988c728abf90287c739b57b4531162f23995a31257b287565a0&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        59,
+        67
+      ],
+      "referenceRangeSeconds": [
+        118,
+        134
+      ],
+      "documentation": "XB-R09轮次进度与反馈/README.md",
+      "recipe": "XB-R09轮次进度与反馈/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R10",
+      "name": "素材阵列与数量聚焦",
+      "componentId": "xb-r10-mosaic-counter",
+      "componentSource": "origincut://v1/generator-component/xb-r10-mosaic-counter?sourceHash=sha256%3A47209a999344a2dad898d709ba8b2b4c696bfd044d28c8f9bbecc65f228fba92&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        67,
+        75
+      ],
+      "referenceRangeSeconds": [
+        136,
+        165
+      ],
+      "documentation": "XB-R10素材阵列与数量聚焦/README.md",
+      "recipe": "XB-R10素材阵列与数量聚焦/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R11",
+      "name": "双卡拆题与提示词聚焦",
+      "componentId": "xb-r11-tip-prompt",
+      "componentSource": "origincut://v1/generator-component/xb-r11-tip-prompt?sourceHash=sha256%3Aae1dbb1a0d37e4b16dded6a6161c0019f46e5c343fbdf134eda2972087b89ef2&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        75,
+        83
+      ],
+      "referenceRangeSeconds": [
+        167,
+        180
+      ],
+      "documentation": "XB-R11双卡拆题与提示词聚焦/README.md",
+      "recipe": "XB-R11双卡拆题与提示词聚焦/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R12",
+      "name": "标准刻度与磁吸指针",
+      "componentId": "xb-r12-standard-ruler",
+      "componentSource": "origincut://v1/generator-component/xb-r12-standard-ruler?sourceHash=sha256%3Ac7f21b07493f3afbe35e1e85fc98051ffe2831cdef65dd9a7024e7c41c518146&version=1",
+      "durationSeconds": 10,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        83,
+        93
+      ],
+      "referenceRangeSeconds": [
+        181,
+        197
+      ],
+      "documentation": "XB-R12标准刻度与磁吸指针/README.md",
+      "recipe": "XB-R12标准刻度与磁吸指针/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R13",
+      "name": "角色交接与独立审核罩",
+      "componentId": "xb-r13-agent-relay",
+      "componentSource": "origincut://v1/generator-component/xb-r13-agent-relay?sourceHash=sha256%3Af42dd00506b5cc1039027c43a12300780ce3af257ae737277ea684eba8791b10&version=1",
+      "durationSeconds": 9,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        93,
+        102
+      ],
+      "referenceRangeSeconds": [
+        198,
+        209
+      ],
+      "documentation": "XB-R13角色交接与独立审核罩/README.md",
+      "recipe": "XB-R13角色交接与独立审核罩/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R14",
+      "name": "七维评审与轮次切换",
+      "componentId": "xb-r14-review-matrix",
+      "componentSource": "origincut://v1/generator-component/xb-r14-review-matrix?sourceHash=sha256%3Ab91a667156f368737e9202ae69b98dfc8d92a59c2bd1b6c5a3c04020393cfd2a&version=1",
+      "durationSeconds": 9,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        102,
+        111
+      ],
+      "referenceRangeSeconds": [
+        210,
+        218
+      ],
+      "documentation": "XB-R14七维评审与轮次切换/README.md",
+      "recipe": "XB-R14七维评审与轮次切换/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R15",
+      "name": "双轮柱图与均值演进",
+      "componentId": "xb-r15-score-evolution",
+      "componentSource": "origincut://v1/generator-component/xb-r15-score-evolution?sourceHash=sha256%3Ae52039ab59519457f4aa587fa6ebb40caff717e237b941a142b7769a0a2e26bd&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        111,
+        119
+      ],
+      "referenceRangeSeconds": [
+        219,
+        225
+      ],
+      "documentation": "XB-R15双轮柱图与均值演进/README.md",
+      "recipe": "XB-R15双轮柱图与均值演进/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R16",
+      "name": "自评分段标尺",
+      "componentId": "xb-r16-benchmark-bar",
+      "componentSource": "origincut://v1/generator-component/xb-r16-benchmark-bar?sourceHash=sha256%3A0e47238d7419de8b3e6b58bbe8de215361682062d5258a6e3e0e65ecf67d61d5&version=1",
+      "durationSeconds": 7,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        119,
+        126
+      ],
+      "referenceRangeSeconds": [
+        225,
+        233
+      ],
+      "documentation": "XB-R16自评分段标尺/README.md",
+      "recipe": "XB-R16自评分段标尺/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R17",
+      "name": "透视源码与开源盖章",
+      "componentId": "xb-r17-repo-stamp",
+      "componentSource": "origincut://v1/generator-component/xb-r17-repo-stamp?sourceHash=sha256%3Abbc587558e8def0bddddb7183952de26d442891f2bd5d698efb6204174afbf68&version=1",
+      "durationSeconds": 7,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        126,
+        133
+      ],
+      "referenceRangeSeconds": [
+        234,
+        239
+      ],
+      "documentation": "XB-R17透视源码与开源盖章/README.md",
+      "recipe": "XB-R17透视源码与开源盖章/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    },
+    {
+      "id": "XB-R18",
+      "name": "主页关注与空间片尾",
+      "componentId": "xb-r18-profile-outro",
+      "componentSource": "origincut://v1/generator-component/xb-r18-profile-outro?sourceHash=sha256%3Adfcb68182fe46953545b825b76153d45b03be9e0556a4e6ace4b2a97dd1c883f&version=1",
+      "durationSeconds": 8,
+      "sequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+      "reelRangeSeconds": [
+        133,
+        141
+      ],
+      "referenceRangeSeconds": [
+        240,
+        249
+      ],
+      "documentation": "XB-R18主页关注与空间片尾/README.md",
+      "recipe": "XB-R18主页关注与空间片尾/recipe.json",
+      "status": "implemented-awaiting-user-review",
+      "cloudPublished": false,
+      "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+      "defaultBackgroundEnabled": false
+    }
+  ],
+  "referenceVideoOverlayReel": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3"
+}

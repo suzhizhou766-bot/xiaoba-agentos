@@ -1,0 +1,936 @@
+#!/usr/bin/env python3
+"""固定发布切换入口。版本和专属步骤来自被哈希验证的发布包。
+
+plan/preflight/readback 只读；apply 仅由用户在个人终端执行。
+恢复材料仅在本进程内存中；异常退出、强杀或掉电不承诺自动恢复。
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import copy
+import hashlib
+import importlib.util
+import json
+import os
+import plistlib
+import re
+import sqlite3
+import subprocess
+import sys
+import time
+from contextlib import closing
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+sys.dont_write_bytecode = True
+SOURCE_DIRS = ('.agents', 'bin', 'config', 'docs', 'knowledge', 'launchd', 'macos', 'scripts', 'skills', 'src', 'tests')
+SOURCE_FILES = ('README.md', 'pyproject.toml', '.gitignore', 'CAPABILITY.json')
+DEFAULT_LINE = re.compile(r'^DEFAULT_CONFIG = Path\("[^"\n]+"\)$', re.M)
+LABEL = 'com.xiaoba.agentos'
+SPEC = 'docs/DEPLOYMENT.json'
+TTL = 300
+
+
+class SwitchError(RuntimeError):
+    pass
+
+
+def require(value: Any, reason: str) -> None:
+    if not value:
+        raise SwitchError(reason)
+
+
+def digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def encoded(value: Any) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + '\n').encode()
+
+
+def relative(value: str) -> Path:
+    p = Path(value)
+    require(value and not p.is_absolute() and '..' not in p.parts and p != Path('.'), 'unsafe relative path')
+    return p
+
+
+def safe(path: Path) -> None:
+    for p in (path, *path.parents):
+        require(not p.is_symlink(), f'symlink is forbidden: {p}')
+
+
+def state(path: Path) -> dict:
+    safe(path)
+    if not path.exists():
+        return {'sha256': None, 'mode': None}
+    require(path.is_file(), f'expected regular file: {path}')
+    return {'sha256': digest(path.read_bytes()), 'mode': path.stat().st_mode & 0o777}
+
+
+def load(path: Path) -> dict:
+    safe(path)
+    value = json.loads(path.read_bytes())
+    require(isinstance(value, dict), f'expected JSON object: {path}')
+    return value
+
+
+def files(root: Path, exclude_generated: bool = False) -> dict:
+    safe(root)
+    require(root.is_dir(), f'directory unavailable: {root}')
+    result = {}
+    for p in sorted(root.rglob('*')):
+        safe(p)
+        if exclude_generated and ('__pycache__' in p.parts or p.name == '.DS_Store'):
+            continue
+        if p.is_file():
+            result[p.relative_to(root).as_posix()] = state(p)['sha256']
+    return result
+
+
+def source_files(root: Path) -> dict:
+    result = {}
+    for name in SOURCE_DIRS:
+        safe(root / name)
+        if not (root / name).exists():
+            continue  # 受管目录清单是上限：包里不再带的目录（如已出包的 skills、knowledge）就是不存在
+        for rel, sha in files(root / name, exclude_generated=True).items():
+            result[name + '/' + rel] = sha
+    for name in SOURCE_FILES:
+        result[name] = state(root / name)['sha256']
+        require(result[name], f'source root file unavailable: {name}')
+    return result
+
+
+def verify_source(root: Path) -> dict:
+    manifest = load(root / 'SOURCE_MANIFEST.json')
+    require(manifest == {'algorithm': 'sha256', 'files': source_files(root)}, 'source manifest mismatch')
+    return manifest['files']
+
+
+def verify_package(root: Path) -> dict:
+    listed = {}
+    for line in (root / 'FILES.sha256').read_text().splitlines():
+        sha, sep, rel = line.partition('  ./')
+        require(sep and re.fullmatch('[0-9a-f]{64}', sha), 'invalid package manifest line')
+        relative(rel)
+        require(rel != 'FILES.sha256' and rel not in listed, 'duplicate or self manifest entry')
+        listed[rel] = sha
+    actual = files(root)
+    actual.pop('FILES.sha256', None)
+    require(actual == listed, 'package files/hash mismatch')
+    release = load(root / 'RELEASE.json')
+    require(re.fullmatch(r'v\d+\.\d+\.\d+', str(release.get('version', ''))), 'invalid release version')
+    require(release.get('agentos_source_manifest_sha256') == state(root / 'agentos/SOURCE_MANIFEST.json')['sha256'], 'package source binding mismatch')
+    verify_source(root / 'agentos')
+    return release
+
+
+def release_tier(previous: Path, package: Path, old: dict, new: dict) -> str:
+    """档位由上一版包里的工具重算；包内记录与重算不一致即拒绝。上一版没有工具时为 full。"""
+    spec = importlib.util.spec_from_file_location('release_tier', Path(__file__).with_name('release_tier.py'))
+    require(spec is not None and spec.loader is not None, 'release tier helper unavailable')
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    try:
+        computed = helper.compute_tier(previous / 'agentos', package / 'agentos')
+    except helper.TierError as exc:
+        raise SwitchError(f'release tier cannot be recomputed: {exc}') from exc
+    computed['baseline_version'] = old['version']
+    recorded = new.get('release_tier')
+    if recorded is None:
+        require(computed['tier'] == helper.FULL, 'target package records no release tier')
+    else:
+        require(recorded == computed, 'recorded release tier differs from the recomputed tier')
+    return computed['tier']
+
+
+def interface_scripts(root: Path) -> dict:
+    return {rel: sha for rel, sha in files(root / 'interface').items() if rel != 'SKILL.md'}
+
+
+def code_fingerprint(root: Path) -> str:
+    value = hashlib.sha256()
+    for p in sorted((root / 'src/xiaoba_agentos').rglob('*.py')):
+        safe(p)
+        value.update(str(p.relative_to(root)).encode())
+        value.update(b'\0')
+        value.update(hashlib.sha256(p.read_bytes()).digest())
+    return value.hexdigest()
+
+
+def default_config(home: Path) -> Path:
+    tree = ast.parse((home / 'scripts/verify-release').read_text())
+    declarations = [n for n in tree.body if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == 'DEFAULT_CONFIG' for t in n.targets)]
+    require(len(declarations) == 1, 'entrypoint DEFAULT_CONFIG declaration is not unique')
+    value = declarations[0].value
+    require(isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+            and value.func.id == 'Path' and len(value.args) == 1
+            and isinstance(value.args[0], ast.Constant) and isinstance(value.args[0].value, str), 'invalid entrypoint DEFAULT_CONFIG')
+    return Path(value.args[0].value)
+
+
+@dataclass(frozen=True)
+class Layout:
+    runtime: Path
+    config: Path
+    package: Path
+    vault: Path
+    graph: Path
+    entries: tuple
+    plist: Path
+    label: str = LABEL
+
+    @property
+    def index(self) -> Path:
+        return self.runtime / '.runtime/releases/index.json'
+
+    @property
+    def database(self) -> Path:
+        return self.runtime / '.runtime/agentos.sqlite3'
+
+    @property
+    def worker(self) -> Path:
+        return self.runtime / '.runtime/worker-state.json'
+
+    @property
+    def history(self) -> Path:
+        return self.runtime / '.runtime/release-steps.json'
+
+    @property
+    def assistant(self) -> Path:
+        return self.vault.parent
+
+
+def production(package: Path) -> Layout:
+    entries = (Path.home() / '.agents/skills/xiaoba-agentos', Path.home() / '.codex/skills/xiaoba-agentos')
+    configs = [default_config(e) for e in entries]
+    require(configs[0] == configs[1], 'installed entrypoint config paths differ')
+    raw = load(configs[0])
+    runtime = Path(raw['project_dir'])
+    require(Path(raw['release']['index_path']) == runtime / '.runtime/releases/index.json', 'nonstandard release index')
+    require(Path(raw.get('runtime_dir', str(runtime / '.runtime'))) == runtime / '.runtime', 'nonstandard runtime directory')
+    require(Path(raw['paths']['obsidian_vault']) == Path(raw['memory']['obsidian_vault']), 'vault config differs')
+    layout = Layout(runtime, configs[0], package, Path(raw['paths']['obsidian_vault']),
+                    Path(raw['paths']['knowlp_graph_dir']), entries,
+                    Path.home() / 'Library/LaunchAgents' / (LABEL + '.plist'))
+    for p in (layout.runtime, layout.config, layout.package, layout.vault, layout.graph, layout.plist, *entries):
+        require(p.is_absolute(), 'layout paths must be absolute')
+        safe(p)
+    return layout
+
+
+class System:
+    def command(self, argv: list) -> subprocess.CompletedProcess:
+        env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}
+        return subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False, env=env)
+
+    def alive(self, pid: int) -> bool:
+        require(pid > 0, 'invalid worker PID')
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            raise SwitchError('cannot inspect worker PID')
+
+    def process(self, pid: int) -> str:
+        r = self.command(['ps', '-p', str(pid), '-o', 'command='])
+        require(r.returncode == 0, 'worker process inspection failed')
+        return r.stdout.strip()
+
+    def registered(self, layout: Layout) -> bool:
+        r = self.command(['launchctl', 'print', f'gui/{os.getuid()}/{layout.label}'])
+        if r.returncode == 0:
+            return True
+        # A missing service is an explicit state, other failures are not.
+        require(r.returncode == 113 and 'Could not find service' in r.stderr,
+                f'cannot inspect worker service: returncode={r.returncode}')
+        return False
+
+    def worker_pids(self, layout: Layout) -> list:
+        r = self.command(['ps', '-ax', '-o', 'pid=,command='])
+        require(r.returncode == 0, 'cannot enumerate bound worker processes')
+        found = []
+        binding = re.compile(r'--config\s+' + re.escape(str(layout.config)) + r'\s+run\s*$')
+        for line in r.stdout.splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) == 2 and 'xiaoba_agentos.cli' in parts[1] and binding.search(parts[1]):
+                found.append(int(parts[0]))
+        return sorted(found)
+
+    def wait(self, predicate: Callable, reason: str, timeout: float = 45) -> None:
+        deadline = time.monotonic() + timeout
+        while True:
+            if predicate():
+                return
+            require(time.monotonic() < deadline, reason)
+            time.sleep(0.2)
+
+    def stop(self, layout: Layout, pid: Optional[int]) -> None:
+        # launchctl bootout uses a service target, not a domain plus bare label.
+        r = self.command(['launchctl', 'bootout', f'gui/{os.getuid()}/{layout.label}'])
+        require(r.returncode == 0, f'worker bootout failed: returncode={r.returncode}')
+        if pid is not None:
+            self.wait(lambda: not self.alive(pid), 'old worker did not exit')
+        self.wait(lambda: not self.registered(layout) and not self.worker_pids(layout),
+                  'worker service or bound child survived bootout')
+
+    def start(self, layout: Layout) -> None:
+        r = self.command(['launchctl', 'bootstrap', f'gui/{os.getuid()}', str(layout.plist)])
+        require(r.returncode == 0, f'worker bootstrap failed: returncode={r.returncode}')
+
+    def json_command(self, argv: list) -> dict:
+        r = self.command(argv)
+        require(r.returncode == 0, f'external verification failed: returncode={r.returncode}')
+        result = json.loads(r.stdout)
+        require(isinstance(result, dict) and result.get('ok') is True and not result.get('skipped'), 'external verifier did not pass')
+        return result
+
+
+@dataclass
+class Change:
+    path: Path
+    original: Optional[bytes]
+    mode: Optional[int]
+    after: dict
+
+
+class Writer:
+    """Only this object mutates files; undo refuses to overwrite concurrent changes."""
+    def __init__(self):
+        self.changes = []
+        self.dirs = []
+        self.write_count = 0
+
+    def _parents(self, path: Path) -> None:
+        if path.is_dir():
+            return
+        require(not path.exists(), f'parent is not a directory: {path}')
+        self._parents(path.parent)
+        path.mkdir(mode=0o700)
+        self.dirs.append(path)
+
+    def write(self, path: Path, data: Optional[bytes], expected: dict, mode: Optional[int] = None) -> None:
+        before = state(path)
+        require(before == expected, f'concurrent file change: {path}')
+        old = path.read_bytes() if before['sha256'] is not None else None
+        self._parents(path.parent)
+        # Record before mutation, including chmod/replace failures.
+        change = Change(path, old, before['mode'], before)
+        self.changes.append(change)
+        self.write_count += 1
+        if data is None:
+            path.unlink()
+            change.after = state(path)
+        else:
+            # Temporary contains NEW bytes only; never persists old bytes.
+            temporary = path.with_name('.' + path.name + f'.switch-{os.getpid()}')
+            require(not temporary.exists() and not temporary.is_symlink(), 'new-byte temporary already exists')
+            try:
+                fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode or before['mode'] or 0o600)
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(temporary, mode or before['mode'] or 0o600)
+                require(state(path) == before, f'concurrent file change before replacement: {path}')
+                os.replace(temporary, path)
+                change.after = state(path)
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
+
+    def undo(self, since: int = 0) -> list:
+        errors = []
+        for change in reversed(self.changes[since:]):
+            try:
+                require(state(change.path) == change.after, f'undo refused concurrent change: {change.path}')
+                if change.original is None:
+                    if change.path.exists():
+                        change.path.unlink()
+                else:
+                    # Restored bytes replace our own bytes directly; no old-content copy.
+                    change.path.write_bytes(change.original)
+                    os.chmod(change.path, change.mode)
+                require(state(change.path) == {'sha256': digest(change.original) if change.original is not None else None,
+                                               'mode': change.mode}, f'undo readback mismatch: {change.path}')
+            except BaseException as exc:
+                errors.append(str(exc))
+        if not errors:
+            del self.changes[since:]
+        return errors
+
+    def remove_dirs(self) -> list:
+        errors = []
+        for p in reversed(self.dirs):
+            try:
+                p.rmdir()
+            except OSError:
+                if p.exists():
+                    errors.append(f'created directory not empty: {p}')
+        return errors
+
+
+def queue(layout: Layout) -> dict:
+    safe(layout.database)
+    require(layout.database.is_file(), 'runtime database unavailable')
+    with closing(sqlite3.connect(layout.database.as_uri() + '?mode=ro', uri=True, timeout=2)) as conn:
+        conn.execute('PRAGMA query_only=ON')
+        unfinished = conn.execute("SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed','failed')").fetchone()[0]
+        leases = conn.execute('SELECT COUNT(*) FROM tasks WHERE lease_until IS NOT NULL').fetchone()[0]
+        repairs = conn.execute("SELECT COUNT(*) FROM repair_jobs WHERE status NOT IN ('completed','failed','retired') OR lease_until IS NOT NULL").fetchone()[0]
+    require(unfinished == 0 and leases == 0 and repairs == 0,
+            f'queue is not idle: unfinished={unfinished}, unreleased_leases={leases}, repairs={repairs}')
+    return {'unfinished': unfinished, 'unreleased_leases': leases, 'unfinished_repairs': repairs}
+
+
+def worker(layout: Layout, system: System, expected_old: Optional[int] = None) -> dict:
+    result = load(layout.worker)
+    pid = int(result.get('pid') or 0)
+    require(system.alive(pid), 'worker PID is not alive')
+    command = system.process(pid)
+    require('xiaoba_agentos.cli' in command and re.search(r'--config\s+' + re.escape(str(layout.config)) + r'\s+run\s*$', command), 'worker process is not bound to active config')
+    require(system.registered(layout) and system.worker_pids(layout) == [pid], 'worker service/child state is inconsistent')
+    require(result.get('code_fingerprint') == code_fingerprint(layout.runtime), 'worker code fingerprint differs from disk')
+    require(result.get('manifest_fingerprint') == state(layout.runtime / 'SOURCE_MANIFEST.json')['sha256'], 'worker manifest fingerprint differs from disk')
+    if expected_old is not None:
+        require(pid != expected_old and not system.alive(expected_old), 'old worker survived or PID did not change')
+    return result
+
+
+def entry_checks(layout: Layout, system: System, version: str) -> dict:
+    results = []
+    for home in layout.entries:
+        require(default_config(home) == layout.config, 'entrypoint config binding differs')
+        result = system.json_command([str(home / 'scripts/verify-release')])
+        require(result.get('current_release') == version and result.get('expected_version') == version, 'entrypoint version differs')
+        require(not result.get('acceptance_mode'), 'entrypoint is in acceptance mode')
+        require(result.get('config_path') == str(layout.config), 'entrypoint uses a different config')
+        require(result.get('release_source_manifest_sha256') == result.get('runtime_source_manifest_sha256'), 'entrypoint source binding differs')
+        results.append(result)
+    doctor = system.json_command([str(layout.entries[0] / 'scripts/xiaoba'), 'doctor', '--json'])
+    return {'entries': results, 'doctor_ok': doctor['ok']}
+
+
+# 内容出包：配置里这三个路径只允许指到助理目录下的固定位置，别的值一律拒绝。
+CONTENT_PATHS = {'skills.root_dir': 'skills', 'skills.index_path': 'skills/index.json',
+                 'knowledge.index_path': '系统/价值文件索引/index.json'}
+
+
+def config_get(raw: dict, dotted: str) -> Any:
+    section, _, key = dotted.partition('.')
+    return raw.get(section, {}).get(key)
+
+
+def config_step(layout: Layout, step: dict) -> tuple:
+    """(字段, 执行前应有的值, 执行后的值)。只认已审查的两类：退役自动动作、内容路径。"""
+    execute, check = step['execute'], step['check']
+    path = execute.get('path')
+    require(check.get('kind') == 'config_value_equals' and check.get('path') == path, 'config step check is incomplete')
+    if path == 'recovery.automatic_actions':
+        require(execute.get('value') == [] and set(execute) == {'kind', 'path', 'value'} and set(check) == {'kind', 'path', 'value'},
+                'step cannot change authentication/models/routes or revive automatic actions')
+        return path, check['value'], []
+    require(path in CONTENT_PATHS and set(execute) == {'kind', 'path', 'assistant_path'}
+            and execute['assistant_path'] == CONTENT_PATHS[path],
+            'step cannot change authentication/models/routes or revive automatic actions')
+    target = layout.assistant / relative(execute['assistant_path'])
+    safe(target)
+    require(target.exists(), f'content is not in place for {path}: {target}')
+    if set(check) == {'kind', 'path', 'runtime_path'}:
+        before = str(layout.runtime / relative(check['runtime_path']))
+    else:
+        require(set(check) == {'kind', 'path', 'value'} and isinstance(check['value'], str), 'config step check is incomplete')
+        before = check['value']
+    return path, before, str(target)
+
+
+def checked_spec(layout: Layout, old: dict, new: dict) -> dict:
+    spec = load(layout.package / 'agentos' / SPEC)
+    require(spec.get('schema_version') == 1 and isinstance(spec.get('steps'), list), 'unsupported deployment declaration')
+    require(spec.get('from_source_manifest_sha256') == old['agentos_source_manifest_sha256'], 'deployment predecessor binding mismatch')
+    require(old['database_schema_version'] == new['database_schema_version'], 'schema migration is outside this release')
+    history = load(layout.history) if layout.history.exists() else {'steps': {}}
+    require(isinstance(history.get('steps'), dict), 'invalid applied-step history')
+    # Validate EVERY historical record against its original immutable package.
+    index = load(layout.index)
+    for step_id, record in history['steps'].items():
+        matches = [r for r in index['releases'] if r['version'] == record['release']]
+        require(len(matches) == 1, 'applied-step release disappeared')
+        original = layout.index.parent / relative(matches[0]['path'])
+        require(state(original / 'FILES.sha256')['sha256'] == matches[0]['files_manifest_sha256'], 'historical package manifest changed')
+        verify_package(original)
+        declaration = load(original / 'agentos' / SPEC)
+        found = [s for s in declaration['steps'] if s['id'] == step_id]
+        require(len(found) == 1 and digest(encoded(found[0])) == record['sha256'], 'previously executed step changed')
+    ids = []
+    for step in spec['steps']:
+        require(isinstance(step, dict) and re.fullmatch(r'\d{4}-[a-z0-9-]+', str(step.get('id', ''))), 'invalid numbered step')
+        require(step['id'] not in ids and all(k in step for k in ('check', 'execute', 'undo')), 'step is incomplete or duplicate')
+        ids.append(step['id'])
+        require(step['undo'] == {'kind': 'restore_in_memory'}, 'step undo must use in-memory journal')
+        require(step['execute'].get('kind') in ('install_absent_file', 'config_set'), 'unreviewed step operation')
+        destination = step_destination(layout, step)
+        check = step['check']
+        if step['execute']['kind'] == 'config_set':
+            # Only reviewed handlers exist; arbitrary config patching is never accepted.
+            path, before_value, after_value = config_step(layout, step)
+            expected_value = after_value if step['id'] in history['steps'] else before_value
+            require(config_get(load(layout.config), path) == expected_value, 'config step input/result differs')
+        else:
+            payload = step_payload(layout, step)
+            require(check == {'kind': 'absent_or_identical', 'sha256': digest(payload)}, 'step check and execution differ')
+        if step['id'] in history['steps']:
+            require(digest(encoded(step)) == history['steps'][step['id']]['sha256'], 'executed step has been modified')
+            if step['execute']['kind'] == 'install_absent_file':
+                require(state(destination)['sha256'] == digest(payload), 'executed step result drifted')
+        else:
+            if step['execute']['kind'] == 'install_absent_file':
+                require(state(destination)['sha256'] in (None, digest(payload)), 'step would overwrite existing content')
+    require(ids == sorted(ids), 'steps must be in numbered order')
+    return spec
+
+
+def step_destination(layout: Layout, step: dict) -> Path:
+    execute = step['execute']
+    if execute.get('kind') == 'config_set':
+        return layout.config
+    require(execute.get('root') == 'assistant', 'step target root is outside implemented contract')
+    path = relative(execute['path'])
+    require(path.parts[0] in ('skills', '工具', '系统'), 'step destination is protected')
+    require(not any(part.lower() in ('config', '配置', 'auth', 'credentials') for part in path.parts), 'step cannot write credentials/config')
+    destination = layout.assistant / path
+    safe(destination)
+    return destination
+
+
+def step_payload(layout: Layout, step: dict) -> bytes:
+    path = layout.package / 'agentos' / relative(step['execute']['source'])
+    safe(path)
+    return path.read_bytes()
+
+
+def vault_actions(layout: Layout, previous: Path) -> list:
+    base = files(previous / 'second-brain')
+    incoming = files(layout.package / 'second-brain')
+    released = set(base) - set(incoming)
+    if released:
+        # 交还给笔记库的笔记：原地保留，此后发布不再生成、合并或覆盖。只认随包声明的清单。
+        handover = load(layout.package / 'agentos/docs/second_brain/handover.json')
+        require(handover.get('schema_version') == 1 and released <= set(handover.get('notes') or []),
+                'deleted vault notes require a separately reviewed release step')
+    actions = []
+    for rel, sha in incoming.items():
+        destination = layout.vault / relative(rel)
+        live = state(destination)
+        if base.get(rel) == sha or live['sha256'] == sha:
+            continue  # Leave live user additions alone when generated content is unchanged.
+        require(not rel.startswith('70_复利规则/经验/'), 'protected experience would be changed')
+        if rel not in base:
+            require(live['sha256'] is None, f'new generated note would overwrite live content: {rel}')
+            payload = (layout.package / 'second-brain' / rel).read_bytes()
+        else:
+            require(not rel.startswith('历史版本记录/'), 'existing historical note would be changed')
+            payload = (layout.package / 'second-brain' / rel).read_bytes()
+            if live['sha256'] != base[rel]:
+                original = (previous / 'second-brain' / rel).read_bytes()
+                current = destination.read_bytes() if live['sha256'] is not None else b''
+                require(original.endswith(b'\n') and current.startswith(original),
+                        f'generated note was edited; refusing overwrite: {rel}')
+                # Preserve appended human content byte-for-byte; never fuzzy-merge edited bodies.
+                require(payload.endswith(b'\n'), 'generated note must end with newline')
+                payload += current[len(original):]
+        actions.append((destination, payload, live, None))
+    return actions
+
+
+def snapshot(layout: Layout, spec: dict) -> dict:
+    result = {}
+    for name, root in [('runtime', layout.runtime), ('vault', layout.vault), ('graph', layout.graph)]:
+        values = source_files(root) if name == 'runtime' else files(root)
+        result[name] = digest(encoded(values))
+    for name, p in [('index', layout.index), ('config', layout.config), ('plist', layout.plist), ('history', layout.history)]:
+        result[name] = state(p)
+    for i, home in enumerate(layout.entries):
+        result['entry-' + str(i)] = digest(encoded(files(home)))
+    for step in spec['steps']:
+        result['step-' + step['id']] = state(step_destination(layout, step))
+    result['runtime-manifest'] = state(layout.runtime / 'SOURCE_MANIFEST.json')
+    result['package'] = digest(encoded(files(layout.package)))
+    return result
+
+
+def inspect(layout: Layout, system: System) -> dict:
+    index = load(layout.index)
+    matches = [r for r in index['releases'] if r['version'] == index['current_release']]
+    require(len(matches) == 1, 'current release entry is not unique')
+    previous = layout.index.parent / relative(matches[0]['path'])
+    old = verify_package(previous)
+    require(old['version'] == index['current_release'], 'previous release version differs from index')
+    require(state(previous / 'FILES.sha256')['sha256'] == matches[0]['files_manifest_sha256'], 'previous package binding differs')
+    new = verify_package(layout.package)
+    require(new['status'] == 'verified_immutable_release' and new.get('final_publish_requires_human') is True, 'target is not an accepted immutable package')
+    require(new['tests']['result'] == 'passed', 'target lacks a passed test record')
+    if release_tier(previous, layout.package, old, new) == 'patch':
+        # 补丁档不过两个后台；分档只比较 agentos 源码树，所以包里其余可执行内容必须与上一版逐字节相同。
+        require(interface_scripts(layout.package) == interface_scripts(previous), 'patch-tier package changes interface scripts')
+        require(state(layout.package / 'interface/SKILL.md')['sha256'] == state(layout.package / 'agentos/.agents/skills/xiaoba-agentos/SKILL.md')['sha256'], 'patch-tier interface card differs from reviewed source')
+    else:
+        require(set((new['acceptance'].get('end_to_end_evidence') or {}).get('successful_agents') or []) == {'agy_review', 'dsh_review'}, 'target lacks required independent acceptance')
+    require(new['version'] != old['version'], 'target is already active')
+    require(not any(r['version'] == new['version'] for r in index['releases']), 'target version is already indexed')
+    target = layout.index.parent / relative(new['version'])
+    require(not target.exists(), 'target immutable release directory already exists')
+    runtime_files = verify_source(layout.runtime)
+    require(state(layout.runtime / 'SOURCE_MANIFEST.json')['sha256'] == old['agentos_source_manifest_sha256'], 'runtime is not bound to previous release')
+    config = load(layout.config)
+    require(config['release']['expected_version'] == old['version'] and not config['release'].get('acceptance_mode'), 'active config is not previous formal release')
+    require(Path(config['project_dir']) == layout.runtime and Path(config['release']['index_path']) == layout.index, 'active config layout differs')
+    spec = checked_spec(layout, old, new)
+    plist = plistlib.loads(layout.plist.read_bytes())
+    require(plist['Label'] == layout.label, 'worker plist label differs')
+    require(plist.get('EnvironmentVariables', {}).get('XIAOBA_CONFIG') == str(layout.config), 'worker plist config differs')
+    require(Path(plist['WorkingDirectory']) == layout.runtime, 'worker plist working directory differs')
+    queue_state = queue(layout)
+    current_worker = worker(layout, system)
+    checks = entry_checks(layout, system, old['version'])
+    verify_graph(layout)
+    vault = vault_actions(layout, previous)
+    return {'old': old, 'new': new, 'previous': previous, 'spec': spec, 'target': target,
+            'runtime_files': runtime_files, 'worker': current_worker, 'queue': queue_state,
+            'checks': checks, 'vault': vault}
+
+
+def plan(layout: Layout, system: Optional[System] = None, now: Callable = time.time) -> dict:
+    system = system or System()
+    result = {'mode': 'plan', 'ok': False, 'writes_performed': 0, 'generated_at': now()}
+    try:
+        data = inspect(layout, system)
+        result.update(ok=True, previous_version=data['old']['version'], version=data['new']['version'],
+                      queue=data['queue'], worker=data['worker'], checks=data['checks'],
+                      vault_changed_notes=[str(p.relative_to(layout.vault)) for p, *_ in data['vault']],
+                      numbered_steps=[s['id'] for s in data['spec']['steps']],
+                      fingerprint=snapshot(layout, data['spec']),
+                      phases=['stage_package', 'stop_worker', 'replace_source', 'install_entries', 'bind_config',
+                              'release_steps', 'vault_merge', 'rebuild_graph', 'publish_index', 'start_worker', 'readback'])
+    except (SwitchError, OSError, ValueError, KeyError, sqlite3.Error) as exc:
+        result['error'] = str(exc)
+    return result
+
+
+def preflight(layout: Layout, system: Optional[System] = None, now: Callable = time.time) -> dict:
+    result = plan(layout, system, now)
+    result['mode'] = 'preflight'
+    if result['ok']:
+        result['issued_at'] = now()
+        result['expires_at'] = result['issued_at'] + TTL
+        result['preflight_sha256'] = digest(encoded(result))
+    return result
+
+
+def readback(layout: Layout, system: Optional[System] = None, old_pid: Optional[int] = None) -> dict:
+    system = system or System()
+    result = {'mode': 'readback', 'ok': False, 'writes_performed': 0}
+    try:
+        index = load(layout.index)
+        matches = [r for r in index['releases'] if r['version'] == index['current_release']]
+        require(len(matches) == 1, 'current release entry is not unique')
+        package = layout.index.parent / relative(matches[0]['path'])
+        release = verify_package(package)
+        require(release['version'] == index['current_release'], 'package/index version mismatch')
+        require(state(package / 'FILES.sha256')['sha256'] == matches[0]['files_manifest_sha256'], 'current package binding mismatch')
+        verify_source(layout.runtime)
+        result['checks'] = entry_checks(layout, system, release['version'])
+        for home in layout.entries:
+            require(state(home / 'SKILL.md')['sha256'] == state(package / 'interface/SKILL.md')['sha256'], 'installed skill card mismatch')
+        result['worker'] = worker(layout, system, old_pid)
+        verify_graph(layout)
+        result['knowlp_verified'] = True
+        result.update(ok=True, version=release['version'], old_pid=old_pid)
+        if old_pid is None:
+            result['restart_verified'] = False
+            result['restart_note'] = '未提供切换前 PID，只核验当前运行态'
+        else:
+            result['restart_verified'] = True
+    except (SwitchError, OSError, ValueError, KeyError, sqlite3.Error) as exc:
+        result['error'] = str(exc)
+    return result
+
+
+def build_graph(layout: Layout) -> dict:
+    p = layout.runtime / 'scripts/build_knowlp_index.py'
+    safe(p)
+    # Execute the verified source bytes, never an unbound cached .pyc.
+    namespace = {'__file__': str(p), '__name__': 'switch_knowlp'}
+    exec(compile(p.read_bytes(), str(p), 'exec'), namespace)
+    require(namespace['diagnose'](layout.vault)['ok'], 'vault tree validation failed')
+    result = namespace['build'](layout.vault)
+    require(result == namespace['build'](layout.vault), 'index builder is nondeterministic')
+    return result
+
+
+def graph_bytes(value: Any) -> bytes:
+    # Keep the canonical renderer of build_knowlp_index.py; key sorting would
+    # change its serialized format and fail the official --verify command.
+    return (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode()
+
+
+def verify_graph(layout: Layout) -> None:
+    for rel, value in build_graph(layout).items():
+        path = layout.graph / relative(rel)
+        safe(path)
+        require(path.read_bytes() == graph_bytes(value), f'KnowLP index differs: {rel}')
+
+
+def apply(layout: Layout, ticket: dict, system: Optional[System] = None,
+          now: Callable = time.time, fault: Optional[Callable] = None) -> dict:
+    """Only the user invokes this against production; tests inject isolated Layout/System."""
+    system = system or System()
+    result = {'mode': 'apply', 'ok': False, 'activated': False, 'writes_performed': 0,
+              'completed_steps': [], 'rollback': None}
+    writer = Writer()
+    data = None
+    stopped = False
+    attempted_start = False
+    old_pid = None
+    boundary = None
+    original_snapshot = None
+
+    def phase(name: str) -> None:
+        result['completed_steps'].append(name)
+        if fault:
+            fault(name)
+
+    try:
+        require(ticket.get('mode') == 'preflight' and ticket.get('ok') is True, 'successful preflight required')
+        signed = dict(ticket)
+        sha = signed.pop('preflight_sha256', None)
+        require(digest(encoded(signed)) == sha, 'preflight record was modified')
+        require(0 <= now() - ticket['issued_at'] <= TTL and ticket['expires_at'] == ticket['issued_at'] + TTL, 'preflight expired or timestamp invalid')
+        data = inspect(layout, system)
+        require(ticket['fingerprint'] == snapshot(layout, data['spec']), 'scene changed after preflight')
+        require(ticket['worker'] == data['worker'], 'worker changed after preflight')
+        require(ticket['version'] == data['new']['version'], 'preflight target mismatch')
+        require(now() <= ticket['expires_at'], 'preflight expired during final inspection')
+        original_snapshot = snapshot(layout, data['spec'])
+        old_pid = data['worker']['pid']
+        result['old_pid'] = old_pid
+
+        # New immutable package; every byte is rechecked and journalled. No old release is touched.
+        for directory in sorted(layout.package.rglob('*')):
+            safe(directory)
+            if directory.is_dir() and '__pycache__' not in directory.parts:
+                writer._parents(data['target'] / directory.relative_to(layout.package))
+        for rel, sha in files(layout.package).items():
+            source = layout.package / relative(rel)
+            payload = source.read_bytes()
+            require(digest(payload) == sha, 'package changed during staging')
+            writer.write(data['target'] / relative(rel), payload, {'sha256': None, 'mode': None}, source.stat().st_mode & 0o777)
+        verify_package(data['target'])
+        phase('stage_package')
+        require(snapshot(layout, data['spec']) == original_snapshot, 'scene changed before stopping worker')
+        queue(layout)
+        stopped = True  # Set before stop: a successful bootout followed by timeout needs restoration.
+        system.stop(layout, old_pid)
+        require(not system.alive(old_pid), 'old worker remained after stop')
+        queue(layout)
+        phase('stop_worker')
+        source = data['target'] / 'agentos'
+        incoming = verify_source(source)
+        for rel in sorted(set(data['runtime_files']) | set(incoming)):
+            target = layout.runtime / relative(rel)
+            before = state(target)
+            require(before['sha256'] == data['runtime_files'].get(rel), 'source changed during switch')
+            if before['sha256'] != incoming.get(rel):
+                writer.write(target, (source / rel).read_bytes() if rel in incoming else None, before,
+                             (source / rel).stat().st_mode & 0o777 if rel in incoming else None)
+        writer.write(layout.runtime / 'SOURCE_MANIFEST.json', (source / 'SOURCE_MANIFEST.json').read_bytes(), state(layout.runtime / 'SOURCE_MANIFEST.json'))
+        phase('replace_source')
+        for i, home in enumerate(layout.entries):
+            require(digest(encoded(files(home))) == original_snapshot['entry-' + str(i)], 'entrypoint changed after preflight')
+        for home in layout.entries:
+            for name in ('xiaoba', 'verify-release'):
+                template = (data['target'] / 'interface/scripts' / name).read_text()
+                require(len(DEFAULT_LINE.findall(template)) == 1, 'entrypoint template config binding is ambiguous')
+                payload = DEFAULT_LINE.sub(lambda _: f'DEFAULT_CONFIG = Path({json.dumps(str(layout.config), ensure_ascii=False)})', template).encode()
+                target = home / 'scripts' / name
+                writer.write(target, payload, state(target), 0o755)
+            writer.write(home / 'SKILL.md', (data['target'] / 'interface/SKILL.md').read_bytes(), state(home / 'SKILL.md'))
+        phase('install_entries')
+        require(state(layout.config) == original_snapshot['config'], 'config changed after preflight')
+        raw = load(layout.config)
+        config = copy.deepcopy(raw)
+        config['release']['expected_version'] = data['new']['version']
+        require({**config['release'], 'expected_version': raw['release']['expected_version']} == raw['release'], 'config changes exceed release binding')
+        writer.write(layout.config, encoded(config), state(layout.config), 0o600)
+        phase('bind_config')
+        history = load(layout.history) if layout.history.exists() else {'steps': {}}
+        for step in data['spec']['steps']:
+            if step['id'] in history['steps']:
+                continue
+            target = step_destination(layout, step)
+            before = state(target)
+            if step['execute']['kind'] == 'config_set':
+                raw = load(layout.config)
+                path, before_value, after_value = config_step(layout, step)
+                require(config_get(raw, path) == before_value, 'config step input changed')
+                updated = copy.deepcopy(raw)
+                section, _, key = path.partition('.')
+                updated.setdefault(section, {})[key] = after_value
+                writer.write(target, encoded(updated), before, 0o600)
+            else:
+                payload = step_payload(layout, step)
+                require(before['sha256'] in (None, digest(payload)), 'step would overwrite user content')
+                if before['sha256'] is None:
+                    writer.write(target, payload, before)
+            history['steps'][step['id']] = {'sha256': digest(encoded(step)), 'release': data['new']['version']}
+            phase('step:' + step['id'])
+        if data['spec']['steps']:
+            require(state(layout.history) == original_snapshot['history'], 'step history changed')
+            writer.write(layout.history, encoded(history), state(layout.history), 0o600)
+        phase('release_steps')
+        require(digest(encoded(files(layout.vault))) == original_snapshot['vault'], 'vault changed after preflight')
+        for target, payload, before, mode in vault_actions(layout, data['previous']):
+            writer.write(target, payload, before, mode)
+        phase('vault_merge')
+        require(digest(encoded(files(layout.graph))) == original_snapshot['graph'], 'graph changed after preflight')
+        graph = build_graph(layout)
+        for rel, value in graph.items():
+            target = layout.graph / relative(rel)
+            writer.write(target, graph_bytes(value), state(target), 0o600)
+        verify_graph(layout)
+        phase('rebuild_graph')
+        require(state(layout.index) == original_snapshot['index'], 'release index changed after preflight')
+        index = load(layout.index)
+        index['current_release'] = data['new']['version']
+        index['releases'].insert(0, {'version': data['new']['version'], 'path': data['new']['version'],
+                                   'status': 'verified_immutable', 'files_manifest_sha256': state(data['target'] / 'FILES.sha256')['sha256']})
+        writer.write(layout.index, encoded(index), state(layout.index))
+        phase('publish_index')
+        require(state(layout.plist) == original_snapshot['plist'], 'worker service template changed after preflight')
+        queue(layout)
+        attempted_start = True
+        boundary = now()
+        system.start(layout)
+
+        def ready() -> bool:
+            try:
+                value = worker(layout, system, old_pid)
+                return value['started_at'] >= boundary
+            except (SwitchError, OSError, ValueError, KeyError):
+                return False
+
+        system.wait(ready, 'new worker did not become ready')
+        phase('start_worker')
+        result['read_back'] = readback(layout, system, old_pid)
+        require(result['read_back']['ok'], 'post-switch readback failed: ' + str(result['read_back'].get('error')))
+        require(result['read_back']['version'] == data['new']['version'], 'readback is healthy but not the requested target version')
+        phase('readback')
+        result.update(ok=True, activated=True, new_pid=result['read_back']['worker']['pid'])
+        # 切换已成功、不会再退回：新包不再带的受管目录此时只剩空壳，清掉。只删空目录，删不掉就留着并报告。
+        result['removed_empty_directories'] = prune_empty(layout.runtime, data['target'] / 'agentos')
+    except BaseException as exc:
+        result['error'] = f'{type(exc).__name__}: {exc}'
+        if writer.changes or stopped:
+            errors = []
+            # Stop new code before restoring files. Do not launch mixed code after undo failure.
+            if attempted_start:
+                try:
+                    known_pid = None
+                    try:
+                        current = load(layout.worker)
+                        if system.alive(int(current['pid'])):
+                            known_pid = int(current['pid'])
+                    except (OSError, ValueError, KeyError, SwitchError):
+                        pass
+                    if system.registered(layout):
+                        system.stop(layout, known_pid)
+                    require(not system.worker_pids(layout), 'unregistered new worker survived; undo is unsafe')
+                except BaseException as stop_exc:
+                    errors.append('stop new worker before undo failed: ' + str(stop_exc))
+            if not errors:
+                errors += writer.undo()
+                errors += writer.remove_dirs()
+            if not errors and data and original_snapshot:
+                try:
+                    require(snapshot(layout, data['spec']) == original_snapshot, 'restored scene fingerprint differs')
+                    if stopped:
+                        if not system.alive(old_pid):
+                            system.start(layout)
+                            system.wait(lambda: rollback_worker_ready(layout, system), 'previous worker did not recover')
+                        else:
+                            worker(layout, system)
+                    old_readback = readback(layout, system)
+                    require(old_readback['ok'] and old_readback['version'] == data['old']['version'], 'previous release readback failed')
+                    result['rollback_read_back'] = old_readback
+                except BaseException as rollback_exc:
+                    errors.append(str(rollback_exc))
+            result['rollback'] = {'ok': not errors, 'status': '已退回' if not errors else '退回失败，需要人工处理', 'errors': errors}
+        else:
+            result['rollback'] = {'ok': True, 'status': '未开始写入，无需退回', 'errors': []}
+    finally:
+        result['writes_performed'] = writer.write_count
+        result['recovery_limit'] = '原内容只保存在本进程内存；强杀或掉电后需要人工检查，未创建备份'
+        # Never retain old bytes beyond this invocation.
+        writer.changes.clear()
+    return result
+
+
+def prune_empty(runtime: Path, source: Path) -> list:
+    removed = []
+    for name in SOURCE_DIRS:
+        top = runtime / name
+        if (source / name).exists() or top.is_symlink() or not top.is_dir():
+            continue
+        if any(p.is_symlink() or not p.is_dir() for p in top.rglob('*')):
+            continue  # 还有文件：不属于空壳，不碰（发布校验会把它报出来）
+        for directory in sorted([top, *top.rglob('*')], key=lambda p: len(p.parts), reverse=True):
+            try:
+                directory.rmdir()
+                removed.append(str(directory.relative_to(runtime)))
+            except OSError:
+                pass
+    return sorted(removed)
+
+
+def rollback_worker_ready(layout: Layout, system: System) -> bool:
+    try:
+        worker(layout, system)
+        return True
+    except (SwitchError, OSError, ValueError, KeyError):
+        return False
+
+
+def main(argv: Optional[list] = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('mode', nargs='?', default='plan', choices=('plan', 'preflight', 'apply', 'readback'))
+    parser.add_argument('--package', type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument('--preflight', type=Path, help='用户保存的只读预检 JSON，仅 apply 必需')
+    parser.add_argument('--old-pid', type=int, help='readback 核验停启时提供切换前 PID')
+    args = parser.parse_args(argv)
+    try:
+        layout = production(args.package)
+        if args.mode == 'apply':
+            require(args.preflight is not None, 'apply requires --preflight')
+            # Require this command to be the exact command in the accepted target package.
+            verify_package(args.package)
+            require(state(Path(__file__))['sha256'] == state(args.package / 'agentos/scripts/switch_release.py')['sha256'], 'running command differs from accepted package')
+            result = apply(layout, load(args.preflight))
+        elif args.mode == 'preflight':
+            result = preflight(layout)
+        elif args.mode == 'readback':
+            result = readback(layout, old_pid=args.old_pid)
+        else:
+            result = plan(layout)
+    except (SwitchError, OSError, ValueError, KeyError) as exc:
+        result = {'mode': args.mode, 'ok': False, 'error': str(exc), 'writes_performed': 0}
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result['ok'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

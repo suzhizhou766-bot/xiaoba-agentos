@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "id": "rea",
+  "name": "REA 授权软件分析",
+  "purpose": "本机证据化软件分析，CLI 可直接使用，通用技能已通过 AGY/DSH 审查并正式登记；原生反编译依赖另配引擎。",
+  "authority": false,
+  "implementation_status": "partial",
+  "implementation_paths": [
+    "${ROOT}/工具/REA逆向",
+    "${ROOT}/skills/rea-reverse-engineering"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "rea-cli",
+    "rea-mcp-stdio",
+    "javascript-static-analysis",
+    "macos-artifact-inspection",
+    "evidence-handoff",
+    "guided-analysis-intake"
+  ],
+  "permissions": {
+    "read": "only-user-owned-or-authorized-targets",
+    "write": "REA 部署目录和明确授权的调查输出目录；不改目标",
+    "network": "npm official install/audit only for deployment; analysis network only if task-authorized"
+  },
+  "health_checks": [
+    "工具/REA逆向/bin/rea --version",
+    "工具/REA逆向/bin/rea mcp doctor --json",
+    "python3 工具/REA逆向/tests/smoke.py",
+    "xiaoba skill-match REA: active after independent review"
+  ],
+  "required_paths": [
+    "工具/REA逆向/bin/rea",
+    "工具/REA逆向/package-lock.json",
+    "工具/REA逆向/deployment.json",
+    "工具/REA逆向/使用说明.md",
+    "skills/rea-reverse-engineering/SKILL.md"
+  ],
+  "interfaces": [
+    "工具/REA逆向/bin/rea",
+    "工具/REA逆向/config/mcp-stdio.json",
+    "skills/rea-reverse-engineering/SKILL.md"
+  ],
+  "writes": [
+    "任务授权的本地证据输出；不自动发布第二大脑经验"
+  ],
+  "dependencies": [
+    "brain",
+    "index"
+  ],
+  "runtime_dependencies": [
+    "/Users/suzhizhou/Documents/私人助理/配置/node/bin/node",
+    "Xcode Command Line Tools; native decompilation optionally Hopper/Ghidra/IDA"
+  ],
+  "version": "6.5.0",
+  "publish_enabled": false,
+  "auto_start": false,
+  "auto_update": false,
+  "status_detail": {
+    "id": "rea-reverse-engineering",
+    "path": "/Users/suzhizhou/Documents/私人助理/skills/rea-reverse-engineering/SKILL.md",
+    "files_installed": true,
+    "formal_index_status": "active",
+    "review_task": "35d57b79-99c8-4078-844e-101972a08ed7",
+    "formal_index_modified": true,
+    "agy_live_probe": "PASS",
+    "dsh_live_probe": "PASS",
+    "review_performed": true,
+    "review_verdicts": {
+      "agy_review": "PASS",
+      "dsh_review": "PASS"
+    },
+    "formal_skill_card": "/Users/suzhizhou/Documents/私人助理/第二大脑/20_能力与技能/rea-reverse-engineering.md",
+    "review_history": [
+      "73245aa1-7496-4450-93c8-7729bed8380e"
+    ],
+    "updated_at": "2026-10-17",
+    "skill_revision": 2,
+    "entrypoint_sha256": "5975fc2cae94c331a2e59f80991b38d16044a17674f546b9efcf3a989f05c952",
+    "guided_intake": {
+      "enabled": true,
+      "questions": [
+        "analysis-target",
+        "analysis-focus",
+        "authorization"
+      ],
+      "reuse_known_answers": true,
+      "default_mode": "static",
+      "reference": "/Users/suzhizhou/Documents/私人助理/skills/rea-reverse-engineering/references/guided-intake.md"
+    }
+  },
+  "verification": {
+    "smoke_status": "PASS",
+    "smoke_checked_at": "2026-10-16T15:21:11.957094+00:00",
+    "mcp_tool_count": 207,
+    "cli_javascript": "PASS",
+    "mcp_actual_javascript_analysis": "PASS",
+    "macos_artifact": "PASS",
+    "macho": "PASS",
+    "registry_signatures": 146,
+    "verified_attestations": 33,
+    "known_vulnerabilities_at_install": 0,
+    "summary": "/Users/suzhizhou/Documents/私人助理/工具/REA逆向/evidence/verification/smoke-summary.json",
+    "source_integrity_match": true,
+    "additional_static_commands": [
+      "inspect-plist",
+      "inspect-signature",
+      "inspect-analysis-view"
+    ],
+    "dsh_live_auth_repaired": true
+  },
+  "failure_policy": "依赖/健康不可用则报告具体限制，不修改认证与路由、不绕过正式技能门禁、不自动安装商业引擎。"
+}

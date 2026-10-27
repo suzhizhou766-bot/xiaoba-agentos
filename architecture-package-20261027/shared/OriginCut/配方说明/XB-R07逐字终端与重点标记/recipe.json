@@ -1,0 +1,104 @@
+{
+  "format": "origincut-project-local-recipe",
+  "id": "XB-R07",
+  "name": "逐字终端与重点标记",
+  "componentId": "xb-r07-terminal-underline",
+  "componentSource": "origincut://v1/generator-component/xb-r07-terminal-underline?sourceHash=sha256%3Ae0a3b88f4d4c5ce26a088393925e7c5b27fd599d1b918095aa8d5213df15e85b&version=1",
+  "durationSeconds": 8,
+  "referenceAsset": "origincut://v1/asset/ast_77ckai9r8mg0f1",
+  "referenceRangeSeconds": [
+    51,
+    67
+  ],
+  "previewSequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+  "previewRangeSeconds": [
+    41,
+    49
+  ],
+  "status": "implemented-awaiting-user-review",
+  "cloudPublished": false,
+  "installedInDialogRecipeLibrary": false,
+  "description": "终端内逐字出现提示词；指定词组同步标蓝并加下划线，计数与光标随文字推进。",
+  "logicalSurface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "parameters": {
+    "backgroundEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "backgroundColor": {
+      "type": "string",
+      "default": "#070A0E",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "accent": {
+      "type": "string",
+      "default": "#56ABFF",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "brand": {
+      "type": "string",
+      "default": "Vincent",
+      "maxLength": 24
+    },
+    "showGuide": {
+      "type": "boolean",
+      "default": false
+    },
+    "showBrand": {
+      "type": "boolean",
+      "default": false
+    },
+    "title": {
+      "type": "string",
+      "default": "Claude Code · Opus 5.5",
+      "maxLength": 70
+    }
+  },
+  "examples": [
+    "default",
+    "transparent",
+    "showcase"
+  ],
+  "bundledReferenceStills": [],
+  "placementTemplate": {
+    "op": "item.add",
+    "kind": "component",
+    "source": "origincut://v1/generator-component/xb-r07-terminal-underline?sourceHash=sha256%3Ae0a3b88f4d4c5ce26a088393925e7c5b27fd599d1b918095aa8d5213df15e85b&version=1",
+    "track": "<目标视频轨URI>",
+    "at": "<十进制秒字符串>",
+    "props": {
+      "backgroundEnabled": false,
+      "showBrand": false
+    }
+  },
+  "review": {
+    "admissionErrors": 0,
+    "admissionWarnings": 0,
+    "samplesPerExample": 12,
+    "finalSequenceRevision": 5,
+    "finalSequenceSampledFrames": 36,
+    "sequenceErrors": 0,
+    "sequenceWarnings": 0,
+    "limits": "组件原生文字检查覆盖有限；R17盖章覆盖、R18交叉淡化等包络提示结合实际画面观察。",
+    "componentExamples": 3,
+    "transparentCompositeRevision": 3,
+    "transparentCompositeFrames": 45
+  },
+  "audio": "合集音效为独立轨；复用组件不会自动带入音效。已查26个音效片段的估计包络，尚未实际试听。",
+  "limitations": [
+    "本次复刻教程包装的构图与运动关系，未逐帧复制249秒原片。",
+    "卡片作品使用从用户参考视频裁出的静帧；内嵌影片未重建。",
+    "画面文字及模型名称为参考内容，不构成事实核验或当前服务能力声明。",
+    "长文案与素材布局更换后须重新看合成效果。",
+    "本地recipe.json是编排说明，未发布到对话框在线配方库。"
+  ],
+  "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+  "showcaseProps": {
+    "backgroundEnabled": true,
+    "showBrand": true
+  },
+  "usage": "放在实拍上方的视频轨；空白区域透明，卡片底板和示例图片仍为前景。内容替换与布局按本项目修改，通用双片段转场需另接时间线遮罩。"
+}

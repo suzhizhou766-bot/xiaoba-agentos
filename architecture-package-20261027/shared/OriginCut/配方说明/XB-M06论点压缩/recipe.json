@@ -1,0 +1,114 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-M06",
+  "name": "论点压缩",
+  "version": "0.1.0",
+  "status": "implemented-sample-awaiting-user-review",
+  "component": {
+    "id": "xb-m06-argument-compress",
+    "version": 1,
+    "uri": "origincut://v1/generator-component/xb-m06-argument-compress?sourceHash=sha256%3A2f0785f29f45eae50974fd114a06e702bb73fec7c64b689dbfaaa85cd58b2920&version=1",
+    "propsSchemaPath": "components/xb-m06-argument-compress/component.json#/propsSchema",
+    "examples": [
+      {
+        "id": "default",
+        "path": "examples/default.json"
+      },
+      {
+        "id": "alternate",
+        "path": "examples/alternate.json"
+      }
+    ]
+  },
+  "canvas": [
+    1920,
+    1080
+  ],
+  "sourceClockTicksPerSecond": 1000000,
+  "sequenceClockTicksPerSecond": 720000,
+  "sequence": "origincut://v1/sequence/seq_5pspm4c2b2g4jp?revision=2",
+  "durationSeconds": 30,
+  "reel": {
+    "sequence": "origincut://v1/sequence/seq_mpuvhb9c2dll4i?revision=2",
+    "rangeSeconds": [
+      58,
+      88
+    ]
+  },
+  "verification": {
+    "observation": "look_mvjqwe8x_29",
+    "samples": 24,
+    "audioAudition": false,
+    "exportVerified": false,
+    "userAdopted": false
+  },
+  "filesSha256": {
+    "components/xb-m06-argument-compress/assets/source.png": "3a35b6167d7f6ef4b6f31ef9a3e94c63891ea977831d27482aba442001fc328c",
+    "components/xb-m06-argument-compress/component.json": "5564fd2fd941908eed7b2eefbdf38f0df80c7ee7b18a42abeb459f2e034ccffb",
+    "components/xb-m06-argument-compress/examples/alternate.json": "5248cbe067bd6874041f16e6257452e0c18ab3764b1e0efff3cccc9b403d8f79",
+    "components/xb-m06-argument-compress/examples/default.json": "a60c83ae9f67080d17de0f979b80d296b04afa99b64c850736634187bc45e993",
+    "components/xb-m06-argument-compress/jsconfig.json": "b82ef1c934fbd3f854174ac3181963c409729e4d9dbdf94facd3b1b9b34fe12a",
+    "components/xb-m06-argument-compress/locales/zh-CN.json": "7053d5bff398533dee8e72d74f45194969de688a6734ca67766ce18fb57ea024",
+    "components/xb-m06-argument-compress/src/design.js": "49ce7d851c737d37f4453a428e776d27f15b708c4cb53e511c1f1689e2cfb21d",
+    "components/xb-m06-argument-compress/src/main.js": "9b9629481aed2972d26834dc4d268a94f6e41b596ce61a2d18d19db48e3005d2"
+  },
+  "inputs": {
+    "kind": "original-demonstration-script",
+    "sourceDimensions": [
+      3840,
+      2160
+    ],
+    "sourceAsset": "origincut://v1/asset/ast_nzerjrpeq39ipy",
+    "sourcePts": 66066,
+    "cropSourcePixels": [
+      3300,
+      888,
+      32,
+      32
+    ],
+    "defaultSourcePixelCount": 1024,
+    "finalDisplayDimensions": [
+      640,
+      640
+    ],
+    "method": "nearest-neighbor direct display enlargement",
+    "narration": "none",
+    "userLongFormContentEdited": false
+  },
+  "timing": {
+    "question": [
+      0,
+      4
+    ],
+    "evidence": [
+      4,
+      12
+    ],
+    "mechanism": [
+      12,
+      20
+    ],
+    "qualifiedConclusion": [
+      20,
+      26
+    ],
+    "boundaryAndFurtherCheck": [
+      26,
+      30
+    ]
+  },
+  "sound": {
+    "cueStarts": [
+      3.92,
+      11.92,
+      19.92,
+      25.92
+    ],
+    "cueGain": 0.35,
+    "sourceMarkerSeconds": 0.08,
+    "bedAsset": "origincut://v1/asset/ast_4umkt1wl3m8cjm",
+    "bedGain": 0.4,
+    "bedDurationSeconds": 30
+  }
+}

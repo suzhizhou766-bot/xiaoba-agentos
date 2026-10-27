@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "after-effects",
+  "name": "AE调用（After Effects 脚本控制）",
+  "purpose": "用脚本和表达式控制本机正在运行的 Adobe After Effects 2026：合成、图层、文字动画、关键帧、表达式、特效、素材、渲染、批量操作与工程检查。三条通道：after-effects-mcp（本机 Agent）、adobe-agent-skills 的 runner.sh（本机终端）、文件队列（任何能写工作区的 Agent，含远程会话）。",
+  "authority": false,
+  "implementation_status": "partial",
+  "implementation_paths": [
+    "${ROOT}/工具/AE调用",
+    "${ROOT}/skills/after-effects-control"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "ae-file-queue",
+    "ae-mcp-stdio",
+    "ae-extendscript-library",
+    "ae-expressions",
+    "ae-frame-preview",
+    "ae-render"
+  ],
+  "permissions": {
+    "read": true,
+    "write": "用户指定的 AE 工程与项目目录、工作区/ae-scripts、工作区/ae-projects；不写第二大脑",
+    "network": "none（MCP 与队列都只走本机文件；渲染只启动本机 aerender/ffmpeg）"
+  },
+  "health_checks": [
+    "工作区/ae-scripts/logs/_heartbeat.txt 10 秒内有更新（AE 开着、队列在工作）",
+    "队列执行 工具/AE调用/队列桥接/health_check.jsx 后 logs/ae-health.json 已刷新",
+    "MCP: check-bridge（需桥接面板已装且已打开）"
+  ],
+  "required_paths": [
+    "工具/AE调用/使用说明.md",
+    "工具/AE调用/deployment.json",
+    "工具/AE调用/after-effects-mcp/build/index.js",
+    "工具/AE调用/after-effects-mcp/build/scripts/mcp-bridge-auto.jsx",
+    "工具/AE调用/adobe-agent-skills/skills/after-effects/scripts/runner.sh",
+    "工具/AE调用/队列桥接/xk_lib_call.jsx",
+    "skills/after-effects-control/SKILL.md"
+  ],
+  "interfaces": [
+    "工作区/ae-scripts/queue/（文件队列）",
+    "工具/AE调用/after-effects-mcp/build/index.js（MCP stdio）",
+    "工具/AE调用/adobe-agent-skills/skills/after-effects/scripts/runner.sh",
+    "skill:after-effects-control"
+  ],
+  "writes": [
+    "AE 工程默认存 工作区/ae-projects/；脚本、日志、预览帧在 工作区/ae-scripts/；成片归各项目目录"
+  ],
+  "dependencies": [
+    "brain"
+  ],
+  "failure_policy": "AE 没开时提示用户打开，不自行拉起；桥接面板没装时提示用户按使用说明安装，Agent 不往 /Applications 写、不改个人客户端配置、不装新的启动项或常驻组件。删除、覆盖渲染、丢弃未保存工程前先问用户。"
+}

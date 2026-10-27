@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "remotion",
+  "name": "Remotion 视频合成工具",
+  "purpose": "视频管线的合成核心：用 React/TSX 写画面，在本机 Studio 预览并导出视频。需要时由用户手动开启，Agent 再在项目目录里改代码、调用渲染。",
+  "authority": false,
+  "implementation_status": "implemented",
+  "implementation_paths": [
+    "${ROOT}/工具/Remotion"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "remotion-studio",
+    "composition-editing",
+    "video-render"
+  ],
+  "permissions": {
+    "read": true,
+    "write": "工具/Remotion 项目目录及其 out/",
+    "network": "loopback-only"
+  },
+  "health_checks": [
+    "project-entry",
+    "studio-http-3330"
+  ],
+  "required_paths": [
+    "工具/Remotion/package.json",
+    "工具/Remotion/启动Remotion.command",
+    "工具/Remotion/使用说明.md"
+  ],
+  "interfaces": [
+    "工具/Remotion/启动Remotion.command",
+    "http://localhost:3330",
+    "npm run render:demo",
+    "skill:remotion"
+  ],
+  "writes": [
+    "工具/Remotion/src 下的画面代码；导出文件在 工具/Remotion/out/，项目成片归各项目目录，不写第二大脑"
+  ],
+  "dependencies": [
+    "brain"
+  ],
+  "failure_policy": "Studio 没开时不要自行拉起常驻服务或配置自启：提示用户双击启动脚本，或只运行一次性的渲染命令。依赖缺失时报告并说明 npm ci，不擅自升级 Remotion 版本。"
+}

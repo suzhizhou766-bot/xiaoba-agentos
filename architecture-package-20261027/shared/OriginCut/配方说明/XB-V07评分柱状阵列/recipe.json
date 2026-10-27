@@ -1,0 +1,129 @@
+{
+  "format": "origincut-project-local-recipe",
+  "id": "XB-V07",
+  "name": "评分柱状阵列",
+  "status": "implemented-awaiting-user-review",
+  "cloudPublished": false,
+  "installedInDialogRecipeLibrary": false,
+  "sourceReference": "用户在对话中提供的 HTML/CSS/JS；本条是原生适配，未做原视频逐帧比对。",
+  "componentId": "xb-v07-demo-bars",
+  "componentSource": "origincut://v1/generator-component/xb-v07-demo-bars?sourceHash=sha256%3A16f891ecd0a7fae5c4a8ed91dfb49c0d1c69f62d78cdd8bbe05d8c82c8daa031&version=1",
+  "durationSeconds": 8,
+  "logicalSurface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "previewSequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+  "previewRangeSeconds": [
+    48,
+    56
+  ],
+  "visual": "22 根柱子依次升起，随后显示由实际数组计算的均分 7.68 和对应高度的均值线。",
+  "parameters": {
+    "scores": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "number",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 10
+      },
+      "default": [
+        6.2,
+        6.8,
+        7.1,
+        6.9,
+        7.5,
+        7.8,
+        8.2,
+        7.9,
+        7.4,
+        8.0,
+        7.7,
+        8.5,
+        7.6,
+        7.9,
+        8.1,
+        7.3,
+        7.7,
+        8.4,
+        7.8,
+        8.0,
+        7.9,
+        8.3
+      ]
+    },
+    "staggerSeconds": {
+      "type": "number",
+      "default": 0.035,
+      "minimum": 0,
+      "maximum": 0.06
+    }
+  },
+  "commonParameters": {
+    "backgroundEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "backgroundColor": {
+      "type": "string",
+      "default": "#07090E",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "gridEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "gridTimeOffset": {
+      "type": "number",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3600
+    },
+    "showChapter": {
+      "type": "boolean",
+      "default": true
+    },
+    "accent": {
+      "type": "string",
+      "default": "#3B82F6",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "entrySeconds": {
+      "type": "number",
+      "default": 0.55,
+      "minimum": 0.15,
+      "maximum": 1.5
+    },
+    "exitSeconds": {
+      "type": "number",
+      "default": 0.4,
+      "minimum": 0.15,
+      "maximum": 1.5
+    }
+  },
+  "examples": {
+    "default": "components/xb-v07-demo-bars/examples/default.json",
+    "transparent": "components/xb-v07-demo-bars/examples/transparent.json"
+  },
+  "placementTemplate": {
+    "op": "item.add",
+    "kind": "component",
+    "source": "origincut://v1/generator-component/xb-v07-demo-bars?sourceHash=sha256%3A16f891ecd0a7fae5c4a8ed91dfb49c0d1c69f62d78cdd8bbe05d8c82c8daa031&version=1",
+    "track": "<目标序列的视频轨 URI>",
+    "at": "<放置时间，十进制秒字符串>",
+    "props": {}
+  },
+  "transparentProps": {
+    "backgroundEnabled": false,
+    "showChapter": false
+  },
+  "notes": [
+    "示例时钟为8秒；裁短会截断动作，压缩时间需同步调整节奏。",
+    "透明底版本关闭背景及章节名；音效是总览的独立音轨，不内嵌到组件。",
+    "更长文案需要重新排版并使用 look 检查。",
+    "项目本地配方说明不等于已发布到在线配方库。"
+  ]
+}

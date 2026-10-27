@@ -1,0 +1,7 @@
+interface:
+  display_name: "素材"
+  short_description: "审核版本、母版和交付素材"
+  brand_color: "#526A45"
+  default_prompt: "Use $assets to scan this project, protect original text, verify media masters, build an asset manifest, and write a delivery acceptance report."
+policy:
+  allow_implicit_invocation: true

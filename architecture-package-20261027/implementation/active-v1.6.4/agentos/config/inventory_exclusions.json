@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "description": "小八 AgentOS 盘点已知且已决定不接入清单（包内可审计）",
+  "exclusions": [
+    {
+      "id": "minimax-h3-video-director",
+      "name": "minimax-h3-video-director",
+      "target_path": "skills/minimax-h3-video-director",
+      "kind": "shared_skill",
+      "scope": "non_release_standalone_skill",
+      "scope_description": "明确不随 AgentOS 发布的现有决定；作为独立实体技能由私人助理直接维护，不在 AgentOS 发版清单与哈希绑定内，并不等同于全体系不可用。",
+      "decision_source": "AGENTS.md 第 54 行与 v1.5.2 发布规划",
+      "reason": "MiniMax H3 视听导演为特定视频管线独立技能，由工作体系直接维护实体文件夹，明确不作为 AgentOS 核心随版不可变发布包分发。"
+    }
+  ]
+}

@@ -1,0 +1,1409 @@
+{
+  "policy": "Metadata allowlist reviewed before content reads. No symlinks followed. Source/document formats and small UI images. Only approved static source-data formats; local operational configuration excluded.",
+  "categories": [
+    "private authentication material",
+    "runtime databases/state/logs",
+    "installed dependencies/runtimes/caches",
+    "sound/BGM libraries",
+    "large media/models/fonts/archives",
+    "historical round/rehearsal/raw output duplicates"
+  ],
+  "paths": [
+    {
+      "path": "shared/skills/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/系统/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/Playbook/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/第二大脑/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/第二大脑/.obsidian",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/第二大脑/.trash",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/第二大脑/50_资产与索引/清单/鑫苑知光集_资产清单_2026-09-12.csv",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/第二大脑/70_复利规则/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/第二大脑/未命名.canvas",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/skills/bgm/tests/fixtures/clipped_24bit_stereo_48k.wav",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/skills/bgm/tests/fixtures/tone_24bit_stereo_48k.wav",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AE调用/adobe-agent-skills/.git",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AE调用/adobe-agent-skills/assets/demo.gif",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.editorconfig",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.git",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.git-blame-ignore-revs",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.gitattributes",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.githooks",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.github",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.nvmrc",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.prettierignore",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.prettierrc.json",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/.release-please-manifest.json",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/build",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AE调用/config",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/.agents",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/.claude",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/.codebuddy",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/.git",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/.workbuddy",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/docs/hero.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/logs",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/.oxlintrc.json",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/.puppeteerrc.cjs",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/exports",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/demo/demo.srt",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/chime.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/click.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/ding.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/glitch.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/hit-soft.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/impact.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/pop-cluster.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/pop-light.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/pop.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/rise.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/shutter.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/sparkle.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/type.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/whoosh-soft.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/whoosh.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/src/assets/fonts",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/start-overlay-studio.bat",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/操作指南图",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/CITATION.cff",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/contrast/contrast_sheet.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/frames/overview_1.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/frames/overview_2.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/frames/overview_3.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/frames/overview_4.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/frames/overview_5.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/frames/overview_6.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/template/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/template/public/fonts",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/.claude-plugin",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/.github",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/audio/bgm",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/audio/sfx",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/cover.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/examples/interaction.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/examples/transition.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/examples/typography.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/sponsors/apimart.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/sponsors/packycode.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/assets/readme/workflow.gif",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_legacy/_textures/detail-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_legacy/_textures/papers-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_legacy/_textures/projects-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_legacy/_textures/wbr-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_textures/detail-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_textures/papers-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_textures/projects-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/demos/_textures/wbr-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/references/sequences/.gitkeep",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/click-camera.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/impact-cine.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/keyboard.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/pop.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/riser-cine.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/sparkle.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/swoosh-quick.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/transition-snap.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/transition-soft.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/whoosh-big.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/audio/whoosh-fast.mp3",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/textures/live/detail-experiments.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/textures/live/detail-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/textures/live/papers-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/textures/live/projects-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/template/public/textures/live/wbr-full.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/demosrc",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/dist",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/docs/overview.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/docs/preview.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/public/.gitkeep",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/public/bgmlib",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/public/cardpreviews",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/public/legacy-textures",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/public/sfxlib",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/public/textures/live",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/workbench/tsconfig.tsbuildinfo",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/REA逆向/bin/rea",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/REA逆向/cache",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/REA逆向/config",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/REA逆向/downloads",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/REA逆向/evidence",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/REA逆向/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/REA逆向/state",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/REA逆向/tests/fixtures/REA-Smoke.app/Contents/MacOS/rea-smoke",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/REA逆向/tests/fixtures/native-smoke.c",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/REA逆向/tmp",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/Remotion/.git",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/Remotion/.npmrc",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/Remotion/.runtime",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/Remotion/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/Remotion/out",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/Remotion/public/fonts",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/motion-explainer/bin/new-project",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/motion-explainer/bin/run",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/engine/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/music.wav",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/node_modules",
+      "reason": "symlink never followed"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/out",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/bin/draft_codec",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/剪映自动化/flash-666-30s",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/flash-666-ramp-30s",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/logs",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/reproduction-666",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/results",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/剪映自动化/src/draft_codec.cpp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/剪映自动化/tmp",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/.director-migration-token",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/小八监看/.git",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/logs",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/monitor.log",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/小八监看/monitor_core/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/monitor_core/modules/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/run",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/tests/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/dist",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/docs/screens/新风格-嵌入监看中心.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/docs/screens/新风格-窄窗口.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/docs/screens/现状-1440.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/docs/screens/设计稿-新风格-1440.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/examples/block.bin",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/examples/block.gltf",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/node_modules",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/public/models",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/public/workspace/ocean-surface.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/public/workspace/ocean-underwater.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/tsconfig.tsbuildinfo",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/verification",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/工程库",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/治理/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/治理/run",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.agents",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.claude",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.codex",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.continue",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.cursor",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.git",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.github",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.oss-scanner",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.roo",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/.windsurf",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Blur.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Color Tint.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Cross Dissolve.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Fade Title.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Glow.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Gradient.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Iris.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Lower Third.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Noise.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Solid Color.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Title.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Vignette.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/authoring/setting-files/templates/MCP Test Wipe.setting",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/images/control-panel/03-clip-detail.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/images/control-panel/05-shot-detail.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/reference/DaVinciResolveScript.pyi",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/docs/reference/evidence",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/logs",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/.prettierrc.json",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/E117_resolve_ftw_export.otio",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/E120_resolve_nested_export.otio",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/E127_resolve_nested_export.drt",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/blur-key-motionfx.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/color-warper.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/colorslice-grid.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/curve-window.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/custom-curve-y.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/gradient-window.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/group-preclip-grade.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/hdr-zone-def-falloff035.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/hdr-zone-def-range-neg2.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/hdr-zones-grid.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/hsl-curve-huehue.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/hsl-curve-satsat.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/keyframe-track.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/keyframed-grade.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/linear-window-softness.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/log-wheels-grid.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/matte-finesse-grid.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/node-color-blue.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/node-lut-ref.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/node-sizing.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/polygon-window.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/power-window-circle.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/power-window-transform.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/qualifier-3d.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/qualifier-rgb.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/rgb-mixer-grid.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures/tracker-linear-motion.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures-r19-compound-seq-blob.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures-r19-flmodel-seq-blob.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures-r19-freeze-timemap.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures-r19-markers-2.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/test/fixtures-r19-timemap-50pct.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/__tests__/fixtures/compound-nav-r21.drp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/__tests__/fixtures/p0-3-session30-empty-effectfilters.drp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/__tests__/fixtures/retimed-timemap-50pct.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/__tests__/fixtures/retimed-timemap-dynamic.hex",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/templates/empty-project-r19.drp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/templates/empty-project.drp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/templates/media-clip-h264.drp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drp-format/templates/media-clip-r19.drp",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p2-1-face-refinement.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p2-1-filmgrain.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p2-1-glow.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p2-1-lens-flare.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p2-3-beauty-25.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p2-3-beauty-75.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p5-1-node-no-lut.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/resolve-advanced/vendor/drx-codec/__tests__/fixtures/p5-1-node-with-lut.drx",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/src/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/src/utils/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/工具/达芬奇/tests/test-after-restart.bat",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/工具/达芬奇/venv",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/审美提升/对照与练习/第1轮_15图编号总览.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_后台界面结构规划/参考图/01_提示词技巧.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_后台界面结构规划/参考图/02_数据看板.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_后台界面结构规划/参考图/03_任务列表管理.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_后台界面结构规划/参考图/04_企业集采.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/01_窗边与猫.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/02_帆船与倒影.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/03_树枝与白猫.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/04_湖亭与荷叶.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/05_秋叶石阶.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/06_街口长阴影.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/07_树下街景.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/08_透明雨伞.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/10_圆窗庭院.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/11_悬挂纸鹤.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/12_竹椅茶时.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/13_街巷透视.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/14_竖列纸伞.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/参考图/15_红伞街巷.webp",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户废片_我爱我家/废片图01-09.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户废片_我爱我家/废片图10-18.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户废片_我爱我家/废片视频V1_六帧.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户废片_我爱我家/废片视频V2_六帧.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户废片_我爱我家/废片视频V4_六帧.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户成片_植物研学/30帧总览.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-11_用户成片_植物研学/结尾八帧.jpg",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-14_Opus5.5参考片/参考片.mp4",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-14_Opus5.5参考片/帧/每秒一帧.png",
+      "reason": "large visual material"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/LR_XMP_导入包.zip",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/原始下载包/Adobe_官方免费合集.zip",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/原始下载包/PresetsHeaven_Bloggers.zip",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/小八_LR分类预设_8组45个XMP.zip",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/LR预设_精选候选_20261018.zip",
+      "reason": "outside source/document format allowlist"
+    },
+    {
+      "path": "shared/AI视频管线/scripts/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/AI视频管线/tests/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/AI视频管线/06_内部工具/__pycache__",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/AI视频管线/06_内部工具/models",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/OriginCut/audio-components/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/OriginCut/audio-components/jiangxin-fastcut-120bpm/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "shared/OriginCut/recipes/rcp_signal_error-v0-2-1/components/signal-error/assets/fonts",
+      "reason": "directory excluded before traversal"
+    },
+    {
+      "path": "shared/OriginCut/配方说明/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/.DS_Store",
+      "reason": "hidden local file"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/交接包-gpt-6-astra-20261025",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/任务卡分发",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/技能登记草稿",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/收尾-AGY2.25修复",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/第1步-拦截草稿",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/第3步-守卫修订草稿",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八融合迭代-20261022/验证任务卡",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八规则清单与目标架构/合并",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八规则清单与目标架构/回执",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八规则清单与目标架构/材料",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/acceptance",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/artifacts",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/candidate",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/interface",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/reports",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/work",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "design/context/小八AgentOS-v1.6.4-架构第4与5步/审查轮次",
+      "reason": "outside selected design documents"
+    },
+    {
+      "path": "shared/工具/AE调用/after-effects-mcp/release-please-config.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AE调用/deployment.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AGY-VPN/验证结果.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AI剪辑/Overlay Studio/motion-playground/public/sfx-default/来源与授权.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/examples/rag/narration.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/anything2explainer/template/script/narration.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/gallery/llms.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/video-shotcraft/gallery/robots.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/AI剪辑/动效skill/安装状态.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/REA逆向/deployment.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/motion-explainer/installation.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/aspect.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/cues.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/motion-explainer/安装验收/检查输出.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/剪映自动化/audit-context.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/剪映自动化/fixtures/invalid-cipher.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/工具/剪映自动化/学习资料/2026-10-19/经验候选回执.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/小八监看/keypool.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/小八监看/monitor.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/工具/小八监看/小八3D导演台/examples/demo.prompt.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/审美日报/2026-10-10_来源记录.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/审美日报/2026-10-11_来源记录.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_摄影师阿辉/来源清单.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-08_现实与简笔留白/来源清单.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-09_浅屿调色/来源清单.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-09_自在摇曳/来源清单.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-14_Opus5.5参考片/音频测量_每0.5秒.txt",
+      "reason": "text output outside architecture documentation allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/样本与拆解/2026-10-20_市井写实/来源清单.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/LR安装记录.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/下载记录.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/来源与获取条件.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/审美提升/资源库/Lightroom预设/2026-10-18精选/预设目录.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    },
+    {
+      "path": "shared/AI视频管线/scripts/sfx_profile_folders.json",
+      "reason": "operational/data format outside positive source-data allowlist; not read"
+    }
+  ]
+}

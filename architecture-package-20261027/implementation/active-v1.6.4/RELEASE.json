@@ -1,0 +1,110 @@
+{
+  "product": "小八 AgentOS",
+  "version": "v1.6.4",
+  "status": "verified_immutable_release",
+  "verified_date": "2026-10-20",
+  "release_origin": "v1.6.4_agy_dsh_current_only",
+  "agentos_source_manifest_sha256": "d27e2c388c6e1e3315d6e41a9486cf303726c6d2d54a85d71a1e2704ced7facd",
+  "second_brain_manifest_sha256": "de6c0386085ab9dde213cc2ca7a7c2eb212d30253da73004be36f77d303e3d8a",
+  "interface_manifest_sha256": "482dcf075616edf50bf76dc63200d07a11752a5fc1f7f269c175ad6db013c5fd",
+  "code_fingerprint": "21c9972a34e4f6cea8c8860312367939c458756c52347d17a23038f17f5e232e",
+  "database_schema_version": 7,
+  "source_files": 208,
+  "second_brain_markdown_files": 34,
+  "contents": {
+    "agentos": "Complete AgentOS source for this release",
+    "second_brain": "Single-root v1.6.4 current AGY+DSH Obsidian memory tree",
+    "interface": "Current xiaoba-agentos entrypoint and release verifier",
+    "runtime_data_included": false,
+    "credentials_included": false,
+    "generated_knowlp_index_included": false,
+    "historical_memory_included": false,
+    "media_assets_included": false
+  },
+  "tests": {
+    "count": 928,
+    "result": "passed"
+  },
+  "acceptance": {
+    "provider_priority": [
+      "Antigravity",
+      "DeepSeekHarness"
+    ],
+    "skill_registry": "content_not_in_package",
+    "knowledge_catalog": "content_not_in_package",
+    "second_brain_tree": "passed",
+    "knowlp_tree": "passed",
+    "candidate_release_binding": "passed",
+    "end_to_end_multi_agent": "passed",
+    "live_session_probe": "passed_from_acceptance_database",
+    "frozen_task_recovery": "covered_by_offline_928_suite_only",
+    "end_to_end_evidence": {
+      "task_id": "707e3c3d-a6c6-472d-b84f-4bd720eb319e",
+      "successful_agents": [
+        "agy_review",
+        "dsh_review"
+      ],
+      "minimum_successful_agents": 2,
+      "candidate_status": "audit_only",
+      "candidate_sha256": "",
+      "source_manifest_sha256": "d27e2c388c6e1e3315d6e41a9486cf303726c6d2d54a85d71a1e2704ced7facd",
+      "live_probe_agents": [
+        "agy_review",
+        "dsh_review"
+      ],
+      "database_record_sha256": "dca74dd8ba24aff5321545a275d566d5520833115f6cef76d08351395d9be6a3"
+    }
+  },
+  "final_publish_requires_human": true,
+  "known_external_issues": [],
+  "release_tier": {
+    "tier": "regular",
+    "baseline_source_manifest_sha256": "6b389ae03780bda1ec4c98efae713d5f30fa1795cf89a81a7ff3eb68b80182d0",
+    "calculated_tier": "regular",
+    "tool_sha256": "069ead187d943b6e64bb5090f5c1651d429a2c14aeb799bf019c8b256c010030",
+    "rules_sha256": "9ceec38f8c4309e2619a74668867a9923e3356db9ee849e3e1782121e6947c71",
+    "changed_paths": {
+      "patch": [
+        "README.md",
+        "SOURCE_MANIFEST.json",
+        "config/agentos.json",
+        "docs/ACCEPTANCE.md",
+        "docs/ARCHITECTURE.md",
+        "docs/COLLABORATION.md",
+        "docs/DEPLOYMENT.json",
+        "docs/GUARDRAIL_TEST_MARKS.md",
+        "docs/HISTORY_VERSIONS.json",
+        "docs/OPERATIONS.md",
+        "docs/RELEASE_SWITCH.md",
+        "docs/RELEASE_V1.6.4.md",
+        "docs/VERSIONING.md",
+        "pyproject.toml",
+        "tests/test_guardrail_marks.py",
+        "tests/test_offline_judge_cases.py"
+      ],
+      "regular": [
+        ".agents/skills/xiaoba-agentos/SKILL.md",
+        "docs/second_brain/v152_extra_nodes.json",
+        "src/xiaoba_agentos/bridge.py",
+        "src/xiaoba_agentos/cli.py",
+        "src/xiaoba_agentos/evaluation.py",
+        "src/xiaoba_agentos/evolution.py",
+        "src/xiaoba_agentos/orchestrator.py",
+        "src/xiaoba_agentos/store.py",
+        "tests/fixtures/offline_judge_cases.json",
+        "tests/guardrail_marks.json",
+        "tests/test_agy.py",
+        "tests/test_evaluation.py",
+        "tests/test_guardrails_step5.py",
+        "tests/test_orchestrator.py",
+        "tests/test_store.py"
+      ],
+      "migration": []
+    },
+    "reasons": [
+      "calculated_tier=regular，共 31 处变更",
+      "变更档位分布: patch=16, regular=15"
+    ],
+    "baseline_version": "v1.6.3"
+  }
+}

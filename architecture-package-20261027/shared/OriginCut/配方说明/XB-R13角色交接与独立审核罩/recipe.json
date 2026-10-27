@@ -1,0 +1,101 @@
+{
+  "format": "origincut-project-local-recipe",
+  "id": "XB-R13",
+  "name": "角色交接与独立审核罩",
+  "componentId": "xb-r13-agent-relay",
+  "componentSource": "origincut://v1/generator-component/xb-r13-agent-relay?sourceHash=sha256%3Af42dd00506b5cc1039027c43a12300780ce3af257ae737277ea684eba8791b10&version=1",
+  "durationSeconds": 9,
+  "referenceAsset": "origincut://v1/asset/ast_77ckai9r8mg0f1",
+  "referenceRangeSeconds": [
+    198,
+    209
+  ],
+  "previewSequence": "origincut://v1/sequence/seq_lnhuoix8j5u64o?revision=5",
+  "previewRangeSeconds": [
+    93,
+    102
+  ],
+  "status": "implemented-awaiting-user-review",
+  "cloudPublished": false,
+  "installedInDialogRecipeLibrary": false,
+  "description": "制作角色把作品交给戴眼镜的评审角色；评分气泡出现，透明罩示意独立评审上下文。",
+  "logicalSurface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "parameters": {
+    "backgroundEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "backgroundColor": {
+      "type": "string",
+      "default": "#070A0E",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "accent": {
+      "type": "string",
+      "default": "#56ABFF",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "brand": {
+      "type": "string",
+      "default": "Vincent",
+      "maxLength": 24
+    },
+    "showGuide": {
+      "type": "boolean",
+      "default": false
+    },
+    "showBrand": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "examples": [
+    "default",
+    "transparent",
+    "showcase"
+  ],
+  "bundledReferenceStills": [
+    "grid02"
+  ],
+  "placementTemplate": {
+    "op": "item.add",
+    "kind": "component",
+    "source": "origincut://v1/generator-component/xb-r13-agent-relay?sourceHash=sha256%3Af42dd00506b5cc1039027c43a12300780ce3af257ae737277ea684eba8791b10&version=1",
+    "track": "<目标视频轨URI>",
+    "at": "<十进制秒字符串>",
+    "props": {
+      "backgroundEnabled": false,
+      "showBrand": false
+    }
+  },
+  "review": {
+    "admissionErrors": 0,
+    "admissionWarnings": 0,
+    "samplesPerExample": 12,
+    "finalSequenceRevision": 5,
+    "finalSequenceSampledFrames": 36,
+    "sequenceErrors": 0,
+    "sequenceWarnings": 0,
+    "limits": "组件原生文字检查覆盖有限；R17盖章覆盖、R18交叉淡化等包络提示结合实际画面观察。",
+    "componentExamples": 3,
+    "transparentCompositeRevision": 3,
+    "transparentCompositeFrames": 45
+  },
+  "audio": "合集音效为独立轨；复用组件不会自动带入音效。已查26个音效片段的估计包络，尚未实际试听。",
+  "limitations": [
+    "本次复刻教程包装的构图与运动关系，未逐帧复制249秒原片。",
+    "卡片作品使用从用户参考视频裁出的静帧；内嵌影片未重建。",
+    "画面文字及模型名称为参考内容，不构成事实核验或当前服务能力声明。",
+    "长文案与素材布局更换后须重新看合成效果。",
+    "本地recipe.json是编排说明，未发布到对话框在线配方库。"
+  ],
+  "overlayPreviewSequence": "origincut://v1/sequence/seq_3gbt2dfurijz3b?revision=3",
+  "showcaseProps": {
+    "backgroundEnabled": true,
+    "showBrand": true
+  },
+  "usage": "放在实拍上方的视频轨；空白区域透明，卡片底板和示例图片仍为前景。内容替换与布局按本项目修改，通用双片段转场需另接时间线遮罩。"
+}

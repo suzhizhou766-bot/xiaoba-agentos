@@ -1,0 +1,13 @@
+{
+  "props": {
+    "title": "OFFLINE",
+    "subtitle": "CONNECTION LOST · RETRY 01",
+    "channel": 1,
+    "intensity": 0.96,
+    "seed": 208,
+    "showHud": true,
+    "showColorBars": false,
+    "accentLeft": "#ff8a3b",
+    "accentRight": "#8baaff"
+  }
+}

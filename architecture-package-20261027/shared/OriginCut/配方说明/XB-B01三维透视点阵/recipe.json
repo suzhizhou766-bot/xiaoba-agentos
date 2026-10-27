@@ -1,0 +1,95 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-B01",
+  "name": "3D透视点阵",
+  "version": "0.1.0",
+  "status": "implemented-awaiting-user-review",
+  "component": {
+    "id": "xb-b01-perspective-dotfield",
+    "version": 1,
+    "uri": "origincut://v1/generator-component/xb-b01-perspective-dotfield?sourceHash=sha256%3A39086058adc9eb29973a457ffddb67310158654c0f4978e5af8510826517fae9&version=1",
+    "propsSchemaPath": "components/xb-b01-perspective-dotfield/component.json#/propsSchema",
+    "examples": [
+      {
+        "id": "default",
+        "path": "examples/default.json"
+      },
+      {
+        "id": "reference-code",
+        "path": "examples/reference-code.json"
+      },
+      {
+        "id": "dark-dots",
+        "path": "examples/dark-dots.json"
+      },
+      {
+        "id": "transparent",
+        "path": "examples/transparent.json"
+      }
+    ]
+  },
+  "canvas": [
+    1920,
+    1080
+  ],
+  "componentDurationSeconds": 12,
+  "defaultPointCount": 1000,
+  "renderer": "OriginCut-hosted Three.js 0.181.2 / WebGL2",
+  "construction": "one BufferGeometry, one Points, circular ShaderMaterial point sprites",
+  "cameraCycleSeconds": 12,
+  "sampleSequence": "origincut://v1/sequence/seq_a0oyh4zgsjclos?revision=2",
+  "sampleDurationSeconds": 24,
+  "sampleInstances": [
+    {
+      "rangeSeconds": [
+        0,
+        12
+      ],
+      "props": {
+        "pointColor": "#151515",
+        "opacity": 0.8,
+        "pointSize": 0.18,
+        "cameraHeight": 7
+      }
+    },
+    {
+      "rangeSeconds": [
+        12,
+        24
+      ],
+      "props": {
+        "pointColor": "#4A5568",
+        "opacity": 0.6,
+        "pointSize": 0.08,
+        "drift": 0,
+        "backgroundEnabled": false
+      }
+    }
+  ],
+  "verification": {
+    "wholeSequenceObservation": "look_mvkd2dbf_7",
+    "samples": 16,
+    "errors": 0,
+    "warnings": 0,
+    "notices": "Edge coverage is intentional; no text in this background",
+    "alphaCompositeObservation": "look_mvkd11x2_6",
+    "admissionExamples": 4,
+    "admissionSamplesPerExample": 12,
+    "exportVerified": false,
+    "realTimeFrameRateBenchmarked": false,
+    "referenceVideoMatchVerified": false,
+    "userAdopted": false
+  },
+  "cloudPublished": false,
+  "filesSha256": {
+    "components/xb-b01-perspective-dotfield/component.json": "731c43cc021b87a13c67045d533923784a49822f79f73adfd6388916f8cecd14",
+    "components/xb-b01-perspective-dotfield/examples/dark-dots.json": "5d95c636c2c594ca47daa46b00cc74bd9508b0c490d832e47785fe998270b34c",
+    "components/xb-b01-perspective-dotfield/examples/default.json": "a60c83ae9f67080d17de0f979b80d296b04afa99b64c850736634187bc45e993",
+    "components/xb-b01-perspective-dotfield/examples/reference-code.json": "c391b15ef247eb3131a0538f585df123d9305ef1fbaf9f6619bc6dbedc5e15ec",
+    "components/xb-b01-perspective-dotfield/examples/transparent.json": "bb1ca6e72227b318d335178bcc07aa8dd70fdef8615366ef76def95981f9627d",
+    "components/xb-b01-perspective-dotfield/jsconfig.json": "d696d4b10da7a4270b40ebd019550015e465f4f4fbcf4ff4cb285496da8a3c6c",
+    "components/xb-b01-perspective-dotfield/locales/zh-CN.json": "6d3ae6ad20776c33c02c18eb627ef8bf3d8473d98360ea9a535e4a33cc9c82da",
+    "components/xb-b01-perspective-dotfield/src/main.js": "ae690885855cb86d7fd8df64594ee0a541c2c6f49fdecfff76afdd5674512e00"
+  }
+}

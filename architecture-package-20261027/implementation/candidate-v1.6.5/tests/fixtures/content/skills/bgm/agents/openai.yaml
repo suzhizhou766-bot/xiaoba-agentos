@@ -1,0 +1,7 @@
+interface:
+  display_name: "小八 BGM 配乐系统"
+  short_description: "剧情配乐、生成提示词、SFX、混音与音频验收"
+  brand_color: "#256D85"
+  default_prompt: "使用 $bgm 把这段剧情或视频需求编译成可生成、可剪辑、可验收的 BGM 方案。"
+policy:
+  allow_implicit_invocation: true

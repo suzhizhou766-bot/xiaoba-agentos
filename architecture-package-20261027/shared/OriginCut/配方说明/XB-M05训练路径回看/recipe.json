@@ -1,0 +1,129 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-M05",
+  "name": "训练路径回看",
+  "version": "0.1.0",
+  "status": "implemented-sample-awaiting-user-review",
+  "component": {
+    "id": "xb-m05-training-replay",
+    "version": 1,
+    "uri": "origincut://v1/generator-component/xb-m05-training-replay?sourceHash=sha256%3Afcd7d285d026c8ae990b053034d98150fd0813230e69df7209ec73e34e995d57&version=1",
+    "propsSchemaPath": "components/xb-m05-training-replay/component.json#/propsSchema",
+    "examples": [
+      {
+        "id": "default",
+        "path": "examples/default.json"
+      },
+      {
+        "id": "alternate",
+        "path": "examples/alternate.json"
+      }
+    ]
+  },
+  "canvas": [
+    1920,
+    1080
+  ],
+  "sourceClockTicksPerSecond": 1000000,
+  "sequenceClockTicksPerSecond": 720000,
+  "sequence": "origincut://v1/sequence/seq_496kznv7uewnwq?revision=3",
+  "durationSeconds": 14,
+  "reel": {
+    "sequence": "origincut://v1/sequence/seq_mpuvhb9c2dll4i?revision=2",
+    "rangeSeconds": [
+      44,
+      58
+    ]
+  },
+  "verification": {
+    "observation": "look_mvjr2wyq_33",
+    "samples": 20,
+    "audioAudition": false,
+    "exportVerified": false,
+    "userAdopted": false
+  },
+  "filesSha256": {
+    "components/xb-m05-training-replay/component.json": "498fbd94c14cc2083f630cfbf7ec63c38fe25d76bd96899b1c94e16278bfb8b3",
+    "components/xb-m05-training-replay/examples/alternate.json": "6ebc146f31da98f84a943a7d31a84418669077e6705885e5aa418a3f1e847846",
+    "components/xb-m05-training-replay/examples/default.json": "a60c83ae9f67080d17de0f979b80d296b04afa99b64c850736634187bc45e993",
+    "components/xb-m05-training-replay/jsconfig.json": "f75db8fdfec438b079b75e06dcb75aed7aadd12bcc4a0cbe5df74f8b7154976f",
+    "components/xb-m05-training-replay/locales/zh-CN.json": "52029d6394ec80792ca199a225db94122708ae0f2d7450a850044c906b2d64e3",
+    "components/xb-m05-training-replay/src/design.js": "49ce7d851c737d37f4453a428e776d27f15b708c4cb53e511c1f1689e2cfb21d",
+    "components/xb-m05-training-replay/src/main.js": "6ac2cb92beaacfb98079583bb49d41d2deb2f25fc265a0f1a340ddb2e058c052"
+  },
+  "inputs": {
+    "kind": "synthetic-video-and-known-path",
+    "realFootage": false,
+    "asset": "origincut://v1/asset/ast_pb47dflw9u5lga",
+    "streamIndex": 0,
+    "sourceFps": [
+      30,
+      1
+    ],
+    "sourceTimeBase": [
+      1,
+      30000
+    ],
+    "sourceRangePts": [
+      0,
+      72000
+    ],
+    "lastFramePts": 71000,
+    "sourcePathSpec": "素材/组件演示/模拟训练路径.json",
+    "pathCoordinateRegionSourcePixels": [
+      64,
+      44,
+      832,
+      452
+    ],
+    "nativeDisplayRect": [
+      112,
+      244,
+      1320,
+      742.5
+    ]
+  },
+  "timing": {
+    "normal": [
+      0,
+      2.4
+    ],
+    "holdFirst": [
+      2.4,
+      3
+    ],
+    "slow": [
+      3,
+      9
+    ],
+    "holdSlow": [
+      9,
+      9.6
+    ],
+    "cleanReplay": [
+      9.6,
+      12
+    ],
+    "holdFinal": [
+      12,
+      14
+    ],
+    "sourceFrameRule": "min(71,floor(sourceSeconds*30))",
+    "rateAdjustment": {
+      "slowEnd": "3+2.4/r",
+      "cleanAt": "3.6+2.4/r",
+      "cleanEnd": "6+2.4/r",
+      "lastHoldDuration": "8-2.4/r"
+    }
+  },
+  "sound": {
+    "cueStarts": [
+      2.92,
+      9.52
+    ],
+    "gain": 0.35,
+    "sourceMarkerSeconds": 0.08
+  },
+  "pixelValidation": "制作记录/动效组件补齐-20261023/模拟源帧核对.json"
+}

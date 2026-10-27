@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "index",
+  "name": "KnowLP 资产与事实索引",
+  "purpose": "定位第二大脑、技能和外部视觉资料，并把命中返回权威原文核验。",
+  "authority": false,
+  "implementation_status": "partial",
+  "implementation_paths": [
+    "/Users/suzhizhou/Documents/小八AgentOS/scripts/build_knowlp_index.py"
+  ],
+  "external_runtime_paths": [
+    "${KNOWLP_ROOT}/runtime/knowlp_mcp.py",
+    "/Users/suzhizhou/Documents/小八AgentOS/.runtime/knowlp/dual_graph.json",
+    "/Users/suzhizhou/Documents/小八AgentOS/.runtime/knowlp/meta_index.json"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "authority-search",
+    "note-read",
+    "skill-search",
+    "index-refresh"
+  ],
+  "permissions": {
+    "read": true,
+    "write": "indexes-and-explicit-feedback-only",
+    "network": "pixelrag-labeled-external"
+  },
+  "health_checks": [
+    "build_knowlp_index.py --verify",
+    "xiaoba doctor --json: memory_probe"
+  ],
+  "required_paths": [
+    "第二大脑/00_小八AgentOS.md"
+  ],
+  "interfaces": [
+    "xiaoba memory-retrieve",
+    "xiaoba skill-match",
+    "xiaoba knowledge-retrieve",
+    "scripts/build_knowlp_index.py --vault … --graph-dir … [--verify|--diagnose]"
+  ],
+  "engines": [
+    "KnowLP structural tree (v1.4)"
+  ],
+  "retired": [
+    "Chroma"
+  ],
+  "writes": [
+    "AgentOS .runtime/knowlp 下的索引文件；不得直接改写第二大脑"
+  ],
+  "dependencies": [
+    "brain"
+  ],
+  "failure_policy": "索引失败时报告 KnowLP 不可用；可按已知绝对路径读取原文，但不得假装检索成功。"
+}

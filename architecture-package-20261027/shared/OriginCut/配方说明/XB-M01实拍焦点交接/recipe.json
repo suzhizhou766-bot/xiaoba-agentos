@@ -1,0 +1,97 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-M01",
+  "name": "实拍焦点交接",
+  "version": "0.1.0",
+  "status": "implemented-sample-awaiting-user-review",
+  "component": {
+    "id": "xb-m01-focus-handoff",
+    "version": 1,
+    "sourceHash": "sha256:8eb22c5bab96ae352e036d3454f63f6c9c622003890450e50dbbbd061d9e364d",
+    "propsSchemaPath": "components/xb-m01-focus-handoff/component.json#/propsSchema",
+    "defaultExample": "components/xb-m01-focus-handoff/examples/default.json",
+    "alternateExample": "components/xb-m01-focus-handoff/examples/cool-short.json"
+  },
+  "sampleSequence": "origincut://v1/sequence/seq_d2jm7eorz0rrwz?revision=3",
+  "canvas": [
+    1920,
+    1080
+  ],
+  "durationSeconds": "10",
+  "footage": {
+    "asset": "origincut://v1/asset/ast_nzerjrpeq39ipy",
+    "streamIndex": 0,
+    "timeBase": [
+      1,
+      30000
+    ],
+    "segments": [
+      {
+        "kind": "play",
+        "sourcePts": [
+          30030,
+          66066
+        ],
+        "sequenceSeconds": [
+          "0",
+          "1.2"
+        ]
+      },
+      {
+        "kind": "hold",
+        "sourcePts": 66066,
+        "sequenceSeconds": [
+          "1.2",
+          "9.2"
+        ]
+      },
+      {
+        "kind": "play",
+        "sourcePts": [
+          66066,
+          90090
+        ],
+        "sequenceSeconds": [
+          "9.2",
+          "10"
+        ]
+      }
+    ]
+  },
+  "cues": [
+    {
+      "event": "expand",
+      "sequenceSeconds": "1.8",
+      "soundAtSeconds": "1.72",
+      "asset": "origincut://v1/asset/ast_nbhygtth2zyvtx",
+      "gain": 0.6
+    },
+    {
+      "event": "return",
+      "sequenceSeconds": "7.6",
+      "soundAtSeconds": "7.52",
+      "asset": "origincut://v1/asset/ast_r7crt47im21hqm",
+      "gain": 0.6
+    }
+  ],
+  "dependencies": [
+    "OriginCut origin-scene API 2",
+    "application font font_noto_sans_sc",
+    "component assets/focus.png",
+    "matching native-video hold frame"
+  ],
+  "verification": {
+    "wholeSequenceObservation": "look_mvjorc4e_7",
+    "samples": 20,
+    "audioListening": false,
+    "exportVerified": false,
+    "userAdopted": false
+  },
+  "filesSha256": {
+    "components/xb-m01-focus-handoff/src/main.js": "6d2f9f2abf94226f118ef57df35f4f3ce034f2d845250364549a7c6ad57af401",
+    "components/xb-m01-focus-handoff/component.json": "0fb53c95453e11f0b999608831b0ce30a4e92e47f652a0572c24dca94f6bc354",
+    "components/xb-m01-focus-handoff/assets/focus.png": "3a35b6167d7f6ef4b6f31ef9a3e94c63891ea977831d27482aba442001fc328c",
+    "audio-components/xb-m01-soft-handoff/src/main.ts": "91a3df60097c089bdd03d33426ac4e31c248d716617db557d8ef8984c6c2fcec"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "components.rcp_signal_error-v0-2-1--signal-error.label": "ORIGIN CUT / Signal Error",
+  "components.rcp_signal_error-v0-2-1--signal-error.description": "Four-second condensed type bumper: red/cyan channels separate during four brief horizontal tracking failures, then recover. Includes a representative default, a low-intensity variant and an alternate title."
+}

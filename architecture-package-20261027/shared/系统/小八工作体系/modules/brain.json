@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "brain",
+  "name": "第二大脑核心",
+  "purpose": "提供唯一权威事实链、当前上下文和长期裁决。",
+  "authority": true,
+  "required_paths": [
+    "第二大脑/00_小八AgentOS.md",
+    "第二大脑/10_治理与裁决/运行宪法.md",
+    "第二大脑/20_能力与技能.md",
+    "第二大脑/60_当前上下文/系统当前态.md",
+    "第二大脑/70_复利规则/审核入口.md"
+  ],
+  "reads": [
+    "第二大脑/**/*.md"
+  ],
+  "writes": [
+    "经验与交付记录经候选流程、用户两次裁决后由 AgentOS 发布；用户明确指定的小修正可直接改原文并重建索引"
+  ],
+  "implementation_status": "implemented",
+  "implementation_paths": [
+    "${ROOT}/第二大脑"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "authority-read",
+    "context-read",
+    "confirmed-write"
+  ],
+  "permissions": {
+    "read": true,
+    "write": "confirmed-only",
+    "network": false
+  },
+  "health_checks": [
+    "required_paths",
+    "authority-order"
+  ],
+  "dependencies": [],
+  "failure_policy": "不可用时停止事实型任务，不得用索引摘要、聊天记忆或服务状态替代。目录名 第二大脑 是路径兼容标识，不含版本号，不得改名。",
+  "interfaces": [
+    "xiaoba memory-retrieve",
+    "xiaoba skill-match",
+    "xiaoba knowledge-retrieve",
+    "xiaoba memory-candidate-create"
+  ]
+}

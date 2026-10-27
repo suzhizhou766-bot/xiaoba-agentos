@@ -1,0 +1,7 @@
+{
+  "kind": "origin-procedural-audio",
+  "apiVersion": 2,
+  "componentId": "xb-m01-soft-handoff",
+  "runtimeIdentity": "2538a148b622c63e1dc191c708d0b8133f1aaa9474b50db4b5f78fb4b5b57d58",
+  "entry": "src/main.ts"
+}

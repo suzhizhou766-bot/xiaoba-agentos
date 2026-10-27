@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "sfx",
+  "name": "本地 SFX 资产与复用系统",
+  "purpose": "管理音效指纹、语义匹配、项目亲和度、使用反馈和精选晋级。",
+  "authority": false,
+  "implementation_status": "implemented",
+  "implementation_paths": ["${ROOT}/AI视频管线/scripts/sfx_match.py", "${ROOT}/AI视频管线/scripts/sfx_usage_log.py", "${ROOT}/AI视频管线/scripts/sfx_catalog.py", "${ROOT}/AI视频管线/scripts/sfx_register.py", "${ROOT}/AI视频管线/scripts/sfx_server.py"],
+  "data_contract_version": 1,
+  "capabilities": ["catalog", "match", "usage-log", "feedback", "reuse-rating"],
+  "permissions": {"read": true, "write": "usage-and-explicit-feedback", "network": "loopback-only"},
+  "health_checks": ["9878/readyz", "catalog-readable"],
+  "required_paths": [
+    "AI视频管线/音效指纹库_v3.csv",
+    "AI视频管线/scripts/sfx_match.py",
+    "AI视频管线/scripts/sfx_usage_log.py",
+    "AI视频管线/scripts/sfx_catalog.py",
+    "音效素材库"
+  ],
+  "interfaces": ["http://127.0.0.1:9878/match", "http://127.0.0.1:9878/feedback", "scripts/sfx_register.py"],
+  "ratings": ["未评", "常用", "精选候选", "精选", "冷备"],
+  "writes": ["使用日志、素材索引、候选清单、项目专用音效 sidecar"],
+  "dependencies": ["learning"],
+  "failure_policy": "精选只在语义相符候选中加权；自动化不得移动或删除素材。"
+}

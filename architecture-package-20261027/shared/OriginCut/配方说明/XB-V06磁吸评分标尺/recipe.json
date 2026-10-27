@@ -1,0 +1,105 @@
+{
+  "format": "origincut-project-local-recipe",
+  "id": "XB-V06",
+  "name": "磁吸评分标尺",
+  "status": "implemented-awaiting-user-review",
+  "cloudPublished": false,
+  "installedInDialogRecipeLibrary": false,
+  "sourceReference": "用户在对话中提供的 HTML/CSS/JS；本条是原生适配，未做原视频逐帧比对。",
+  "componentId": "xb-v06-score-ruler",
+  "componentSource": "origincut://v1/generator-component/xb-v06-score-ruler?sourceHash=sha256%3A7761f4d2d47527dedc1ad32035858f3883a9b2b8fa9d32fef61ac9dda0fce76d&version=1",
+  "durationSeconds": 8,
+  "logicalSurface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "previewSequence": "origincut://v1/sequence/seq_2p8trg484mzlh0?revision=3",
+  "previewRangeSeconds": [
+    40,
+    48
+  ],
+  "visual": "数字从标尺起点 5.00 运行至 7.81，指针与数字使用同一条缓动曲线。",
+  "parameters": {
+    "label": {
+      "type": "string",
+      "default": "评审 Agent 打分水平",
+      "maxLength": 50
+    },
+    "targetScore": {
+      "type": "number",
+      "default": 7.81,
+      "minimum": 5,
+      "maximum": 10
+    },
+    "travelSeconds": {
+      "type": "number",
+      "default": 1.5,
+      "minimum": 0.6,
+      "maximum": 3
+    }
+  },
+  "commonParameters": {
+    "backgroundEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "backgroundColor": {
+      "type": "string",
+      "default": "#07090E",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "gridEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "gridTimeOffset": {
+      "type": "number",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3600
+    },
+    "showChapter": {
+      "type": "boolean",
+      "default": true
+    },
+    "accent": {
+      "type": "string",
+      "default": "#3B82F6",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "entrySeconds": {
+      "type": "number",
+      "default": 0.55,
+      "minimum": 0.15,
+      "maximum": 1.5
+    },
+    "exitSeconds": {
+      "type": "number",
+      "default": 0.4,
+      "minimum": 0.15,
+      "maximum": 1.5
+    }
+  },
+  "examples": {
+    "default": "components/xb-v06-score-ruler/examples/default.json",
+    "transparent": "components/xb-v06-score-ruler/examples/transparent.json"
+  },
+  "placementTemplate": {
+    "op": "item.add",
+    "kind": "component",
+    "source": "origincut://v1/generator-component/xb-v06-score-ruler?sourceHash=sha256%3A7761f4d2d47527dedc1ad32035858f3883a9b2b8fa9d32fef61ac9dda0fce76d&version=1",
+    "track": "<目标序列的视频轨 URI>",
+    "at": "<放置时间，十进制秒字符串>",
+    "props": {}
+  },
+  "transparentProps": {
+    "backgroundEnabled": false,
+    "showChapter": false
+  },
+  "notes": [
+    "示例时钟为8秒；裁短会截断动作，压缩时间需同步调整节奏。",
+    "透明底版本关闭背景及章节名；音效是总览的独立音轨，不内嵌到组件。",
+    "更长文案需要重新排版并使用 look 检查。",
+    "项目本地配方说明不等于已发布到在线配方库。"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "aesthetics",
+  "name": "小八审美提升模块",
+  "purpose": "把审美手册、风格方法与用户偏好编译成任何 Agent 都能定位的指路入口，服务图像、视频、网页与排版类任务的审美判断。",
+  "authority": false,
+  "implementation_status": "implemented",
+  "implementation_paths": [
+    "${ROOT}/skills/aesthetics/SKILL.md"
+  ],
+  "data_contract_version": 1,
+  "capabilities": [
+    "handbook-routing",
+    "style-and-preference-lookup",
+    "learning-candidate"
+  ],
+  "permissions": {
+    "read": true,
+    "write": "aesthetics-candidate-only",
+    "network": "none"
+  },
+  "health_checks": [
+    "skill-entry",
+    "handbook-entry"
+  ],
+  "required_paths": [
+    "skills/aesthetics/SKILL.md"
+  ],
+  "interfaces": [
+    "skill:aesthetics",
+    "审美提升/审美手册.md"
+  ],
+  "ratings": [
+    "PASS",
+    "PASS WITH FIXES",
+    "REBUILD",
+    "FAIL"
+  ],
+  "writes": [
+    "审美提升/ 下的样本、日报与规则候选；长期经验走候选流程，不直接写第二大脑"
+  ],
+  "dependencies": [
+    "brain",
+    "learning"
+  ],
+  "failure_policy": "手册或证据不可用时说明缺口并保留任务，不用猜测的审美判断代替手册。"
+}

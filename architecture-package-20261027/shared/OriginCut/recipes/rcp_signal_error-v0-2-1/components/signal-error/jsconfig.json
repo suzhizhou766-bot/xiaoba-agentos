@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "paths": {
+      "origin-scene": [
+        "../../../../.origincut/sdk/components/rcp_signal_error-v0-2-1--signal-error/origin-scene.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.js",
+    "src/**/*.ts"
+  ]
+}

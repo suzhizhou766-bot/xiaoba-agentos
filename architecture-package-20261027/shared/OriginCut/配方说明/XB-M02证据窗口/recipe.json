@@ -1,0 +1,111 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-M02",
+  "name": "证据窗口",
+  "version": "0.1.0",
+  "status": "implemented-sample-awaiting-user-review",
+  "component": {
+    "id": "xb-m02-evidence-window",
+    "version": 1,
+    "sourceHash": "sha256:40e564b85df1cbaaedcbcd3e132a3d9296269c7d82a102cfda64f768beae8302",
+    "propsSchemaPath": "components/xb-m02-evidence-window/component.json#/propsSchema",
+    "examples": [
+      "examples/default.json",
+      "examples/cool-long.json"
+    ]
+  },
+  "sampleSequence": "origincut://v1/sequence/seq_av8w6hwvadslfp?revision=2",
+  "canvas": [
+    1920,
+    1080
+  ],
+  "durationSeconds": "12",
+  "source": {
+    "kind": "image-from-video",
+    "asset": "origincut://v1/asset/ast_nzerjrpeq39ipy",
+    "streamIndex": 0,
+    "pts": 66066,
+    "timeBase": [
+      1,
+      30000
+    ],
+    "sourceSeconds": "2.2022",
+    "dimensions": [
+      3840,
+      2160
+    ],
+    "componentImage": "components/xb-m02-evidence-window/assets/source.png",
+    "contextCrop": false
+  },
+  "claim": {
+    "type": "visible-observation",
+    "text": "此帧可见\n弧形转角",
+    "qualifier": "仅描述画面中可见的轮廓",
+    "evidenceRegionDesignPixels": [
+      1470,
+      270,
+      240,
+      240
+    ],
+    "userConfirmed": false
+  },
+  "timing": {
+    "sourceEnter": [
+      "1.1",
+      "2.3"
+    ],
+    "mark": [
+      "2.55",
+      "3.2"
+    ],
+    "read": [
+      "3.2",
+      "6.2"
+    ],
+    "conclusion": [
+      "6.2",
+      "6.9"
+    ],
+    "sourceToFootnote": [
+      "9.1",
+      "10.25"
+    ],
+    "conclusionToFinal": [
+      "10.25",
+      "11.05"
+    ],
+    "finalHold": [
+      "11.05",
+      "12"
+    ],
+    "adjustment": "conclusionAt=3.2+readSeconds; soundAt=conclusionAt-0.08"
+  },
+  "sound": [
+    {
+      "asset": "origincut://v1/asset/ast_nbhygtth2zyvtx",
+      "atSeconds": "1.02",
+      "gain": 0.45
+    },
+    {
+      "asset": "origincut://v1/asset/ast_r7crt47im21hqm",
+      "atSeconds": "6.12",
+      "gain": 0.3
+    }
+  ],
+  "verification": {
+    "wholeSequenceObservation": "look_mvjpnqp7_14",
+    "samples": 20,
+    "finalDetailedFrame": "look_mvjpnsm0_15",
+    "audioEnvelopeMaximumDbfs": -15.936,
+    "audioListening": false,
+    "exportVerified": false,
+    "userAdopted": false
+  },
+  "filesSha256": {
+    "components/xb-m02-evidence-window/src/main.js": "532a5b88c306b079bc366f426f53001f6fc1f71bca9fc84f99f04c7166e2a89d",
+    "components/xb-m02-evidence-window/component.json": "612cc68d74b568de69cece163e075012d82834e18408e5e51694755e7b43b293",
+    "components/xb-m02-evidence-window/assets/source.png": "3a35b6167d7f6ef4b6f31ef9a3e94c63891ea977831d27482aba442001fc328c",
+    "audio-components/xb-m01-soft-handoff/src/main.ts": "91a3df60097c089bdd03d33426ac4e31c248d716617db557d8ef8984c6c2fcec"
+  }
+}

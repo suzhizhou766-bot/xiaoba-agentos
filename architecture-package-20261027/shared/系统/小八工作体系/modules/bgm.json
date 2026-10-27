@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "bgm",
+  "name": "小八 BGM 配乐系统",
+  "purpose": "把剧情与剪辑节奏编译为可生成、可剪辑、可验收的音乐设计。",
+  "authority": false,
+  "implementation_status": "implemented",
+  "implementation_paths": ["${ROOT}/skills/bgm/SKILL.md", "${ROOT}/skills/bgm/references/composition_framework.md", "${ROOT}/skills/bgm/references/story_scoring.md", "${ROOT}/skills/bgm/references/audio_acceptance.md"],
+  "data_contract_version": 1,
+  "capabilities": ["cue-design", "prompt-design", "audio-qc", "learning-candidate"],
+  "permissions": {"read": true, "write": "project-and-candidate-only", "network": "user-confirmed-browser"},
+  "health_checks": ["reference-files", "audio-qc-entry"],
+  "required_paths": [
+    "skills/bgm/SKILL.md",
+    "skills/bgm/references/composition_framework.md",
+    "skills/bgm/references/story_scoring.md",
+    "skills/bgm/references/audio_acceptance.md"
+  ],
+  "interfaces": ["skill:bgm", "Chrome:ElevenLabs Music", "scripts/audio_qc.py"],
+  "ratings": ["PASS", "PASS WITH FIXES", "REBUILD", "FAIL"],
+  "writes": ["项目 Cue Card、提示词、音频验收和学习候选；不自动消费积分"],
+  "dependencies": ["brain", "sfx", "learning"],
+  "failure_policy": "生成器不可用时保留设计和错误类别，不自动转投其它平台。"
+}

@@ -1,0 +1,108 @@
+{
+  "format": "origincut-local-authoring-notes",
+  "formatVersion": 1,
+  "id": "XB-M04",
+  "name": "同位对照",
+  "version": "0.1.0",
+  "status": "implemented-sample-awaiting-user-review",
+  "component": {
+    "id": "xb-m04-aligned-compare",
+    "version": 1,
+    "uri": "origincut://v1/generator-component/xb-m04-aligned-compare?sourceHash=sha256%3A52c60fbbddeb0de53bd1f6dfabaed96ee4fdce162a9671e7bf0dedcdfaf9eddc&version=1",
+    "propsSchemaPath": "components/xb-m04-aligned-compare/component.json#/propsSchema",
+    "examples": [
+      {
+        "id": "default",
+        "path": "examples/default.json"
+      },
+      {
+        "id": "alternate",
+        "path": "examples/alternate.json"
+      }
+    ]
+  },
+  "canvas": [
+    1920,
+    1080
+  ],
+  "sourceClockTicksPerSecond": 1000000,
+  "sequenceClockTicksPerSecond": 720000,
+  "sequence": "origincut://v1/sequence/seq_gouf4iut2dle7n?revision=2",
+  "durationSeconds": 10,
+  "reel": {
+    "sequence": "origincut://v1/sequence/seq_mpuvhb9c2dll4i?revision=2",
+    "rangeSeconds": [
+      34,
+      44
+    ]
+  },
+  "verification": {
+    "observation": "look_mvjqwar4_27",
+    "samples": 16,
+    "audioAudition": false,
+    "exportVerified": false,
+    "userAdopted": false
+  },
+  "filesSha256": {
+    "components/xb-m04-aligned-compare/assets/source.png": "3a35b6167d7f6ef4b6f31ef9a3e94c63891ea977831d27482aba442001fc328c",
+    "components/xb-m04-aligned-compare/component.json": "defa145208a4d78168c94a5c2c7c6bec7a958c60fbf56226fc3025097f5579e1",
+    "components/xb-m04-aligned-compare/examples/alternate.json": "03d5a331c7abfc6d84a9586b1b482993fb8f7330e4ae2d48b0b7236e7fb7c633",
+    "components/xb-m04-aligned-compare/examples/default.json": "a60c83ae9f67080d17de0f979b80d296b04afa99b64c850736634187bc45e993",
+    "components/xb-m04-aligned-compare/jsconfig.json": "e208c403ed283f6f9110a7f42be02a5b87662365f8e7300347524be18d86b920",
+    "components/xb-m04-aligned-compare/locales/zh-CN.json": "213319d005d9b4aed8c18046af7fefb031538d2f47558fd2415801d743dc3b06",
+    "components/xb-m04-aligned-compare/src/design.js": "49ce7d851c737d37f4453a428e776d27f15b708c4cb53e511c1f1689e2cfb21d",
+    "components/xb-m04-aligned-compare/src/main.js": "0a2fd90109dba4dfdf98f5813e833d0943619c28b77de3d433a971432437bfed"
+  },
+  "inputs": {
+    "kind": "one-source-two-display-versions",
+    "frameSourceAsset": "origincut://v1/asset/ast_nzerjrpeq39ipy",
+    "sourcePts": 66066,
+    "sourceTimeBase": [
+      1,
+      30000
+    ],
+    "sourceDimensions": [
+      3840,
+      2160
+    ],
+    "displayRect": [
+      320,
+      220,
+      1280,
+      720
+    ],
+    "BTransform": "Canvas brightness(displayGain); not EV",
+    "defaultDisplayGain": 1.12
+  },
+  "timing": {
+    "commonReference": [
+      0,
+      1
+    ],
+    "ARead": [
+      1,
+      3
+    ],
+    "BRead": [
+      3,
+      5
+    ],
+    "wipe": [
+      5,
+      8
+    ],
+    "hold": [
+      8,
+      10
+    ]
+  },
+  "sound": {
+    "cueStarts": [
+      0.92,
+      2.92,
+      4.92
+    ],
+    "gain": 0.3,
+    "sourceMarkerSeconds": 0.08
+  }
+}

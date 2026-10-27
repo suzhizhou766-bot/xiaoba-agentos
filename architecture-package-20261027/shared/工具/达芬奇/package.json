@@ -1,0 +1,74 @@
+{
+  "name": "davinci-resolve-mcp",
+  "version": "4.10.6",
+  "description": "NPM bootstrapper for the DaVinci Resolve MCP Server.",
+  "license": "MIT",
+  "author": "Samuel Gursky <samgursky@gmail.com>",
+  "homepage": "https://github.com/samuelgursky/davinci-resolve-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelgursky/davinci-resolve-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samuelgursky/davinci-resolve-mcp/issues"
+  },
+  "type": "module",
+  "bin": {
+    "davinci-resolve-mcp": "./bin/davinci-resolve-mcp.mjs",
+    "davinci-resolve-advanced-mcp": "./bin/davinci-resolve-advanced-mcp.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "adm-zip": "^0.6.0",
+    "fast-xml-parser": "^5.11.1",
+    "fzstd": "^0.1.1",
+    "jszip": "^3.10.1",
+    "zod": "^4.5.4",
+    "zstd-codec": "^0.1.5"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.10.0",
+    "js-yaml": "^4.3.2",
+    "pg": "^8.23.0",
+    "sharp": "^0.35.4"
+  },
+  "files": [
+    "bin/",
+    "src/**/*.py",
+    "resolve-advanced/server/**/*.mjs",
+    "resolve-advanced/server/**/*.py",
+    "resolve-advanced/vendor/**",
+    "!resolve-advanced/vendor/conform-qc/__fixtures__/**",
+    "resolve-advanced/package.json",
+    "resolve-advanced/README.md",
+    "docs/**/*.md",
+    "docs/reference/resolve_scripting_api.txt",
+    "examples/**/*.md",
+    "scripts/**/*.py",
+    "install.py",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md",
+    "AGENTS.md",
+    "CLAUDE.md"
+  ],
+  "scripts": {
+    "smoke": "node bin/davinci-resolve-mcp.mjs --help && node bin/davinci-resolve-mcp.mjs --version",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "davinci-resolve",
+    "resolve",
+    "mcp",
+    "model-context-protocol",
+    "video-editing",
+    "post-production"
+  ],
+  "engines": {
+    "node": ">=20.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

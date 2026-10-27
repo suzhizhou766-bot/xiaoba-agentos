@@ -1,0 +1,201 @@
+{
+  "format": "origincut-project-local-recipe",
+  "id": "XB-V09",
+  "name": "磨砂卡片三维拆解",
+  "componentId": "xb-v09-frosted-explode",
+  "componentSource": "origincut://v1/generator-component/xb-v09-frosted-explode?sourceHash=sha256%3Ae5a6e428768d53d9bcfcccef8a2c82999474617f558fd3f8306bf722ac7a7a7a&version=1",
+  "durationSeconds": 10,
+  "previewSequence": "origincut://v1/sequence/seq_eh7bdj8nemn2ra?revision=3",
+  "previewViews": [
+    {
+      "rangeSeconds": [
+        0,
+        10
+      ],
+      "name": "参考布局｜合拢—展开—重组",
+      "props": {}
+    },
+    {
+      "rangeSeconds": [
+        10,
+        20
+      ],
+      "name": "中层波形检视",
+      "props": {
+        "mode": "open",
+        "frontEnabled": false
+      }
+    }
+  ],
+  "status": "implemented-awaiting-user-review",
+  "cloudPublished": false,
+  "installedInDialogRecipeLibrary": false,
+  "reference": "用户在对话中提供的科技风动效复刻 Demo HTML/CSS/JS，未提供原始视频。",
+  "logicalSurface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "parameters": {
+    "title": {
+      "type": "string",
+      "default": "Claude Opus 5.5",
+      "maxLength": 28
+    },
+    "subtitle": {
+      "type": "string",
+      "default": "纯代码生成动效 · 多维度图层拆解",
+      "maxLength": 30
+    },
+    "layerLabels": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "default": "",
+        "maxLength": 26
+      },
+      "default": [
+        "01 / bg.layer",
+        "02 / timeline.data",
+        "03 / focus.ui"
+      ]
+    },
+    "accent": {
+      "type": "string",
+      "default": "#60A5FA",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "backgroundEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "backgroundColor": {
+      "type": "string",
+      "default": "#07090E",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "gridEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "cycle",
+        "open",
+        "closed"
+      ],
+      "default": "cycle"
+    },
+    "angleY": {
+      "type": "number",
+      "default": -28,
+      "minimum": -38,
+      "maximum": -15
+    },
+    "angleX": {
+      "type": "number",
+      "default": 14,
+      "minimum": 5,
+      "maximum": 20
+    },
+    "depthScale": {
+      "type": "number",
+      "default": 1,
+      "minimum": 0.6,
+      "maximum": 1.5
+    },
+    "frostBlur": {
+      "type": "number",
+      "default": 12,
+      "minimum": 0,
+      "maximum": 16
+    },
+    "waveSpeed": {
+      "type": "number",
+      "default": 1,
+      "minimum": 0.4,
+      "maximum": 2
+    },
+    "frontEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "showStageLabel": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "construction": {
+    "geometry": "Three PerspectiveCamera and shared per-layer world transforms; perspective-projected rounded contours and glyph-local tangent transforms",
+    "paint": "Host Canvas2D, one current-frame composite, clipped same-canvas Gaussian blur of already-painted lower planes",
+    "timing": "Source-time CSS cubic-bezier(0.16,1,0.3,1); no timers or browser DOM",
+    "frostScope": "Only lower content inside the component; external timeline footage is not sampled",
+    "font": "font_noto_sans_sc"
+  },
+  "timelineSeconds": {
+    "closed": [
+      0,
+      1.2
+    ],
+    "open": [
+      1.2,
+      2.1
+    ],
+    "hold": [
+      2.1,
+      7.1
+    ],
+    "reassemble": [
+      7.1,
+      8
+    ],
+    "closedHold": [
+      8,
+      9.6
+    ],
+    "exit": [
+      9.6,
+      10
+    ]
+  },
+  "examples": [
+    "default",
+    "open-held",
+    "data-layer",
+    "transparent"
+  ],
+  "placementTemplate": {
+    "op": "item.add",
+    "kind": "component",
+    "source": "origincut://v1/generator-component/xb-v09-frosted-explode?sourceHash=sha256%3Ae5a6e428768d53d9bcfcccef8a2c82999474617f558fd3f8306bf722ac7a7a7a&version=1",
+    "track": "<目标视频轨URI>",
+    "at": "<十进制秒字符串>",
+    "props": {}
+  },
+  "transparentProps": {
+    "backgroundEnabled": false,
+    "showStageLabel": false
+  },
+  "audio": "Two existing original project cues on an independent track, gain 0.3; not embedded in the component.",
+  "review": {
+    "componentExamples": 4,
+    "admissionSamplesPerExample": 12,
+    "wholeSequenceFrames": 20,
+    "errors": 0,
+    "warnings": 0,
+    "notices": [
+      "满幅背景触及画布边缘，为预期",
+      "文字检查覆盖不完整，已结合实际合成画面抽查"
+    ]
+  },
+  "limitations": [
+    "No original video was available for exact frame matching.",
+    "Glyph surfaces use small local affine approximations to a common 3D projection, not physical mesh text.",
+    "Backdrop blur is local to this component; transparent output does not blur external video.",
+    "Waveforms are illustrative, not real audio analysis.",
+    "Audio levels were measured; listening quality was not auditioned.",
+    "Long replacement copy and extreme parameter combinations need another visual review."
+  ]
+}

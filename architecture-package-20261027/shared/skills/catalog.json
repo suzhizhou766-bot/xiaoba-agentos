@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "aesthetics",
+      "name": "aesthetics",
+      "directory": "aesthetics",
+      "description": "小八审美能力的统一指路入口：定位审美手册、风格方法与用户偏好，接调色、配色、构图、留白、海报、排版、界面与网页设计等带审美判断的任务。",
+      "category": "aesthetics-routing",
+      "capabilities": [
+        "aesthetics-handbook-lookup",
+        "style-and-preference-pointers"
+      ],
+      "triggers": [
+        "审美",
+        "调色",
+        "配色",
+        "色调",
+        "构图",
+        "留白",
+        "海报",
+        "排版",
+        "滤镜",
+        "光影",
+        "视觉设计",
+        "界面设计",
+        "网页设计",
+        "好看的网页"
+      ]
+    },
+    {
+      "id": "after-effects-control",
+      "name": "after-effects-control",
+      "directory": "after-effects-control",
+      "description": "通过脚本和表达式控制用户 Mac 上正在运行的 After Effects 2026：合成、图层、文字动画、关键帧、表达式、特效、素材、渲染、批量操作和工程检查。三条通道：after-effects-mcp（本机，首选，需桥接面板开着）、runner.sh 后台模式（本机终端，跑 34 个现成脚本）、文件队列（任何 Agent，含远程）。",
+      "category": "motion-graphics-control",
+      "capabilities": [
+        "ae-mcp-control",
+        "ae-file-queue",
+        "ae-text-animation",
+        "ae-expressions",
+        "ae-render-preview"
+      ],
+      "triggers": [
+        "AE",
+        "After Effects",
+        "调用AE",
+        "控制AE",
+        "动效",
+        "文字动效",
+        "文字动画",
+        "MG动画",
+        "表达式",
+        "ExtendScript",
+        "jsx",
+        "aep",
+        "合成",
+        "关键帧",
+        "AE渲染"
+      ]
+    },
+    {
+      "id": "assets",
+      "name": "assets",
+      "directory": "assets",
+      "description": "素材审计、原文保护、版本追溯、资产清单与技术交付验收。",
+      "category": "asset-management",
+      "capabilities": [
+        "asset-audit",
+        "versioning",
+        "delivery-qc",
+        "manifest"
+      ],
+      "triggers": [
+        "素材",
+        "资产",
+        "交付",
+        "版本",
+        "母版",
+        "清单",
+        "asset",
+        "manifest"
+      ]
+    },
+    {
+      "id": "bgm",
+      "name": "bgm",
+      "directory": "bgm",
+      "description": "剧情配乐、音乐提示词、SFX 设计、混音与音频技术验收。",
+      "category": "audio",
+      "capabilities": [
+        "story-scoring",
+        "music-prompting",
+        "sfx-design",
+        "audio-qc"
+      ],
+      "triggers": [
+        "bgm",
+        "配乐",
+        "音乐",
+        "音效",
+        "sfx",
+        "混音",
+        "audio"
+      ]
+    },
+    {
+      "id": "collaboration-core",
+      "name": "collaboration-core",
+      "directory": "collaboration-core",
+      "description": "当前 AgentOS 会话健康、记忆入口、架构边界与上下班交接。",
+      "category": "governance",
+      "capabilities": [
+        "health-protocol",
+        "memory-routing",
+        "session-handoff"
+      ],
+      "triggers": [
+        "上班了小八助理",
+        "上班",
+        "下班",
+        "健康",
+        "状态",
+        "记忆",
+        "agentos"
+      ]
+    },
+    {
+      "id": "director",
+      "name": "director",
+      "directory": "director",
+      "description": "视频项目跨专业导演编排，协调项目、配乐、合成和资产验收。",
+      "category": "orchestration",
+      "capabilities": [
+        "creative-direction",
+        "specialist-routing",
+        "delivery-planning"
+      ],
+      "triggers": [
+        "导演",
+        "全链路",
+        "开拍",
+        "视频",
+        "视频项目",
+        "创意统筹"
+      ]
+    },
+    {
+      "id": "project",
+      "name": "project",
+      "directory": "project",
+      "description": "视频项目前期决策卡、执行分镜、拍摄计划、音乐节点与风险清单。",
+      "category": "preproduction",
+      "capabilities": [
+        "project-card",
+        "storyboard",
+        "shooting-plan",
+        "risk-plan"
+      ],
+      "triggers": [
+        "开拍",
+        "项目",
+        "分镜",
+        "拍摄",
+        "镜头",
+        "storyboard"
+      ]
+    },
+    {
+      "id": "rea-reverse-engineering",
+      "name": "rea-reverse-engineering",
+      "directory": "rea-reverse-engineering",
+      "description": "使用本机 REA 分析授权软件；调用后以选项主动澄清分析对象、重点和授权，信息齐全则直接进入静态分析。",
+      "category": "authorized-software-analysis",
+      "capabilities": [
+        "rea-cli",
+        "rea-mcp-stdio",
+        "javascript-static-analysis",
+        "macos-artifact-inspection",
+        "evidence-handoff",
+        "guided-analysis-intake"
+      ],
+      "triggers": [
+        "REA",
+        "rea",
+        "逆向",
+        "逆向工程",
+        "软件分析",
+        "Electron分析",
+        "ASAR",
+        "Mach-O",
+        "反编译",
+        "调用rea",
+        "调用REA",
+        "启用REA"
+      ]
+    },
+    {
+      "id": "remotion",
+      "name": "remotion",
+      "directory": "remotion",
+      "description": "可复现的 React/TSX 视频合成、数据驱动动画、地图动画与技术交付。",
+      "category": "video-composition",
+      "capabilities": [
+        "remotion-composition",
+        "data-driven-video",
+        "render-qc"
+      ],
+      "triggers": [
+        "remotion",
+        "tsx",
+        "mg",
+        "动画",
+        "地图",
+        "合成",
+        "批量比例"
+      ]
+    },
+    {
+      "id": "xiaoba-assistant",
+      "name": "xiaoba-assistant",
+      "directory": "xiaoba-assistant",
+      "description": "用户熟悉的小八助理触发词到当前 AgentOS 工作流的兼容入口。",
+      "category": "compatibility-entry",
+      "capabilities": [
+        "compatibility-trigger",
+        "agentos-routing"
+      ],
+      "triggers": [
+        "上班了小八助理",
+        "小八助理",
+        "小八"
+      ]
+    }
+  ]
+}

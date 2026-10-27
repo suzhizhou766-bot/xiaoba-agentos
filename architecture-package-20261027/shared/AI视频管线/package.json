@@ -1,0 +1,17 @@
+{
+  "name": "ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cd ../.runtime/remotion && node_modules/.bin/remotion studio ../../AI视频管线/04_合成项目/remotion_entry.tsx",
+    "check": "ROOT=\"$(cd .. && pwd)\"; export PYTHONDONTWRITEBYTECODE=1; \"$ROOT/.runtime/node/bin/node\" --check scripts/remotion_render.mjs && \"$ROOT/.runtime/venvs/core/bin/python\" scripts/video_content_qc.py --help >/dev/null && \"$ROOT/.runtime/venvs/core/bin/python\" scripts/technical_qc.py --help >/dev/null && bash scripts/pipeline.sh check 04_合成项目/remotion_entry.tsx --composition RealEstateFull --version vcheck --dry-run",
+    "render": "bash scripts/pipeline.sh demo 04_合成项目/remotion_entry.tsx",
+    "render:rm": "bash scripts/pipeline.sh remotion-cli 04_合成项目/remotion_entry.tsx --composition RealEstateFull",
+    "render:rm:title": "bash scripts/pipeline.sh remotion-cli-title 04_合成项目/remotion_entry.tsx --composition TitleScene"
+  },
+  "version": "1.0.0",
+  "description": "Remotion video pipeline backed by the shared .runtime",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=24" },
+  "dependencies": {}
+}

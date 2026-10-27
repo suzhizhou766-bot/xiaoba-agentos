@@ -1,0 +1,79 @@
+{
+  "name": "after-effects-mcp",
+  "version": "1.13.0",
+  "description": "MCP server that gives AI assistants deep programmatic control of Adobe After Effects: arbitrary ExtendScript execution, background rendering, deep project/layer inspection, and native Arabic/RTL and multilingual support.",
+  "main": "build/index.js",
+  "bin": {
+    "after-effects-mcp": "build/index.js"
+  },
+  "files": [
+    "build/",
+    "install-bridge.js",
+    "docs/",
+    "README.md",
+    "README.ar.md",
+    "CREDITS.md",
+    "ENHANCEMENTS.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "author": "Abdelrahman Youssef",
+  "license": "MIT",
+  "homepage": "https://github.com/a-y-ibrahim/after-effects-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a-y-ibrahim/after-effects-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/a-y-ibrahim/after-effects-mcp/issues"
+  },
+  "keywords": [
+    "after-effects",
+    "adobe",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "ai-agent",
+    "extendscript",
+    "motion-graphics",
+    "automation",
+    "i18n",
+    "rtl",
+    "arabic"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc && node -e \"require('fs').cpSync('src/scripts','build/scripts',{recursive:true})\"",
+    "start": "node build/index.js",
+    "install-bridge": "node install-bridge.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "~1.9.0",
+    "zod": "^3.22.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.9"
+  }
+}

@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "aesthetics",
+      "name": "aesthetics",
+      "directory": "aesthetics",
+      "description": "小八审美能力的统一指路入口：定位审美手册、风格方法与用户偏好，接调色、配色、构图、留白、海报、排版、界面与网页设计等带审美判断的任务。",
+      "category": "aesthetics-routing",
+      "capabilities": [
+        "aesthetics-handbook-lookup",
+        "style-and-preference-pointers"
+      ],
+      "triggers": [
+        "审美",
+        "调色",
+        "配色",
+        "色调",
+        "构图",
+        "留白",
+        "海报",
+        "排版",
+        "滤镜",
+        "光影",
+        "视觉设计",
+        "界面设计",
+        "网页设计",
+        "好看的网页"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "aesthetics/SKILL.md",
+      "entrypoint_sha256": "7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9",
+      "files_sha256": {
+        "SKILL.md": "7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9"
+      },
+      "entity_source_path": "/Users/suzhizhou/Documents/私人助理/skills/aesthetics/SKILL.md",
+      "entity_source_sha256": "7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9"
+    },
+    {
+      "id": "after-effects-control",
+      "name": "after-effects-control",
+      "directory": "after-effects-control",
+      "description": "通过脚本和表达式控制用户 Mac 上正在运行的 After Effects 2026：合成、图层、文字动画、关键帧、表达式、特效、素材、渲染、批量操作和工程检查。三条通道：after-effects-mcp（本机，首选，需桥接面板开着）、runner.sh 后台模式（本机终端，跑 34 个现成脚本）、文件队列（任何 Agent，含远程）。",
+      "category": "motion-graphics-control",
+      "capabilities": [
+        "ae-mcp-control",
+        "ae-file-queue",
+        "ae-text-animation",
+        "ae-expressions",
+        "ae-render-preview"
+      ],
+      "triggers": [
+        "AE",
+        "After Effects",
+        "调用AE",
+        "控制AE",
+        "动效",
+        "文字动效",
+        "文字动画",
+        "MG动画",
+        "表达式",
+        "ExtendScript",
+        "jsx",
+        "aep",
+        "合成",
+        "关键帧",
+        "AE渲染"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "after-effects-control/SKILL.md",
+      "entrypoint_sha256": "98182f84efac6cf583f48903953962492e50ed81f7fa529b886d95cd4ccb4d3c",
+      "files_sha256": {
+        "SKILL.md": "98182f84efac6cf583f48903953962492e50ed81f7fa529b886d95cd4ccb4d3c",
+        "examples/hello_fx_四段文字动效.jsx": "dbcdfab29be8419c4b68e972161dec1a0f82abe6a4c00750d6f3a127d47743a4",
+        "references/通道与文件位置.md": "f64ccc34d6fad2d5eb509372b9559f94e0d56f296d467cd3b3e17844a822866b"
+      },
+      "review_task": "f919e07e-e8ee-4cfb-9160-37fff5366649"
+    },
+    {
+      "id": "assets",
+      "name": "assets",
+      "directory": "assets",
+      "description": "素材审计、原文保护、版本追溯、资产清单与技术交付验收。",
+      "category": "asset-management",
+      "capabilities": [
+        "asset-audit",
+        "versioning",
+        "delivery-qc",
+        "manifest"
+      ],
+      "triggers": [
+        "素材",
+        "资产",
+        "交付",
+        "版本",
+        "母版",
+        "清单",
+        "asset",
+        "manifest"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "assets/SKILL.md",
+      "entrypoint_sha256": "ff328b0164a07e805f967c1afae5856c9a090c509408cba2f1249e3deae9140d",
+      "files_sha256": {
+        "SKILL.md": "ff328b0164a07e805f967c1afae5856c9a090c509408cba2f1249e3deae9140d",
+        "agents/openai.yaml": "7c4861f8f696bed6d802322d782791cd35c3eba7e26f3217683fcbc039e35c4f",
+        "references/qc_report_schema.md": "5444bc34245713be5c144e435e1ae5a38a4aec70f578bb8c84c7d27b6ddfff56",
+        "scripts/asset_manifest.py": "b4656eb063fb3b9c698c6453b6e0152ec174b179999b6544f8f55a9e2b77b680"
+      }
+    },
+    {
+      "id": "bgm",
+      "name": "bgm",
+      "directory": "bgm",
+      "description": "剧情配乐、音乐提示词、SFX 设计、混音与音频技术验收。",
+      "category": "audio",
+      "capabilities": [
+        "story-scoring",
+        "music-prompting",
+        "sfx-design",
+        "audio-qc"
+      ],
+      "triggers": [
+        "bgm",
+        "配乐",
+        "音乐",
+        "音效",
+        "sfx",
+        "混音",
+        "audio"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "bgm/SKILL.md",
+      "entrypoint_sha256": "a3b27cb8412cb2fa12a571a356ba30f0ff42d2004f2144f68e0d557613145aba",
+      "files_sha256": {
+        "SKILL.md": "a3b27cb8412cb2fa12a571a356ba30f0ff42d2004f2144f68e0d557613145aba",
+        "agents/openai.yaml": "76a58c9dc9bd69f8e349350148a6b5e17c2160ea15fa0c3b1529f940d9383611",
+        "references/audio_acceptance.md": "502e23263e5c48855e595d76b4fb8a34a0aa304bcff3e73a4141a3e0bf47b06c",
+        "references/calibration_cases.md": "cc18dbe4455a77537c882f7e10f5a4a13018cd3f9f34ff4cee9b96659f05e736",
+        "references/composition_framework.md": "ce49ec07dfc049f184f245f7e7ba8b0322a2469d6687857328dc1a1f698a263f",
+        "references/generator_profiles.md": "3d1aa5769015f387c6eb0c685da70d9f07ba9c2fb3cb9ca2f81a010b380e3206",
+        "references/story_scoring.md": "2ac279a8d8996fe7a3d532d389458b8e1c3c419455554850b3d9fac024b18a24",
+        "scripts/audio_qc.py": "7d3500af2a2e7fcb0a7fc1b266c92e939070ac78a948227a354348f7eea6acfc",
+        "tests/fixtures/clipped_24bit_stereo_48k.wav": "7ab0e758851e77532a5027785191262364d93c1f9a91a99e0dba06a101231fc3",
+        "tests/fixtures/tone_24bit_stereo_48k.wav": "8967f5cc2e84cf8a4c421e08d90ea34c485f0f62be3b91e05d1253ef23032e1b",
+        "tests/test_audio_qc.py": "254c937f8645f9240833ee1891fd22d78c0c28992e0b7f4ee16adfff8e2a5f02"
+      },
+      "review_task": "27cde8de-ef8f-4958-be61-0299be00a31e"
+    },
+    {
+      "id": "collaboration-core",
+      "name": "collaboration-core",
+      "directory": "collaboration-core",
+      "description": "当前 AgentOS 会话健康、记忆入口、架构边界与上下班交接。",
+      "category": "governance",
+      "capabilities": [
+        "health-protocol",
+        "memory-routing",
+        "session-handoff"
+      ],
+      "triggers": [
+        "上班了小八助理",
+        "上班",
+        "下班",
+        "健康",
+        "状态",
+        "记忆",
+        "agentos"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "collaboration-core/SKILL.md",
+      "entrypoint_sha256": "20ff3732a97eb1d73834eedef37e2d5db435ef247fd7f34b2150069ec9191441",
+      "files_sha256": {
+        "SKILL.md": "20ff3732a97eb1d73834eedef37e2d5db435ef247fd7f34b2150069ec9191441",
+        "agents/openai.yaml": "d14ba9e1bfa5ea8eb4c944b571537a7105ff6b58a746e5bf08e95e0badeac816"
+      }
+    },
+    {
+      "id": "director",
+      "name": "director",
+      "directory": "director",
+      "description": "视频项目跨专业导演编排，协调项目、配乐、合成和资产验收。",
+      "category": "orchestration",
+      "capabilities": [
+        "creative-direction",
+        "specialist-routing",
+        "delivery-planning"
+      ],
+      "triggers": [
+        "导演",
+        "全链路",
+        "开拍",
+        "视频",
+        "视频项目",
+        "创意统筹"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "director/SKILL.md",
+      "entrypoint_sha256": "21411ceaf20d4c2e72be501c1341dd8d8638ca4497225ae5fb2908425a10d8df",
+      "files_sha256": {
+        "SKILL.md": "21411ceaf20d4c2e72be501c1341dd8d8638ca4497225ae5fb2908425a10d8df",
+        "agents/openai.yaml": "090fdece15c50aee86b5d5a604cf88053f4dca032319c1dec7dec82e5808731e"
+      }
+    },
+    {
+      "id": "project",
+      "name": "project",
+      "directory": "project",
+      "description": "视频项目前期决策卡、执行分镜、拍摄计划、音乐节点与风险清单。",
+      "category": "preproduction",
+      "capabilities": [
+        "project-card",
+        "storyboard",
+        "shooting-plan",
+        "risk-plan"
+      ],
+      "triggers": [
+        "开拍",
+        "项目",
+        "分镜",
+        "拍摄",
+        "镜头",
+        "storyboard"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "project/SKILL.md",
+      "entrypoint_sha256": "a4af1c90d39b99fc8f58f1db40046e8a18a138e1c1224dc0c565f0138a3bddda",
+      "files_sha256": {
+        "SKILL.md": "a4af1c90d39b99fc8f58f1db40046e8a18a138e1c1224dc0c565f0138a3bddda",
+        "agents/openai.yaml": "9206008d8d47204452653b8d5ed509f17b2dfc01d806f5ed74001add771f1d3a",
+        "references/storyboard_schema.md": "2dc3adcec0d58e8ab526bb1df8a9959c6ca22d3e4d3b92496d3dbdebbbda118f",
+        "scripts/check_storyboard.py": "259e9f74058d75528c8833bd261b2e42bda9167880b4cc27ae0d900232cc6d4f"
+      }
+    },
+    {
+      "id": "rea-reverse-engineering",
+      "name": "rea-reverse-engineering",
+      "directory": "rea-reverse-engineering",
+      "description": "使用本机 REA 分析授权软件；调用后以选项主动澄清分析对象、重点和授权，信息齐全则直接进入静态分析。",
+      "category": "authorized-software-analysis",
+      "capabilities": [
+        "rea-cli",
+        "rea-mcp-stdio",
+        "javascript-static-analysis",
+        "macos-artifact-inspection",
+        "evidence-handoff",
+        "guided-analysis-intake"
+      ],
+      "triggers": [
+        "REA",
+        "rea",
+        "逆向",
+        "逆向工程",
+        "软件分析",
+        "Electron分析",
+        "ASAR",
+        "Mach-O",
+        "反编译",
+        "调用rea",
+        "调用REA",
+        "启用REA"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "rea-reverse-engineering/SKILL.md",
+      "entrypoint_sha256": "5975fc2cae94c331a2e59f80991b38d16044a17674f546b9efcf3a989f05c952",
+      "files_sha256": {
+        "SKILL.md": "5975fc2cae94c331a2e59f80991b38d16044a17674f546b9efcf3a989f05c952",
+        "references/agentos-workflow.md": "469bf93ebc0e55f225072057fc838c4ebe02a5e578c7e081d0d1fdad2b6e197c",
+        "references/guided-intake.md": "21b27091ae23fa5b7ef14141b9c0781685a7992415d0b8f6112d7e3245c5d671",
+        "references/official-and-local.md": "8b8b9f51a97fc6968d0bcc7c3a5c11ad264080439bbdf3c31185ec6017c39441",
+        "references/troubleshooting.md": "992cb0cde5b6500f9849f3c95d6b944e2d8cd4731faec5ad37bd7590d56a77d8"
+      },
+      "review_task": "35d57b79-99c8-4078-844e-101972a08ed7"
+    },
+    {
+      "id": "remotion",
+      "name": "remotion",
+      "directory": "remotion",
+      "description": "可复现的 React/TSX 视频合成、数据驱动动画、地图动画与技术交付。",
+      "category": "video-composition",
+      "capabilities": [
+        "remotion-composition",
+        "data-driven-video",
+        "render-qc"
+      ],
+      "triggers": [
+        "remotion",
+        "tsx",
+        "mg",
+        "动画",
+        "地图",
+        "合成",
+        "批量比例"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "remotion/SKILL.md",
+      "entrypoint_sha256": "0a641ccd3d1eed805147c2bb4f553e00cd3a60bdc67c753d76b8a24ca77d0072",
+      "files_sha256": {
+        "SKILL.md": "0a641ccd3d1eed805147c2bb4f553e00cd3a60bdc67c753d76b8a24ca77d0072",
+        "references/tutorial_sources.md": "8db413ff08de812d991a8958e41eeabce1056f5fce91eb08d6811e59a41d4db9"
+      }
+    },
+    {
+      "id": "xiaoba-assistant",
+      "name": "xiaoba-assistant",
+      "directory": "xiaoba-assistant",
+      "description": "用户熟悉的小八助理触发词到当前 AgentOS 工作流的兼容入口。",
+      "category": "compatibility-entry",
+      "capabilities": [
+        "compatibility-trigger",
+        "agentos-routing"
+      ],
+      "triggers": [
+        "上班了小八助理",
+        "小八助理",
+        "小八"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "xiaoba-assistant/SKILL.md",
+      "entrypoint_sha256": "ea5f8f265550b0937f77a1c3a14a4394edfa3649e2a0ab585121db53b84042e0",
+      "files_sha256": {
+        "SKILL.md": "ea5f8f265550b0937f77a1c3a14a4394edfa3649e2a0ab585121db53b84042e0",
+        "agents/openai.yaml": "394987c0e9b4ccf42dd2e4c8da43815157ec3fee351873000ac2ad719ff82c40"
+      }
+    }
+  ]
+}

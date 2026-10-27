@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xiaoba-agentos"
+version = "1.6.4"
+description = "小八 AgentOS：可审计会话路由、双阶段裁决与可恢复多智能体生产循环"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Private"}
+
+[project.scripts]
+xiaoba-agentos = "xiaoba_agentos.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

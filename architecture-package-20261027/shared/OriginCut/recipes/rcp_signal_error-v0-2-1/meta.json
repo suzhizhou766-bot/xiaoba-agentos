@@ -1,0 +1,6 @@
+{
+  "name": "OriginCut Signal Error",
+  "description": "A four-second editable CRT/VHS title with condensed typography, red/cyan separation, horizontal tears, scanlines and timed tracking bursts.",
+  "uri": "origincut://v1/library/recipe/rcp_signal_error/v/0.2.1",
+  "version": "0.2.1"
+}

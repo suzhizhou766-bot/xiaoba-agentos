@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-27",
+  "destination_thread_id": "01a178f5-05ed-71ee-8c05-dadcfe7be03b",
+  "destination_host_id": "durable",
+  "destination_title": "检查仓库中的小八1.6.1",
+  "scope": "架构设计材料与预览源码；不是软件源码、数据库、凭据或原始聊天上传",
+  "files": [
+    {
+      "filename": "ARCHITECTURE.md",
+      "bytes": 18070,
+      "sha256": "3130188cb12768a2e998f827858b3b8680ed17ff533b569cdd814726e69c0f7f",
+      "source": "工作区/小八AgentOS-v1.6.5-修复/reports/架构全览-20261027.md"
+    },
+    {
+      "filename": "REVIEW-MODULE.md",
+      "bytes": 7688,
+      "sha256": "6de09a39f790c8ac0cfcc82e03d12c2169cf6fa25716193edb4576392c03e77e",
+      "source": "工作区/小八融合迭代-20261022/后台双审无绑定契约-20261027.md"
+    },
+    {
+      "filename": "REVIEW-IMPLEMENTATION-CARD.md",
+      "bytes": 1924,
+      "sha256": "195a7c1ce04506b022cd6829149a138a7fb70ab768f2965af4993535a10bc4e8",
+      "source": "工作区/小八融合迭代-20261022/后台双审无绑定-实现任务卡-20261027.md"
+    },
+    {
+      "filename": "EXPERIENCE-LOOP.md",
+      "bytes": 6906,
+      "sha256": "9fefe3260b867fb4d1b8c4c8edfa67734409ba1eb4f7e88b13c94f1a64d4ea1c",
+      "source": "工作区/小八AgentOS-v1.6.5-修复/reports/初审待验证索引与交付回流-需求草案-20261027.md"
+    },
+    {
+      "filename": "architecture.fragment.html",
+      "bytes": 33832,
+      "sha256": "c6327c73ca8dfbc3df310bc03b35efa47f78e0a85f9d1f997636c01056990ed0",
+      "source": "工作区/小八AgentOS-v1.6.5-修复/reports/agentos-architecture.html"
+    }
+  ]
+}

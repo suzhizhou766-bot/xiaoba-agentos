@@ -1,0 +1,142 @@
+<div id="xb-architecture" lang="zh-CN">
+  <style>
+    #xb-architecture { color:var(--foreground); }
+    #xb-architecture .xb-header { padding:0 94px 16px 0; }
+    #xb-architecture .xb-header h2 { margin:0 0 8px; }
+    #xb-architecture .xb-meta { color:var(--muted-foreground); }
+    #xb-architecture .xb-tabs { margin-bottom:20px; }
+    #xb-architecture .xb-scope { display:flex; flex-wrap:wrap; gap:8px 18px; padding:10px 0; }
+    #xb-architecture .xb-scope span { display:inline-flex; align-items:center; gap:6px; }
+    #xb-architecture .xb-dot { width:7px; height:7px; border-radius:50%; background:var(--foreground); }
+    #xb-architecture .xb-dot.candidate { background:var(--viz-series-2); }
+    #xb-architecture .xb-dot.planned { background:var(--viz-series-3); }
+    #xb-architecture details { border-bottom:1px solid var(--border); padding:13px 0; }
+    #xb-architecture summary { font-weight:500; }
+    #xb-architecture summary .text-small { font-weight:400; color:var(--muted-foreground); }
+    #xb-architecture .xb-detail { padding:12px 0 0 20px; }
+    #xb-architecture .xb-detail ul { margin:6px 0; padding-left:18px; }
+    #xb-architecture .xb-path { overflow-wrap:anywhere; }
+    #xb-architecture .xb-branch { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin:16px 0; }
+    #xb-architecture .xb-list { margin:0; padding-left:22px; }
+    #xb-architecture .xb-list li { margin:8px 0; }
+    #xb-architecture .xb-chain { display:flex; flex-wrap:wrap; gap:8px; padding:10px 0; align-items:center; }
+    #xb-architecture .xb-chain strong { font-weight:500; }
+    #xb-architecture .xb-arrow { color:var(--muted-foreground); }
+    #xb-architecture .xb-flow { list-style:none; margin:14px 0 20px; padding:0; }
+    #xb-architecture .xb-flow li { display:grid; grid-template-columns:30px minmax(0,1fr); gap:12px; padding:0 0 17px; position:relative; }
+    #xb-architecture .xb-flow li:before { content:""; position:absolute; left:14px; top:24px; bottom:0; width:1px; background:var(--border); }
+    #xb-architecture .xb-flow li:last-child:before { display:none; }
+    #xb-architecture .xb-mark { width:28px; height:28px; border-radius:50%; background:var(--muted); color:var(--foreground); display:flex; align-items:center; justify-content:center; }
+    #xb-architecture .xb-flow .planned .xb-mark { background:color-mix(in srgb,var(--viz-series-3) 16%,transparent); }
+    #xb-architecture .xb-flow .planned .xb-mark:after { content:"+"; }
+    #xb-architecture .xb-flow .planned .xb-mark { font-weight:500; }
+    #xb-architecture .xb-flow .xb-title { font-weight:500; padding:3px 0 4px; }
+    #xb-architecture .xb-label { display:inline-flex; align-items:center; gap:5px; }
+    #xb-architecture .xb-pending { color:var(--muted-foreground); font-weight:400; }
+    #xb-architecture .xb-section-title { margin:18px 0 8px; font-weight:500; }
+    #xb-architecture .xb-code-list { display:flex; flex-wrap:wrap; gap:5px 12px; }
+    #xb-architecture .xb-table-words td:first-child { min-width:80px; font-weight:500; }
+    #xb-architecture [hidden] { display:none !important; }
+    @media(max-width:520px) { #xb-architecture .xb-branch { grid-template-columns:1fr; gap:10px; } #xb-architecture .xb-detail { padding-left:8px; } }
+  </style>
+  <div class="xb-header">
+    <h2>小八 · 整体架构</h2>
+    <div class="xb-meta text-small">2026-10-27 · 后台可替换设计、共享能力与经验闭环</div>
+  </div>
+  <div class="xb-scope text-small" aria-label="版本口径">
+    <span><i class="xb-dot" aria-hidden="true"></i>活动指针 v1.6.4</span>
+    <span><i class="xb-dot candidate" aria-hidden="true"></i>代码基线 v1.6.5 候选</span>
+    <span><i class="xb-dot planned" aria-hidden="true"></i>新增设计：待实现</span>
+  </div>
+  <div class="nav nav-pills viz-row xb-tabs" role="tablist" aria-label="架构视图">
+    <button class="nav-link active" id="xb-tab-overview" type="button" role="tab" aria-controls="xb-overview" aria-selected="true">整体分层</button>
+    <button class="nav-link" id="xb-tab-execution" type="button" role="tab" aria-controls="xb-execution" aria-selected="false">任务与后台</button>
+    <button class="nav-link" id="xb-tab-learning" type="button" role="tab" aria-controls="xb-learning" aria-selected="false">交付与经验</button>
+    <button class="nav-link" id="xb-tab-tools" type="button" role="tab" aria-controls="xb-tools" aria-selected="false">技能与工具</button>
+    <button class="nav-link" id="xb-tab-data" type="button" role="tab" aria-controls="xb-data" aria-selected="false">数据与源码</button>
+    <button class="nav-link" id="xb-tab-governance" type="button" role="tab" aria-controls="xb-governance" aria-selected="false">治理与发布</button>
+  </div>
+
+  <section id="xb-overview" role="tabpanel" aria-labelledby="xb-tab-overview">
+    <div class="xb-chain" aria-label="系统主链"><strong>用户</strong><span class="xb-arrow">→</span><strong>宿主 Agent</strong><span class="xb-arrow">→</span><strong>共享规则与检索</strong><span class="xb-arrow">→</span><strong>执行与审核</strong><span class="xb-arrow">→</span><strong>交付与积累</strong></div>
+    <details open><summary>01　用户与 Agent 接入 <span class="text-small">目标、授权与实际执行</span></summary><div class="xb-detail"><table class="table table-sm"><thead><tr><th>角色</th><th>责任</th></tr></thead><tbody><tr><td>用户</td><td>目标、授权、成品验收、经验初审/终审、付费、删除、发布与生产切换</td></tr><tr><td>宿主 Agent</td><td>读规则与原文、匹配能力、执行实际工作、集成贡献、验证、交付和记录</td></tr><tr><td>独立后台</td><td>受控分工或独立审查；实际运行产生可追溯回执</td></tr><tr><td>AgentOS</td><td>路由、队列、预算、租约、审计、经验状态机和发布校验</td></tr></tbody></table><div class="text-small">入口：AGENTS.md → xiaoba-agentos → collaboration-core；xiaoba-assistant 保留熟悉的触发词。</div></div></details>
+    <details><summary>02　事实、规则与当前上下文 <span class="text-small">第二大脑为权威事实源</span></summary><div class="xb-detail"><div class="xb-chain">用户最新确认<span class="xb-arrow">→</span>运行宪法<span class="xb-arrow">→</span>其余治理<span class="xb-arrow">→</span>工作流<span class="xb-arrow">→</span>当前态<span class="xb-arrow">→</span>任务原文</div><div class="xb-code-list"><span>10 治理与裁决</span><span>20 能力与技能</span><span>30 方法与知识</span><span>40 工作流</span><span>50 资产与索引</span><span>60 当前上下文</span><span>70 复利规则</span><span>历史版本记录</span></div><ul><li>单根、单父树；索引与聊天记忆只能定位。</li><li>Playbook 积累踩坑/打法/偏好；审美手册提供视觉判断。</li></ul></div></details>
+    <details><summary>03　检索与能力发现 <span class="text-small">正式内容与待验证内容分开</span></summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>KnowLP / memory-retrieve</td><td>定位权威原文与正式经验；命中后回读</td></tr><tr><td>skill-match</td><td>按任务匹配已登记技能，核对哈希</td></tr><tr><td>knowledge-retrieve</td><td>定位价值文件原文及证据</td></tr><tr><td>待验证经验索引 <span class="xb-pending">待实现</span></td><td>已初审的方法候选，供相似任务受控应用</td></tr></tbody></table></div></details>
+    <details><summary>04　会话与消息路由 <span class="text-small">宿主直答 / 双后台 / 审核 / 澄清</span></summary><div class="xb-detail"><div class="xb-code-list"><code>session-start</code><code>intake</code><code>direct</code><code>agentos_multi</code><code>review</code><code>ask_user</code><code>session-close</code></div><ul><li>完整“上班了小八助理”才启动工作会话；日常任务直接在私人助理做。</li><li>普通宿主工作不因双后台事件链故障而停；源码彻底解耦仍是后续融合项。</li></ul></div></details>
+    <details><summary>05　后台可替换与执行编排 <span class="text-small">插件池＋本次任务计划</span></summary><div class="xb-detail"><div class="xb-chain">已审核后台插件池<span class="xb-arrow">→</span>外部任务审查计划<span class="xb-arrow">→</span>通用双审协作引擎<span class="xb-arrow">→</span>独立结果与回执</div><ul><li>参与者可自由更换；模块不内置具体后台、模型、主备身份或默认组合。</li><li>数量、权限、预算、并发与接替规则从本次外部策略传入。</li><li>身份和本次计划写入回执供追溯；运行代码解除绑定仍待实施。</li></ul></div></details>
+    <details><summary>06　输出验收、裁判与成品验收 <span class="text-small">三类证据分别保留</span></summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>输出验收</td><td>非空合格正文；工具标记、思考泄露不能计成功</td></tr><tr><td>确定性裁判</td><td>本地规则评分和选择，保留解释与来源</td></tr><tr><td>实际成果验证</td><td>技术 QC、可复现执行、独立审核与用户创意验收</td></tr></tbody></table></div></details>
+    <details><summary>07　交付与受控学习 <span class="text-small">本次新增索引与自动回流</span></summary><div class="xb-detail"><div class="xb-chain">新候选<span class="xb-arrow">→</span>用户初审<span class="xb-arrow">→</span>待验证索引<span class="xb-arrow">→</span>真实应用<span class="xb-arrow">→</span>用户交付<span class="xb-arrow">→</span>人工终审<span class="xb-arrow">→</span>正式经验</div><ul><li>交付一次交齐：交付记录、新候选、踩坑、打法、偏好。</li><li>用户说“交付”视为本次成品已验收；已实际应用的旧候选附验证评分回原卡。</li><li>待验证索引与交付自动回流尚未实现；终审批准仍由用户作出。</li></ul></div></details>
+    <details><summary>08　共享技能、工具与项目资产 <span class="text-small">AgentOS 外的业务能力</span></summary><div class="xb-detail"><div class="xb-code-list"><span>项目 / 导演 / 资产</span><span>审美与 taste</span><span>OriginCut</span><span>Remotion</span><span>AE</span><span>达芬奇</span><span>BGM / SFX</span><span>五工具</span><span>REA</span><span>监看中心</span></div><div class="text-small">技能正文、工具与项目作品归私人助理；登记、文件存在、外部依赖可用性分别核对。</div></div></details>
+    <details><summary>09　持久数据与运维底座 <span class="text-small">事件链、回执、恢复与不可变发布</span></summary><div class="xb-detail"><div class="xb-code-list"><span>SQLite schema 7</span><span>任务 / 运行 / 审核 / 健康</span><span>memory-outbox</span><span>KnowLP</span><span>试验工作区 / 回执</span><span>release index / FILES / 源清单</span></div><ul><li>软件替换不清空任务、候选、审批与审计数据。</li><li>监看中心承载裁决页面；CLI 审核仍有统一路径。</li></ul></div></details>
+    <details><summary>10　贯穿全系统的治理 <span class="text-small">授权、配置、哈希与发布边界</span></summary><div class="xb-detail"><div class="xb-code-list"><strong>B09 配置一致</strong><strong>B19 输出合格</strong><strong>B20 原子且只结算一次</strong></div><ul><li>用户控制授权、初审、终审及生产切换；凭据留在客户端或密钥箱。</li><li>不擅改模型、上游和认证；不自动备份、恢复退役接管器或提交 git。</li><li>核心代码、共享内容、项目资产、经验发布各自有边界。</li></ul></div></details>
+  </section>
+
+  <section id="xb-execution" role="tabpanel" aria-labelledby="xb-tab-execution" hidden>
+    <h3>通用双审协作：后台可自由更换</h3>
+    <div class="text-small">已确认架构 · 模块不添加具体绑定值 · 正式运行改造待实施</div>
+    <ol class="xb-flow"><li><span class="xb-mark">1</span><div><div class="xb-title">已审核后台插件池</div><div>按接口、能力、依赖、健康和真实身份发现可用参与者；不设固定客户端名单</div></div></li><li><span class="xb-mark">2</span><div><div class="xb-title">外部本次任务审查计划</div><div>选择参与者与审查策略；数量、权限、预算、并发、接替条件均由计划传入</div></div></li><li><span class="xb-mark">3</span><div><div class="xb-title">通用引擎执行</div><div>按计划分派、维护租约、验证能力与执行权；未知插件或缺计划时明确报错</div></div></li><li><span class="xb-mark">4</span><div><div class="xb-title">独立结果与证据核验</div><div>核对真实身份、实际运行、输入/产物摘要与 B19 输出，按本次策略判断审查齐备</div></div></li><li><span class="xb-mark">5</span><div><div class="xb-title">汇总与原子结算</div><div>保留各方结论、分歧与替换历史；结果＋审计/候选只结算一次</div></div></li></ol>
+    <table class="table"><thead><tr><th>模块边界</th><th>从哪里取得</th></tr></thead><tbody><tr><td>具体后台与实现</td><td>外部已登记插件池</td></tr><tr><td>本次参与者</td><td>用户授权的任务审查计划</td></tr><tr><td>数量、独立性、主备/替换策略</td><td>本次外部策略；模块不内置默认组合</td></tr><tr><td>模型、客户端命令、设置来源</td><td>各插件按用户选择解析；通用模块不指定</td></tr><tr><td>证据与回执</td><td>实际运行、真实来源和任务计划版本</td></tr></tbody></table>
+    <details open><summary>分工协作与集成审核</summary><div class="xb-detail"><div class="xb-chain">工作计划<span class="xb-arrow">→</span>实际贡献与回执<span class="xb-arrow">→</span>宿主集成＋测试<span class="xb-arrow">→</span>新审核计划<span class="xb-arrow">→</span>独立审查</div><ul><li>贡献者和审查者分别选择，不要求固定同一完整名单。</li><li>新审查核对真实工作和集成证据，不能把工作建议当作审核结果。</li></ul></div></details>
+    <details><summary>自由更换与独立性</summary><div class="xb-detail"><ul><li>新任务可选择任意满足能力与独立性要求的已启用后台组合，核心无需因换人改代码。</li><li>中途换人形成新任务计划版本，记录原因、旧调用处置与新执行；不无痕改写历史。</li><li>同一实际来源不能通过改名或别名算成多份独立意见。</li><li>合格 FAIL、分歧与旧来源保留，不能通过换人抹掉。</li><li>替换条件从外部策略传入；能力和授权不因换一个 ID 自动继承。</li></ul></div></details>
+    <details><summary>外部等待策略、租约与恢复</summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>现有等待策略</td><td>连续 300 秒未观察到真实进展；这是当前共享策略口径，通用模块不再另设内置阈值</td></tr><tr><td>进展</td><td>非空模型流增量、可识别阶段推进；PID/心跳/续租不算</td></tr><tr><td>执行权</td><td>按 attempt 核对和续租；失权就停止旧进程，不代替新执行者结算</td></tr><tr><td>健康恢复</td><td>更新健康不会自动解冻；新鲜探针来自用户重新上班</td></tr><tr><td>显式恢复</td><td>按本次计划与恢复授权核验来源、旧证据和实际新执行</td></tr></tbody></table></div></details>
+    <details><summary>当前代码与本次架构的差距</summary><div class="xb-detail">候选代码仍有具名驱动白名单、固定备用限制、工作/审核同名单要求及发布切换的具名成功集合。本次已改架构与预览，运行改造尚未实施；解除点与正反例验收已写入工作区任务卡。不能将页面更新称为生产后台已可任意切换。</div></details>
+  </section>
+
+  <section id="xb-learning" role="tabpanel" aria-labelledby="xb-tab-learning" hidden>
+    <h3>经验从候选走到正式复用</h3>
+    <ol class="xb-flow"><li><span class="xb-mark">1</span><div><div class="xb-title">新经验候选</div><div>来源、范围、证据、类型和候选哈希</div></div></li><li><span class="xb-mark">2</span><div><div class="xb-title">用户初审</div><div>批准绑定当前候选版本，尚未成为正式经验</div></div></li><li class="planned"><span class="xb-mark"></span><div><div class="xb-title">待验证经验索引 <span class="xb-pending">待实现</span></div><div>problem_key、任务类型、适用/排除条件、必要环境、候选版本和初审回执</div></div></li><li><span class="xb-mark">3</span><div><div class="xb-title">后续相似真实任务中应用</div><div>回读原候选 → 核对适用性与授权 → 实际使用 → 记录应用位置与执行证据</div></div></li><li><span class="xb-mark">4</span><div><div class="xb-title">本次验证与独立评分</div><div>实际效果、复现证据、技术结果、评分来源与理由、分歧和适用限制</div></div></li><li><span class="xb-mark">5</span><div><div class="xb-title">用户说“交付”</div><div>本次成品已验收；沿用交付记录、新经验候选、踩坑、打法、偏好</div></div></li><li class="planned"><span class="xb-mark"></span><div><div class="xb-title">验证材料自动回原卡 <span class="xb-pending">待实现</span></div><div>候选版本＋初审回执＋任务/成品版本＋交付记录＋本次验证评分</div></div></li><li><span class="xb-mark">6</span><div><div class="xb-title">人工终审</div><div>用户针对原候选与绑定证据决定；缺必要验证时显示阻断原因</div></div></li><li><span class="xb-mark">7</span><div><div class="xb-title">正式发布与长期检索</div><div>敏感/冲突/来源检查 → 第二大脑 → 索引复验 → 后续复用与失败对账</div></div></li></ol>
+    <table class="table"><thead><tr><th>分类</th><th>流程</th></tr></thead><tbody><tr><td>audit 技术审计</td><td>结果与审计回执原子结算，不生成经验卡</td></tr><tr><td>rule 用户规则</td><td>有用户明确依据，初审与终审由用户作出</td></tr><tr><td>method 方法经验</td><td>初审 → 真实执行与独立验证 → 用户终审 → 发布</td></tr></tbody></table>
+    <details open><summary>两套检索范围</summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>正式经验索引</td><td>已发布且有效；回读原文后作为正式经验复用</td></tr><tr><td>待验证索引</td><td>初审有效、仍需验证；只作为本任务内的待验证资料，不混入正式长期记忆</td></tr></tbody></table></div></details>
+    <details><summary>交付与回流的判断边界</summary><div class="xb-detail"><ul><li>旧经验实际使用后回原卡；新经验仍从初审开始。</li><li>仅检索、仅阅读、旧版本或无证据不能算验证完成。</li><li>匹配分与回答排名分不能代替经验验证分；具体量表尚未确定。</li><li>重复口令和回调只结算一次；内容/初审/成品变化使不匹配的旧证据失效。</li><li>本次成品验收不会自动批准经验初审或终审。</li><li>本次设计尚未替换现行隔离试验门禁，需代码与验证同批接入。</li></ul></div></details>
+    <details><summary>当前已有的实现接点</summary><div class="xb-detail"><code>memory-trial-match</code> 按问题标识/标题匹配初审候选；<code>trial_suggestions</code> 保存建议；<code>memory-trial-run/status</code> 绑定隔离执行与双审；<code>review_flow.execute_review</code> 是唯一审核路径。真实任务交付回流仍待实现。</div></details>
+  </section>
+
+  <section id="xb-tools" role="tabpanel" aria-labelledby="xb-tab-tools" hidden>
+    <h3>AgentOS 外的共享能力</h3>
+    <table class="table xb-table-words"><thead><tr><th>领域</th><th>能力与入口</th></tr></thead><tbody><tr><td>项目与导演</td><td>director / project / assets：决策卡、分镜、拍摄计划、风险与交付 QC</td></tr><tr><td>审美</td><td>审美手册、taste、风格方法、样本与反馈；用户最终采用</td></tr><tr><td>自动化剪辑</td><td>OriginCut：用户指定的最终平台</td></tr><tr><td>代码合成</td><td>Remotion；本地 motion-explainer 按项目使用</td></tr><tr><td>AE</td><td>MCP / runner.sh / 文件队列；AE 已启动；队列在工作区/ae-scripts</td></tr><tr><td>达芬奇</td><td>MCP；必要脚本用专用解释器</td></tr><tr><td>声音</td><td>BGM 设计与验收、本地 SFX 匹配/反馈；授权后使用 ElevenLabs</td></tr><tr><td>五工具</td><td>反推 8890、深度 8891、超分 8892、控制器 8893、SFX 9878</td></tr><tr><td>REA</td><td>授权软件证据化分析；静态/动态/联网范围分别核对</td></tr><tr><td>监看中心</td><td>8799：运行总览、裁决、导演台、3D 导演台、Key 池；按需开启</td></tr><tr><td>实验学习</td><td>剪映自动化、Overlay Studio、外部动效学习目录；保留各自验收边界</td></tr></tbody></table>
+    <details open><summary>已登记 catalog 的 10 项技能</summary><div class="xb-detail xb-code-list"><code>aesthetics</code><code>after-effects-control</code><code>assets</code><code>bgm</code><code>collaboration-core</code><code>director</code><code>project</code><code>rea-reverse-engineering</code><code>remotion</code><code>xiaoba-assistant</code></div></details>
+    <details><summary>本地实体存在、尚未登记 catalog 的 7 项技能</summary><div class="xb-detail xb-code-list"><code>davinci-resolve</code><code>media-services</code><code>minimax-h3-video-director</code><code>motion-explainer</code><code>origincut</code><code>xiaoba-governance</code><code>xiaoba-monitor</code></div></details>
+    <details><summary>registry 的 11 个模块契约</summary><div class="xb-detail"><table class="table table-sm"><thead><tr><th>模块</th><th>manifest 声明</th><th>依赖</th></tr></thead><tbody><tr><td>brain</td><td>implemented</td><td>—</td></tr><tr><td>index</td><td>partial</td><td>brain</td></tr><tr><td>media-tools</td><td>partial</td><td>sfx</td></tr><tr><td>bgm</td><td>implemented</td><td>brain / sfx / learning</td></tr><tr><td>sfx</td><td>implemented</td><td>learning</td></tr><tr><td>learning</td><td>implemented</td><td>brain / index</td></tr><tr><td>behavior-strategy</td><td>implemented</td><td>learning</td></tr><tr><td>aesthetics</td><td>implemented</td><td>brain / learning</td></tr><tr><td>remotion</td><td>implemented</td><td>brain</td></tr><tr><td>rea</td><td>partial</td><td>brain / index</td></tr><tr><td>after-effects</td><td>partial</td><td>brain</td></tr></tbody></table><div class="text-small">契约字段：capabilities / permissions / data_contract_version / dependencies / health_checks。声明状态不是本次实时健康结果。</div></div></details>
+    <details><summary>独立行为观察与已退役策略进化</summary><div class="xb-detail"><code>工具/治理/xiaoba_behavior.py</code> 是 registry 登记的独立行为观察存储。AgentOS 核心的 evolution/evaluation 运行时已退役，6 张历史表只读保留。两者不能因名称相近混为一体。</div></details>
+  </section>
+
+  <section id="xb-data" role="tabpanel" aria-labelledby="xb-tab-data" hidden>
+    <h3>数据归属与代码职责</h3>
+    <table class="table xb-table-words"><thead><tr><th>归属</th><th>位置与内容</th></tr></thead><tbody><tr><td>AgentOS 核心</td><td class="xb-path"><code>/Users/suzhizhou/Documents/小八AgentOS</code>；源码、发布、数据库与执行记录</td></tr><tr><td>活动软件包</td><td><code>.runtime/releases/index.json</code> 决定 release_dir；绑定 FILES / SOURCE_MANIFEST / RELEASE / 运行指纹</td></tr><tr><td>权威笔记</td><td><code>私人助理/第二大脑</code>；治理、能力、工作流、上下文、正式经验</td></tr><tr><td>共享技能</td><td><code>私人助理/skills</code>；实体正文、catalog 与哈希索引</td></tr><tr><td>知识与工具</td><td><code>系统/价值文件索引</code>、<code>工具</code>、<code>审美提升</code></td></tr><tr><td>进行中工作</td><td><code>私人助理/工作区</code>；候选、报告、任务卡、接续记录</td></tr><tr><td>作品资产</td><td><code>AI视频管线</code>、<code>OriginCut</code>；原素材、合成项目、版本化成片</td></tr><tr><td>待审与检索</td><td>核心 <code>.runtime/memory-outbox</code>、<code>.runtime/knowlp</code></td></tr><tr><td>试验与行为</td><td><code>runtime_dir/trial-workspaces</code>、<code>trial-receipts</code>；私人助理 <code>.runtime/learning/behavior</code></td></tr><tr><td>凭据</td><td><code>xb-secret</code> 管理，值在私人助理之外；客户端保留自身认证</td></tr></tbody></table>
+    <details open><summary>SQLite：结构版本 7</summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>任务与事件</td><td><code>tasks / agent_runs / events</code></td></tr><tr><td>会话与路由</td><td><code>work_sessions / route_decisions</code></td></tr><tr><td>经验生命周期</td><td><code>memory_candidates / memory_reviews / memory_reuse</code></td></tr><tr><td>健康与通知</td><td><code>agent_health / notifications / constraint_holds</code></td></tr><tr><td>修复历史</td><td><code>repair_jobs</code>，不参加调度</td></tr><tr><td>策略评估历史</td><td><code>strategies / evaluation_cases / evaluations / evaluation_runs / promotion_gates / strategy_audit</code>，只读保留</td></tr></tbody></table></div></details>
+    <details><summary>核心源码模块完整分组</summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>入口路由</td><td>cli · bridge · routing · capabilities · handoff</td></tr><tr><td>执行编排</td><td>orchestrator · workflow · task_context · adapters · gateway</td></tr><tr><td>输出裁判</td><td>output_hygiene · adjudication；DeterministicJudge 在 orchestrator 内</td></tr><tr><td>健康恢复</td><td>health · standby_health · recovery · circuit_breaker · receipts · retained</td></tr><tr><td>经验审核</td><td>memory · experience_workflow · review_flow · review_ui_install</td></tr><tr><td>内容索引</td><td>skills · knowledge · content_index · content_notes</td></tr><tr><td>配置存储</td><td>store · config · interpreter · user_rules</td></tr><tr><td>发布</td><td>release · release_policy；包初始化 __init__</td></tr><tr><td>裁决适配</td><td>review_ui_assets：server · review_action · workflow_query 及静态资源</td></tr></tbody></table></div></details>
+    <details><summary>CLI 命令组</summary><div class="xb-detail"><table class="table table-sm"><tbody><tr><td>会话与任务</td><td>session-start / session-close / intake / submit / run / status / show / task-resume</td></tr><tr><td>审核与经验</td><td>review-list / review / review-packet / publish-memory / memory-candidate-create / memory-receipt / memory-retire / memory-rename-notes</td></tr><tr><td>受控验证</td><td>memory-trial-match / memory-trial-run / memory-trial-status</td></tr><tr><td>内容</td><td>memory-retrieve / skill-list / skill-match / skill-verify / knowledge-list / knowledge-retrieve / knowledge-verify / knowledge-index-rebuild / content-notes-sync</td></tr><tr><td>运行与安装</td><td>init / doctor / capability-verify / handoff-status / receipt-log / repair-status / bridge / install-plan / install-runner / install-service / review-ui-install</td></tr><tr><td>受控管理</td><td>agent-enable / agent-disable / constraint-hold-release / memory-retained-list / memory-retained-resolve；另有 demo</td></tr></tbody></table></div></details>
+    <details><summary>构建脚本与内容边界</summary><div class="xb-detail"><ul><li>脚本：版本读取、源清单、构包、固定切换、发布分档、技能/价值文件索引、第二大脑生成、KnowLP 构建/查询、未登记实体盘点。</li><li>运行代码/配置走发版；登记技能走草稿与审核发布；价值文件重建索引。</li><li>第二大脑可直接维护的内容区与发版生成区分别遵守权限；媒体与原始项目材料不入第二大脑。</li></ul></div></details>
+  </section>
+
+  <section id="xb-governance" role="tabpanel" aria-labelledby="xb-tab-governance" hidden>
+    <h3>治理、发布与真实状态</h3>
+    <table class="table"><thead><tr><th>底线</th><th>约束</th></tr></thead><tbody><tr><td>B09 配置一致</td><td>入口、会话、Worker、裁决后端配置内容一致；失配停止</td></tr><tr><td>B19 输出合格</td><td>空输出、工具标记、思考泄露不能成功、交付或入记忆</td></tr><tr><td>B20 恰好一次</td><td>结果与候选/审计回执原子结算；事件哈希链可验；双后台链坏停派</td></tr></tbody></table>
+    <details open><summary>人工裁决与写入边界</summary><div class="xb-detail"><ul><li>经验初审、终审由用户针对明确候选作出，均绑定同一内容哈希。</li><li>共享 guard.sh/policy.json 与 Agent 钩子控制正式写入；不能弹“需确认”的 Agent 不接正式规则、治理、技能、配置修改。</li><li>不擅改认证、provider、上游或模型；不输出/复制凭据，不让用户把 Key 贴聊天。</li><li>不自动备份；删除按精确对象、依赖和 _待删 流程；本地技能文本 git commit 由用户执行。</li><li>技术通过、可达页面和登记状态，不能替代真实效果与用户采用。</li></ul></div></details>
+    <details><summary>监看与裁决中心</summary><div class="xb-detail"><div class="xb-chain">监看中心 8799<span class="xb-arrow">→</span>按需拉起裁决后端<span class="xb-arrow">→</span>统一 review_flow<span class="xb-arrow">→</span>同一数据库与证据</div><ul><li>页面与 Worker 使用一致配置，doctor 分别核对。</li><li>中心关闭时浏览器裁决和待审同步暂停；CLI review-list/review 仍可用。</li><li>旧 8797 独立页面已停用；不因此恢复已退役自启服务。</li></ul></div></details>
+    <details><summary>发布流水线</summary><div class="xb-detail"><ol class="xb-list"><li>实地盘点，用户定范围</li><li>工作区候选，测试、清单与冻结输入</li><li>按补丁/常规/迁移档位验收；常规和迁移走独立后台证据</li><li>必要复制现场演练与故障退回验证</li><li>正式构包、包与证据校验、线上只读计划</li><li>用户个人终端执行生产切换</li><li>入口、Worker、配置、索引与内容读回验证</li></ol><div class="text-small">软件发布与经验批准分别处理；没有用户明确备份授权不创建备份。</div></div></details>
+    <table class="table"><thead><tr><th>状态</th><th>实际边界</th></tr></thead><tbody><tr><td>v1.6.4</td><td>活动发布指针；本次未测线上后台健康</td></tr><tr><td>v1.6.5 候选</td><td>含旧具名后台耦合、受限备用、等待与租约、发布修复；最终集成双审、正式构包和生产切换未完成</td></tr><tr><td>本次确认 · 待运行实现</td><td>通用双审模块不绑定具体后台、模型、主备或默认组合；外部插件池和任务计划决定选择。架构预览已修订</td></tr><tr><td>本次确认 · 待实现</td><td>待验证经验索引、真实任务应用追踪、交付证据与评分自动回原卡</td></tr><tr><td>后续扩展</td><td>并发与可选子代理、用户暂停主后台、宿主/双后台源码解耦、cli/store 按职责拆分</td></tr><tr><td>已退役</td><td>Headroom、同伴自动诊断/修复、自动接管、核心策略进化运行时、旧小八 4.0 回流</td></tr></tbody></table>
+    <details><summary>原文与核查范围</summary><div class="xb-detail"><ul><li>AGENTS.md、第二大脑治理与项目闭环、AgentOS 发版流程。</li><li>系统 registry/modules/interfaces/learning-loop、skills/catalog、Playbook 偏好、工作区 README。</li><li>候选 ARCHITECTURE、STANDBY_POLICY、COLLABORATION、EXPERIENCE_TRIALS、VERSIONING、RELEASE_V1.6.4 与源码模块/命令。</li><li>本次初审待验证索引与交付回流需求草案。</li></ul><div class="text-small">只读核查与阅读预览；未调用后台、未探测媒体服务、未变更候选源码、生产配置、正式规则或经验审批。</div></div></details>
+  </section>
+  <script>
+    (() => {
+      const root = document.getElementById('xb-architecture');
+      const nav = root.querySelector('[role="tablist"]');
+      const restore = state => {
+        const key = state?.privateContent?.section;
+        if (typeof key !== 'string') return;
+        const button = Array.from(nav.querySelectorAll('[role="tab"]')).find(item => item.id === key);
+        if (button && button.getAttribute('aria-selected') !== 'true') button.click();
+      };
+      nav.addEventListener('click', event => {
+        const button = event.target.closest('[role="tab"]');
+        if (!button || !event.isTrusted) return;
+        requestAnimationFrame(() => {
+          Promise.resolve(window.openai?.setWidgetState?.({modelContent:{view:button.textContent.trim()},privateContent:{section:button.id}})).catch(() => {});
+        });
+      });
+      window.addEventListener('openai:set_globals', event => restore(event.detail?.globals?.widgetState));
+      requestAnimationFrame(() => restore(window.openai?.widgetState));
+    })();
+  </script>
+</div>

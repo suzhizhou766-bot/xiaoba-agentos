@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "behavior-strategy-loop",
+  "purpose": "把新能力和执行观察转化为带条件的可复用行为与策略候选，不直接修改权威事实源。",
+  "objects": ["goal", "context", "capability", "behavior", "strategy", "observation", "outcome", "evaluation", "adaptation"],
+  "entrypoints": {
+    "recommend": "工具/治理/xiaoba_behavior.py recommend",
+    "observe": "工具/治理/xiaoba_behavior.py observe",
+    "status": "工具/治理/xiaoba_behavior.py status"
+  },
+  "rules": [
+    "匹配必须同时考虑目标和上下文，不按动作名称盲目复用。",
+    "单次成功只形成实验行为，不自动升级为全局规则。",
+    "失败必须保留失败原因和证据，并降低可靠性。",
+    "高风险、不可逆或外部发送行为需要调用方确认。",
+    "行为数据与第二大脑分离；只有经既有学习门禁确认的经验才可回流。"
+  ],
+  "storage": ".runtime/learning/behavior/",
+  "data_contract_version": 1
+}

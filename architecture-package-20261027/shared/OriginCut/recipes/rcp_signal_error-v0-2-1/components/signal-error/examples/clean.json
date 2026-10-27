@@ -1,0 +1,13 @@
+{
+  "props": {
+    "title": "ORIGIN CUT",
+    "subtitle": "ORIGIN STREAM · CREATIVE SIGNAL · CH 03",
+    "channel": 3,
+    "intensity": 0.22,
+    "seed": 41,
+    "showHud": true,
+    "showColorBars": false,
+    "accentLeft": "#ff2a55",
+    "accentRight": "#00e6ff"
+  }
+}

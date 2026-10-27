@@ -1,0 +1,7 @@
+interface:
+  display_name: "项目"
+  short_description: "把视频想法变成可执行分镜"
+  brand_color: "#8B5E3C"
+  default_prompt: "Use $project to turn this video brief into a decision card, shoot-ready storyboard, music cues, SFX cues, and production checklist."
+policy:
+  allow_implicit_invocation: true

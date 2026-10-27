@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "system_id": "xiaoba-work-system",
+  "root": "/Users/suzhizhou/Documents/私人助理",
+  "authority_entry": "第二大脑/00_小八AgentOS.md",
+  "agent_entry": "AGENTS.md",
+  "interfaces": "系统/小八工作体系/interfaces.md",
+  "learning_loop": "系统/小八工作体系/learning-loop.md",
+  "modules": [
+    {
+      "id": "brain",
+      "manifest": "系统/小八工作体系/modules/brain.json"
+    },
+    {
+      "id": "index",
+      "manifest": "系统/小八工作体系/modules/index.json"
+    },
+    {
+      "id": "media-tools",
+      "manifest": "系统/小八工作体系/modules/media-tools.json"
+    },
+    {
+      "id": "bgm",
+      "manifest": "系统/小八工作体系/modules/bgm.json"
+    },
+    {
+      "id": "sfx",
+      "manifest": "系统/小八工作体系/modules/sfx.json"
+    },
+    {
+      "id": "learning",
+      "manifest": "系统/小八工作体系/modules/learning.json"
+    },
+    {
+      "id": "behavior-strategy",
+      "manifest": "系统/小八工作体系/modules/behavior-strategy.json"
+    },
+    {
+      "id": "aesthetics",
+      "manifest": "系统/小八工作体系/modules/aesthetics.json"
+    },
+    {
+      "id": "remotion",
+      "manifest": "系统/小八工作体系/modules/remotion.json"
+    },
+    {
+      "id": "rea",
+      "manifest": "系统/小八工作体系/modules/rea.json"
+    },
+    {
+      "id": "after-effects",
+      "manifest": "系统/小八工作体系/modules/after-effects.json"
+    }
+  ]
+}

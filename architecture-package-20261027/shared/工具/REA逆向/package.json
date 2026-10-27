@@ -1,0 +1,9 @@
+{
+  "name": "xiaoba-rea-local",
+  "version": "1.0.0",
+  "private": true,
+  "description": "隔离且锁定版本的 REA 本地部署",
+  "dependencies": {
+    "rea-agents": "6.5.0"
+  }
+}

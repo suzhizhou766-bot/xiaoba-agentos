@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "media-tools",
+  "name": "五工具运行模块",
+  "purpose": "提供本机媒体处理能力和统一健康入口。",
+  "authority": false,
+  "implementation_status": "partial",
+  "implementation_paths": ["${ROOT}/AI视频管线/06_内部工具/prompt_reverse_server.py", "${ROOT}/AI视频管线/06_内部工具/depth_server.py", "${ROOT}/AI视频管线/06_内部工具/super_resolution_server.py", "${ROOT}/AI视频管线/06_内部工具/local_tools_control_server.py", "${ROOT}/AI视频管线/scripts/sfx_server.py", "${ROOT}/工具/治理/xiaoba_media_services.sh"],
+  "data_contract_version": 1,
+  "capabilities": ["prompt-reverse", "depth", "super-resolution", "local-control", "sfx-gateway"],
+  "permissions": {"read": true, "write": "runtime-and-project-output", "network": "loopback-only"},
+  "health_checks": ["8890/healthz", "8891/healthz", "8892/healthz", "8893/healthz", "9878/readyz"],
+  "required_paths": [
+    "AI视频管线/06_内部工具/prompt_reverse_server.py",
+    "AI视频管线/06_内部工具/depth_server.py",
+    "AI视频管线/06_内部工具/super_resolution_server.py",
+    "AI视频管线/06_内部工具/local_tools_control_server.py",
+    "AI视频管线/scripts/sfx_server.py"
+  ],
+  "interfaces": [
+    "8890: /healthz, /reverse",
+    "8891: /healthz, /depth_image, /depth_video, /parallax",
+    "8892: /healthz, /upscale",
+    "8893: /healthz, /oss-tools, /service",
+    "9878: /readyz, /match, /feedback"
+  ],
+  "writes": ["运行日志、临时媒体、显式 SFX 反馈"],
+  "dependencies": ["sfx"],
+  "failure_policy": "单个工具故障不得拖垮其它模块；报告技术状态，创意验收仍由用户完成。"
+}

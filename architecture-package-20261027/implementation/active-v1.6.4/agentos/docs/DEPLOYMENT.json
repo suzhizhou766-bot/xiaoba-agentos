@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "from_source_manifest_sha256": "6b389ae03780bda1ec4c98efae713d5f30fa1795cf89a81a7ff3eb68b80182d0",
+  "steps": [
+    {
+      "id": "0002-skills-root",
+      "check": {
+        "kind": "config_value_equals",
+        "path": "skills.root_dir",
+        "runtime_path": "skills"
+      },
+      "execute": {
+        "kind": "config_set",
+        "path": "skills.root_dir",
+        "assistant_path": "skills"
+      },
+      "undo": {
+        "kind": "restore_in_memory"
+      }
+    },
+    {
+      "id": "0003-skills-index",
+      "check": {
+        "kind": "config_value_equals",
+        "path": "skills.index_path",
+        "runtime_path": "skills/index.json"
+      },
+      "execute": {
+        "kind": "config_set",
+        "path": "skills.index_path",
+        "assistant_path": "skills/index.json"
+      },
+      "undo": {
+        "kind": "restore_in_memory"
+      }
+    },
+    {
+      "id": "0004-knowledge-index",
+      "check": {
+        "kind": "config_value_equals",
+        "path": "knowledge.index_path",
+        "value": "knowledge/index.json"
+      },
+      "execute": {
+        "kind": "config_set",
+        "path": "knowledge.index_path",
+        "assistant_path": "系统/价值文件索引/index.json"
+      },
+      "undo": {
+        "kind": "restore_in_memory"
+      }
+    }
+  ]
+}
