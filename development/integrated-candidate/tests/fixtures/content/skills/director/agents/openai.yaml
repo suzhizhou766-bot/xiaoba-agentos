@@ -1,0 +1,4 @@
+interface:
+  display_name: "导演编排"
+  short_description: "编排视频项目、配乐、可复现合成、资产验收与最终交付"
+  default_prompt: "Use $director to coordinate this video project through the registered specialist skills."

@@ -1,0 +1,2104 @@
+diff -ruN -x __pycache__ -x *.pyc /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/experience_workflow.py /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/experience_workflow.py
+--- /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/experience_workflow.py	2026-10-27 23:26:20
++++ /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/experience_workflow.py	2026-10-28 00:16:50
+@@ -13,13 +13,129 @@
+ import subprocess
+ import tempfile
+ import time
++import uuid
++from typing import Any, Optional
+ from pathlib import Path
+ 
+ from .workflow import verified_snapshot
++from .output_hygiene import detect_reasoning_leak, contains_non_answer_markers
+ 
+ KINDS = ("audit", "rule", "method")
+ 
++EXTERNAL_FAILURE_CLASSES = {
++    "tool_unavailable",
++    "network_timeout",
++    "network_partition",
++    "network_error",
++    "auth_failure",
++    "environment_error",
++    "sandbox_exec_failed",
++    "rate_limited",
++    "service_unavailable",
++}
+ 
++
++class MaxValidationRoundsExceeded(ValueError):
++    """经验候选已达到 2 轮核验上限，禁止再发起核验或刷第三轮。"""
++
++
++REQUIRED_DIFF_FIELDS = (
++    "initial_failure",      # 首轮失败点
++    "remediation",          # 整改内容
++    "evidence_changes",     # 两轮执行及审查证据
++    "outcome_changes",      # 结果变化
++    "remaining_limitations",# 剩余限制
++)
++
++FIELD_ALIASES = {
++    "首轮失败点": "initial_failure",
++    "首轮失败": "initial_failure",
++    "整改内容": "remediation",
++    "整改措施": "remediation",
++    "两轮执行及审查证据": "evidence_changes",
++    "证据变化": "evidence_changes",
++    "结果变化": "outcome_changes",
++    "剩余限制": "remaining_limitations",
++}
++
++DISALLOWED_PLACEHOLDERS = {"no diff", "none", "n/a", "no changes", "null", "same", "无", "无变化", "略"}
++
++
++def parse_diff_materials(materials: Any) -> Optional[dict]:
++    """解析差异材料为规范字典结构。
++    
++    支持字典、JSON 字符串或包含五个明确关键方面的结构化文本。
++    """
++    if not materials:
++        return None
++    if isinstance(materials, dict):
++        raw_dict = materials
++    elif isinstance(materials, str):
++        clean = materials.strip()
++        if not clean:
++            return None
++        try:
++            parsed = json.loads(clean)
++            if isinstance(parsed, dict):
++                raw_dict = parsed
++            else:
++                raw_dict = None
++        except Exception:
++            raw_dict = None
++
++        if raw_dict is None:
++            # 文本模式：检查是否包含五个关键方面
++            aspects_found = {}
++            for field, alias in [
++                ("initial_failure", ["首轮失败", "初次失败", "initial_failure", "initial failure"]),
++                ("remediation", ["整改", "修复", "remediation", "fix"]),
++                ("evidence_changes", ["证据", "执行及审查", "evidence", "evidence_changes"]),
++                ("outcome_changes", ["结果变化", "测试结果", "outcome", "outcome_changes"]),
++                ("remaining_limitations", ["剩余限制", "局限", "limitations", "remaining_limitations"]),
++            ]:
++                if any(k in clean for k in alias):
++                    aspects_found[field] = clean
++            if len(aspects_found) == 5:
++                return aspects_found
++            return None
++    else:
++        return None
++
++    normalized = {}
++    for k, v in raw_dict.items():
++        std_key = FIELD_ALIASES.get(k, k)
++        normalized[std_key] = v
++
++    for field in REQUIRED_DIFF_FIELDS:
++        val = normalized.get(field)
++        if not isinstance(val, (str, dict, list)):
++            return None
++        if isinstance(val, str):
++            clean_val = val.strip().lower()
++            if not clean_val or clean_val in DISALLOWED_PLACEHOLDERS:
++                return None
++        elif not val:
++            return None
++
++    return normalized
++
++
++def validate_diff_materials(materials: Any) -> bool:
++    """验证第 2 轮差异材料是否关联首轮失败点、整改内容、两轮执行及审查证据、结果变化与剩余限制。"""
++    return parse_diff_materials(materials) is not None
++
++
++def validate_diff_explanation(explanation: Any) -> bool:
++    """兼容旧接口名称，委托给 validate_diff_materials。"""
++    return validate_diff_materials(explanation)
++
++
++def is_external_pause_failure(failure_class: Optional[str]) -> bool:
++    if not failure_class:
++        return False
++    return str(failure_class).strip().lower() in EXTERNAL_FAILURE_CLASSES
++
++
+ def digest(value):
+     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":")).encode()).hexdigest()
+@@ -215,81 +331,627 @@
+     return dict(row)
+ 
+ 
+-def trial_summary(conn, candidate):
+-    source = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (candidate["task_id"],)).fetchone())
++def _table_exists(conn, table_name: str) -> bool:
++    """安全检查数据表是否存在，确保未迁移库兼容性。"""
++    try:
++        return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table_name,)).fetchone())
++    except Exception:
++        return False
++
++
++def verify_final_qualification(conn, candidate) -> dict:
++    """唯一权威终审资格判定门禁。
++
++    无论是 CLI、监看中心、裁决后端还是发布引擎，所有涉及终审的入口必须且只能调用本判定。
++    返回结构：{qualified: bool, ready: bool, state: str, round: int, reasons: list[str], task_id: str}
++    """
++    if isinstance(candidate, (str, bytes)):
++        row = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (str(candidate),)).fetchone()
++        if not row:
++            return {"qualified": False, "ready": False, "state": "not_found", "reasons": ["经验候选不存在"]}
++        candidate = dict(row)
++    else:
++        candidate = dict(candidate)
++
++    source_row = conn.execute("SELECT * FROM tasks WHERE id=?", (candidate["task_id"],)).fetchone()
++    if not source_row:
++        return {"qualified": False, "ready": False, "state": "no_source_task", "reasons": ["缺少关联任务记录"]}
++    source = dict(source_row)
+     kind = policy(source)["kind"]
+-    summary = {"kind": kind, "required": kind == "method", "ready": kind in {"rule", "legacy"}, "trials": []}
++
++    if kind == "audit":
++        raise ValueError("technical audit records cannot be published as experience candidates")
++
+     if kind != "method":
+-        summary["state"] = "legacy_manual" if kind == "legacy" else "not_required"
+-        return summary
+-    summary["state"] = "awaiting_delivery"
++        # 规则、工作流等非方法经验无需两轮隔离试验
++        has_delivery = bool(conn.execute(
++            "SELECT 1 FROM memory_reviews WHERE task_id=? AND stage='delivery' AND decision='approve'",
++            (candidate["task_id"],)
++        ).fetchone())
++        is_ok = has_delivery or candidate.get("status") in {
++            "delivery_approved", "pending_final_review", "publication_failed"
++        }
++        return {
++            "qualified": is_ok,
++            "ready": is_ok,
++            "state": "legacy_manual" if kind == "legacy" else "not_required",
++            "kind": kind,
++            "reasons": [] if is_ok else ["需通过初审"],
++        }
++
++    # 对于方法类经验，必须进行两轮状态与审查证据权威核验
++    reasons = []
+     try:
+         approved = latest_delivery(conn, candidate)
+-    except ValueError:
+-        return summary
+-    summary["state"] = "awaiting_trial"
+-    links = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.trial_linked' ORDER BY sequence",
+-                         (candidate["task_id"],)).fetchall()
+-    for link in links:
+-        bound = json.loads(link["payload_json"])
+-        task = conn.execute("SELECT * FROM tasks WHERE id=?", (bound["task_id"],)).fetchone()
+-        if not task:
++    except ValueError as exc:
++        return {"qualified": False, "ready": False, "state": "awaiting_delivery", "kind": kind, "reasons": [str(exc)]}
++
++    # 1. 检查磁盘正文与哈希一致性
++    staged_path = Path(candidate["staged_path"])
++    if not staged_path.is_file():
++        return {"qualified": False, "ready": False, "state": "file_missing", "kind": kind, "reasons": ["暂存文件不存在"]}
++    current_bytes_hash = hashlib.sha256(staged_path.read_bytes()).hexdigest()
++    if current_bytes_hash != candidate["evidence_sha256"]:
++        return {"qualified": False, "ready": False, "state": "content_drift", "kind": kind, "reasons": ["正文发生变动，历史核验证据失效"]}
++
++    # 2. 查询两轮验证谱系及轮次记录
++    lineage_row = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (candidate["task_id"],)).fetchone() if _table_exists(conn, "experience_validation_lineages") else None
++    if lineage_row:
++        lineage = dict(lineage_row)
++        lineage_status = lineage.get("lineage_status", "")
++        rounds_used = lineage.get("rounds_used", 0)
++
++        if lineage_status == "retired":
++            return {"qualified": False, "ready": False, "state": "retired", "kind": kind, "reasons": ["经验候选已退役，两轮验证失败排除复用"]}
++        if lineage_status == "paused":
++            return {"qualified": False, "ready": False, "state": "validation_paused", "kind": kind, "reasons": ["验证处于暂停状态，外部环境异常待恢复"]}
++        if lineage_status == "awaiting_check":
++            return {"qualified": False, "ready": False, "state": "awaiting_check", "kind": kind, "reasons": ["旧记录无法证明轮次或有效性，标记待人工核对"]}
++        if lineage_status == "awaiting_diff_materials":
++            return {"qualified": False, "ready": False, "state": "diff_materials_required", "kind": kind, "reasons": ["次轮核验已通过，但缺少合规差异材料，阻断进入终审；请补齐差异材料后重新检查资格"]}
++
++        records = [dict(r) for r in conn.execute(
++            "SELECT * FROM experience_validation_records WHERE candidate_id=? ORDER BY round ASC",
++            (candidate["task_id"],)
++        ).fetchall()] if _table_exists(conn, "experience_validation_records") else []
++
++        if not records:
++            return {"qualified": False, "ready": False, "state": "awaiting_trial", "kind": kind, "reasons": ["尚未开始隔离验证"]}
++
++        latest_record = records[-1]
++        rec_round = latest_record.get("round", 1)
++        rec_status = latest_record.get("status", "")
++
++        if latest_record.get("needs_human_check"):
++            return {"qualified": False, "ready": False, "state": "awaiting_check", "kind": kind, "reasons": ["核验记录待人工核对"]}
++
++        # 检查绑定一致性
++        if latest_record.get("candidate_sha256") != candidate["evidence_sha256"]:
++            return {"qualified": False, "ready": False, "state": "content_drift", "kind": kind, "reasons": ["候选正文已变动，当轮证据失效"]}
++        if latest_record.get("delivery_review_id") != approved["id"]:
++            return {"qualified": False, "ready": False, "state": "initial_review_drift", "kind": kind, "reasons": ["初审版本已变动，当轮证据失效"]}
++
++        if rec_status == "paused":
++            return {"qualified": False, "ready": False, "state": "validation_paused", "kind": kind, "reasons": [latest_record.get("pause_reason") or "外部环境异常暂停"]}
++        if rec_status == "failed":
++            return {"qualified": False, "ready": False, "state": "revalidation_required" if rounds_used < 2 else "retired", "kind": kind, "reasons": ["当轮验证明确失败"]}
++        if rec_status != "passed":
++            return {"qualified": False, "ready": False, "state": "trial_running", "kind": kind, "reasons": ["验证尚在进行中"]}
++
++        # 次轮必须验证差异材料
++        if rec_round == 2:
++            if not validate_diff_materials(latest_record.get("diff_explanation")):
++                return {"qualified": False, "ready": False, "state": "diff_materials_required", "kind": kind, "reasons": ["次轮核验已通过，但缺少合规差异材料，阻断进入终审；请补齐差异材料后重新检查资格"]}
++
++        # 双审回执结论必须全为明确 PASS
++        dsh_verdict = latest_record.get("dsh_verdict")
++        peer_verdict = latest_record.get("peer_verdict")
++        if dsh_verdict != "PASS" or peer_verdict != "PASS":
++            return {"qualified": False, "ready": False, "state": "review_rejected", "kind": kind, "reasons": ["审查回执存在非 PASS 结论"]}
++
++        return {
++            "qualified": True,
++            "ready": True,
++            "state": "ready_for_final",
++            "round": rec_round,
++            "rounds_used": rounds_used,
++            "task_id": latest_record.get("task_id") or latest_record.get("id"),
++            "reasons": [],
++        }
++
++    # 兼容回退：若无新表记录，基于原生 events 历史做严格判定
++    links = conn.execute(
++        "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.trial_linked' ORDER BY sequence",
++        (candidate["task_id"],)
++    ).fetchall()
++    if not links:
++        return {"qualified": False, "ready": False, "state": "awaiting_trial", "kind": kind, "reasons": ["尚未关联隔离验证任务"]}
++
++    bound = json.loads(links[-1]["payload_json"])
++    task = conn.execute("SELECT * FROM tasks WHERE id=?", (bound["task_id"],)).fetchone()
++    if not task:
++        return {"qualified": False, "ready": False, "state": "awaiting_trial", "kind": kind, "reasons": ["验证任务不存在"]}
++    task = dict(task)
++    snap = verified_snapshot(task)
++    trial = snap.get("experience_trial", {})
++    if (trial.get("candidate_sha256") != candidate["evidence_sha256"] or
++        trial.get("delivery_review_id") != approved["id"] or
++        trial.get("source_task_id") != candidate["task_id"]):
++        return {"qualified": False, "ready": False, "state": "invalid_binding", "kind": kind, "reasons": ["历史验证绑定已失效"]}
++
++    execution = trial.get("execution", {})
++    executed = (execution.get("passed") is True and execution.get("cases")
++                and execution.get("started_at", 0) >= approved["created_at"]
++                and execution.get("finished_at", 0) >= execution.get("started_at", 0)
++                and all(isinstance(c, dict) and c.get("passed") is True and c.get("returncode") == 0
++                        and not c.get("timed_out") and not c.get("truncated")
++                        and isinstance(c.get("expect_stdout"), str) and c["expect_stdout"]
++                        and c["expect_stdout"] in c.get("output", "") for c in execution["cases"])
++                and digest(execution) == trial.get("execution_sha256")
++                and digest(trial.get("card")) == trial.get("card_sha256"))
++    if not executed:
++        state = "trial_running" if task["status"] in {"pending", "running", "retry"} else "trial_failed"
++        return {"qualified": False, "ready": False, "state": state, "kind": kind, "reasons": ["隔离执行未通过"]}
++
++    names = {a["name"] for a in snap.get("agents", []) if a.get("enabled")}
++    runs = [dict(r) for r in conn.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at", (task["id"],))]
++    latest = {r["agent_name"]: r for r in runs}
++    passed = len(names) == 2 and set(latest) == names
++    for name in names:
++        run = latest.get(name, {})
++        output = run.get("output") or ""
++        passed = passed and run.get("status") == "completed" and re.findall(
++            r"^\s*TRIAL_VALIDATION: (PASS|FAIL)\s*$", output, re.M) == ["PASS"]
++        if detect_reasoning_leak(output) or contains_non_answer_markers(output):
++            passed = False
++
++    judge_row = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='judge.decided' ORDER BY sequence DESC LIMIT 1", (task["id"],)).fetchone()
++    judge = json.loads(judge_row["payload_json"]) if judge_row else {}
++    passed = bool(executed and passed and task["status"] == "completed" and policy(task)["kind"] == "audit"
++                  and judge.get("successful_agents") == 2 and judge.get("winner") in names)
++
++    if not passed:
++        state = "trial_running" if task["status"] in {"pending", "running", "retry"} else "trial_failed"
++        return {"qualified": False, "ready": False, "state": state, "kind": kind, "reasons": ["双审判定未全数通过"]}
++
++    return {
++        "qualified": True,
++        "ready": True,
++        "state": "ready_for_final",
++        "round": 1,
++        "rounds_used": 1,
++        "task_id": task["id"],
++        "reasons": [],
++    }
++
++
++def advance_validation_round(store, conn, candidate_id: str, round_data: dict) -> dict:
++    """推进持久化两轮状态机。
++
++    执行轮次状态转移与事件沉淀：
++    - 首轮通过 -> 待终审 (pending_final_review)
++    - 首轮失败 -> 待第二轮 (revalidation_required)
++    - 次轮通过且有效差异说明 -> 待终审 (pending_final_review)
++    - 次轮失败 -> 退役并排除复用 (retired)
++    - 外部环境异常 -> 暂停并保留轮次 (paused)
++    - 超出 2 轮 -> 拒绝并报错
++    """
++    candidate_row = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (candidate_id,)).fetchone()
++    if not candidate_row:
++        raise ValueError(f"候选 {candidate_id} 不存在")
++    candidate = dict(candidate_row)
++    now = time.time()
++
++    approved = latest_delivery(conn, candidate)
++    candidate_sha256 = round_data.get("candidate_sha256") or candidate["evidence_sha256"]
++    if candidate_sha256 != candidate["evidence_sha256"]:
++        raise ValueError("候选正文哈希不匹配，拒绝写入当轮验证")
++
++    lineage_row = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (candidate_id,)).fetchone()
++    if not lineage_row:
++        conn.execute(
++            "INSERT INTO experience_validation_lineages (candidate_id, current_round, max_rounds, lineage_status, rounds_used, created_at, updated_at) "
++            "VALUES (?, 1, 2, 'pending_round_1', 0, ?, ?)",
++            (candidate_id, now, now)
++        )
++        current_round = 1
++        rounds_used = 0
++        lineage_status = "pending_round_1"
++    else:
++        lineage = dict(lineage_row)
++        rounds_used = lineage["rounds_used"]
++        lineage_status = lineage["lineage_status"]
++        if rounds_used >= 2 or lineage_status == "retired":
++            raise MaxValidationRoundsExceeded("该经验候选已耗尽 2 轮验证上限，已被退役，禁止重新关联或刷第三轮")
++        current_round = 2 if rounds_used == 1 else 1
++
++    failure_class = round_data.get("failure_class")
++    if is_external_pause_failure(failure_class):
++        # 异常暂停：保留轮次，不增加 rounds_used
++        rec_id = str(uuid.uuid4())
++        pause_reason = round_data.get("pause_reason") or f"外部环境异常: {failure_class}"
++        conn.execute(
++            """INSERT INTO experience_validation_records
++               (id, candidate_id, round, candidate_sha256, delivery_review_id, status, task_id,
++                plan_digest, execution_digest, diff_explanation, pause_reason, failure_class,
++                dsh_receipt_id, peer_receipt_id, dsh_verdict, peer_verdict, needs_human_check, created_at, updated_at)
++               VALUES (?, ?, ?, ?, ?, 'paused', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
++               ON CONFLICT(candidate_id, round) DO UPDATE SET
++               status='paused', pause_reason=excluded.pause_reason, failure_class=excluded.failure_class, updated_at=excluded.updated_at""",
++            (rec_id, candidate_id, current_round, candidate_sha256, approved["id"], round_data.get("task_id"),
++             round_data.get("plan_digest"), round_data.get("execution_digest"), round_data.get("diff_explanation"),
++             pause_reason, failure_class, round_data.get("dsh_receipt_id"), round_data.get("peer_receipt_id"),
++             round_data.get("dsh_verdict"), round_data.get("peer_verdict"), now, now)
++        )
++        conn.execute(
++            "UPDATE experience_validation_lineages SET lineage_status='paused', updated_at=? WHERE candidate_id=?",
++            (now, candidate_id)
++        )
++        store._append_event_tx(conn, candidate_id, "memory.validation_paused", {
++            "round": current_round,
++            "failure_class": failure_class,
++            "pause_reason": pause_reason,
++        })
++        return {
++            "ok": True,
++            "status": "paused",
++            "round": current_round,
++            "rounds_used": rounds_used,
++            "pause_reason": pause_reason,
++            "candidate_status": candidate["status"],
++        }
++
++    # 逻辑核验结果判定
++    execution = round_data.get("execution") or {}
++    exec_cases = execution.get("cases") or []
++    exec_passed = (
++        execution.get("passed") is True
++        and bool(exec_cases)
++        and all(isinstance(c, dict) and c.get("passed") is True and c.get("returncode") == 0
++                and isinstance(c.get("expect_stdout"), str) and c["expect_stdout"] in c.get("output", "")
++                for c in exec_cases)
++    )
++
++    dsh_verdict = round_data.get("dsh_verdict")
++    peer_verdict = round_data.get("peer_verdict")
++    dsh_output = round_data.get("dsh_output") or ""
++    peer_output = round_data.get("peer_output") or ""
++    hygiene_ok = not (detect_reasoning_leak(dsh_output) or contains_non_answer_markers(dsh_output) or
++                      detect_reasoning_leak(peer_output) or contains_non_answer_markers(peer_output))
++
++    both_reviewers_pass = (dsh_verdict == "PASS" and peer_verdict == "PASS" and hygiene_ok)
++    round_passed = bool(exec_passed and both_reviewers_pass)
++
++    rec_id = str(uuid.uuid4())
++    diff_explanation = round_data.get("diff_explanation")
++
++    if current_round == 1:
++        if round_passed:
++            rec_status = "passed"
++            new_rounds_used = 1
++            new_lineage_status = "ready_for_final"
++            new_candidate_status = "pending_final_review"
++            event_type = "memory.trial_validated"
++        else:
++            rec_status = "failed"
++            new_rounds_used = 1
++            new_lineage_status = "pending_round_2"
++            new_candidate_status = "revalidation_required"
++            event_type = "memory.trial_failed"
++    else:  # current_round == 2
++        diff_ok = validate_diff_materials(diff_explanation)
++        if round_passed:
++            rec_status = "passed"
++            new_rounds_used = 2
++            if diff_ok:
++                new_lineage_status = "ready_for_final"
++                new_candidate_status = "pending_final_review"
++                event_type = "memory.trial_validated"
++            else:
++                # 第二轮核验通过但差异材料缺失：保留通过证据，阻断待终审；补齐后重新检查资格，不新增验证轮次，绝不退役！
++                new_lineage_status = "awaiting_diff_materials"
++                new_candidate_status = "revalidation_required"
++                event_type = "memory.diff_materials_required"
++        else:
++            # 仅当第二轮核验明确失败时，才判定退役并排除复用
++            rec_status = "failed"
++            new_rounds_used = 2
++            new_lineage_status = "retired"
++            new_candidate_status = "retired"
++            event_type = "memory.retired"
++
++    # 写入轮次记录与谱系更新
++    serialized_diff = json.dumps(diff_explanation, ensure_ascii=False) if isinstance(diff_explanation, (dict, list)) else diff_explanation
++    conn.execute(
++        """INSERT INTO experience_validation_records
++           (id, candidate_id, round, candidate_sha256, delivery_review_id, status, task_id,
++            plan_digest, execution_digest, diff_explanation, pause_reason, failure_class,
++            dsh_receipt_id, peer_receipt_id, dsh_verdict, peer_verdict, needs_human_check, created_at, updated_at)
++           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 0, ?, ?)
++           ON CONFLICT(candidate_id, round) DO UPDATE SET
++           status=excluded.status, execution_digest=excluded.execution_digest, diff_explanation=excluded.diff_explanation,
++           dsh_verdict=excluded.dsh_verdict, peer_verdict=excluded.peer_verdict, updated_at=excluded.updated_at""",
++        (rec_id, candidate_id, current_round, candidate_sha256, approved["id"], rec_status, round_data.get("task_id"),
++         round_data.get("plan_digest"), round_data.get("execution_digest"), serialized_diff, failure_class,
++         round_data.get("dsh_receipt_id"), round_data.get("peer_receipt_id"), dsh_verdict, peer_verdict, now, now)
++    )
++
++    conn.execute(
++        "UPDATE experience_validation_lineages SET current_round=?, rounds_used=?, lineage_status=?, updated_at=? WHERE candidate_id=?",
++        (current_round, new_rounds_used, new_lineage_status, now, candidate_id)
++    )
++
++    conn.execute(
++        "UPDATE memory_candidates SET status=?, updated_at=? WHERE task_id=?",
++        (new_candidate_status, now, candidate_id)
++    )
++
++    store._append_event_tx(conn, candidate_id, event_type, {
++        "round": current_round,
++        "rounds_used": new_rounds_used,
++        "passed": round_passed,
++        "status": rec_status,
++        "candidate_status": new_candidate_status,
++        "diff_explanation": serialized_diff,
++    })
++
++    return {
++        "ok": True,
++        "round": current_round,
++        "rounds_used": new_rounds_used,
++        "passed": round_passed,
++        "status": rec_status,
++        "candidate_status": new_candidate_status,
++        "lineage_status": new_lineage_status,
++    }
++
++
++def resume_paused_validation(store, conn, candidate_id: str) -> dict:
++    """将暂停状态的验证恢复为待验证状态，轮次不变。"""
++    row = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (candidate_id,)).fetchone()
++    if not row or row["lineage_status"] != "paused":
++        raise ValueError("候选未处于验证暂停状态")
++    now = time.time()
++    curr_round = row["current_round"]
++    restored_status = "pending_round_1" if curr_round == 1 else "pending_round_2"
++    conn.execute(
++        "UPDATE experience_validation_lineages SET lineage_status=?, updated_at=? WHERE candidate_id=?",
++        (restored_status, now, candidate_id)
++    )
++    store._append_event_tx(conn, candidate_id, "memory.validation_resumed", {"round": curr_round})
++    return {"ok": True, "candidate_id": candidate_id, "resumed_round": curr_round, "status": restored_status}
++
++
++def submit_diff_materials(store, conn, candidate_id: str, diff_materials: Any) -> dict:
++    """补齐第 2 轮差异材料。
++
++    当第 2 轮核验执行与双审已通过，但差异材料缺失或不合规时，保留已通过证据；
++    调用本函数补齐差异材料并重新检查资格，成功后推进到待终审 (pending_final_review)，
++    不新增验证轮次，不消耗额外轮次。
++    """
++    lineage_row = conn.execute(
++        "SELECT * FROM experience_validation_lineages WHERE candidate_id=?",
++        (candidate_id,)
++    ).fetchone()
++    if not lineage_row:
++        raise ValueError(f"候选 {candidate_id} 无验证谱系记录")
++    lineage = dict(lineage_row)
++    if lineage["lineage_status"] == "retired":
++        raise ValueError(f"候选 {candidate_id} 已退役，禁止补齐差异材料")
++
++    rec_row = conn.execute(
++        "SELECT * FROM experience_validation_records WHERE candidate_id=? AND round=2",
++        (candidate_id,)
++    ).fetchone()
++    if not rec_row:
++        raise ValueError(f"候选 {candidate_id} 未进行第二轮核验，无法提交差异材料")
++    rec = dict(rec_row)
++    if rec["status"] != "passed":
++        raise ValueError(f"候选 {candidate_id} 第二轮核验状态为 {rec['status']}，仅当第二轮核验通过时方可补齐差异材料")
++
++    norm = parse_diff_materials(diff_materials)
++    if not norm:
++        raise ValueError(
++            "差异材料不合规：必须关联首轮失败点(initial_failure)、整改内容(remediation)、"
++            "两轮执行及审查证据(evidence_changes)、结果变化(outcome_changes)与剩余限制(remaining_limitations)"
++        )
++
++    serialized = json.dumps(diff_materials, ensure_ascii=False) if isinstance(diff_materials, (dict, list)) else str(diff_materials)
++    now = time.time()
++
++    conn.execute(
++        "UPDATE experience_validation_records SET diff_explanation=?, updated_at=? WHERE candidate_id=? AND round=2",
++        (serialized, now, candidate_id)
++    )
++    conn.execute(
++        "UPDATE experience_validation_lineages SET lineage_status='ready_for_final', updated_at=? WHERE candidate_id=?",
++        (now, candidate_id)
++    )
++    conn.execute(
++        "UPDATE memory_candidates SET status='pending_final_review', updated_at=? WHERE task_id=?",
++        (now, candidate_id)
++    )
++    store._append_event_tx(conn, candidate_id, "memory.diff_materials_submitted", {
++        "round": 2,
++        "rounds_used": lineage["rounds_used"],
++        "status": "ready_for_final",
++        "candidate_status": "pending_final_review",
++    })
++    return {
++        "ok": True,
++        "candidate_id": candidate_id,
++        "round": 2,
++        "rounds_used": lineage["rounds_used"],
++        "status": "passed",
++        "candidate_status": "pending_final_review",
++        "lineage_status": "ready_for_final",
++    }
++
++
++def migrate_legacy_validation_records(conn) -> dict:
++    """旧记录迁移与标记：无法证明轮次或有效性时标记待人工核对，不猜测补齐。"""
++    candidates = conn.execute("SELECT * FROM memory_candidates").fetchall()
++    migrated = 0
++    flagged = 0
++    now = time.time()
++    for row in candidates:
++        cand = dict(row)
++        cand_id = cand["task_id"]
++        status = cand["status"]
++        existing = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (cand_id,)).fetchone()
++        if existing:
+             continue
+-        task = dict(task)
+-        snap = verified_snapshot(task)
+-        trial = snap.get("experience_trial", {})
+-        valid = (trial.get("candidate_sha256") == candidate["evidence_sha256"]
+-                 and trial.get("delivery_review_id") == approved["id"]
+-                 and trial.get("source_task_id") == candidate["task_id"])
+-        execution = trial.get("execution", {})
+-        executed = (execution.get("passed") is True and execution.get("cases")
+-                    and execution.get("started_at", 0) >= approved["created_at"]
+-                    and execution.get("finished_at", 0) >= execution.get("started_at", 0)
+-                    and all(isinstance(c, dict) and c.get("passed") is True and c.get("returncode") == 0
+-                            and not c.get("timed_out") and not c.get("truncated")
+-                            and isinstance(c.get("expect_stdout"), str) and c["expect_stdout"]
+-                            and c["expect_stdout"] in c.get("output", "") for c in execution["cases"])
+-                    and digest(execution) == trial.get("execution_sha256")
+-                    and digest(trial.get("card")) == trial.get("card_sha256"))
+-        names = {a["name"] for a in snap.get("agents", []) if a.get("enabled")}
+-        runs = [dict(r) for r in conn.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at", (task["id"],))]
+-        latest = {r["agent_name"]: r for r in runs}
+-        passed = len(names) == 2 and set(latest) == names
+-        for name in names:
+-            run = latest.get(name, {})
+-            passed = passed and run.get("status") == "completed" and re.findall(
+-                r"^\s*TRIAL_VALIDATION: (PASS|FAIL)\s*$", run.get("output") or "", re.M) == ["PASS"]
+-        judge_row = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='judge.decided' ORDER BY sequence DESC LIMIT 1", (task["id"],)).fetchone()
+-        judge = json.loads(judge_row["payload_json"]) if judge_row else {}
+-        passed = bool(valid and executed and passed and task["status"] == "completed" and policy(task)["kind"] == "audit"
+-                      and judge.get("successful_agents") == 2 and judge.get("winner") in names)
+-        entry = {"task_id": task["id"], "status": task["status"], "passed": passed,
+-                 "current_binding": valid, "card": trial.get("card"), "execution": trial.get("execution"),
+-                 "reviews": [{"agent": n, "status": r["status"], "output": r.get("output") or ""} for n, r in latest.items()]}
+-        summary["trials"].append(entry)
+-    current = [t for t in summary["trials"] if t["current_binding"]]
+-    # A newer failure/running task supersedes a previous successful validation.
+-    if current:
+-        last = current[-1]
+-        summary.update(task_id=last["task_id"], ready=last["passed"],
+-                       state="ready_for_final" if last["passed"] else "trial_running" if last["status"] in {"pending", "running", "retry"} else "trial_failed")
++
++        if status == "published":
++            conn.execute(
++                "INSERT INTO experience_validation_lineages (candidate_id, current_round, max_rounds, lineage_status, rounds_used, created_at, updated_at) "
++                "VALUES (?, 1, 2, 'ready_for_final', 1, ?, ?)",
++                (cand_id, now, now)
++            )
++            migrated += 1
++            continue
++
++        links = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.trial_linked' ORDER BY sequence", (cand_id,)).fetchall()
++        if not links:
++            lineage_status = "pending_round_1" if status in {"delivery_approved", "pending_delivery_review"} else "awaiting_check"
++            conn.execute(
++                "INSERT INTO experience_validation_lineages (candidate_id, current_round, max_rounds, lineage_status, rounds_used, created_at, updated_at) "
++                "VALUES (?, 1, 2, ?, 0, ?, ?)",
++                (cand_id, lineage_status, now, now)
++            )
++            if lineage_status == "awaiting_check":
++                flagged += 1
++            else:
++                migrated += 1
++            continue
++
++        if len(links) == 1:
++            # 只有一次关联，检查是否成功
++            bound = json.loads(links[0]["payload_json"])
++            trial_task = conn.execute("SELECT * FROM tasks WHERE id=?", (bound["task_id"],)).fetchone()
++            if trial_task and trial_task["status"] == "completed":
++                rec_id = str(uuid.uuid4())
++                conn.execute(
++                    """INSERT INTO experience_validation_records
++                       (id, candidate_id, round, candidate_sha256, delivery_review_id, status, task_id,
++                        plan_digest, execution_digest, diff_explanation, pause_reason, failure_class,
++                        dsh_receipt_id, peer_receipt_id, dsh_verdict, peer_verdict, needs_human_check, created_at, updated_at)
++                       VALUES (?, ?, 1, ?, '', 'passed', ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'PASS', 'PASS', 0, ?, ?)""",
++                    (rec_id, cand_id, cand["evidence_sha256"], bound["task_id"], now, now)
++                )
++                conn.execute(
++                    "INSERT INTO experience_validation_lineages (candidate_id, current_round, max_rounds, lineage_status, rounds_used, created_at, updated_at) "
++                    "VALUES (?, 1, 2, 'ready_for_final', 1, ?, ?)",
++                    (cand_id, now, now)
++                )
++                migrated += 1
++                continue
++
++        # 多于1次关联或状态不明：标记 needs_human_check
++        rec_id = str(uuid.uuid4())
++        conn.execute(
++            """INSERT INTO experience_validation_records
++               (id, candidate_id, round, candidate_sha256, delivery_review_id, status, task_id,
++                plan_digest, execution_digest, diff_explanation, pause_reason, failure_class,
++                dsh_receipt_id, peer_receipt_id, dsh_verdict, peer_verdict, needs_human_check, created_at, updated_at)
++               VALUES (?, ?, 1, ?, '', 'failed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'UNKNOWN', 'UNKNOWN', 1, ?, ?)""",
++            (rec_id, cand_id, cand["evidence_sha256"], now, now)
++        )
++        conn.execute(
++            "INSERT INTO experience_validation_lineages (candidate_id, current_round, max_rounds, lineage_status, rounds_used, created_at, updated_at) "
++            "VALUES (?, 1, 2, 'awaiting_check', 1, ?, ?)",
++            (cand_id, now, now)
++        )
++        flagged += 1
++
++    return {"migrated": migrated, "flagged_for_human_check": flagged}
++
++
++def trial_summary(conn, candidate):
++    """汇总经验核验状态。优先读取两轮持久化谱系与门禁判定。"""
++    if isinstance(candidate, (str, bytes)):
++        row = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (str(candidate),)).fetchone()
++        cand_id = str(candidate)
++        candidate = dict(row) if row else {"task_id": cand_id}
++    else:
++        candidate = dict(candidate)
++        cand_id = str(candidate["task_id"])
++
++    verdict = verify_final_qualification(conn, candidate)
++    summary = {
++        "kind": verdict.get("kind", "method"),
++        "required": verdict.get("kind") == "method",
++        "ready": verdict.get("ready", False),
++        "state": verdict.get("state", "awaiting_trial"),
++        "round": verdict.get("round", 1),
++        "rounds_used": verdict.get("rounds_used", 0),
++        "reasons": verdict.get("reasons", []),
++        "trials": [],
++    }
++    # 加载已有的轮次记录以供展示
++    records = conn.execute("SELECT * FROM experience_validation_records WHERE candidate_id=? ORDER BY round ASC", (cand_id,)).fetchall() if _table_exists(conn, "experience_validation_records") else []
++    for rec in records:
++        r = dict(rec)
++        summary["trials"].append({
++            "round": r["round"],
++            "status": r["status"],
++            "passed": r["status"] == "passed",
++            "diff_explanation": r.get("diff_explanation"),
++            "pause_reason": r.get("pause_reason"),
++            "needs_human_check": bool(r.get("needs_human_check")),
++        })
++    # 若无新表记录，加载原生 events 历史 trials 供展示
++    if not summary["trials"]:
++        links = conn.execute(
++            "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.trial_linked' ORDER BY sequence",
++            (cand_id,)
++        ).fetchall()
++        for link in links:
++            bound = json.loads(link["payload_json"])
++            task = conn.execute("SELECT * FROM tasks WHERE id=?", (bound["task_id"],)).fetchone()
++            if not task:
++                continue
++            task = dict(task)
++            snap = verified_snapshot(task)
++            trial = snap.get("experience_trial", {})
++            valid = (trial.get("candidate_sha256") == candidate.get("evidence_sha256", "")
++                     and trial.get("source_task_id") == cand_id)
++            names = {a["name"] for a in snap.get("agents", []) if a.get("enabled")}
++            runs = [dict(r) for r in conn.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at", (task["id"],))]
++            latest = {r["agent_name"]: r for r in runs}
++            summary["trials"].append({
++                "task_id": task["id"], "status": task["status"], "passed": verdict.get("ready", False),
++                "current_binding": valid, "card": trial.get("card"), "execution": trial.get("execution"),
++                "reviews": [{"agent": n, "status": r["status"], "output": r.get("output") or ""} for n, r in latest.items()]
++            })
+     return summary
+ 
+ 
+ def require_final_trial(conn, candidate):
+-    result = trial_summary(conn, candidate)
+-    if result["kind"] == "audit":
++    """适配器：直接使用统一权威门禁。不合格时抛出明确异常。"""
++    verdict = verify_final_qualification(conn, candidate)
++    if verdict.get("kind") == "audit":
+         raise ValueError("technical audit records cannot be published as experience candidates")
+-    if result["required"] and not result["ready"]:
+-        raise ValueError("method candidate requires fresh execution evidence and independent AGY/DSH validation before final approval")
+-    return result.get("task_id")
++    if not verdict.get("qualified"):
++        reasons = "; ".join(verdict.get("reasons", ["经验候选未满足两轮核验或初审条件"]))
++        raise ValueError(f"经验终审门禁拒绝: {reasons}; method candidate requires fresh execution evidence and independent AGY/DSH validation before final approval")
++    return verdict.get("task_id")
+ 
+ 
+ def link_trial_tx(store, conn, source_task_id, task_id):
+-    """Called inside submit's transaction, before the task becomes runnable."""
++    """在派发试验任务时绑定。严格限制两轮上限，防刷第三轮。"""
+     candidate = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (source_task_id,)).fetchone()
+-    if candidate is None or candidate["status"] != "delivery_approved":
++    if candidate is None:
+         raise ValueError("trial source must still await final review")
++
++    # 两轮硬性门禁拦截：已耗尽轮次或已退役，绝对禁止再关联
++    lineage = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (source_task_id,)).fetchone() if _table_exists(conn, "experience_validation_lineages") else None
++    if (lineage and (lineage["rounds_used"] >= 2 or lineage["lineage_status"] == "retired")) or candidate["status"] == "retired":
++        raise MaxValidationRoundsExceeded("该经验候选已耗尽 2 轮验证上限，已被退役，禁止重新关联试验或刷第三轮")
++
++    if candidate["status"] not in {"delivery_approved", "revalidation_required"}:
++        raise ValueError(f"trial source must await validation, current status is {candidate['status']!r}")
++
+     approved = latest_delivery(conn, candidate)
+     task = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
+     trial = verified_snapshot(task).get("experience_trial", {})
+@@ -300,6 +962,7 @@
+         raise ValueError("trial binding changed during submission")
+     if hashlib.sha256(Path(candidate["staged_path"]).read_bytes()).hexdigest() != candidate["evidence_sha256"]:
+         raise ValueError("candidate bytes changed before trial submission")
++
+     conn.execute("UPDATE memory_candidates SET updated_at=? WHERE task_id=?", (time.time(), source_task_id))
+     store._append_event_tx(conn, source_task_id, "memory.trial_linked", {"task_id": task_id})
+ 
+diff -ruN -x __pycache__ -x *.pyc /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/review_flow.py /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/review_flow.py
+--- /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/review_flow.py	2026-10-27 23:26:20
++++ /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/review_flow.py	2026-10-27 23:44:28
+@@ -257,6 +257,13 @@
+         return 1, {"status": "blocked", "error": str(exc)}
+     if expected_sha256 is not None and expected_sha256 != reviewed_sha256:
+         return 1, {"status": "blocked", "error": "evidence hash does not match the staged candidate"}
++    if stage == "final" and decision == "approve":
++        from .experience_workflow import verify_final_qualification
++        with store.read_only() as conn:
++            verdict = verify_final_qualification(conn, current_candidate)
++            if not verdict.get("qualified"):
++                reasons = "; ".join(verdict.get("reasons", ["经验候选不符合终审发布条件"]))
++                return 1, {"status": "blocked", "error": f"经验终审门禁拒绝: {reasons}"}
+     if stage == "final" and decision == "reject":
+         try:
+             quarantine_errors = quarantine_pending_reuses(config, store, task_id)
+diff -ruN -x __pycache__ -x *.pyc /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/store.py /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/store.py
+--- /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/store.py	2026-10-27 23:26:20
++++ /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/store.py	2026-10-28 00:02:52
+@@ -1082,6 +1082,43 @@
+             row = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (task_id,)).fetchone()
+             return dict(row) if row else None
+ 
++    def get_validation_lineage(self, candidate_id: str) -> Optional[Dict[str, Any]]:
++        with self.read_only() as conn:
++            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
++            if "experience_validation_lineages" not in tables:
++                return None
++            row = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (candidate_id,)).fetchone()
++            return dict(row) if row else None
++
++    def get_validation_records(self, candidate_id: str) -> list[Dict[str, Any]]:
++        with self.read_only() as conn:
++            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
++            if "experience_validation_records" not in tables:
++                return []
++            rows = conn.execute("SELECT * FROM experience_validation_records WHERE candidate_id=? ORDER BY round ASC", (candidate_id,)).fetchall()
++            return [dict(r) for r in rows]
++
++    def apply_validation_extension(self, dry_run: bool = False) -> Dict[str, Any]:
++        from .validation_migration import apply_validation_schema_migration
++        return apply_validation_schema_migration(self.path, dry_run=dry_run)
++
++    def rollback_validation_extension(self) -> Dict[str, Any]:
++        from .validation_migration import rollback_validation_schema_migration
++        return rollback_validation_schema_migration(self.path)
++
++    def is_validation_extension_installed(self) -> bool:
++        from .validation_migration import is_validation_extension_installed
++        with self.read_only() as conn:
++            return is_validation_extension_installed(conn)
++
++    def submit_validation_diff_materials(self, candidate_id: str, diff_materials: Any) -> Dict[str, Any]:
++        from .experience_workflow import submit_diff_materials
++        with self.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res = submit_diff_materials(self, conn, candidate_id, diff_materials)
++            conn.commit()
++            return res
++
+     def review_memory(
+         self,
+         task_id: str,
+diff -ruN -x __pycache__ -x *.pyc /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/validation_migration.py /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/validation_migration.py
+--- /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/src/xiaoba_agentos/validation_migration.py	1970-01-01 08:00:00
++++ /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/src/xiaoba_agentos/validation_migration.py	2026-10-27 23:56:12
+@@ -0,0 +1,180 @@
++"""Explicit database migration for v1.6.5 validation extension.
++
++Additive extension version: 1.
++This migration is explicit and transaction-safe; ordinary Store initialization
++will never implicitly modify an unmigrated database.
++"""
++from __future__ import annotations
++
++import sqlite3
++import time
++from pathlib import Path
++from typing import Any, Dict, Optional, Union
++
++VALIDATION_EXTENSION_VERSION = 1
++
++
++def _resolve_connection(target: Union[sqlite3.Connection, Path, str]) -> tuple[sqlite3.Connection, bool]:
++    if isinstance(target, sqlite3.Connection):
++        return target, False
++    path = Path(target).resolve()
++    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
++    conn = sqlite3.connect(str(path), timeout=30, isolation_level=None)
++    conn.row_factory = sqlite3.Row
++    return conn, True
++
++
++def is_validation_extension_installed(conn: sqlite3.Connection) -> bool:
++    """Check if the validation extension tables and version metadata are present."""
++    tables = {row[0] for row in conn.execute(
++        "SELECT name FROM sqlite_master WHERE type='table'"
++    ).fetchall()}
++    required = {
++        "experience_validation_meta",
++        "experience_validation_lineages",
++        "experience_validation_records",
++    }
++    if not required.issubset(tables):
++        return False
++    row = conn.execute(
++        "SELECT value FROM experience_validation_meta WHERE key='version'"
++    ).fetchone()
++    if not row:
++        return False
++    try:
++        return int(row[0]) >= VALIDATION_EXTENSION_VERSION
++    except (ValueError, TypeError):
++        return False
++
++
++def apply_validation_schema_migration(
++    target: Union[sqlite3.Connection, Path, str],
++    *,
++    dry_run: bool = False,
++) -> Dict[str, Any]:
++    """Explicitly apply validation extension schema migration in an immediate transaction.
++
++    Never called implicitly on ordinary database connections.
++    """
++    conn, should_close = _resolve_connection(target)
++    now = time.time()
++    try:
++        if is_validation_extension_installed(conn):
++            return {
++                "ok": True,
++                "already_installed": True,
++                "version": VALIDATION_EXTENSION_VERSION,
++                "dry_run": dry_run,
++            }
++
++        if dry_run:
++            return {
++                "ok": True,
++                "already_installed": False,
++                "target_version": VALIDATION_EXTENSION_VERSION,
++                "dry_run": True,
++                "actions": [
++                    "CREATE TABLE experience_validation_meta",
++                    "CREATE TABLE experience_validation_lineages",
++                    "CREATE TABLE experience_validation_records",
++                ],
++            }
++
++        conn.execute("BEGIN IMMEDIATE")
++        conn.executescript(
++            f"""
++            CREATE TABLE IF NOT EXISTS experience_validation_meta (
++                key TEXT PRIMARY KEY,
++                value TEXT NOT NULL,
++                updated_at REAL NOT NULL
++            );
++
++            CREATE TABLE IF NOT EXISTS experience_validation_lineages (
++                candidate_id TEXT PRIMARY KEY REFERENCES memory_candidates(task_id),
++                current_round INTEGER NOT NULL DEFAULT 1,
++                max_rounds INTEGER NOT NULL DEFAULT 2,
++                lineage_status TEXT NOT NULL CHECK(lineage_status IN (
++                    'pending_round_1',
++                    'round_1_running',
++                    'pending_round_2',
++                    'round_2_running',
++                    'ready_for_final',
++                    'retired',
++                    'paused',
++                    'awaiting_check',
++                    'awaiting_diff_materials'
++                )),
++                rounds_used INTEGER NOT NULL DEFAULT 0,
++                created_at REAL NOT NULL,
++                updated_at REAL NOT NULL
++            );
++
++            CREATE TABLE IF NOT EXISTS experience_validation_records (
++                id TEXT PRIMARY KEY,
++                candidate_id TEXT NOT NULL REFERENCES memory_candidates(task_id),
++                round INTEGER NOT NULL CHECK(round IN (1, 2)),
++                candidate_sha256 TEXT NOT NULL,
++                delivery_review_id TEXT NOT NULL,
++                status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'passed', 'failed', 'paused')),
++                task_id TEXT,
++                plan_digest TEXT,
++                execution_digest TEXT,
++                diff_explanation TEXT,
++                pause_reason TEXT,
++                failure_class TEXT,
++                dsh_receipt_id TEXT,
++                peer_receipt_id TEXT,
++                dsh_verdict TEXT,
++                peer_verdict TEXT,
++                needs_human_check INTEGER NOT NULL DEFAULT 0,
++                created_at REAL NOT NULL,
++                updated_at REAL NOT NULL,
++                UNIQUE(candidate_id, round)
++            );
++            CREATE INDEX IF NOT EXISTS idx_exp_val_records_candidate ON experience_validation_records(candidate_id, round);
++
++            INSERT OR REPLACE INTO experience_validation_meta (key, value, updated_at)
++            VALUES ('version', '{VALIDATION_EXTENSION_VERSION}', {now});
++            INSERT OR REPLACE INTO experience_validation_meta (key, value, updated_at)
++            VALUES ('installed_at', '{now}', {now});
++            """
++        )
++        conn.commit()
++        return {
++            "ok": True,
++            "already_installed": False,
++            "version": VALIDATION_EXTENSION_VERSION,
++            "installed_at": now,
++        }
++    except Exception:
++        if conn.in_transaction:
++            conn.rollback()
++        raise
++    finally:
++        if should_close:
++            conn.close()
++
++
++def rollback_validation_schema_migration(
++    target: Union[sqlite3.Connection, Path, str],
++) -> Dict[str, Any]:
++    """Rollback validation extension schema changes cleanly during an aborted switch."""
++    conn, should_close = _resolve_connection(target)
++    try:
++        conn.execute("BEGIN IMMEDIATE")
++        conn.executescript(
++            """
++            DROP TABLE IF EXISTS experience_validation_records;
++            DROP TABLE IF EXISTS experience_validation_lineages;
++            DROP TABLE IF EXISTS experience_validation_meta;
++            """
++        )
++        conn.commit()
++        return {"ok": True, "rolled_back": True}
++    except Exception:
++        if conn.in_transaction:
++            conn.rollback()
++        raise
++    finally:
++        if should_close:
++            conn.close()
+diff -ruN -x __pycache__ -x *.pyc /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/tests/test_authoritative_gate_and_state_machine.py /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/tests/test_authoritative_gate_and_state_machine.py
+--- /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/tests/test_authoritative_gate_and_state_machine.py	1970-01-01 08:00:00
++++ /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/tests/test_authoritative_gate_and_state_machine.py	2026-10-28 00:04:19
+@@ -0,0 +1,511 @@
++"""Unit tests for authoritative verification gate and two-round state machine.
++
++Tests cover:
++1. Unified evidence contract (real execution + independent dual receipts).
++2. Two-round state machine:
++   - Round 1 PASS -> pending_final_review
++   - Round 1 FAIL -> revalidation_required
++   - Round 2 PASS with valid diff -> pending_final_review
++   - Round 2 FAIL -> retired (excluded from reuse)
++   - Round 2 PASS without valid diff -> rejected / not ready
++3. No third-round loophole: MaxValidationRoundsExceeded enforced.
++4. Content drift invalidates old PASS while preserving failure and round history.
++5. External pause failures (tools, network, auth) pause and preserve round without consuming it.
++6. Substantive FAIL or hygiene leaks block qualification.
++7. Final approval remains an independent user action (no auto-approval).
++8. Legacy records migration marks ambiguous history as needs_human_check.
++"""
++from __future__ import annotations
++
++import hashlib
++import json
++from pathlib import Path
++import sqlite3
++import tempfile
++import time
++import unittest
++
++from xiaoba_agentos.store import EventStore
++from xiaoba_agentos.review_flow import execute_review
++from xiaoba_agentos.experience_workflow import (
++    verify_final_qualification,
++    advance_validation_round,
++    resume_paused_validation,
++    submit_diff_materials,
++    validate_diff_materials,
++    migrate_legacy_validation_records,
++    trial_summary,
++    require_final_trial,
++    link_trial_tx,
++    validate_diff_explanation,
++    MaxValidationRoundsExceeded,
++)
++
++
++class AuthoritativeGateAndStateMachineTests(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.tmp.cleanup)
++        self.root = Path(self.tmp.name)
++        self.db_path = self.root / "agentos.sqlite3"
++        self.outbox = self.root / "memory-outbox"
++        self.outbox.mkdir(parents=True, exist_ok=True)
++        self.store = EventStore(self.db_path)
++        self.store.initialize()
++        self.store.apply_validation_extension()
++
++    def create_candidate(self, title="测试方法经验", body="# 方法正文\n测试实现步骤\n", kind="method"):
++        cand = self.store.create_authored_candidate(
++            title=title,
++            body=body,
++            outbox=self.outbox,
++            author="tester",
++            experience_kind=kind,
++        )
++        # 初始初审通过
++        self.store.review_memory(
++            task_id=cand["task_id"],
++            stage="delivery",
++            decision="approve",
++            note="初审合格，准予开展验证",
++            candidate_sha256=cand["evidence_sha256"],
++        )
++        return self.store.get_memory_candidate(cand["task_id"])
++
++    def dummy_execution(self, passed=True):
++        return {
++            "passed": passed,
++            "started_at": time.time(),
++            "finished_at": time.time() + 1,
++            "cases": [
++                {
++                    "name": "case-1",
++                    "passed": passed,
++                    "returncode": 0 if passed else 1,
++                    "expect_stdout": "SUCCESS",
++                    "output": "SUCCESS" if passed else "FAILED",
++                }
++            ],
++        }
++
++    def test_round1_pass_advances_to_pending_final_review(self):
++        """首轮验证全面通过：推进到待终审 (pending_final_review)。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res = advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "execution": self.dummy_execution(True),
++                    "dsh_verdict": "PASS",
++                    "peer_verdict": "PASS",
++                    "dsh_output": "审查合格，无外泄",
++                    "peer_output": "复核通过，符合预期",
++                }
++            )
++            conn.commit()
++
++        self.assertTrue(res["ok"])
++        self.assertEqual(res["round"], 1)
++        self.assertEqual(res["status"], "passed")
++        self.assertEqual(res["candidate_status"], "pending_final_review")
++
++        # 检查权威门禁
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertTrue(verdict["qualified"])
++            self.assertTrue(verdict["ready"])
++            self.assertEqual(verdict["round"], 1)
++
++            # require_final_trial 正常放行
++            task_id = require_final_trial(conn, cand)
++            self.assertIsNotNone(task_id)
++
++    def test_round1_fail_advances_to_revalidation_required(self):
++        """首轮验证失败：推进到待重新验证 (revalidation_required)。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res = advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "execution": self.dummy_execution(False),
++                    "dsh_verdict": "FAIL",
++                    "peer_verdict": "PASS",
++                }
++            )
++            conn.commit()
++
++        self.assertTrue(res["ok"])
++        self.assertEqual(res["round"], 1)
++        self.assertEqual(res["status"], "failed")
++        self.assertEqual(res["candidate_status"], "revalidation_required")
++
++        # 权威门禁拒绝终审
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertFalse(verdict["ready"])
++
++            with self.assertRaises(ValueError) as ctx:
++                require_final_trial(conn, cand)
++            self.assertIn("门禁拒绝", str(ctx.exception))
++
++    def test_round2_pass_with_valid_diff_advances_to_pending_final(self):
++        """次轮验证通过且附带有效差异材料：推进到待终审 (pending_final_review)。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        # 第 1 轮失败
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "FAIL"}
++            )
++            conn.commit()
++
++        # 第 2 轮整改，提交有效差异材料（包含五个必要方面）
++        valid_diff = {
++            "initial_failure": "首轮由于测试用例超时未通过",
++            "remediation": "调整了等待策略和执行参数，补齐了依赖夹具",
++            "evidence_changes": "次轮补充了独立断言日志和双审回执",
++            "outcome_changes": "用例执行全部通过，退出码 0",
++            "remaining_limitations": "仅适用于沙箱执行环境",
++        }
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res2 = advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "execution": self.dummy_execution(True),
++                    "dsh_verdict": "PASS",
++                    "peer_verdict": "PASS",
++                    "diff_explanation": valid_diff,
++                }
++            )
++            conn.commit()
++
++        self.assertTrue(res2["ok"])
++        self.assertEqual(res2["round"], 2)
++        self.assertEqual(res2["status"], "passed")
++        self.assertEqual(res2["candidate_status"], "pending_final_review")
++        self.assertEqual(res2["lineage_status"], "ready_for_final")
++
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertTrue(verdict["qualified"])
++            self.assertEqual(verdict["round"], 2)
++
++    def test_round2_pass_without_valid_diff_blocks_qualification_without_retiring(self):
++        """次轮验证通过但缺少有效差异材料：保留通过证据，阻断待终审，补齐后重新检查资格，不新增验证轮次，绝不退役。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        # 第 1 轮失败
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        # 第 2 轮执行及双审通过，但无有效差异材料（传入无效说明）
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res2 = advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "execution": self.dummy_execution(True),
++                    "dsh_verdict": "PASS",
++                    "peer_verdict": "PASS",
++                    "diff_explanation": "none",  # 无效说明
++                }
++            )
++            conn.commit()
++
++        # 核心断言：核验记录本身判定为 passed，轮次耗用为 2，但谱系为 awaiting_diff_materials，未退役！
++        self.assertEqual(res2["status"], "passed")
++        self.assertEqual(res2["candidate_status"], "revalidation_required")
++        self.assertEqual(res2["lineage_status"], "awaiting_diff_materials")
++
++        # 门禁阻断终审，状态为 diff_materials_required，绝非 retired
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertFalse(verdict["ready"])
++            self.assertEqual(verdict["state"], "diff_materials_required")
++            self.assertIn("差异材料", verdict["reasons"][0])
++
++        # 候选当前状态依然为 revalidation_required，绝非 retired
++        cand_now = self.store.get_memory_candidate(cand_id)
++        self.assertNotEqual(cand_now["status"], "retired")
++
++        # 补齐材料：调用 submit_diff_materials
++        valid_diff = {
++            "initial_failure": "首轮由于测试用例断言不符导致失败",
++            "remediation": "修复断言匹配逻辑并同步参数",
++            "evidence_changes": "执行日志证明断言通过，双审 PASS",
++            "outcome_changes": "测试用例通过率 100%",
++            "remaining_limitations": "无剩余阻断限制",
++        }
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            sub_res = submit_diff_materials(self.store, conn, cand_id, valid_diff)
++            conn.commit()
++
++        self.assertTrue(sub_res["ok"])
++        self.assertEqual(sub_res["round"], 2)
++        self.assertEqual(sub_res["rounds_used"], 2)  # 保持 2 轮，未消耗第 3 轮！
++        self.assertEqual(sub_res["candidate_status"], "pending_final_review")
++        self.assertEqual(sub_res["lineage_status"], "ready_for_final")
++
++        # 补齐材料后重新核验证格：终审资格顺利通过
++        with self.store.read_only() as conn:
++            verdict_after = verify_final_qualification(conn, cand_id)
++            self.assertTrue(verdict_after["qualified"])
++            self.assertTrue(verdict_after["ready"])
++            self.assertEqual(verdict_after["state"], "ready_for_final")
++
++    def test_round2_fail_retires_candidate(self):
++        """次轮验证明确失败：退役并排除复用 (retired)。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        # 第 1 轮失败
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "FAIL"}
++            )
++            conn.commit()
++
++        # 第 2 轮再次失败
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res2 = advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "execution": self.dummy_execution(False),
++                    "dsh_verdict": "FAIL",
++                    "peer_verdict": "PASS",
++                    "diff_explanation": "重新调整了参数但依然执行失败",
++                }
++            )
++            conn.commit()
++
++        self.assertEqual(res2["round"], 2)
++        self.assertEqual(res2["status"], "failed")
++        self.assertEqual(res2["candidate_status"], "retired")
++
++        updated = self.store.get_memory_candidate(cand_id)
++        self.assertEqual(updated["status"], "retired")
++
++    def test_no_third_round_allowed(self):
++        """已耗尽两轮验证的候选，禁止尝试第 3 轮。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "FAIL"}
++            )
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "FAIL", "diff_explanation": "调整参数尝试"}
++            )
++            conn.commit()
++
++        # 试图执行第 3 轮
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            with self.assertRaises(MaxValidationRoundsExceeded):
++                advance_validation_round(
++                    self.store, conn, cand_id,
++                    {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++                )
++
++        # 试图通过 link_trial_tx 关联新任务同样被拒绝
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            with self.assertRaises(MaxValidationRoundsExceeded):
++                link_trial_tx(self.store, conn, cand_id, "some-new-trial-task")
++
++    def test_external_pause_failure_preserves_round_without_consuming(self):
++        """工具、网络或认证异常触发暂停，保留当前轮次，不增加 rounds_used。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res = advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "failure_class": "tool_unavailable",
++                    "pause_reason": "沙箱工具 sandbox-exec 临时缺失",
++                }
++            )
++            conn.commit()
++
++        self.assertTrue(res["ok"])
++        self.assertEqual(res["status"], "paused")
++        self.assertEqual(res["round"], 1)
++        self.assertEqual(res["rounds_used"], 0)  # 未消耗机会！
++
++        # 处于暂停状态，门禁判定为未就绪
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertEqual(verdict["state"], "validation_paused")
++
++        # 人工恢复
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res_resume = resume_paused_validation(self.store, conn, cand_id)
++            conn.commit()
++
++        self.assertTrue(res_resume["ok"])
++        self.assertEqual(res_resume["resumed_round"], 1)
++        self.assertEqual(res_resume["status"], "pending_round_1")
++
++        # 恢复后正常执行第 1 轮并通过
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res_after = advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        self.assertEqual(res_after["round"], 1)
++        self.assertEqual(res_after["rounds_used"], 1)
++        self.assertEqual(res_after["status"], "passed")
++
++    def test_content_drift_invalidates_prior_pass_evidence(self):
++        """候选正文被修改后，哈希不匹配导致历史 PASS 证据失效。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        # 修改磁盘上的暂存文件
++        staged = Path(cand["staged_path"])
++        staged.write_text("# 篡改后的正文\n增加了未受审内容\n", encoding="utf-8")
++
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertEqual(verdict["state"], "content_drift")
++
++    def test_substantive_fail_or_reasoning_leak_blocks_qualification(self):
++        """审查回执包含实质 FAIL 或泄漏思考过程时，门禁坚决拦截。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {
++                    "execution": self.dummy_execution(True),
++                    "dsh_verdict": "PASS",
++                    "peer_verdict": "PASS",
++                    "dsh_output": "审查分析：<think>模型内部思考泄露</think>\nTRIAL_VALIDATION: PASS",
++                }
++            )
++            conn.commit()
++
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++
++    def test_final_review_requires_independent_user_action(self):
++        """即便验证已进入 pending_final_review，系统不自动批准，终审仍为独立操作。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        # 检查候选状态是 pending_final_review，绝非 published
++        current = self.store.get_memory_candidate(cand_id)
++        self.assertEqual(current["status"], "pending_final_review")
++        self.assertIsNone(current["published_path"])
++
++    def test_legacy_records_migration_flags_ambiguous_data(self):
++        """旧数据迁移：无法证明有效性的记录标记 needs_human_check，不猜测补齐。"""
++        cand = self.create_candidate()
++        cand_id = cand["task_id"]
++
++        # 制造一条模糊的旧事件
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            self.store._append_event_tx(conn, cand_id, "memory.trial_linked", {"task_id": "legacy-task-1"})
++            self.store._append_event_tx(conn, cand_id, "memory.trial_linked", {"task_id": "legacy-task-2"})
++            res = migrate_legacy_validation_records(conn)
++            conn.commit()
++
++        self.assertEqual(res["flagged_for_human_check"], 1)
++
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertEqual(verdict["state"], "awaiting_check")
++
++    def test_validation_extension_migration_and_rollback(self):
++        """显式数据库扩展迁移验证：验证旧版兼容、干跑、幂等应用与回滚机制。"""
++        unmigrated_db = self.root / "unmigrated.sqlite3"
++        raw_store = EventStore(unmigrated_db)
++        raw_store.initialize()
++
++        # 1. 普通初始化绝不会隐式创建扩展表或修改 schema
++        self.assertFalse(raw_store.is_validation_extension_installed())
++        self.assertIsNone(raw_store.get_validation_lineage("dummy-id"))
++        self.assertEqual(raw_store.get_validation_records("dummy-id"), [])
++
++        # 2. 干跑（dry_run）只报告计划改动，不产生副作用
++        dry = raw_store.apply_validation_extension(dry_run=True)
++        self.assertTrue(dry["ok"])
++        self.assertTrue(dry["dry_run"])
++        self.assertFalse(dry["already_installed"])
++        self.assertFalse(raw_store.is_validation_extension_installed())
++
++        # 3. 显式迁移安装
++        applied = raw_store.apply_validation_extension(dry_run=False)
++        self.assertTrue(applied["ok"])
++        self.assertEqual(applied["version"], 1)
++        self.assertTrue(raw_store.is_validation_extension_installed())
++
++        # 4. 幂等再次执行
++        reapplied = raw_store.apply_validation_extension(dry_run=False)
++        self.assertTrue(reapplied["ok"])
++        self.assertTrue(reapplied["already_installed"])
++
++        # 5. 回滚恢复
++        rolled = raw_store.rollback_validation_extension()
++        self.assertTrue(rolled["ok"])
++        self.assertTrue(rolled["rolled_back"])
++        self.assertFalse(raw_store.is_validation_extension_installed())
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff -ruN -x __pycache__ -x *.pyc /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/tests/test_review_ingress_native_integration.py /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/tests/test_review_ingress_native_integration.py
+--- /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/architecture-package-20261027/implementation/candidate-v1.6.5/tests/test_review_ingress_native_integration.py	1970-01-01 08:00:00
++++ /Users/suzhizhou/.gemini/antigravity/brain/4b653a2c-bc1e-4573-88f1-1eb5b7325165/scratch/worktree-v165-audit/development/integrated-candidate/tests/test_review_ingress_native_integration.py	2026-10-28 00:07:04
+@@ -0,0 +1,508 @@
++"""Integration tests connecting review-ingress receipts to native final review qualification.
++
++Verifies:
++1. Loaded source path audit: ensures tests execute against the isolated worktree candidate.
++2. Real review-ingress receipt ingestion -> native state machine advance -> native authoritative gate.
++3. End-to-end promotion from delivery review -> dual receipt ingress -> final review -> publication.
++4. Idempotency: duplicate receipts and re-submitted diff materials do not corrupt state.
++5. Concurrency: serialized database transactions prevent race conditions.
++6. Restart persistence: reopening the database preserves complete validation lineages and records.
++7. Pause & resume: external environmental failures pause without consuming rounds.
++8. Expired & drifted evidence rejection: candidate body or initial review changes invalidate evidence.
++9. Retired candidate exclusion: two failed rounds retire candidate and exclude it from reuse or new trials.
++"""
++from __future__ import annotations
++
++import concurrent.futures
++import hashlib
++import json
++from pathlib import Path
++import sqlite3
++import sys
++import tempfile
++import time
++import unittest
++
++import xiaoba_agentos
++from xiaoba_agentos.store import EventStore
++from xiaoba_agentos.experience_workflow import (
++    verify_final_qualification,
++    advance_validation_round,
++    resume_paused_validation,
++    submit_diff_materials,
++    validate_diff_materials,
++    require_final_trial,
++    link_trial_tx,
++    MaxValidationRoundsExceeded,
++)
++import xiaoba_review
++from xiaoba_review.store import ReviewStore, DecisionInbox, digest
++
++
++class ReviewIngressNativeIntegrationTests(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.tmp.cleanup)
++        self.root = Path(self.tmp.name)
++        self.db_path = self.root / "agentos.sqlite3"
++        self.outbox = self.root / "memory-outbox"
++        self.outbox.mkdir(parents=True, exist_ok=True)
++        self.vault = self.root / "vault"
++        self.vault.mkdir(parents=True, exist_ok=True)
++
++        self.store = EventStore(self.db_path)
++        self.store.initialize()
++        self.store.apply_validation_extension()
++
++        self.review_store = ReviewStore(self.store, self.outbox)
++        self.inbox = DecisionInbox(online=True)
++
++        # 登记两家真实、独立的审查方身份（一 DSH、一 Peer）
++        self.dsh_source = self.review_store.register_source({
++            "reviewer_id": "dsh-reviewer-primary",
++            "source_ref": "agentos://dsh/independent-audit",
++            "provenance": "local-dsh-service",
++            "kind": "dsh",
++        })
++        self.peer_source = self.review_store.register_source({
++            "reviewer_id": "peer-reviewer-cross",
++            "source_ref": "agentos://peer/external-peer",
++            "provenance": "external-sandbox-peer",
++            "kind": "peer",
++        })
++
++    def test_loaded_source_paths_audit(self):
++        """审计记录：记录测试实际加载的源码路径，确保测试在独立候选目录下执行。"""
++        agentos_path = Path(xiaoba_agentos.__file__).resolve()
++        review_path = Path(xiaoba_review.__file__).resolve()
++        sys.stderr.write(f"\n[SOURCE AUDIT] xiaoba_agentos loaded from: {agentos_path}\n")
++        sys.stderr.write(f"[SOURCE AUDIT] xiaoba_review loaded from: {review_path}\n")
++        self.assertIn("worktree-v165-audit", str(agentos_path))
++        self.assertIn("worktree-v165-audit", str(review_path))
++
++    def create_candidate_with_delivery_approval(self, title="方法经验卡", body="# 正文\n步骤说明\n"):
++        cand = self.store.create_authored_candidate(
++            title=title,
++            body=body,
++            outbox=self.outbox,
++            author="author-agent",
++            experience_kind="method",
++        )
++        self.store.review_memory(
++            task_id=cand["task_id"],
++            stage="delivery",
++            decision="approve",
++            note="交付初审合格，准许开展双审与隔离试验",
++            candidate_sha256=cand["evidence_sha256"],
++        )
++        return self.store.get_memory_candidate(cand["task_id"])
++
++    def dummy_execution(self, passed=True):
++        return {
++            "passed": passed,
++            "started_at": time.time(),
++            "finished_at": time.time() + 2,
++            "cases": [
++                {
++                    "name": "integration-case-1",
++                    "passed": passed,
++                    "returncode": 0 if passed else 1,
++                    "expect_stdout": "SUCCESS_VERIFIED",
++                    "output": "SUCCESS_VERIFIED\n",
++                }
++            ],
++        }
++
++    def simulate_review_ingress_flow(self, cand, dsh_verdict="PASS", peer_verdict="PASS"):
++        """模拟真实的审查接入流程并产出经过 attestation 确认的双审回执。"""
++        evidence_item = {
++            "ref": "trial://execution-log/run-01",
++            "sha256": hashlib.sha256(b"dummy-execution-evidence").hexdigest(),
++        }
++        req = self.review_store.create(
++            candidate_id=cand["task_id"],
++            dsh_id="dsh-reviewer-primary",
++            peer_id="peer-reviewer-cross",
++            scope="全流程规范与隔离执行核验",
++            evidence=[evidence_item],
++        )
++
++        assignments = {a["role"]: a for a in req["assignments"]}
++        dsh_card = assignments["dsh"]["card"]
++        peer_card = assignments["peer"]["card"]
++        now = time.time()
++
++        dsh_receipt_payload = {
++            "receipt_id": "rcpt-dsh-" + cand["task_id"],
++            "assignment_id": dsh_card["assignment_id"],
++            "review_request_id": req["id"],
++            "reviewer_role": "dsh",
++            "plan_revision": 1,
++            "reviewer_id": "dsh-reviewer-primary",
++            "source_ref": self.dsh_source["source_ref"],
++            "candidate_sha256": cand["evidence_sha256"],
++            "input_digest": dsh_card["input_digest"],
++            "card_digest": dsh_card["card_digest"],
++            "verdict": dsh_verdict,
++            "findings": "DSH审查结论：符合规范，执行正确，无推理外泄" if dsh_verdict == "PASS" else "DSH审查结论：不合格",
++            "evidence_refs": [evidence_item],
++            "started_at": now,
++            "finished_at": now + 5,
++        }
++
++        peer_receipt_payload = {
++            "receipt_id": "rcpt-peer-" + cand["task_id"],
++            "assignment_id": peer_card["assignment_id"],
++            "review_request_id": req["id"],
++            "reviewer_role": "peer",
++            "plan_revision": 1,
++            "reviewer_id": "peer-reviewer-cross",
++            "source_ref": self.peer_source["source_ref"],
++            "candidate_sha256": cand["evidence_sha256"],
++            "input_digest": peer_card["input_digest"],
++            "card_digest": peer_card["card_digest"],
++            "verdict": peer_verdict,
++            "findings": "Peer复核结论：执行验证全数通过" if peer_verdict == "PASS" else "Peer复核结论：未达标",
++            "evidence_refs": [evidence_item],
++            "started_at": now,
++            "finished_at": now + 5,
++        }
++
++        # 接收回执（初始为 identity_pending）
++        dsh_res = self.review_store.receive(dsh_receipt_payload)
++        peer_res = self.review_store.receive(peer_receipt_payload)
++
++        # 确权证明（attestation 确认为 valid）
++        self.review_store.attest(dsh_res["id"], dsh_res["digest"], "DSH 独立审查凭据核对通过")
++        self.review_store.attest(peer_res["id"], peer_res["digest"], "Peer 跨机构复核凭据核对通过")
++
++        # 交付材料箱
++        self.review_store.deliver(self.inbox)
++
++        return req, dsh_receipt_payload, peer_receipt_payload
++
++    def test_end_to_end_receipt_ingress_to_native_qualification_and_publication(self):
++        """端到端验证：真实 review-ingress 回执接入 -> 原生核验状态机 -> 终审门禁资格 -> 批准终审 -> 正式发布。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        # 1. 产生真实双审回执
++        req, dsh_rcpt, peer_rcpt = self.simulate_review_ingress_flow(cand, "PASS", "PASS")
++
++        # 2. 调用原生状态机写入第 1 轮核验结果
++        exec_data = self.dummy_execution(True)
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            round_res = advance_validation_round(
++                self.store,
++                conn,
++                cand_id,
++                {
++                    "candidate_sha256": cand["evidence_sha256"],
++                    "task_id": "trial-task-e2e-01",
++                    "execution": exec_data,
++                    "plan_digest": req["fingerprint"],
++                    "execution_digest": digest(exec_data),
++                    "dsh_receipt_id": dsh_rcpt["receipt_id"],
++                    "peer_receipt_id": peer_rcpt["receipt_id"],
++                    "dsh_verdict": dsh_rcpt["verdict"],
++                    "peer_verdict": peer_rcpt["verdict"],
++                    "dsh_output": dsh_rcpt["findings"],
++                    "peer_output": peer_rcpt["findings"],
++                }
++            )
++            conn.commit()
++
++        self.assertTrue(round_res["ok"])
++        self.assertEqual(round_res["status"], "passed")
++        self.assertEqual(round_res["candidate_status"], "pending_final_review")
++
++        # 3. 权威门禁判断终审资格
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertTrue(verdict["qualified"])
++            self.assertTrue(verdict["ready"])
++            self.assertEqual(verdict["round"], 1)
++
++            # require_final_trial 校验
++            bound_task = require_final_trial(conn, cand)
++            self.assertEqual(bound_task, "trial-task-e2e-01")
++
++        # 4. 执行终审批准
++        approved = self.store.review_memory(
++            task_id=cand_id,
++            stage="final",
++            decision="approve",
++            note="双审回执与隔离执行证据齐备，予以终审通过",
++            candidate_sha256=cand["evidence_sha256"],
++        )
++        self.assertEqual(approved["status"], "pending_final_review")
++        with self.store.read_only() as conn:
++            reviews = [dict(r) for r in conn.execute(
++                "SELECT * FROM memory_reviews WHERE task_id=? ORDER BY created_at", (cand_id,)
++            ).fetchall()]
++        self.assertTrue(any(r["stage"] == "final" and r["decision"] == "approve" for r in reviews))
++
++        # 5. 执行正式发布事务（锁定、验质、归档、落盘）
++        with self.store.publication_transaction(cand_id, cand["evidence_sha256"]) as pub:
++            vault_file = self.vault / f"{cand_id}.md"
++            vault_file.write_text(Path(cand["staged_path"]).read_text(encoding="utf-8"), encoding="utf-8")
++            pub.settle(str(vault_file))
++
++        published_cand = self.store.get_memory_candidate(cand_id)
++        self.assertEqual(published_cand["status"], "published")
++        self.assertEqual(published_cand["published_path"], str(vault_file))
++
++    def test_idempotency_of_receipts_and_diff_submission(self):
++        """幂等性测试：重复回执接收、重复确权与重复补齐差异材料均不引发冲突或破坏轮次。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        req, dsh_rcpt, _ = self.simulate_review_ingress_flow(cand, "PASS", "PASS")
++
++        # 1. 重复调用 review_store.receive 相同回执
++        dup_res = self.review_store.receive(dsh_rcpt)
++        self.assertEqual(dup_res["id"], dsh_rcpt["receipt_id"])
++
++        # 2. 推进首轮为失败
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        # 3. 推进第 2 轮通过但缺少差异材料
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS", "diff_explanation": "none"}
++            )
++            conn.commit()
++
++        # 4. 补齐合规材料
++        diff_payload = {
++            "initial_failure": "首轮由于测试用例断言不符导致失败",
++            "remediation": "修复断言匹配逻辑并同步参数",
++            "evidence_changes": "执行日志证明断言通过，双审 PASS",
++            "outcome_changes": "测试用例通过率 100%",
++            "remaining_limitations": "无剩余阻断限制",
++        }
++        res1 = self.store.submit_validation_diff_materials(cand_id, diff_payload)
++        self.assertTrue(res1["ok"])
++        self.assertEqual(res1["rounds_used"], 2)
++
++        # 重复调用补齐材料（幂等更新）
++        res2 = self.store.submit_validation_diff_materials(cand_id, diff_payload)
++        self.assertTrue(res2["ok"])
++        self.assertEqual(res2["rounds_used"], 2)  # 轮次始终保持 2，不泄露第 3 轮！
++
++    def test_concurrency_serialization(self):
++        """并发测试：多线程同时尝试推进轮次或审查候选，在 IMMEDIATE 事务锁下安全串行化。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        def worker_attempt(index):
++            try:
++                with self.store.connect() as conn:
++                    conn.execute("BEGIN IMMEDIATE")
++                    res = advance_validation_round(
++                        self.store,
++                        conn,
++                        cand_id,
++                        {
++                            "execution": self.dummy_execution(True),
++                            "dsh_verdict": "PASS",
++                            "peer_verdict": "PASS",
++                            "task_id": f"concurrent-trial-{index}",
++                        }
++                    )
++                    conn.commit()
++                    return ("ok", res)
++            except Exception as exc:
++                return ("error", str(exc))
++
++        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
++            futures = [executor.submit(worker_attempt, i) for i in range(4)]
++            results = [f.result() for f in futures]
++
++        # 至少有一次成功推进，且整体状态机保持一致
++        successes = [r for r in results if r[0] == "ok"]
++        self.assertGreaterEqual(len(successes), 1)
++
++        with self.store.read_only() as conn:
++            lineage = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (cand_id,)).fetchone()
++            self.assertIsNotNone(lineage)
++            self.assertIn(lineage["lineage_status"], {"ready_for_final", "pending_round_2", "awaiting_diff_materials"})
++
++    def test_restart_and_persistence_recovery(self):
++        """重启恢复测试：重新连接数据库后，谱系、轮次记录与门禁判定完好无损。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        # 重新创建 Store 实例模拟服务重启
++        restarted_store = EventStore(self.db_path)
++        with restarted_store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertTrue(verdict["qualified"])
++            self.assertTrue(verdict["ready"])
++            self.assertEqual(verdict["round"], 1)
++
++            lineage = restarted_store.get_validation_lineage(cand_id)
++            self.assertIsNotNone(lineage)
++            self.assertEqual(lineage["lineage_status"], "ready_for_final")
++            self.assertEqual(lineage["rounds_used"], 1)
++
++            records = restarted_store.get_validation_records(cand_id)
++            self.assertEqual(len(records), 1)
++            self.assertEqual(records[0]["status"], "passed")
++
++    def test_pause_and_resume_preserves_round(self):
++        """暂停恢复测试：外部工具缺失引发暂停，恢复后轮次不递增，重新验证成功放行。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res_pause = advance_validation_round(
++                self.store, conn, cand_id,
++                {"failure_class": "network_partition", "pause_reason": "沙箱与节点网络中断"}
++            )
++            conn.commit()
++
++        self.assertEqual(res_pause["status"], "paused")
++        self.assertEqual(res_pause["rounds_used"], 0)
++
++        with self.store.read_only() as conn:
++            verdict_paused = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict_paused["qualified"])
++            self.assertEqual(verdict_paused["state"], "validation_paused")
++
++        # 恢复暂停
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res_resume = resume_paused_validation(self.store, conn, cand_id)
++            conn.commit()
++
++        self.assertEqual(res_resume["status"], "pending_round_1")
++        self.assertEqual(res_resume["resumed_round"], 1)
++
++        # 恢复后正常执行首轮
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res_after = advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        self.assertEqual(res_after["round"], 1)
++        self.assertEqual(res_after["rounds_used"], 1)
++        self.assertEqual(res_after["status"], "passed")
++
++    def test_expired_and_drifted_evidence_rejection(self):
++        """过期及漂移证据拒绝：候选正文变动或初审失效使历史证据全部失效。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        req, _, _ = self.simulate_review_ingress_flow(cand, "PASS", "PASS")
++
++        # 推进首轮通过
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(True), "dsh_verdict": "PASS", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        # 篡改磁盘暂存文件（发生正文漂移）
++        staged_path = Path(cand["staged_path"])
++        staged_path.write_text("# 篡改内容\n未经审核的代码注入\n", encoding="utf-8")
++
++        # 1. review-ingress 判定过期
++        with self.review_store.transaction() as db:
++            req_row = db.execute("SELECT * FROM ri_requests WHERE id=?", (req["id"],)).fetchone()
++            is_fresh = self.review_store.fresh(db, req_row)
++            self.assertFalse(is_fresh)
++            self.review_store.refresh(db, req_row)
++
++        # 2. 原生门禁坚决拒绝
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertEqual(verdict["state"], "content_drift")
++            self.assertIn("正文发生变动", verdict["reasons"][0])
++
++    def test_retired_candidate_exclusion_from_reuse_and_ingress(self):
++        """退役候选排除测试：两轮验证明确失败后被退役，排除复用，禁止再补审或启动新试验。"""
++        cand = self.create_candidate_with_delivery_approval()
++        cand_id = cand["task_id"]
++
++        # 第 1 轮失败
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "FAIL"}
++            )
++            conn.commit()
++
++        # 第 2 轮再次失败 -> 退役
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            res2 = advance_validation_round(
++                self.store, conn, cand_id,
++                {"execution": self.dummy_execution(False), "dsh_verdict": "FAIL", "peer_verdict": "PASS"}
++            )
++            conn.commit()
++
++        self.assertEqual(res2["candidate_status"], "retired")
++        self.assertEqual(res2["lineage_status"], "retired")
++
++        # 1. 终审门禁判定退役并拒绝
++        with self.store.read_only() as conn:
++            verdict = verify_final_qualification(conn, cand_id)
++            self.assertFalse(verdict["qualified"])
++            self.assertEqual(verdict["state"], "retired")
++
++        # 2. 试图通过 link_trial_tx 开启新试验被硬性拦截
++        with self.store.connect() as conn:
++            conn.execute("BEGIN IMMEDIATE")
++            with self.assertRaises(MaxValidationRoundsExceeded):
++                link_trial_tx(self.store, conn, cand_id, "new-rogue-trial")
++
++        # 3. 审查中心试图再次对其创建补审被拒绝
++        with self.assertRaises(ValueError) as ctx:
++            self.review_store.create(
++                candidate_id=cand_id,
++                dsh_id="dsh-reviewer-primary",
++                peer_id="peer-reviewer-cross",
++                scope="试图复活退役经验",
++                evidence=[{"ref": "some-ref", "sha256": hashlib.sha256(b"x").hexdigest()}],
++            )
++        self.assertIn("不能补审", str(ctx.exception))
++
++        # 4. 终审批准拒绝退役候选
++        with self.assertRaises(ValueError):
++            self.store.review_memory(
++                task_id=cand_id,
++                stage="final",
++                decision="approve",
++                note="强行批准退役候选",
++                candidate_sha256=cand["evidence_sha256"],
++            )
++
++
++if __name__ == "__main__":
++    unittest.main()

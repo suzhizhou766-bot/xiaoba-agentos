@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.xiaoba.agentos</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@RUNNER_EXECUTABLE@@</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@@PROJECT_DIR@@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@@NODE_DIR@@:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>LC_CTYPE</key>
+    <string>UTF-8</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>XIAOBA_PROJECT_DIR</key>
+    <string>@@PROJECT_DIR@@/launchd/worker</string>
+    <key>XIAOBA_CONFIG</key>
+    <string>@@CONFIG@@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>@@PROJECT_DIR@@/.runtime/logs/worker.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>@@PROJECT_DIR@@/.runtime/logs/worker.err.log</string>
+</dict>
+</plist>

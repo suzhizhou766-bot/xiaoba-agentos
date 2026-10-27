@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "release": "v1.4.2",
+  "entries": [
+    {
+      "id": "lock-clarify-first",
+      "title": "需求不清时必须先追问",
+      "category": "clarify-rule",
+      "index_mode": "semantic_source",
+      "path_ref": "vault/70_复利规则/经验/lock.md",
+      "summary": "澄清优先：目标或验收缺失时先追问再执行。锁标记 LOCK_ONLY_TOKEN。",
+      "status": "active"
+    },
+    {
+      "id": "neighbor-clarify-first",
+      "title": "需求不清时必须先追问",
+      "category": "clarify-rule",
+      "index_mode": "semantic_source",
+      "path_ref": "vault/70_复利规则/经验/neighbor.md",
+      "summary": "澄清优先：目标或验收缺失时先追问再执行的相邻页面，不是权威源。邻标记 NEIGHBOR_ONLY_TOKEN。",
+      "status": "active"
+    },
+    {
+      "id": "alias-clarify-first",
+      "title": "需求不清时必须先追问（别名）",
+      "category": "clarify-rule",
+      "index_mode": "semantic_source",
+      "path_ref": "vault/70_复利规则/经验/alias.md",
+      "summary": "同一澄清规则的别名条目，canonical id 与主条目不同。别名标记 ALIAS_ONLY_TOKEN。",
+      "status": "active"
+    },
+    {
+      "id": "archived-clarify-first-2024",
+      "title": "需求不清时必须先追问（2024 归档版）",
+      "category": "clarify-rule",
+      "index_mode": "semantic_source",
+      "path_ref": "vault/99_归档/lock_v2024.md",
+      "summary": "澄清优先：目标或验收缺失时先追问再执行。归档标记 ARCHIVED_ONLY_TOKEN。",
+      "status": "archived"
+    },
+    {
+      "id": "superseded-clarify-first-pre-v14",
+      "title": "需求不清时必须先追问（v1.4 之前）",
+      "category": "clarify-rule",
+      "index_mode": "semantic_source",
+      "path_ref": "vault/99_归档/lock_pre_v14.md",
+      "summary": "澄清优先：目标或验收缺失时先追问再执行。被取代标记 SUPERSEDED_ONLY_TOKEN。",
+      "status": "superseded"
+    }
+  ]
+}
