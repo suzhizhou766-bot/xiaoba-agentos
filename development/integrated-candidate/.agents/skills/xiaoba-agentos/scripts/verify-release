@@ -1,0 +1,189 @@
+#!/Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14
+"""Fail-closed stable entrypoint for the indexed immutable AgentOS release."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+
+DEFAULT_CONFIG = Path("/Users/suzhizhou/Documents/小八AgentOS/config/agentos.json")
+VERIFY_ONLY = True
+
+
+class ReleaseUnverified(Exception):
+    """The indexed release tree does not match its pinned file manifest."""
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verified_release_source(config_path: Path) -> Path:
+    """Return the indexed release's source directory after hashing every file.
+
+    Standard library only, and nothing is imported from the workspace or from
+    the release before this passes: the code that performs the full binding
+    check afterwards is itself covered by the manifest verified here.
+    """
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    policy = raw.get("release") if isinstance(raw, dict) else None
+    if not isinstance(policy, dict):
+        raise ReleaseUnverified("release policy")
+    index_path = Path(str(policy.get("index_path", ""))).expanduser()
+    expected = str(policy.get("expected_version", ""))
+    if not expected or not index_path.is_absolute() or index_path.is_symlink():
+        raise ReleaseUnverified("release index")
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    releases = index.get("releases") if isinstance(index, dict) else None
+    matches = [item for item in releases or [] if isinstance(item, dict) and item.get("version") == expected]
+    if len(matches) != 1 or index.get("current_release") != expected:
+        raise ReleaseUnverified("release entry")
+    relative = Path(str(matches[0].get("path", "")))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+        raise ReleaseUnverified("release path")
+    root = index_path.parent.resolve()
+    candidate = index_path.parent / relative
+    release_dir = candidate.resolve()
+    if candidate.is_symlink() or not release_dir.is_dir() or root not in release_dir.parents:
+        raise ReleaseUnverified("release directory")
+    manifest = release_dir / "FILES.sha256"
+    if manifest.is_symlink() or not manifest.is_file():
+        raise ReleaseUnverified("file manifest")
+    if _file_sha256(manifest) != str(matches[0].get("files_manifest_sha256", "")):
+        raise ReleaseUnverified("file manifest fingerprint")
+    listed = {}
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        digest, separator, name = line.partition("  ./")
+        if not separator or len(digest) != 64 or not name or name in listed:
+            raise ReleaseUnverified("file manifest line")
+        listed[name] = digest
+    actual = set()
+    for path in release_dir.rglob("*"):
+        if path.is_symlink():
+            raise ReleaseUnverified("symlink in release")
+        if path.is_file() and path != manifest:
+            actual.add(path.relative_to(release_dir).as_posix())
+    if actual != set(listed):
+        raise ReleaseUnverified("release file set")
+    for name, digest in listed.items():
+        if _file_sha256(release_dir / name) != digest:
+            raise ReleaseUnverified("release file hash")
+    source = release_dir / "agentos" / "src"
+    if source.is_symlink() or not source.is_dir():
+        raise ReleaseUnverified("release source")
+    return source
+
+
+def emit(payload: dict, *, error: bool = False) -> None:
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True),
+          file=sys.stderr if error else sys.stdout, flush=True)
+
+
+def parse_args(argv: list[str]) -> tuple[Path, list[str]]:
+    args = list(argv)
+    config = DEFAULT_CONFIG
+    if args and args[0] == "--config":
+        if len(args) < 2 or not args[1] or args[1].startswith("-"):
+            raise ValueError("missing_config_path")
+        config = Path(args[1]).expanduser()
+        args = args[2:]
+    elif args and args[0].startswith("--config="):
+        value = args.pop(0).split("=", 1)[1]
+        if not value:
+            raise ValueError("missing_config_path")
+        config = Path(value).expanduser()
+    if any(arg.startswith("--") and ("--config".startswith(arg.split("=", 1)[0])
+                                     or arg.startswith("--config=")) for arg in args):
+        raise ValueError("config_must_appear_once_before_command")
+    if VERIFY_ONLY and args:
+        raise ValueError("verify_release_takes_no_command")
+    return config.resolve(), args
+
+
+def main(argv: list[str] | None = None) -> int:
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        config_path, command = parse_args(sys.argv[1:] if argv is None else argv)
+    except (ValueError, OSError):
+        emit({"ok": False, "error": "invalid_arguments",
+              "usage": "verify-release [--config PATH]" if VERIFY_ONLY
+              else "xiaoba [--config PATH] COMMAND [ARGS...]"}, error=not VERIFY_ONLY)
+        return 2
+
+    try:
+        # Hash the indexed release first, then run the full binding check with
+        # the release's own verified modules. Never import the mutable
+        # workspace source or a module found on the caller's PYTHONPATH: a
+        # change to the workspace verifier must not be able to switch this
+        # check off.
+        initial_config_hash = hashlib.sha256(config_path.read_bytes()).hexdigest()
+        try:
+            verified_source = verified_release_source(config_path)
+        except (ReleaseUnverified, KeyError, TypeError, ValueError, AttributeError):
+            emit({"ok": False, "error": "release_binding_invalid", "problem_count": 1,
+                  "verification_skipped": False}, error=not VERIFY_ONLY)
+            return 1
+        sys.path[:] = [str(verified_source)] + [
+            item for item in sys.path if item and "xiaoba_agentos" not in item
+        ]
+        from xiaoba_agentos.config import AppConfig
+        from xiaoba_agentos.release import release_binding_status
+        config = AppConfig.load(config_path)
+        binding = release_binding_status(config)
+        if binding.get("ok") is not True or binding.get("skipped") is not False:
+            emit({"ok": False, "error": "release_binding_invalid",
+                  "problem_count": len(binding.get("problems", [])),
+                  "verification_skipped": binding.get("skipped") is True},
+                 error=not VERIFY_ONLY)
+            return 1
+        if hashlib.sha256(config_path.read_bytes()).hexdigest() != initial_config_hash:
+            emit({"ok": False, "error": "config_changed_during_verification"},
+                 error=not VERIFY_ONLY)
+            return 1
+        release_dir = Path(binding["release_dir"])
+        entrypoint = release_dir / "agentos" / "bin" / "agentos"
+        source = release_dir / "agentos" / "src"
+        if (not release_dir.is_absolute() or not entrypoint.is_file()
+                or entrypoint.is_symlink() or not os.access(entrypoint, os.X_OK)
+                or not source.is_dir() or source.is_symlink()):
+            emit({"ok": False, "error": "verified_entrypoint_unavailable"},
+                 error=not VERIFY_ONLY)
+            return 1
+        if VERIFY_ONLY:
+            # Never emit configuration contents, credential values, raw errors,
+            # provider data, or arbitrary verifier diagnostics.
+            emit({"ok": True, "skipped": False,
+                  "config_path": str(config_path),
+                  "current_release": binding["current_release"],
+                  "expected_version": binding["expected_version"],
+                  "acceptance_mode": binding["acceptance_mode"],
+                  "release_dir": str(release_dir),
+                  "files_manifest_sha256": binding["files_manifest_sha256"],
+                  "release_source_manifest_sha256": binding["release_source_manifest_sha256"],
+                  "runtime_source_manifest_sha256": binding["runtime_source_manifest_sha256"]})
+            return 0
+        environment = dict(os.environ)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        # The release bin script also prepends its own src. Discard inherited
+        # PYTHONPATH so the CLI cannot fall back to mutable runtime source.
+        environment["PYTHONPATH"] = str(source)
+        os.execve(str(entrypoint),
+                  [str(entrypoint), "--config", str(config_path), *command],
+                  environment)
+    except Exception as exc:
+        # Exception messages may contain config values; expose only the type.
+        emit({"ok": False, "error": "verification_or_dispatch_failed",
+              "error_type": type(exc).__name__}, error=not VERIFY_ONLY)
+        return 1
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

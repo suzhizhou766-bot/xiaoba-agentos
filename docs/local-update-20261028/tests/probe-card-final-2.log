@@ -1,0 +1,7 @@
+test_health_card_is_only_file_io_and_not_agent_self_diagnosis (test_workday.FileReceiptTests.test_health_card_is_only_file_io_and_not_agent_self_diagnosis) ... ok
+test_actual_accept_edits_prompt_dispatches_the_file_task (test_agy_interactive.InteractiveTests.test_actual_accept_edits_prompt_dispatches_the_file_task) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 2.636s
+
+OK

@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "semantics": "Provider/model declarations do not establish host permissions. Fine-grained execution permissions require verified host evidence; shell/filesystem never imply read or write permission.",
+  "capability_tokens": [
+    "reasoning",
+    "coding",
+    "shell",
+    "filesystem",
+    "vision",
+    "native_web_search",
+    "tool_calling",
+    "long_context",
+    "shell_read",
+    "shell_write_workspace",
+    "structured_editor_write",
+    "filesystem_read",
+    "filesystem_write_workspace",
+    "network_access"
+  ],
+  "defaults": {
+    "reasoning": "unknown",
+    "coding": "unknown",
+    "shell": "unknown",
+    "filesystem": "unknown",
+    "vision": "unknown",
+    "native_web_search": "unknown",
+    "tool_calling": "unknown",
+    "long_context": "unknown",
+    "shell_read": "unknown",
+    "shell_write_workspace": "unknown",
+    "structured_editor_write": "unknown",
+    "filesystem_read": "unknown",
+    "filesystem_write_workspace": "unknown",
+    "network_access": "unknown"
+  },
+  "providers": {
+    "AMD AI": {
+      "DeepSeek-V4-Flash-Vision-Exp": {
+        "reasoning": true,
+        "coding": true,
+        "shell": true,
+        "filesystem": true,
+        "vision": true,
+        "native_web_search": false,
+        "tool_calling": true,
+        "long_context": true,
+        "shell_read": "unknown",
+        "shell_write_workspace": "unknown",
+        "structured_editor_write": "unknown",
+        "filesystem_read": "unknown",
+        "filesystem_write_workspace": "unknown",
+        "network_access": "unknown"
+      },
+      "DeepSeek-V4-Flash": {
+        "reasoning": true,
+        "coding": true,
+        "shell": true,
+        "filesystem": true,
+        "vision": false,
+        "native_web_search": false,
+        "tool_calling": true,
+        "long_context": true,
+        "shell_read": "unknown",
+        "shell_write_workspace": "unknown",
+        "structured_editor_write": "unknown",
+        "filesystem_read": "unknown",
+        "filesystem_write_workspace": "unknown",
+        "network_access": "unknown"
+      }
+    },
+    "AMD api": {
+      "DeepSeek-V4-Flash-Vision-Exp": {
+        "reasoning": true,
+        "coding": true,
+        "shell": false,
+        "filesystem": false,
+        "vision": true,
+        "native_web_search": false,
+        "tool_calling": false,
+        "long_context": true,
+        "shell_read": "unknown",
+        "shell_write_workspace": "unknown",
+        "structured_editor_write": "unknown",
+        "filesystem_read": "unknown",
+        "filesystem_write_workspace": "unknown",
+        "network_access": "unknown"
+      }
+    },
+    "福利gpt": {
+      "gpt-6-astra": {
+        "reasoning": true
+      }
+    },
+    "福利 gpt": {
+      "gpt-5.6-sol": {
+        "reasoning": true
+      }
+    },
+    "Antigravity": {
+      "gemini-3.8-flash-low": {
+        "reasoning": true,
+        "coding": true,
+        "shell": false,
+        "filesystem": false,
+        "vision": false,
+        "native_web_search": false,
+        "tool_calling": false,
+        "long_context": true,
+        "shell_read": false,
+        "shell_write_workspace": false,
+        "structured_editor_write": false,
+        "filesystem_read": false,
+        "filesystem_write_workspace": false,
+        "network_access": false
+      }
+    },
+    "DeepSeekHarness": {
+      "glm-4.5-air": {
+        "reasoning": true,
+        "coding": true,
+        "shell": false,
+        "filesystem": false,
+        "vision": false,
+        "native_web_search": false,
+        "tool_calling": false,
+        "long_context": true,
+        "shell_read": false,
+        "shell_write_workspace": false,
+        "structured_editor_write": false,
+        "filesystem_read": false,
+        "filesystem_write_workspace": false,
+        "network_access": false
+      }
+    }
+  }
+}

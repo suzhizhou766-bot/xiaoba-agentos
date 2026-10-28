@@ -1,0 +1,12 @@
+#!/bin/zsh
+set -eu
+SCRIPT_DIR="${0:A:h}"
+PROJECT_DIR="${SCRIPT_DIR:h}"
+export PYTHONPATH="${PROJECT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+PYTHON="/Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14"
+if [[ ! -x "${PYTHON}" ]]; then
+  print -u2 "AgentOS core interpreter unavailable: ${PYTHON}"
+  exit 78
+fi
+exec "${PYTHON}" -m xiaoba_agentos.cli "$@"
+

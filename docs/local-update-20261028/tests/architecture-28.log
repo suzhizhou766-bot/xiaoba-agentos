@@ -1,0 +1,37 @@
+test_apply_failure_not_marked_published (test_center.CenterTests.test_apply_failure_not_marked_published) ... ok
+test_audit_corruption_blocks (test_center.CenterTests.test_audit_corruption_blocks) ... ok
+test_bad_python_prevents_passing_validation (test_center.CenterTests.test_bad_python_prevents_passing_validation) ... ok
+test_changes_invalidate_preflight_and_package (test_center.CenterTests.test_changes_invalidate_preflight_and_package) ... ok
+test_checkpoint_and_other_agent_continuation (test_center.CenterTests.test_checkpoint_and_other_agent_continuation) ... ok
+test_expired_lease_can_be_reclaimed_old_agent_cannot_write (test_center.CenterTests.test_expired_lease_can_be_reclaimed_old_agent_cannot_write) ... ok
+test_expired_preflight_cannot_apply (test_center.CenterTests.test_expired_preflight_cannot_apply) ... ok
+test_lease_exclusion_and_wrong_revision (test_center.CenterTests.test_lease_exclusion_and_wrong_revision) ... ok
+test_missing_package_or_driver_cannot_publish (test_center.CenterTests.test_missing_package_or_driver_cannot_publish) ... ok
+test_module_scope_and_traversal_rejected (test_center.CenterTests.test_module_scope_and_traversal_rejected) ... ok
+test_nonce_and_request_reuse_conflict (test_center.CenterTests.test_nonce_and_request_reuse_conflict) ... ok
+test_package_tamper_and_mapping_coverage (test_center.CenterTests.test_package_tamper_and_mapping_coverage) ... ok
+test_parent_module_cannot_overwrite_other_module_spec (test_center.CenterTests.test_parent_module_cannot_overwrite_other_module_spec) ... ok
+test_single_flight_across_changes (test_center.CenterTests.test_single_flight_across_changes) ... ok
+test_source_and_staged_drift_rejected (test_center.CenterTests.test_source_and_staged_drift_rejected) ... ok
+test_staged_symlink_rejected (test_center.CenterTests.test_staged_symlink_rejected) ... ok
+test_stages_without_active_write_and_records_diff (test_center.CenterTests.test_stages_without_active_write_and_records_diff) ... ok
+test_stale_spec_rejected (test_center.CenterTests.test_stale_spec_rejected) ... ok
+test_success_records_once_and_idempotent_duplicate (test_center.CenterTests.test_success_records_once_and_idempotent_duplicate) ... ok
+test_target_version_mismatch_blocks (test_center.CenterTests.test_target_version_mismatch_blocks) ... ok
+test_unregistered_file_rejected (test_center.CenterTests.test_unregistered_file_rejected) ... ok
+test_validation_is_only_syntax_and_manifest (test_center.CenterTests.test_validation_is_only_syntax_and_manifest) ... ok
+test_native_entry_drift_and_non_json_failure (test_center.NativeBridgeTests.test_native_entry_drift_and_non_json_failure) ... ok
+test_subprocess_protocol_and_actual_readback_required (test_center.NativeBridgeTests.test_subprocess_protocol_and_actual_readback_required) ... ok
+test_browser_user_button_applies_once_and_shows_receipt (test_monitor.MonitorTests.test_browser_user_button_applies_once_and_shows_receipt) ... skipped 'Optional real browser dependency is unavailable'
+test_page_and_meta_do_not_leak_publish_challenge (test_monitor.MonitorTests.test_page_and_meta_do_not_leak_publish_challenge) ... ok
+test_real_post_cannot_publish_without_current_preflight (test_monitor.MonitorTests.test_real_post_cannot_publish_without_current_preflight) ... /Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 409: 'Conflict'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+test_write_rejects_missing_token_and_cross_origin (test_monitor.MonitorTests.test_write_rejects_missing_token_and_cross_origin) ... /Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 403: 'Forbidden'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 2.505s
+
+OK (skipped=1)

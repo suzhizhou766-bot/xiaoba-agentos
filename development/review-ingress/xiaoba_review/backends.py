@@ -7,12 +7,46 @@ receipt by file, with a separate local provenance confirmation.
 import json
 import hashlib
 import time
+import threading
 from .store import Conflict, canonical, identifier
 
 
 class BackendRegistry:
-    def __init__(self, store):
+    def __init__(self, store, resource_factory=None):
         self.store, self.adapters = store, {}
+        self.resource_factory = resource_factory
+        self.resource_adapters = {}
+        self.resource_lock = threading.Lock()
+
+    def adapter_for(self, source):
+        if source['reviewer_id'] in self.adapters:return self.adapters[source['reviewer_id']]
+        if not self.resource_factory:return None
+        node=source.get('node',{})
+        key=canonical([source['source_ref'],source['kind'],*[node.get(k) for k in ('name','interface','entry','model')]])
+        with self.resource_lock:
+            cached=self.resource_adapters.get(source['reviewer_id'])
+            if cached and cached[0]==key:return cached[1]
+            if cached:cached[1].retire()
+            adapter=self.resource_factory(source)
+            if getattr(adapter,'persistent_resource',False):self.resource_adapters[source['reviewer_id']]=(key,adapter)
+            return adapter
+
+    def peek_resource(self, node_id):
+        """Viewing a node must never construct an adapter or launch a process."""
+        if node_id in self.adapters:return self.adapters[node_id]
+        with self.resource_lock:
+            cached = self.resource_adapters.get(node_id)
+            return cached[1] if cached else None
+
+    def retire_resource(self, node_id):
+        with self.resource_lock:
+            cached=self.resource_adapters.pop(node_id,None)
+        if cached:cached[1].retire()
+
+    def close(self):
+        with self.resource_lock:
+            resources=list(self.resource_adapters.values());self.resource_adapters.clear()
+        for _,adapter in resources:adapter.close()
 
     def register(self, reviewer_id, adapter):
         with self.store.transaction() as db:
@@ -23,7 +57,7 @@ class BackendRegistry:
             raise Conflict('同一运行中注册表不能原地换适配器')
         self.adapters[reviewer_id] = adapter
 
-    def execute(self, assignment_id):
+    def execute(self, assignment_id, require_test=False):
         token = identifier()
         with self.store.transaction() as db:
             row = db.execute('SELECT * FROM ri_assignments WHERE id=?', (assignment_id,)).fetchone()
@@ -33,11 +67,24 @@ class BackendRegistry:
             if not self.store.fresh(db, request):
                 raise ValueError('原卡已失效')
             card = json.loads(row['card'])
+            from .agent_pool import require_enabled
+            source=self.store.source(db,row['source_id'])
+            require_enabled(source)
+            if require_test:
+                from .agent_pool import AgentPool
+                if not AgentPool(self.store,self).runtime.readiness(db,source)['ready']:
+                    raise ValueError('节点尚未通过当前入口和模型的测试，不能直接运行')
+                from .node_runtime import spec
+                current_spec=spec(source)
+                if any(card.get('resource_plan',{}).get(k)!=v for k,v in current_spec.items() if k!='kind'):
+                    raise ValueError('冻结任务卡与当前节点配置不符，不能改用当前入口执行旧任务')
             if card['channel'] != 'backend_adapter':
                 raise ValueError('本卡使用外部交接通道')
-            adapter = self.adapters.get(row['source_id'])
+            adapter = self.adapter_for(source)
             if adapter is None:
                 raise ValueError('未登记后台适配器；不会回落到其它后台')
+            if card.get('resource_plan') and not getattr(adapter,'supports_resource_plan',False):
+                raise ValueError('该后台尚未接入节点调用计划；可由主入口按任务卡调用')
             prior = db.execute("SELECT id FROM ri_receipts WHERE assignment_id=? AND status='valid'", (assignment_id,)).fetchone()
             if prior:
                 raise Conflict('已有有效回执；重审需新指派，不能自动重跑')
@@ -46,6 +93,8 @@ class BackendRegistry:
         try:
             started = time.time()
             result = adapter.run(card)
+            if card.get('resource_plan') and result.get('execution_evidence',{}).get('model') != card['resource_plan']['model']:
+                raise ValueError('实际返回模型与本任务节点计划不一致，停止结算')
             # The adapter returns findings only; identity and version come from
             # the host's assignment, not self-assertions in model output.
             payload = {key: card[key] for key in ('review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision', 'reviewer_id',
@@ -61,12 +110,22 @@ class BackendRegistry:
                 if not current['active'] or current['running'] != token:
                     raise Conflict('失去本次执行权，不结算旧执行')
             receipt = self.store.receive(payload)
-            self.store.attest(token, receipt['digest'], '后台适配器实际执行；attempt=' + token)
-            return receipt
+            attested = self.store.attest(token, receipt['digest'], '后台适配器实际执行；attempt=' + token)
+            current = next(r for r in attested['receipts'] if r['id'] == token)
+            return {k:current[k] for k in ('id','digest','status','reason')}
         except Exception as exc:
             with self.store.transaction() as db:
                 self.store.event(db, row['request_id'], 'backend_failed',
                                  {'assignment_id': assignment_id, 'attempt': token, 'error_type': type(exc).__name__})
+                if require_test and not getattr(exc,'preserve_node_health',False):
+                    source=self.store.source(db,row['source_id'])
+                    node=source['node'];node['test']={'status':'failed','reason':'task_execution_failed'};node['revision']+=1
+                    db.execute('UPDATE ri_sources SET data=? WHERE id=?',(canonical(source),row['source_id']))
+                    self.store.native._append_event_tx(db,None,'agent_pool.test_invalidated',{'node_id':row['source_id'],'assignment_id':assignment_id})
+            if require_test:
+                if getattr(exc,'preserve_node_health',False):
+                    raise ValueError(getattr(exc,'user_message','工作回执已保存，业务审查未完成；节点健康资格保留。')) from None
+                raise ValueError('节点调用未完成（'+type(exc).__name__+'）；已停止直跑，不自动重试或替换后台') from None
             raise
         finally:
             with self.store.transaction() as db:

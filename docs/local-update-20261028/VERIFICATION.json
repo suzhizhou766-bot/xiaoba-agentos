@@ -1,0 +1,63 @@
+{
+  "as_of": "2026-10-28",
+  "fresh_model_test_performed_for_upload": false,
+  "tests": [
+    {
+      "path": "tests/core-1252.log",
+      "discovered": 1252,
+      "passed": 1252,
+      "skipped": 0,
+      "sha256": "4674f4c8a36c1de8076e44a54debd7d3d3c49a3044af82069f980e152987f5b1",
+      "historical_local_log": true
+    },
+    {
+      "path": "tests/ingress-126.log",
+      "discovered": 126,
+      "passed": 126,
+      "skipped": 0,
+      "sha256": "504f65201bb8895a65d6466eca572046eb9c52e554309b39da37554dc750e1cc",
+      "historical_local_log": true
+    },
+    {
+      "path": "tests/probe-card-final-2.log",
+      "discovered": 2,
+      "passed": 2,
+      "skipped": 0,
+      "sha256": "3f0626c3dd882c3104e6d767656487b63857ddb028cb17850260a638972af60e",
+      "historical_local_log": true
+    },
+    {
+      "path": "tests/architecture-28.log",
+      "discovered": 28,
+      "passed": 27,
+      "skipped": 1,
+      "sha256": "68ef1179fcd80bd49000812127cb824d0a8f30a87d2add127de0275fe4979da9",
+      "historical_local_log": true
+    }
+  ],
+  "latest_full_then_targeted": true,
+  "scope_note": "The final two tests cover probe-card refinements made after the full 126 run; core logs are historical and core source hashes still match.",
+  "core_current_manifest_files": 228,
+  "ingress_current_hashed_files": 34,
+  "architecture_current_hashed_files": 28,
+  "real_agy": {
+    "status": "failed_real_writeback",
+    "initial_startup_dispatched_model_tasks": 0,
+    "actual_model_tasks_dispatched_after_ready_fix": 1,
+    "qualified_model_tasks_completed": 0,
+    "file_steps_dispatched": 0,
+    "same_session_multi_turn_verified": false,
+    "next_step_started": false,
+    "final_probe_card_real_model_retest": "not_performed",
+    "automatic_retry_after_dispatched_failure": false
+  },
+  "cli_restore_implemented": false,
+  "receipt_cards_retained": true,
+  "weekly_scoring": "Agent/source + configured model + Asia/Shanghai calendar week; good +1, not_good 0; host verified; no probe points",
+  "resource_inputs_collected": false,
+  "lifetime_score": false,
+  "production_release": "v1.6.4",
+  "production_switched": false,
+  "experience_approved": false,
+  "source_audit_sha256": "c46bea4eceabb9ed97488292ff3c89910fa2c0a2761f014f993947ee23f010ac"
+}

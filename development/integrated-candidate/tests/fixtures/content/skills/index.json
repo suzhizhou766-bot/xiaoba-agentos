@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "aesthetics",
+      "name": "aesthetics",
+      "directory": "aesthetics",
+      "description": "小八审美能力的统一指路入口：定位审美手册、风格方法与用户偏好，接调色、配色、构图、留白、海报、排版、界面与网页设计等带审美判断的任务。",
+      "category": "aesthetics-routing",
+      "capabilities": [
+        "aesthetics-handbook-lookup",
+        "style-and-preference-pointers"
+      ],
+      "triggers": [
+        "审美",
+        "调色",
+        "配色",
+        "色调",
+        "构图",
+        "留白",
+        "海报",
+        "排版",
+        "滤镜",
+        "光影",
+        "视觉设计",
+        "界面设计",
+        "网页设计",
+        "好看的网页"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "aesthetics/SKILL.md",
+      "entrypoint_sha256": "7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9",
+      "files_sha256": {
+        "SKILL.md": "7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9"
+      },
+      "entity_source_path": "/Users/suzhizhou/Documents/私人助理/skills/aesthetics/SKILL.md",
+      "entity_source_sha256": "7487c78182d91b58f238eb738398b14dc28c13816671d4fdb7538a52a9b655c9"
+    },
+    {
+      "id": "assets",
+      "name": "assets",
+      "directory": "assets",
+      "description": "素材审计、原文保护、版本追溯、资产清单与技术交付验收。",
+      "category": "asset-management",
+      "capabilities": [
+        "asset-audit",
+        "versioning",
+        "delivery-qc",
+        "manifest"
+      ],
+      "triggers": [
+        "素材",
+        "资产",
+        "交付",
+        "版本",
+        "母版",
+        "清单",
+        "asset",
+        "manifest"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "assets/SKILL.md",
+      "entrypoint_sha256": "ff328b0164a07e805f967c1afae5856c9a090c509408cba2f1249e3deae9140d",
+      "files_sha256": {
+        "SKILL.md": "ff328b0164a07e805f967c1afae5856c9a090c509408cba2f1249e3deae9140d",
+        "agents/openai.yaml": "7c4861f8f696bed6d802322d782791cd35c3eba7e26f3217683fcbc039e35c4f",
+        "references/qc_report_schema.md": "5444bc34245713be5c144e435e1ae5a38a4aec70f578bb8c84c7d27b6ddfff56",
+        "scripts/asset_manifest.py": "b4656eb063fb3b9c698c6453b6e0152ec174b179999b6544f8f55a9e2b77b680"
+      }
+    },
+    {
+      "id": "bgm",
+      "name": "bgm",
+      "directory": "bgm",
+      "description": "剧情配乐、音乐提示词、SFX 设计、混音与音频技术验收。",
+      "category": "audio",
+      "capabilities": [
+        "story-scoring",
+        "music-prompting",
+        "sfx-design",
+        "audio-qc"
+      ],
+      "triggers": [
+        "bgm",
+        "配乐",
+        "音乐",
+        "音效",
+        "sfx",
+        "混音",
+        "audio"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "bgm/SKILL.md",
+      "entrypoint_sha256": "cd4f0ad5bafaeeb0602bf3d4a2a86b16bf5eff200421484681dfe227d342b33d",
+      "files_sha256": {
+        "SKILL.md": "cd4f0ad5bafaeeb0602bf3d4a2a86b16bf5eff200421484681dfe227d342b33d",
+        "agents/openai.yaml": "76a58c9dc9bd69f8e349350148a6b5e17c2160ea15fa0c3b1529f940d9383611",
+        "references/audio_acceptance.md": "502e23263e5c48855e595d76b4fb8a34a0aa304bcff3e73a4141a3e0bf47b06c",
+        "references/calibration_cases.md": "cc18dbe4455a77537c882f7e10f5a4a13018cd3f9f34ff4cee9b96659f05e736",
+        "references/composition_framework.md": "ce49ec07dfc049f184f245f7e7ba8b0322a2469d6687857328dc1a1f698a263f",
+        "references/generator_profiles.md": "b12f3a658e3052b228bd0368c4cf6c05960ad1cc64d1803f5651c2f903dd267a",
+        "references/story_scoring.md": "2ac279a8d8996fe7a3d532d389458b8e1c3c419455554850b3d9fac024b18a24",
+        "scripts/audio_qc.py": "ed08d10fdf1e3eb282926c5f888a0a5bd764c1fd9559f1d0357d993ce9e35b11"
+      }
+    },
+    {
+      "id": "collaboration-core",
+      "name": "collaboration-core",
+      "directory": "collaboration-core",
+      "description": "当前 AgentOS 会话健康、记忆入口、架构边界与上下班交接。",
+      "category": "governance",
+      "capabilities": [
+        "health-protocol",
+        "memory-routing",
+        "session-handoff"
+      ],
+      "triggers": [
+        "上班了小八助理",
+        "上班",
+        "下班",
+        "健康",
+        "状态",
+        "记忆",
+        "agentos"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "collaboration-core/SKILL.md",
+      "entrypoint_sha256": "20ff3732a97eb1d73834eedef37e2d5db435ef247fd7f34b2150069ec9191441",
+      "files_sha256": {
+        "SKILL.md": "20ff3732a97eb1d73834eedef37e2d5db435ef247fd7f34b2150069ec9191441",
+        "agents/openai.yaml": "d14ba9e1bfa5ea8eb4c944b571537a7105ff6b58a746e5bf08e95e0badeac816"
+      }
+    },
+    {
+      "id": "director",
+      "name": "director",
+      "directory": "director",
+      "description": "视频项目跨专业导演编排，协调项目、配乐、合成和资产验收。",
+      "category": "orchestration",
+      "capabilities": [
+        "creative-direction",
+        "specialist-routing",
+        "delivery-planning"
+      ],
+      "triggers": [
+        "导演",
+        "全链路",
+        "开拍",
+        "视频",
+        "视频项目",
+        "创意统筹"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "director/SKILL.md",
+      "entrypoint_sha256": "21411ceaf20d4c2e72be501c1341dd8d8638ca4497225ae5fb2908425a10d8df",
+      "files_sha256": {
+        "SKILL.md": "21411ceaf20d4c2e72be501c1341dd8d8638ca4497225ae5fb2908425a10d8df",
+        "agents/openai.yaml": "090fdece15c50aee86b5d5a604cf88053f4dca032319c1dec7dec82e5808731e"
+      }
+    },
+    {
+      "id": "project",
+      "name": "project",
+      "directory": "project",
+      "description": "视频项目前期决策卡、执行分镜、拍摄计划、音乐节点与风险清单。",
+      "category": "preproduction",
+      "capabilities": [
+        "project-card",
+        "storyboard",
+        "shooting-plan",
+        "risk-plan"
+      ],
+      "triggers": [
+        "开拍",
+        "项目",
+        "分镜",
+        "拍摄",
+        "镜头",
+        "storyboard"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "project/SKILL.md",
+      "entrypoint_sha256": "a4af1c90d39b99fc8f58f1db40046e8a18a138e1c1224dc0c565f0138a3bddda",
+      "files_sha256": {
+        "SKILL.md": "a4af1c90d39b99fc8f58f1db40046e8a18a138e1c1224dc0c565f0138a3bddda",
+        "agents/openai.yaml": "9206008d8d47204452653b8d5ed509f17b2dfc01d806f5ed74001add771f1d3a",
+        "references/storyboard_schema.md": "2dc3adcec0d58e8ab526bb1df8a9959c6ca22d3e4d3b92496d3dbdebbbda118f",
+        "scripts/check_storyboard.py": "259e9f74058d75528c8833bd261b2e42bda9167880b4cc27ae0d900232cc6d4f"
+      }
+    },
+    {
+      "id": "remotion",
+      "name": "remotion",
+      "directory": "remotion",
+      "description": "可复现的 React/TSX 视频合成、数据驱动动画、地图动画与技术交付。",
+      "category": "video-composition",
+      "capabilities": [
+        "remotion-composition",
+        "data-driven-video",
+        "render-qc"
+      ],
+      "triggers": [
+        "remotion",
+        "tsx",
+        "mg",
+        "动画",
+        "地图",
+        "合成",
+        "批量比例"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "remotion/SKILL.md",
+      "entrypoint_sha256": "0a641ccd3d1eed805147c2bb4f553e00cd3a60bdc67c753d76b8a24ca77d0072",
+      "files_sha256": {
+        "SKILL.md": "0a641ccd3d1eed805147c2bb4f553e00cd3a60bdc67c753d76b8a24ca77d0072",
+        "references/tutorial_sources.md": "8db413ff08de812d991a8958e41eeabce1056f5fce91eb08d6811e59a41d4db9"
+      }
+    },
+    {
+      "id": "xiaoba-assistant",
+      "name": "xiaoba-assistant",
+      "directory": "xiaoba-assistant",
+      "description": "用户熟悉的小八助理触发词到当前 AgentOS 工作流的兼容入口。",
+      "category": "compatibility-entry",
+      "capabilities": [
+        "compatibility-trigger",
+        "agentos-routing"
+      ],
+      "triggers": [
+        "上班了小八助理",
+        "小八助理",
+        "小八"
+      ],
+      "status": "active",
+      "callable": true,
+      "entrypoint": "xiaoba-assistant/SKILL.md",
+      "entrypoint_sha256": "ea5f8f265550b0937f77a1c3a14a4394edfa3649e2a0ab585121db53b84042e0",
+      "files_sha256": {
+        "SKILL.md": "ea5f8f265550b0937f77a1c3a14a4394edfa3649e2a0ab585121db53b84042e0",
+        "agents/openai.yaml": "394987c0e9b4ccf42dd2e4c8da43815157ec3fee351873000ac2ad719ff82c40"
+      }
+    }
+  ]
+}

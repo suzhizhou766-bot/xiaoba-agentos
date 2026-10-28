@@ -147,7 +147,8 @@
       "spec_path": "development/architecture-center/modules/task-scoring/SPEC.md",
       "editable_prefixes": [
         "development/task-scoring/",
-        "development/architecture-center/modules/task-scoring/"
+        "development/architecture-center/modules/task-scoring/",
+        "development/review-ingress/xiaoba_review/task_scoring.py"
       ],
       "dependencies": [
         "data-governance"

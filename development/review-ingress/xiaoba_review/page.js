@@ -10,7 +10,8 @@ async function api(path, data) {const response=await fetch('/api/open-review/'+p
 function action(parent, title, handler) {const b=el('button',title,parent);b.type='button';b.addEventListener('click',async()=>{b.disabled=true;try{note('');await handler();await refresh();}catch(e){note(e);}finally{b.disabled=false;}});return b;}
 function download(name, value) {const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function template(card) {const receipt={};for(const key of ['review_request_id','assignment_id','reviewer_role','plan_revision','reviewer_id','source_ref','candidate_sha256','input_digest','card_digest'])receipt[key]=card[key];return {...receipt,receipt_id:crypto.randomUUID(),verdict:'NEEDS_INFO',findings:'',evidence_refs:[],started_at:null,finished_at:null};}
-function selectSources(id, sources) {const select=$(id),previous=select.value;select.replaceChildren();for(const source of sources){const option=el('option',source.reviewer_id,select);option.value=source.reviewer_id;}if([...select.options].some(o=>o.value===previous))select.value=previous;}
+const selection=new URLSearchParams(location.search);
+function selectSources(id, sources) {const select=$(id),previous=select.value||selection.get(id==='dshSelect'?'dsh':'peer');select.replaceChildren();for(const source of sources.filter(s=>!s.node||s.node.enabled&&!s.node.removed)){const option=el('option',source.node?source.node.name+' · '+(source.node.model||'模型未登记'):source.reviewer_id,select);option.value=source.reviewer_id;}if([...select.options].some(o=>o.value===previous))select.value=previous;}
 function render(state) {
   snapshot=state;$('connection').textContent='已连接 · 裁决材料收件箱'+(state.inbox_online?'在线':'离线，等待重试');
   selectSources('dshSelect',state.sources.filter(s=>s.kind==='dsh'));selectSources('peerSelect',state.sources);

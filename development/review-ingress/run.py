@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--config', type=Path, help='现有 AgentOS 配置；本工具不修改它')
     parser.add_argument('--runtime', type=Path, default=HERE / '.runtime', help='无配置时的新建独立运行目录')
     parser.add_argument('--port', type=int, default=8800)
+    parser.add_argument('--agent-workspace-root', type=Path, help='用户指定的固定Agent工作区父目录；不从网页接收路径')
     parser.add_argument('--dsh-reviewer', help='已登记来源 ID；仅在明确指定时绑定真实 DSH 适配器')
     parser.add_argument('--dsh-agent', help='原配置内明确的 DSH Agent 名称')
     parser.add_argument('--inbox-offline', action='store_true')
@@ -46,7 +47,8 @@ def main():
     native = EventStore(native_config.database_path if native_config else runtime / 'agentos.sqlite3')
     native.initialize()
     store = ReviewStore(native, runtime / 'memory-outbox')
-    backends = BackendRegistry(store)
+    from xiaoba_review.resource_stdio import json_stdio_factory
+    backends = BackendRegistry(store,resource_factory=lambda source:json_stdio_factory(source,args.agent_workspace_root))
     if args.dsh_reviewer or args.dsh_agent:
         if not (native_config and args.dsh_reviewer and args.dsh_agent):
             parser.error('真实 DSH 需要 --config、--dsh-reviewer 和 --dsh-agent，禁止隐式默认')
@@ -83,7 +85,7 @@ def main():
             link = '<nav style="padding:12px"><a href="/open-review">DSH＋开放审查 · 任务卡 / 回执 / 裁决材料</a></nav>'
             response.body = response.body.replace(b'<body>', b'<body>' + link.encode(), 1)
             response.body = response.body.replace(b'</body>', b'<script src="/open-review-native.js"></script><script src="/architecture/native-center.js"></script></body>', 1)
-        return response
+        return OpenReviewModule.mount_pool(response,ctx.page_token)
     app.routes[('GET', '/')].handler = index
     if native_config:
         # Retain native decisions through the existing guarded proxy; no new

@@ -14,11 +14,32 @@ class OpenReviewModule(Module):
     def __init__(self, ctx, store, inbox, backends):
         super().__init__(ctx)
         self.store, self.inbox, self.backends = store, inbox, backends
+        from .agent_pool import AgentPool
+        self.pool = AgentPool(store,backends)
         self.stopping = threading.Event()
         self.thread = None
 
     def routes(self):
-        return [Route('GET', '/open-review', self.page, 'page'),
+        return [Route('GET', '/agent-pool.js', self.pool_script, 'page'),
+                Route('GET', '/agent-pool.css', self.pool_style, 'page'),
+                Route('GET', '/agent-pool-native.js', self.pool_native, 'page'),
+                Route('GET', '/api/agent-pool/state', lambda req: (200,self.pool.state()), 'read'),
+                Route('POST', '/api/agent-pool/preview', self.terminal_preview, 'write'),
+                Route('POST', '/api/agent-pool/nodes', lambda req: self.perform(lambda: self.pool.add(req.json())), 'write'),
+                Route('POST', '/api/agent-pool/toggle', lambda req: self.perform(lambda: self.pool.change(**req.json(),operation='toggle')), 'write'),
+                Route('POST', '/api/agent-pool/remove', lambda req: self.perform(lambda: self.pool.change(**req.json(),operation='remove')), 'write'),
+                Route('POST', '/api/agent-pool/restore', lambda req: self.perform(lambda: self.pool.change(**req.json(),operation='restore')), 'write'),
+                Route('POST', '/api/agent-pool/onboard', lambda req: self.perform(lambda: self.pool.runtime.onboard(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/prepare', lambda req: self.perform(lambda: self.pool.runtime.prepare(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/test', lambda req: self.perform(lambda: self.pool.runtime.test_run(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/workday-start', lambda req: self.perform(lambda: self.pool.runtime.start_workday(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/work', lambda req: self.perform(lambda: self.pool.runtime.execute_work(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/workday-inputs', lambda req: self.perform(lambda: self.pool.runtime.workday_inputs(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/task-assess', lambda req: self.perform(lambda: self.pool.runtime.scoring.assess(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/weekly-scores', lambda req: self.perform(lambda: self.pool.runtime.scoring.weekly(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/interactive-confirm', lambda req: self.perform(lambda: self.pool.runtime.confirm_interactive_workspace(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/dispatch', self.dispatch, 'write'),
+                Route('GET', '/open-review', self.page, 'page'),
                 Route('GET', '/open-review.js', self.script, 'page'),
                 Route('GET', '/open-review-native.js', self.native_script, 'page'),
                 Route('GET', '/api/open-review/state', self.state, 'read'),
@@ -28,7 +49,9 @@ class OpenReviewModule(Module):
                 Route('POST', '/api/open-review/attest', self.attest, 'write'),
                 Route('POST', '/api/open-review/replace', self.replace, 'write'),
                 Route('POST', '/api/open-review/run', self.run, 'write'),
-                Route('POST', '/api/open-review/retry', self.retry, 'write')]
+                Route('POST', '/api/open-review/retry', self.retry, 'write'),
+                Route('POST', '/api/open-review/validation/resume', self.validation_resume, 'write'),
+                Route('POST', '/api/open-review/validation/diff', self.validation_diff, 'write')]
 
     def page(self, req):
         source = Path(__file__).with_name('page.html').read_text()
@@ -37,6 +60,29 @@ class OpenReviewModule(Module):
 
     def script(self, req):
         return Response(200, Path(__file__).with_name('page.js').read_bytes(), 'text/javascript; charset=utf-8')
+
+    @staticmethod
+    def mount_pool(response, page_token):
+        if response.code == 200 and b'id="topo"' in response.body:
+            fragment = Path(__file__).with_name('agent-pool.html').read_bytes().replace(b'__TOKEN__',page_token.encode())
+            response.body = response.body.replace(b'</body>',
+                b'<link rel="stylesheet" href="/agent-pool.css">' + fragment +
+                b'<script src="/agent-pool.js"></script><script src="/agent-pool-native.js"></script></body>',1)
+        return response
+
+    def pool_script(self, req):
+        return Response(200,Path(__file__).with_name('agent-pool.js').read_bytes(),'text/javascript; charset=utf-8')
+
+    def terminal_preview(self, req):
+        data = req.json()
+        if set(data) != {'node_id'}:raise ValueError('终端预览只接受节点ID，不接受输入或命令')
+        return 200, {'ok':True,'preview':self.pool.runtime.preview(data['node_id'])}
+
+    def pool_style(self, req):
+        return Response(200,Path(__file__).with_name('agent-pool.css').read_bytes(),'text/css; charset=utf-8')
+
+    def pool_native(self, req):
+        return Response(200,Path(__file__).with_name('agent-pool-native.js').read_bytes(),'text/javascript; charset=utf-8')
 
     def native_script(self, req):
         return Response(200, Path(__file__).with_name('native-center.js').read_bytes(), 'text/javascript; charset=utf-8')
@@ -58,7 +104,32 @@ class OpenReviewModule(Module):
         return self.perform(lambda: self.store.register_source(req.json()))
 
     def create(self, req):
-        return self.perform(lambda: self.store.create(**req.json()))
+        data=req.json()
+        def action():
+            task_type=data.pop('task_type',None)
+            if not data.get('dsh_id') or not data.get('peer_id'):
+                prepared=self.pool.runtime.prepare(['dsh','peer'],{k:data[k+'_id'] for k in ('dsh','peer') if data.get(k+'_id')},task_type)
+                if prepared['route']!='run':return prepared
+                for kind,node_id in prepared['selections'].items():data[kind+'_id']=node_id
+            return self.store.create(**data)
+        return self.perform(action)
+
+    def dispatch(self, req):
+        data=req.json()
+        def action():
+            if set(data)-{'candidate_id','scope','evidence','request_id','selections','task_type'} or not data.get('request_id'):
+                raise ValueError('直接运行需要稳定任务请求ID、候选、范围和证据')
+            prepared=self.pool.runtime.prepare(['dsh','peer'],data.get('selections'),data.get('task_type'))
+            if prepared['route']!='run':return prepared
+            selected=prepared['selections']
+            request=self.store.create(data['candidate_id'],selected['dsh'],selected['peer'],data['scope'],data['evidence'],
+                request_id=data['request_id'],dsh_channel='backend_adapter',peer_channel='backend_adapter')
+            # Existing successful receipts are retained on exact request retries.
+            for assignment in request['assignments']:
+                if any(r['assignment_id']==assignment['id'] and r['status']=='valid' for r in request['receipts']):continue
+                self.backends.execute(assignment['id'],require_test=True)
+            return {'route':'completed','questions':[],'request':self.store.get(request['id'])}
+        return self.perform(action)
 
     def receive(self, req):
         return self.perform(lambda: self.store.receive(req.json()))
@@ -78,6 +149,18 @@ class OpenReviewModule(Module):
         req.json()
         return self.perform(lambda: {'state': 'outbox_checked'})
 
+    def validation_resume(self, req):
+        def action():
+            from xiaoba_agentos.experience_workflow import resume_paused_validation
+            with self.store.native.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                return resume_paused_validation(self.store.native, db, req.json()['candidate_id'])
+        return self.perform(action)
+
+    def validation_diff(self, req):
+        data = req.json()
+        return self.perform(lambda: self.store.native.submit_validation_diff_materials(data['candidate_id'], data['materials']))
+
     def start(self):
         def loop():
             while not self.stopping.wait(2):
@@ -92,6 +175,7 @@ class OpenReviewModule(Module):
 
     def stop(self):
         self.stopping.set()
+        self.backends.close()
         if self.thread:
             self.thread.join(timeout=5)
 

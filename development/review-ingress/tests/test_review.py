@@ -276,6 +276,30 @@ class ReviewTest(FixtureMixin, unittest.TestCase):
 
 
 class HttpTest(FixtureMixin, unittest.TestCase):
+    def test_terminal_preview_is_guarded_and_rejects_input_or_commands(self):
+        path='/api/agent-pool/preview'
+        self.assertEqual(self.fetch(path,{'node_id':'fixture-peer'},False)[0],403)
+        self.assertEqual(self.fetch(path)[0],404)
+        for field in ('input','command','decision','path'):
+            self.assertEqual(self.fetch(path,{'node_id':'fixture-peer',field:'TEST forbidden'})[0],400)
+        self.assertEqual(self.fetch('/api/agent-pool/terminal-input',{'node_id':'fixture-peer','input':'TEST'})[0],404)
+
+    def test_terminal_preview_does_not_deliver_outbox_change_tests_or_approve(self):
+        before=self.native.path.read_bytes();events=self.count('events')
+        code,value=self.fetch('/api/agent-pool/preview',{'node_id':'fixture-peer'})
+        self.assertEqual(code,200,value);self.assertTrue(value['preview']['read_only'])
+        self.assertFalse(value['preview']['supported'])
+        self.assertEqual(self.native.path.read_bytes(),before)
+        self.assertEqual(self.count('events'),events);self.assertEqual(self.count('memory_reviews'),1)
+
+    def test_terminal_preview_rejects_other_origin_with_even_valid_page_token(self):
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=5)
+        try:
+            conn.request('POST','/api/agent-pool/preview',json.dumps({'node_id':'fixture-peer'}),
+                {'Content-Type':'application/json','X-Xiaoba-Token':self.ctx.page_token,'Origin':'https://example.invalid'})
+            response=conn.getresponse();self.assertEqual(response.status,403);response.read()
+        finally:conn.close()
+
     def setUp(self):
         super().setUp()
         ctx = Context(config.load(self.root/'none.json', {'port':0}), logs.setup(None), 0)
@@ -320,6 +344,48 @@ class HttpTest(FixtureMixin, unittest.TestCase):
         self.assertEqual(state['requests'][0]['state'],'submitted')
         self.assertEqual(len(state['decision_packets']),1)
         self.assertEqual(self.count('memory_reviews'),1)
+
+    def test_http_resume_and_diff_require_csrf(self):
+        for endpoint in ('resume','diff'):
+            self.assertEqual(self.fetch('/api/open-review/validation/'+endpoint,{},False)[0],403)
+
+    def test_http_resume_preserves_round_two_without_execution(self):
+        from xiaoba_agentos.experience_workflow import advance_validation_round, verify_final_qualification
+        self.native.apply_validation_extension()
+        sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'integrated-candidate'/'tests'))
+        from fixtures_validation import native_trial
+        native_trial(self.native,self.candidate,False,runtime=self.root)
+        with self.native.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            advance_validation_round(self.native,db,self.candidate['task_id'],{'failure_class':'tool_unavailable'})
+        code,out=self.fetch('/api/open-review/validation/resume',{'candidate_id':self.candidate['task_id']})
+        self.assertEqual(code,200,out);self.assertEqual(out['result']['resumed_round'],2)
+        self.assertEqual(self.native.get_validation_lineage(self.candidate['task_id'])['rounds_used'],1)
+        self.assertEqual(self.fetch('/api/open-review/validation/resume',{'candidate_id':self.candidate['task_id']})[0],400)
+
+    def test_http_bound_diff_is_idempotent_and_preserves_human_rejection(self):
+        self.native.apply_validation_extension()
+        sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'integrated-candidate'/'tests'))
+        from fixtures_validation import native_trial,bound_diff
+        from xiaoba_agentos.experience_workflow import verify_final_qualification
+        native_trial(self.native,self.candidate,False,runtime=self.root)
+        native_trial(self.native,self.candidate,runtime=self.root)
+        materials=bound_diff(self.native,self.candidate['task_id'])
+        payload={'candidate_id':self.candidate['task_id'],'materials':materials}
+        for _ in range(2):
+            code,out=self.fetch('/api/open-review/validation/diff',payload);self.assertEqual(code,200,out)
+        self.assertEqual(self.native.get_validation_lineage(self.candidate['task_id'])['rounds_used'],2)
+        with self.native.read_only() as db:self.assertTrue(verify_final_qualification(db,self.candidate['task_id'])['qualified'])
+        self.native.review_memory(self.candidate['task_id'],'final','reject','TEST人工拒绝',self.candidate['evidence_sha256'])
+        self.assertEqual(self.fetch('/api/open-review/validation/diff',payload)[0],400)
+        self.assertEqual(self.fetch('/api/open-review/validation/resume',{'candidate_id':self.candidate['task_id']})[0],400)
+        self.assertEqual(self.native.get_memory_candidate(self.candidate['task_id'])['status'],'final_rejected')
+
+    def test_http_fabricated_diff_does_not_promote(self):
+        self.native.apply_validation_extension()
+        code,out=self.fetch('/api/open-review/validation/diff',{'candidate_id':self.candidate['task_id'],'materials':{'remediation':'关键词拼凑'}})
+        self.assertEqual(code,400,out)
+        self.assertEqual(self.native.get_memory_candidate(self.candidate['task_id'])['status'],'delivery_approved')
 
 
 if __name__=='__main__':

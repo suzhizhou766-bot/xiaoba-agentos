@@ -42,6 +42,11 @@ class ReviewStore:
                 CREATE TABLE IF NOT EXISTS ri_version (version INTEGER PRIMARY KEY);
                 INSERT OR IGNORE INTO ri_version VALUES (1);
                 CREATE TABLE IF NOT EXISTS ri_sources (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS ri_task_assessments (
+                    id TEXT PRIMARY KEY, data TEXT NOT NULL, revision INTEGER NOT NULL,
+                    assessment_id TEXT NOT NULL, updated_at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS ri_workday_starts (
+                    message_id TEXT PRIMARY KEY, plan_digest TEXT NOT NULL, data TEXT);
                 CREATE TABLE IF NOT EXISTS ri_requests (
                     id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, revision INTEGER NOT NULL,
                     common TEXT NOT NULL, fingerprint TEXT NOT NULL, state TEXT NOT NULL);
@@ -114,7 +119,7 @@ class ReviewStore:
         clean = {key: data[key] for key in ('reviewer_id', 'source_ref', 'provenance', 'kind')}
         with self.transaction() as db:
             existing = db.execute('SELECT data FROM ri_sources WHERE id=?', (clean['reviewer_id'],)).fetchone()
-            if existing and json.loads(existing['data']) != clean:
+            if existing and any(json.loads(existing['data']).get(k) != v for k,v in clean.items()):
                 raise Conflict('来源身份不可原地改写，请登记新身份')
             db.execute('INSERT OR IGNORE INTO ri_sources VALUES (?,?)', (clean['reviewer_id'], canonical(clean)))
             if not existing:
@@ -123,6 +128,8 @@ class ReviewStore:
 
     def assignment(self, db, request, role, source_id, channel):
         source = self.source(db, source_id)
+        from .agent_pool import resource_plan
+        plan = resource_plan(source)
         if role == 'dsh' and source['kind'] != 'dsh':
             raise ValueError('固定审查方必须是已登记 DSH 来源')
         if channel not in {'external_handoff', 'backend_adapter'}:
@@ -136,6 +143,8 @@ class ReviewStore:
                     'required': ['receipt_id', 'card_digest', 'review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision',
                                  'reviewer_id', 'source_ref', 'input_digest', 'candidate_sha256',
                                  'verdict', 'findings', 'evidence_refs', 'started_at', 'finished_at']}}
+        if plan is not None:
+            card['resource_plan'] = plan
         card['card_digest'] = digest(card)
         db.execute('INSERT INTO ri_assignments VALUES (?,?,?,?,1,?,NULL)',
                    (card['assignment_id'], request['id'], role, source_id, canonical(card)))
@@ -155,6 +164,25 @@ class ReviewStore:
             if dsh['source_ref'] == peer['source_ref']:
                 raise ValueError('两方实际来源相同，别名不能凑独立意见')
             common = {**subject, 'scope': scope, 'evidence_refs': evidence}
+            from xiaoba_agentos.validation_migration import is_validation_extension_installed
+            has_extension = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('experience_validation_meta','experience_validation_lineages','experience_validation_records')").fetchone()
+            if has_extension and not is_validation_extension_installed(db):
+                raise ValueError('验证扩展结构或版本异常，不能生成审查任务卡')
+            has_records = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='experience_validation_records'").fetchone()
+            record = db.execute("SELECT * FROM experience_validation_records WHERE candidate_id=? ORDER BY round DESC LIMIT 1", (candidate_id,)).fetchone() if has_records else None
+            if record:
+                if not record['task_id'] or not record['execution_digest'] or not record['plan_digest']:
+                    raise ValueError('当前尝试缺少真实执行/任务，不能形成验证审查计划')
+                from xiaoba_agentos.validation_evidence import binding, execution_receipt
+                from xiaoba_agentos.workflow import verified_snapshot
+                task = db.execute('SELECT * FROM tasks WHERE id=?', (record['task_id'],)).fetchone()
+                if not task:
+                    raise ValueError('缺少当前验证任务')
+                trial = verified_snapshot(dict(task)).get('experience_trial', {})
+                execution_receipt(dict(db.execute('SELECT * FROM memory_candidates WHERE task_id=?', (candidate_id,)).fetchone()), trial)
+                if record['execution_digest'] not in {ref['sha256'] for ref in evidence}:
+                    raise ValueError('材料摘要没有绑定当前真实执行')
+                common['validation_binding'] = binding(dict(record))
             fingerprint = digest([common, dsh_id, peer_id, dsh_channel, peer_channel])
             existing = db.execute('SELECT * FROM ri_requests WHERE id=?', (request_id,)).fetchone()
             if existing:
@@ -175,6 +203,11 @@ class ReviewStore:
             current = self.subject(db, request['candidate_id'])
         except (ValueError, OSError):
             return False
+        if common.get('validation_binding'):
+            from xiaoba_agentos.validation_evidence import binding
+            record = db.execute("SELECT * FROM experience_validation_records WHERE candidate_id=? ORDER BY round DESC LIMIT 1", (request['candidate_id'],)).fetchone()
+            if not record or binding(dict(record)) != common['validation_binding']:
+                return False
         return all(current[key] == common[key] for key in ('candidate_sha256', 'delivery_review', 'body'))
 
     def refresh(self, db, request):
