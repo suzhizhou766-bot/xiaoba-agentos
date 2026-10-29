@@ -1,5 +1,9 @@
 # 小八 AgentOS
 
+## 架构拓扑（Agent 先读）
+
+用户维护的架构设计底座快照见 [docs/architecture-topology](docs/architecture-topology/README.md)：从 [AGENT_READER.md](docs/architecture-topology/AGENT_READER.md) 读每个模块的状态、用户意图、问题与待办和按日期的变更历史。
+
 ## 当前云端开发
 
 2026-10-27 用户授权在本仓库开展实现并提交。新增 [DSH＋开放第二方审查接入](development/review-ingress/README.md)：身份任务卡、外部/后台回执、来源核对、可靠归集与运行监看。验证记录见 [TEST-RESULTS](development/review-ingress/TEST-RESULTS.md)。

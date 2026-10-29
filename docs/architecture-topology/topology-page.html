@@ -1,0 +1,776 @@
+<title>小八架构拓扑</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working screen — toolbar on top, schematic canvas left, inspector right (bottom sheet on phones). */
+:root{
+  --bg:#ECEFEA; --surface:#FAFBF8; --panel:#F3F5F1; --ink:#1C2420; --muted:#5D6862; --line:#C9D1CA; --grid:#D3DAD3;
+  --accent:#2C5A86; --accent-ink:#FFFFFF;
+  --s-done:#2E7A4E; --s-dev:#2C5A86; --s-todo:#A86F12; --s-old:#858C88; --s-decide:#9C3468; --issue:#B83A2E;
+  --edge:#55615A; --sel:#2C5A86;
+  --f-body:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121715; --surface:#1B221F; --panel:#171D1A; --ink:#E2E9E4; --muted:#98A49D; --line:#34403A; --grid:#26302B;
+  --accent:#7FB0DE; --accent-ink:#0E1A26;
+  --s-done:#6CC08E; --s-dev:#7FB0DE; --s-todo:#E0A84A; --s-old:#8E9692; --s-decide:#E07AAE; --issue:#F07F72;
+  --edge:#9AA7A0; --sel:#7FB0DE; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121715; --surface:#1B221F; --panel:#171D1A; --ink:#E2E9E4; --muted:#98A49D; --line:#34403A; --grid:#26302B;
+  --accent:#7FB0DE; --accent-ink:#0E1A26;
+  --s-done:#6CC08E; --s-dev:#7FB0DE; --s-todo:#E0A84A; --s-old:#8E9692; --s-decide:#E07AAE; --issue:#F07F72;
+  --edge:#9AA7A0; --sel:#7FB0DE; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;overflow:hidden}
+.app{height:100%;display:grid;grid-template-rows:auto 1fr;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 12px;gap:10px;box-sizing:border-box}
+[hidden]{display:none!important}
+header.bar{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding-block:10px 4px;overflow-x:auto;scrollbar-width:thin}
+header.bar>*{flex-shrink:0}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:6px}
+.brand h1{font-size:17px;font-weight:700;margin:0;letter-spacing:.02em}
+.brand .ver{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.grp{display:flex;gap:4px;align-items:center}
+.sep{width:1px;height:22px;background:var(--line)}
+button,select,input,textarea{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 10px;cursor:pointer;line-height:1.3;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn:focus-visible,.chipf:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+.btn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--issue);border-color:color-mix(in srgb,var(--issue) 45%,var(--line))}
+.btn.armed{background:var(--issue);color:var(--surface);border-color:var(--issue)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.search{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 8px;width:150px}
+.save{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:auto}
+.save i{width:8px;height:8px;border-radius:50%;background:var(--s-old);display:inline-block}
+.save.ok i{background:var(--s-done)} .save.busy i{background:var(--s-todo)} .save.warn i{background:var(--issue)}
+.main{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 352px;gap:10px;min-height:0}
+#stage{position:relative;overflow:hidden;touch-action:none;border:1px solid var(--line);border-radius:8px;background-color:var(--bg);
+  background-image:radial-gradient(var(--grid) 1.2px,transparent 1.3px);cursor:grab;user-select:none;-webkit-user-select:none}
+#stage.panning{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#frames,#labels,#nodes{position:absolute;left:0;top:0}
+#edges{position:absolute;left:0;top:0;overflow:visible;width:1px;height:1px}
+.frame{position:absolute;border:1px dashed var(--line);border-radius:10px;background:color-mix(in srgb,var(--surface) 35%,transparent)}
+.frame.selected{border-color:var(--sel);border-style:solid}
+.fhead{position:absolute;left:10px;top:-13px;display:flex;align-items:center;gap:6px;background:var(--bg);padding:1px 8px;border:1px solid var(--line);border-radius:4px;cursor:move;font-size:12.5px;font-weight:500;white-space:nowrap}
+.fhead .cnt{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.mini{border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:13px;padding:0 3px;line-height:1}
+.mini:hover{color:var(--ink)}
+.node{position:absolute;width:196px;box-sizing:border-box;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px 8px;cursor:pointer;box-shadow:0 1px 0 color-mix(in srgb,var(--ink) 8%,transparent)}
+.node.st-old{border-style:dashed;background:var(--panel)}
+.node.st-todo{border-style:dashed;border-color:color-mix(in srgb,var(--s-todo) 60%,var(--line))}
+.node.st-decide{border-color:var(--s-decide);box-shadow:0 0 0 2px color-mix(in srgb,var(--s-decide) 22%,transparent)}
+.node.selected{border-color:var(--sel);box-shadow:0 0 0 2px var(--sel)}
+.node.src{box-shadow:0 0 0 3px var(--s-todo)}
+.node.dim,.pill.dim{opacity:.22}
+.ntop{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;letter-spacing:.04em;color:var(--muted)}
+.chip::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--c,var(--s-old))}
+.iss{font-family:var(--f-mono);font-size:10.5px;color:var(--surface);background:var(--issue);border-radius:8px;padding:0 6px;line-height:15px}
+.ntop .mini{margin-left:auto}
+.ntitle{font-weight:700;font-size:13.5px;line-height:1.35;text-wrap:balance}
+.nsub{font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px}
+.ndet{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:12px;line-height:1.5;display:grid;gap:5px}
+.ndet .k{font-size:10.5px;letter-spacing:.06em;color:var(--muted)}
+.ndet ul{margin:0;padding-left:16px}
+.ndet .ref{font-family:var(--f-mono);font-size:11px;word-break:break-all}
+.ndet .issue{color:var(--issue)}
+.port{position:absolute;right:-7px;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);cursor:crosshair;box-sizing:border-box}
+.node:hover .port,.node.selected .port{background:var(--accent)}
+.pill{position:absolute;min-width:180px;box-sizing:border-box;background:var(--panel);border:1.5px solid var(--muted);border-radius:18px;padding:7px 12px;cursor:move;display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
+.pill .cnt{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400}
+.pill.selected{border-color:var(--sel)}
+#edges path.e{fill:none;stroke:var(--edge);stroke-width:1.4}
+#edges path.e.k-old{stroke:var(--s-old);stroke-dasharray:6 5}
+#edges path.e.k-pending{stroke:var(--s-todo);stroke-dasharray:3 4;stroke-width:1.6}
+#edges path.e.sel{stroke:var(--sel);stroke-width:2.6}
+#edges path.e.dim{opacity:.18}
+#edges path.hit{fill:none;stroke:transparent;stroke-width:14;cursor:pointer;pointer-events:stroke}
+#edges path.tmp{fill:none;stroke:var(--accent);stroke-width:1.8;stroke-dasharray:4 3}
+.elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;color:var(--muted);background:var(--bg);padding:0 4px;border-radius:3px;white-space:nowrap;cursor:pointer;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.elabel.sel{color:var(--sel);font-weight:500}
+.elabel.dim{opacity:.2}
+.zoomer{position:absolute;right:calc(10px + env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:4px}
+.zoomer .btn{padding:3px 0;width:34px;text-align:center}
+.hint{position:absolute;left:10px;bottom:10px;font-size:11.5px;color:var(--muted);background:color-mix(in srgb,var(--bg) 85%,transparent);padding:3px 8px;border-radius:4px;max-width:calc(100% - 80px)}
+.banner{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--surface);border:1px solid var(--s-todo);border-radius:6px;padding:8px 12px;font-size:12.5px;max-width:calc(100% - 40px);box-shadow:0 4px 14px color-mix(in srgb,var(--ink) 12%,transparent)}
+aside{min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex-shrink:0}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 4px;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:500}
+.sheet-toggle{display:none}
+.pbody{overflow:auto;padding:12px 14px 18px;display:grid;gap:12px;align-content:start;min-height:0}
+.pbody h3{margin:0;font-size:15px;text-wrap:balance}
+.pbody h4{margin:4px 0 0;font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:500}
+.eyebrow{font-size:11px;letter-spacing:.08em;color:var(--muted)}
+.pbody label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.pbody input,.pbody select,.pbody textarea{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:6px 8px;color:var(--ink);font-size:13px;min-width:0}
+.pbody textarea{resize:vertical;min-height:64px;line-height:1.5}
+.pbody textarea.mono{font-family:var(--f-mono);font-size:11.5px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.list{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.list li{display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:5px 8px;min-width:0}
+.list li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.list li .t:hover{text-decoration:underline}
+.list li .dir{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}
+.chipf{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 8px;cursor:pointer;font-size:12.5px;text-align:left}
+.chipf::before{content:"";width:9px;height:9px;border-radius:2px;background:var(--c)}
+.chipf b{margin-left:auto;font-family:var(--f-mono);font-weight:500;font-variant-numeric:tabular-nums}
+.chipf.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.log li{display:grid;gap:2px;align-items:start}
+.log .when{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.log .op{font-size:11px;font-weight:700}
+.op-add{color:var(--s-done)} .op-del{color:var(--issue)} .op-edit{color:var(--s-dev)} .op-link{color:var(--s-todo)}
+.note{font-size:12px;color:var(--muted);line-height:1.55}
+.warn{font-size:12px;color:var(--issue)}
+pre.reader{white-space:pre-wrap;word-break:break-word;font-family:var(--f-mono);font-size:11.5px;line-height:1.55;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:10px;margin:0;max-height:none}
+code{font-family:var(--f-mono);font-size:11.5px}
+#board{position:absolute;inset:0;z-index:4;background:var(--bg);border-radius:8px;display:grid;grid-template-rows:auto auto 1fr;min-height:0}
+.bhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px 6px}
+.bhead h2{margin:0;font-size:16px}
+.bhead .note{margin-right:auto}
+.days{display:flex;gap:6px;overflow-x:auto;padding:4px 14px 10px;border-bottom:1px solid var(--line)}
+.day{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12.5px;display:flex;gap:6px;align-items:baseline}
+.day b{font-family:var(--f-mono);font-weight:500;font-size:11px;color:var(--muted)}
+.day.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.cols{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:10px;padding:12px 14px;overflow:auto;min-height:0}
+.col{display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px}
+.col h3{margin:0 0 2px;font-size:12.5px;display:flex;align-items:center;gap:6px}
+.col h3::before{content:"";width:9px;height:9px;border-radius:2px;background:var(--c)}
+.col h3 b{margin-left:auto;font-family:var(--f-mono);font-weight:500;font-size:11px;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:7px 9px;display:grid;gap:4px;font-size:12.5px;line-height:1.5}
+.card .when{font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+.card .acts{display:flex;gap:6px;flex-wrap:wrap}
+.card .acts button{font-size:11.5px;padding:2px 8px}
+.dayhead{font-size:11px;letter-spacing:.06em;color:var(--muted);margin-top:4px}
+@media (max-width:760px){.cols{grid-template-columns:repeat(4,minmax(200px,80vw))}}
+@media (max-width:760px){
+  .main{grid-template-columns:minmax(0,1fr)}
+  aside{position:absolute;left:0;right:0;bottom:0;height:52%;z-index:5;transition:transform .2s ease;box-shadow:0 -6px 18px color-mix(in srgb,var(--ink) 14%,transparent)}
+  aside.closed{transform:translateY(calc(100% - 40px))}
+  .sheet-toggle{display:block;flex:0 0 auto !important;padding:9px 12px !important}
+  .search{width:110px}
+  .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){aside{transition:none}}
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand"><h1>小八架构拓扑</h1><span class="ver" id="verTag">基线 2026-10-27</span></div>
+    <div class="grp">
+      <button class="btn" id="bAddNode" type="button">＋ 节点</button>
+      <button class="btn" id="bAddGroup" type="button">＋ 分组</button>
+      <button class="btn" id="bConnect" type="button" title="依次点两个节点连线">连线模式</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button class="btn" id="bUndo" type="button" title="Ctrl/⌘+Z">撤销</button>
+      <button class="btn" id="bRedo" type="button" title="Ctrl/⌘+Shift+Z">重做</button>
+      <button class="btn" id="bFit" type="button">适应画面</button>
+      <button class="btn" id="bExpandAll" type="button">展开全部详情</button>
+      <button class="btn" id="bBoard" type="button">历史看板</button>
+    </div>
+    <span class="sep"></span>
+    <input class="search" id="q" type="search" placeholder="搜索节点，回车定位" aria-label="搜索节点">
+    <div class="save" id="saveState"><i></i><span>连接保存中…</span></div>
+  </header>
+  <div class="main">
+    <div id="stage" aria-label="小八架构拓扑画布">
+      <div id="world">
+        <div id="frames"></div>
+        <svg id="edges"><defs>
+          <marker id="ar-normal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--edge)"/></marker>
+          <marker id="ar-old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--s-old)"/></marker>
+          <marker id="ar-pending" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--s-todo)"/></marker>
+          <marker id="ar-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--sel)"/></marker>
+        </defs><g id="eg"></g><path class="tmp" id="tmp" d="" /></svg>
+        <div id="labels"></div>
+        <div id="nodes"></div>
+      </div>
+      <div class="banner" id="banner" hidden></div>
+      <div class="hint" id="hint">拖动节点移动 · 从节点右侧圆点拖到另一节点即连线 · 点连线后可断开 · 拖空白处平移，滚轮缩放</div>
+      <section id="board" hidden aria-label="历史看板">
+        <div class="bhead"><h2>历史看板</h2><span class="note" id="bSum"></span><button class="btn" type="button" id="bCloseBoard">回到拓扑图</button></div>
+        <div class="days" id="days"></div>
+        <div class="cols" id="cols"></div>
+      </section>
+      <div class="zoomer"><button class="btn" id="zIn" type="button" aria-label="放大">＋</button><button class="btn" id="zOut" type="button" aria-label="缩小">−</button></div>
+    </div>
+    <aside id="aside">
+      <div class="tabs" role="tablist">
+        <button class="sheet-toggle" id="sheetToggle" type="button" aria-label="收起或展开面板">▾</button>
+        <button type="button" data-tab="inspect" class="on">检视</button>
+        <button type="button" data-tab="overview">总览</button>
+        <button type="button" data-tab="log">变更记录</button>
+        <button type="button" data-tab="reader">Agent 读本</button>
+      </div>
+      <div class="pbody" id="pbody"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- 基线：2026-10-27 设计图 + 2026-10-29 核对标注 ---------- */
+const BASE = {version:1,
+groups:[
+ {id:"g1",title:"一、接入、路由与任务执行",collapsed:false,x:40,y:40},
+ {id:"g2",title:"二、交付、候选与真实任务应用",collapsed:false,x:40,y:560},
+ {id:"g3",title:"三、经验核验状态机",collapsed:false,x:40,y:1000},
+ {id:"g4",title:"四、独立审查接入",collapsed:false,x:40,y:1470},
+ {id:"g5",title:"五、共享底座与贯穿治理",collapsed:false,x:40,y:1760}
+],
+nodes:[
+ {id:"user",g:"g1",x:70,y:90,status:"done",title:"用户",sub:"目标、授权、成品验收、人工裁决",intent:"唯一规范制定者；初审判定经验是否值得，终审批准写入第二大脑。",desc:"",refs:"私人助理/AGENTS.md",issues:""},
+ {id:"host",g:"g1",x:70,y:230,status:"done",title:"宿主 Agent",sub:"Codex / Claude / 其它接入者",intent:"主入口 Agent：决策与质量判断；v1.6.5 起任务由宿主直接执行。",desc:"",refs:"",issues:""},
+ {id:"knowledge",g:"g1",x:70,y:390,status:"done",title:"知识与能力发现",sub:"第二大脑 / KnowLP / 正式经验 / 技能与价值文件索引",intent:"索引只定位，命中后回读原文。",desc:"",refs:"私人助理/第二大脑/00_小八AgentOS.md",issues:""},
+ {id:"entry",g:"g1",x:330,y:230,status:"done",title:"统一 xiaoba 入口",sub:"发布、配置与源码绑定校验",intent:"",desc:"",refs:"~/.agents/skills/xiaoba-agentos/scripts/xiaoba",issues:"已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成"},
+ {id:"routing",g:"g1",x:580,y:230,status:"done",title:"消息路由",sub:"",intent:"",desc:"",refs:"integrated-candidate/src/xiaoba_agentos/routing.py",issues:""},
+ {id:"direct",g:"g1",x:830,y:110,status:"done",title:"宿主直接处理",sub:"",intent:"日常任务直接在私人助理做，不进队列。",desc:"",refs:"",issues:""},
+ {id:"queue",g:"g1",x:830,y:240,status:"done",title:"任务队列",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"ask",g:"g1",x:830,y:370,status:"done",title:"人工审核 / 必要追问",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"work",g:"g1",x:1080,y:100,status:"done",title:"实际执行、宿主集成与技术验证",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"worker",g:"g1",x:1080,y:250,status:"old",title:"Worker 与任务编排器",sub:"预算、执行权、租约与回执",intent:"",desc:"",refs:"integrated-candidate/src/xiaoba_agentos/orchestrator.py",issues:""},
+ {id:"backends",g:"g1",x:1330,y:250,status:"old",title:"后台执行适配器",sub:"AGY / DSH；Qoder 受限备用 —— 旧执行链，不是新审查组合",intent:"",desc:"",refs:"integrated-candidate/src/xiaoba_agentos/adapters.py",issues:"v1.6.5 C1：AGY 恢复每步一次 CLI 调用并保留回执卡；离线 146 项通过，未提交、未做真实调用"},
+ {id:"qc",g:"g1",x:1330,y:100,status:"done",title:"输出验收与确定性裁判",sub:"",intent:"",desc:"裁判给的是回答排名分（挑胜出者），不是审查结论。",refs:"orchestrator.py:1138 judge.decided",issues:"总纲 2.5 与规则 MF-011：回答排名分不等于审查通过，不能作为经验核验依据"},
+ {id:"result",g:"g1",x:1580,y:100,status:"done",title:"任务结果与审计回执",sub:"",intent:"",desc:"",refs:"",issues:""},
+
+ {id:"delivery",g:"g2",x:70,y:620,status:"dev",title:"用户说“交付”",sub:"本次成品已验收",intent:"交付即接受明确任务和版本的成品；一次交齐交付记录、经验候选和踩坑、打法、偏好。",desc:"",refs:"experience_loop.py record_delivery",issues:""},
+ {id:"archive",g:"g2",x:320,y:600,status:"done",title:"交付归档",sub:"交付记录、踩坑、打法、偏好",intent:"",desc:"",refs:"",issues:""},
+ {id:"new_exp",g:"g2",x:320,y:720,status:"done",title:"本次产生的新经验",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"used",g:"g2",x:320,y:840,status:"dev",title:"本次确实应用的旧候选",sub:"仅对已实际使用的原卡回流",intent:"",desc:"",refs:"",issues:""},
+ {id:"candidate",g:"g2",x:570,y:720,status:"done",title:"新经验候选",sub:"",intent:"",desc:"",refs:"memory-candidate-create",issues:""},
+ {id:"initial",g:"g2",x:820,y:720,status:"done",title:"用户初审",sub:"由用户判定这条经验是否值得",intent:"“值得”由用户判，不交给 Agent 或评分。",desc:"",refs:"",issues:""},
+ {id:"initial_pass",g:"g2",x:1070,y:720,status:"done",title:"初审通过",sub:"进入核验流程，不自动发布",intent:"",desc:"",refs:"",issues:""},
+ {id:"pending_index",g:"g2",x:1320,y:620,status:"dev",title:"待验证经验独立索引",sub:"与正式长期记忆分开",intent:"",desc:"",refs:"experience_loop.py pending_index",issues:"只做 problem_key 精确匹配或标题子串匹配；“派发任务时自动检索”尚未接线"},
+ {id:"retrieve",g:"g2",x:1570,y:620,status:"dev",title:"后续相似真实任务检索",sub:"区分待验证候选与正式经验",intent:"小八按用户派发任务的关联性，检索有无相似旧经验。",desc:"",refs:"",issues:""},
+ {id:"apply",g:"g2",x:1820,y:620,status:"dev",title:"核对适用条件并实际应用",sub:"检索或阅读不算实际应用",intent:"",desc:"",refs:"memory-application-record",issues:""},
+ {id:"evidence",g:"g2",x:2070,y:620,status:"dev",title:"记录执行证据与独立评分",sub:"绑定候选版本、任务与成品版本",intent:"复用工作中双审介入，交付后双审评分。",desc:"",refs:"",issues:"数值评分为 null，等 B5 量表"},
+ {id:"later_delivery",g:"g2",x:2070,y:780,status:"dev",title:"后续任务用户说“交付”",sub:"确认该次成品验收",intent:"",desc:"",refs:"",issues:""},
+ {id:"feedback",g:"g2",x:570,y:860,status:"dev",title:"验证材料自动回写原候选",sub:"证据、评分、应用位置与限制",intent:"",desc:"",refs:"docs/EXPERIENCE_LOOP.md",issues:"设计图标“待实现”，B4 已有离线实现，口径待统一"},
+
+ {id:"evidence_port",g:"g3",x:70,y:1120,status:"dev",title:"核验材料接入",sub:"沿用原卡当前轮次，不重置；不能凭回写直接待终审",intent:"",desc:"",refs:"validation_evidence.py ingress_evidence",issues:"问题2：外部独立审查是可选项，没有审查请求时直接放行（validation_evidence.py:121、131）"},
+ {id:"wait1",g:"g3",x:320,y:1040,status:"dev",title:"待隔离验证 · 第一轮",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"run1",g:"g3",x:570,y:1080,status:"decide",title:"执行第一轮隔离验证",sub:"隔离执行、必要检查与独立审查",intent:"",desc:"",refs:"experience_workflow.py advance_validation_round",issues:"问题1：通过与否仍读旧链原生双审 judge.decided（validation_evidence.py:100），新双审只是附加项\n问题3：外部 FAIL / NEEDS_INFO 会让本轮卡住而不是记为失败（experience_workflow.py:700）"},
+ {id:"v1_result",g:"g3",x:820,y:1080,status:"dev",title:"第一轮结果",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"final_queue",g:"g3",x:1070,y:1040,status:"dev",title:"自动进入待终审",sub:"仅核验通过后进入；不自动批准",intent:"终审材料：首次提取场景、复用场景、双审评价。",desc:"",refs:"experience_loop.py final_binding",issues:""},
+ {id:"final_user",g:"g3",x:1320,y:1040,status:"done",title:"裁决中心 · 用户人工终审",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"publish_checks",g:"g3",x:1570,y:1040,status:"done",title:"终审通过后",sub:"敏感检查与索引复验",intent:"",desc:"",refs:"",issues:""},
+ {id:"formal",g:"g3",x:1820,y:1040,status:"done",title:"正式经验与长期记忆索引",sub:"",intent:"经验价值高低是晋升、合并、退役的依据之一。",desc:"",refs:"第二大脑/70_复利规则/长期复用门禁.md",issues:"还没有价值高低与合并机制"},
+ {id:"failed1",g:"g3",x:820,y:1230,status:"dev",title:"保留第一轮失败证据",sub:"失败原因、执行结果与评分",intent:"",desc:"",refs:"",issues:""},
+ {id:"wait2",g:"g3",x:1070,y:1230,status:"dev",title:"待重新验证 · 第二轮",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"run2",g:"g3",x:1320,y:1230,status:"decide",title:"执行第二轮重新验证",sub:"针对首轮问题采取措施并重新核验",intent:"",desc:"",refs:"",issues:"同问题1、问题3"},
+ {id:"v2_result",g:"g3",x:1570,y:1230,status:"dev",title:"第二轮结果",sub:"",intent:"",desc:"",refs:"",issues:""},
+ {id:"diff",g:"g3",x:1570,y:1150,status:"dev",title:"核对两轮差异与原因",sub:"重点标记：第二轮验证通过",intent:"",desc:"",refs:"",issues:"问题4：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）"},
+ {id:"retired",g:"g3",x:1820,y:1300,status:"dev",title:"经验直接退役",sub:"停止检索与复用",intent:"",desc:"",refs:"",issues:""},
+ {id:"retire_view",g:"g3",x:2070,y:1300,status:"todo",title:"监看中心展示",sub:"两轮记录与退役原因",intent:"",desc:"",refs:"",issues:""},
+ {id:"delete",g:"g3",x:2320,y:1300,status:"todo",title:"用户确认后手动删除",sub:"系统不自动删除",intent:"",desc:"",refs:"",issues:""},
+
+ {id:"card",g:"g4",x:70,y:1550,status:"dev",title:"身份任务卡",sub:"关联原卡、轮次与版本",intent:"",desc:"",refs:"review-ingress/xiaoba_review/store.py assignment",issues:""},
+ {id:"dsh",g:"g4",x:330,y:1500,status:"dev",title:"固定 DSH 审查",sub:"",intent:"总纲 2.1：固定 DSH 一方。",desc:"",refs:"review-ingress/xiaoba_review/backends.py",issues:"真实 DSH 联调未做"},
+ {id:"peer",g:"g4",x:330,y:1620,status:"dev",title:"开放第二审查 Agent",sub:"任意外部 Agent / 后台 Agent",intent:"",desc:"",refs:"resource_agy_cli.py",issues:"AGY 在 stream-json 模式下不能响应权限确认，命令类操作会被拒\nAGY 沙箱能否读到工作区外的证据文件，未验证"},
+ {id:"receipts",g:"g4",x:590,y:1560,status:"dev",title:"统一回执入口",sub:"任务关联、来源、版本与输出核验",intent:"",desc:"",refs:"review-ingress store.py receive",issues:"问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡"},
+ {id:"confirmed",g:"g4",x:850,y:1560,status:"dev",title:"实际来源确认与独立性核对",sub:"自填身份或哈希不等于认证",intent:"",desc:"",refs:"review-ingress store.py attest",issues:"问题5：独立性只比对 source_ref 字符串（store.py:164）"},
+ {id:"review_evidence",g:"g4",x:1110,y:1560,status:"dev",title:"当轮独立审查证据",sub:"结论、理由、评分、分歧与限制",intent:"回执齐备不等于核验通过。",desc:"",refs:"",issues:"回执合同里没有评分和适用限制字段（B5 待定）"},
+
+ {id:"data",g:"g5",x:70,y:1810,status:"done",title:"数据与运行底座",sub:"SQLite、候选文件、回执与事件哈希链",intent:"",desc:"",refs:"",issues:""},
+ {id:"governance",g:"g5",x:330,y:1810,status:"done",title:"贯穿约束",sub:"B09 配置一致 / B19 输出合格 / B20 原子与幂等结算",intent:"",desc:"",refs:"私人助理/工作区/小八规则清单与目标架构/小八规则清单.md",issues:""},
+ {id:"monitor",g:"g5",x:590,y:1810,status:"dev",title:"运行监看",sub:"进度、身份、任务卡、回执、轮次、退役、删除确认",intent:"",desc:"",refs:"私人助理/工具/小八监看",issues:""},
+ {id:"capabilities",g:"g5",x:850,y:1810,status:"done",title:"共享业务能力",sub:"项目 / 导演 / 资产 / 审美 / OriginCut / Remotion / AE / 达芬奇 / BGM 与 SFX / REA",intent:"",desc:"",refs:"",issues:""},
+ {id:"workday",g:"g5",x:1110,y:1810,status:"dev",title:"工作日台账",sub:"Agent 每天的工作回执",intent:"",desc:"",refs:"review-ingress/xiaoba_review/workday.py",issues:"健康探针：总纲 2.2 不许发探针，HANDOFF 却设计了每日开工探针——待用户裁定"},
+ {id:"scoring",g:"g5",x:1370,y:1810,status:"decide",title:"Agent＋模型周评分与择优",sub:"7 天一周期（B5）",intent:"接替已退役的策略进化：什么 Agent 配什么模型得什么评分，用于同类任务择优。",desc:"",refs:"review-ingress/xiaoba_review/task_scoring.py",issues:"是否计成本：总纲 2.5 列了成本，HANDOFF 写“不记录资源投入”——待用户裁定\n审查回执尚未进入周评分"}
+],
+edges:[
+ ["user","host",""],["host","knowledge","查询与回读"],["host","entry",""],["entry","routing",""],["routing","direct",""],["routing","queue",""],["routing","ask",""],
+ ["direct","work",""],["queue","worker",""],["ask","host","澄清或裁决后继续"],["worker","backends","显式调用","old"],["worker","work",""],["work","qc",""],["qc","result",""],
+ ["result","delivery",""],["delivery","archive","本次成品交付"],["delivery","new_exp",""],["delivery","used",""],["new_exp","candidate",""],["candidate","initial",""],["initial","initial_pass",""],
+ ["initial_pass","pending_index",""],["initial_pass","wait1","初审通过后开始第一轮"],["pending_index","retrieve",""],["retrieve","apply",""],["apply","evidence",""],["evidence","later_delivery",""],["later_delivery","used",""],
+ ["used","feedback",""],["feedback","evidence_port",""],["evidence_port","run1","仅当原卡为第一轮"],["evidence_port","run2","仅当原卡为第二轮"],["wait1","run1",""],["run1","v1_result",""],
+ ["v1_result","failed1","未通过"],["v1_result","final_queue","通过"],["failed1","wait2",""],["wait2","run2",""],["run2","v2_result",""],["v2_result","diff","通过"],["v2_result","retired","未通过"],
+ ["diff","final_queue",""],["final_queue","final_user",""],["final_user","publish_checks",""],["publish_checks","formal",""],["formal","retrieve","正式经验后续复用"],["retired","retire_view",""],["retire_view","delete",""],
+ ["card","dsh",""],["card","peer",""],["dsh","receipts",""],["peer","receipts",""],["receipts","confirmed",""],["confirmed","review_evidence",""],["review_evidence","run1","支持第一轮核验"],["review_evidence","run2","支持第二轮核验"],
+ ["apply","card","复用中双审介入","pending"],["workday","scoring","每日回执"],["receipts","scoring","审查回执未接入","pending"]
+].map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:e[2],kind:e[3]||"normal"}))
+};
+BASE.nodes.forEach(n=>{n.expanded=false;});
+
+const STATUS={done:["已上线（v1.6.4）","--s-done"],dev:["候选已开发","--s-dev"],todo:["待实现","--s-todo"],old:["旧执行链","--s-old"],decide:["待用户裁定","--s-decide"]};
+const KINDS={normal:"普通",old:"旧链",pending:"待接通"};
+const $=s=>document.querySelector(s);
+const stage=$("#stage"),world=$("#world"),framesEl=$("#frames"),eg=$("#eg"),labelsEl=$("#labels"),nodesEl=$("#nodes"),tmp=$("#tmp"),pbody=$("#pbody");
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const clone=o=>JSON.parse(JSON.stringify(o));
+const uid=p=>p+Math.random().toString(36).slice(2,8);
+const lines=s=>String(s||"").split("\n").map(x=>x.trim()).filter(Boolean);
+
+let G=clone(BASE), mode="loading", docRef=null, logCol=null, logs=[], downloads=null;
+let view={x:30,y:30,k:.55}, sel=null, tab="inspect", undoS=[], redoS=[];
+let filter=null, issuesOnly=false, search="", connectMode=false, connectFrom=null;
+const sizes=new Map(), frameBox=new Map();
+let drag=null, armedDelete=null;
+
+/* ---------- 查询 ---------- */
+const node=id=>G.nodes.find(n=>n.id===id);
+const group=id=>G.groups.find(g=>g.id===id);
+const collapsed=gid=>{const g=group(gid);return !!(g&&g.collapsed);};
+const endOf=id=>{const n=node(id);if(!n)return null;return collapsed(n.g)?"G:"+n.g:id;};
+const nameOf=id=>{const n=node(id);return n?n.title:("（已删除："+id+"）");};
+function matches(n){
+  if(filter&&n.status!==filter)return false;
+  if(issuesOnly&&!lines(n.issues).length)return false;
+  if(search){const s=search.toLowerCase();if(!(n.title+" "+n.sub+" "+n.intent+" "+n.desc+" "+n.issues+" "+n.refs).toLowerCase().includes(s))return false;}
+  return true;
+}
+const filtering=()=>!!(filter||issuesOnly||search);
+const editable=()=>mode!=="loading";
+
+/* ---------- 渲染 ---------- */
+function applyView(){
+  world.style.transform=`translate(${view.x}px,${view.y}px) scale(${view.k})`;
+  const s=22*view.k;stage.style.backgroundSize=`${s}px ${s}px`;stage.style.backgroundPosition=`${view.x}px ${view.y}px`;
+}
+function nodeHTML(n){
+  const st=STATUS[n.status]||STATUS.dev, iss=lines(n.issues);
+  const cls=["node","st-"+n.status];
+  if(sel&&sel.type==="node"&&sel.id===n.id)cls.push("selected");
+  if(connectFrom===n.id)cls.push("src");
+  if(filtering()&&!matches(n))cls.push("dim");
+  let det="";
+  if(n.expanded){
+    det='<div class="ndet">'+
+      (n.intent?`<div><div class="k">用户意图</div>${esc(n.intent)}</div>`:"")+
+      (n.desc?`<div><div class="k">说明</div>${esc(n.desc)}</div>`:"")+
+      (lines(n.refs).length?`<div><div class="k">位置</div>${lines(n.refs).map(r=>`<div class="ref">${esc(r)}</div>`).join("")}</div>`:"")+
+      (iss.length?`<div><div class="k">问题与待办</div><ul>${iss.map(r=>`<li class="issue">${esc(r)}</li>`).join("")}</ul></div>`:"")+
+      (!n.intent&&!n.desc&&!lines(n.refs).length&&!iss.length?'<div class="k">还没有详情，在右侧面板填写</div>':"")+
+    "</div>";
+  }
+  return `<div class="${cls.join(" ")}" data-node="${esc(n.id)}" style="transform:translate(${n.x}px,${n.y}px)">
+   <div class="ntop"><span class="chip" style="--c:var(${st[1]})">${esc(st[0])}</span>${iss.length?`<span class="iss" title="问题与待办">${iss.length}</span>`:""}<button class="mini" type="button" data-exp="${esc(n.id)}" aria-label="${n.expanded?"收起":"展开"}详情">${n.expanded?"−":"＋"}</button></div>
+   <div class="ntitle">${esc(n.title)}</div>${n.sub?`<div class="nsub">${esc(n.sub)}</div>`:""}${det}
+   <span class="port" data-port="${esc(n.id)}" title="拖到另一个节点即连线"></span></div>`;
+}
+function render(){
+  const vis=G.nodes.filter(n=>!collapsed(n.g));
+  let html=vis.map(nodeHTML).join("");
+  G.groups.filter(g=>g.collapsed).forEach(g=>{
+    const members=G.nodes.filter(n=>n.g===g.id);
+    const dim=filtering()&&!members.some(matches);
+    const s=sel&&sel.type==="group"&&sel.id===g.id;
+    html+=`<div class="pill${s?" selected":""}${dim?" dim":""}" data-gpill="${esc(g.id)}" style="transform:translate(${g.x}px,${g.y}px)"><button class="mini" type="button" data-gcol="${esc(g.id)}" aria-label="展开分组">▸</button>${esc(g.title)}<span class="cnt">${members.length}</span><span class="port" data-port="G:${esc(g.id)}" hidden></span></div>`;
+  });
+  nodesEl.innerHTML=html;
+  nodesEl.querySelectorAll("[data-node]").forEach(el=>sizes.set(el.dataset.node,{w:el.offsetWidth,h:el.offsetHeight}));
+  nodesEl.querySelectorAll("[data-gpill]").forEach(el=>sizes.set("G:"+el.dataset.gpill,{w:el.offsetWidth,h:el.offsetHeight}));
+  drawFrames();drawEdges();renderPanel();updateButtons();
+}
+function rectOf(id){
+  if(id.startsWith("G:")){const g=group(id.slice(2));const s=sizes.get(id)||{w:180,h:34};return {x:g.x,y:g.y,w:s.w,h:s.h};}
+  const n=node(id);const s=sizes.get(id)||{w:196,h:60};return {x:n.x,y:n.y,w:s.w,h:s.h};
+}
+function drawFrames(){
+  let html="";frameBox.clear();
+  G.groups.forEach(g=>{
+    if(g.collapsed)return;
+    const ms=G.nodes.filter(n=>n.g===g.id);let b;
+    if(ms.length){let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;ms.forEach(n=>{const r=rectOf(n.id);x1=Math.min(x1,r.x);y1=Math.min(y1,r.y);x2=Math.max(x2,r.x+r.w);y2=Math.max(y2,r.y+r.h);});
+      b={x:x1-26,y:y1-30,w:x2-x1+52,h:y2-y1+56};}
+    else b={x:g.x,y:g.y,w:260,h:120};
+    frameBox.set(g.id,b);
+    const s=sel&&sel.type==="group"&&sel.id===g.id;
+    html+=`<div class="frame${s?" selected":""}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><div class="fhead" data-ghead="${esc(g.id)}"><button class="mini" type="button" data-gcol="${esc(g.id)}" aria-label="收起分组">▾</button>${esc(g.title)}<span class="cnt">${ms.length}</span></div></div>`;
+  });
+  framesEl.innerHTML=html;
+}
+function anchor(a,b){
+  const ac={x:a.x+a.w/2,y:a.y+a.h/2},bc={x:b.x+b.w/2,y:b.y+b.h/2},dx=bc.x-ac.x,dy=bc.y-ac.y;
+  if(Math.abs(dx)>=Math.abs(dy)*0.8){const s=Math.sign(dx)||1;return [{x:s>0?a.x+a.w:a.x,y:ac.y},{x:s>0?b.x:b.x+b.w,y:bc.y},"h",s];}
+  const s=Math.sign(dy)||1;return [{x:ac.x,y:s>0?a.y+a.h:a.y},{x:bc.x,y:s>0?b.y:b.y+b.h},"v",s];
+}
+function pathFor(p,q,dir,s){
+  const d=Math.max(40,Math.abs(dir==="h"?q.x-p.x:q.y-p.y)*0.45);
+  const c1=dir==="h"?{x:p.x+s*d,y:p.y}:{x:p.x,y:p.y+s*d},c2=dir==="h"?{x:q.x-s*d,y:q.y}:{x:q.x,y:q.y-s*d};
+  const t=.5,mt=1-t,mx=mt*mt*mt*p.x+3*mt*mt*t*c1.x+3*mt*t*t*c2.x+t*t*t*q.x,my=mt*mt*mt*p.y+3*mt*mt*t*c1.y+3*mt*t*t*c2.y+t*t*t*q.y;
+  return {d:`M${p.x} ${p.y}C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${q.x} ${q.y}`,mx,my};
+}
+function drawEdges(){
+  let ph="",lh="";const seen=new Set();
+  G.edges.forEach(e=>{
+    const a=endOf(e.from),b=endOf(e.to);if(!a||!b||a===b)return;
+    const key=a+">"+b+">"+e.kind;if((a.startsWith("G:")||b.startsWith("G:"))&&seen.has(key))return;seen.add(key);
+    const [p,q,dir,s]=anchor(rectOf(a),rectOf(b));const P=pathFor(p,q,dir,s);
+    const isSel=sel&&sel.type==="edge"&&sel.id===e.id;
+    const na=node(e.from),nb=node(e.to);const dim=filtering()&&!(na&&matches(na)||nb&&matches(nb));
+    ph+=`<path class="e k-${e.kind}${isSel?" sel":""}${dim?" dim":""}" d="${P.d}" marker-end="url(#ar-${isSel?"sel":e.kind})"/><path class="hit" data-edge="${esc(e.id)}" d="${P.d}"/>`;
+    if(e.label)lh+=`<div class="elabel${isSel?" sel":""}${dim?" dim":""}" data-elabel="${esc(e.id)}" style="left:${P.mx}px;top:${P.my}px" title="${esc(e.label)}">${esc(e.label)}</div>`;
+  });
+  eg.innerHTML=ph;labelsEl.innerHTML=lh;
+}
+function refreshGeometry(){drawFrames();drawEdges();}
+
+/* ---------- 变更、撤销、保存 ---------- */
+function commit(fn,entry){
+  if(!editable())return false;
+  undoS.push(JSON.stringify(G));if(undoS.length>80)undoS.shift();redoS=[];
+  fn();render();scheduleSave();if(entry)writeLog(entry);return true;
+}
+function undo(){if(!undoS.length||!editable())return;redoS.push(JSON.stringify(G));G=JSON.parse(undoS.pop());fixSel();render();scheduleSave();writeLog({op:"edit",text:"撤销了上一步"});}
+function redo(){if(!redoS.length||!editable())return;undoS.push(JSON.stringify(G));G=JSON.parse(redoS.pop());fixSel();render();scheduleSave();writeLog({op:"edit",text:"重做了一步"});}
+function fixSel(){if(!sel)return;if(sel.type==="node"&&!node(sel.id)||sel.type==="edge"&&!G.edges.find(e=>e.id===sel.id)||sel.type==="group"&&!group(sel.id))sel=null;}
+function setSave(cls,text){const el=$("#saveState");el.className="save "+cls;el.querySelector("span").textContent=text;}
+let saveT=null,saving=false,again=false,lastSaved="";
+function scheduleSave(){clearTimeout(saveT);setSave("busy","有未保存的修改");saveT=setTimeout(doSave,600);}
+async function doSave(){
+  const body=JSON.stringify(G);
+  if(mode==="local"){try{localStorage.setItem("xb-topology-v1",body);setSave("warn","只存在本浏览器");}catch(_){setSave("warn","本浏览器也存不下，请导出");}return;}
+  if(mode!=="db")return;
+  if(saving){again=true;return;}
+  saving=true;setSave("busy","保存中…");
+  try{await docRef.set(Object.assign(JSON.parse(body),{savedAt:Date.now()}));lastSaved=body;setSave("ok","已保存 "+clock(Date.now()));}
+  catch(err){setSave("warn",err&&err.code==="quota_exceeded"?"存储已满，请导出备份后清理":"保存失败："+(err&&err.code||"未知")+"，修改仍在本页");}
+  saving=false;if(again){again=false;doSave();}
+}
+function writeLog(entry){
+  const rec={at:Date.now(),day:dayOf(Date.now()),op:entry.op,text:entry.text,target:entry.target||"",before:entry.before?JSON.stringify(entry.before):""};
+  if(mode==="db"&&logCol){logCol.add(rec).catch(()=>{});}
+  else{logs.unshift(Object.assign({id:uid("l")},rec));logs=logs.slice(0,1000);try{localStorage.setItem("xb-topology-log",JSON.stringify(logs));}catch(_){} if(tab==="log")renderPanel();renderBoard();}
+}
+const pad=n=>String(n).padStart(2,"0");
+const clock=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinutes());};
+const dayOf=t=>{const d=new Date(t);return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());};
+const stamp=t=>dayOf(t)+" "+clock(t);
+const WEEK="日一二三四五六";
+const OPS={add:["新增","--s-done"],edit:["修改","--s-dev"],del:["删除","--issue"],link:["接入","--s-todo"],unlink:["断开","--s-todo"]};
+const COLS=[["add","新增"],["edit","修改"],["del","删除"],["link","接入 · 断开"]];
+const colOf=op=>op==="unlink"?"link":(OPS[op]?op:"edit");
+
+/* ---------- 编辑操作 ---------- */
+function centerWorld(){const r=stage.getBoundingClientRect();return {x:(r.width/2-view.x)/view.k-98,y:(r.height/2-view.y)/view.k-30};}
+function dupTitle(title,except){return G.nodes.find(n=>n.id!==except&&n.title.trim()===title.trim());}
+function addNode(){
+  const c=centerWorld();let g=(sel&&sel.type==="group")?sel.id:(sel&&sel.type==="node"&&node(sel.id))?node(sel.id).g:(G.groups[0]&&G.groups[0].id)||"";
+  if(g&&collapsed(g))group(g).collapsed=false;
+  let t="新节点",i=2;while(dupTitle(t))t="新节点 "+(i++);
+  const n={id:uid("n"),g,x:Math.round(c.x),y:Math.round(c.y),status:"todo",title:t,sub:"",intent:"",desc:"",refs:"",issues:"",expanded:false};
+  commit(()=>{G.nodes.push(n);sel={type:"node",id:n.id};tab="inspect";},{op:"add",target:n.id,text:`新增节点「${t}」${g?"（"+group(g).title+"）":""}`});
+  setTimeout(()=>{const f=$("#f-title");if(f){f.focus();f.select();}},30);
+}
+function addGroup(){
+  const c=centerWorld();let t="新分组",i=2;while(G.groups.find(g=>g.title===t))t="新分组 "+(i++);
+  const g={id:uid("g"),title:t,collapsed:false,x:Math.round(c.x),y:Math.round(c.y)};
+  commit(()=>{G.groups.push(g);sel={type:"group",id:g.id};tab="inspect";},{op:"add",text:`新增分组「${t}」`});
+}
+function connect(a,b){
+  if(a.startsWith("G:")||b.startsWith("G:")){flash("请先展开分组，再连到具体节点");return;}
+  if(a===b)return;
+  const ex=G.edges.find(e=>e.from===a&&e.to===b);
+  if(ex){sel={type:"edge",id:ex.id};tab="inspect";render();flash("这两个节点之间已经有同方向的连线");return;}
+  const e={id:uid("e"),from:a,to:b,label:"",kind:"normal"};
+  commit(()=>{G.edges.push(e);sel={type:"edge",id:e.id};tab="inspect";},{op:"link",target:a,text:`接入：「${nameOf(a)}」→「${nameOf(b)}」`});
+}
+function deleteEdge(id){const e=G.edges.find(x=>x.id===id);if(!e)return;
+  commit(()=>{G.edges=G.edges.filter(x=>x.id!==id);if(sel&&sel.id===id)sel=null;},{op:"unlink",target:e.from,text:`断开：「${nameOf(e.from)}」→「${nameOf(e.to)}」${e.label?"（"+e.label+"）":""}`,before:e});}
+function deleteNode(id){const n=node(id);if(!n)return;const es=G.edges.filter(e=>e.from===id||e.to===id);
+  commit(()=>{G.nodes=G.nodes.filter(x=>x.id!==id);G.edges=G.edges.filter(e=>e.from!==id&&e.to!==id);sel=null;},
+    {op:"del",text:`删除节点「${n.title}」，连带断开 ${es.length} 条连线`,before:{node:n,edges:es}});}
+function deleteGroup(id){const g=group(id);if(!g)return;const ms=G.nodes.filter(n=>n.g===id).map(n=>n.id);
+  commit(()=>{G.nodes.forEach(n=>{if(n.g===id)n.g="";});G.groups=G.groups.filter(x=>x.id!==id);sel=null;},
+    {op:"del",text:`删除分组「${g.title}」，其中 ${ms.length} 个节点改为未分组`,before:{group:g,members:ms}});}
+function restore(l){
+  let b;try{b=JSON.parse(l.before||"null");}catch(_){b=null;}if(!b)return;
+  if(b.node){if(node(b.node.id)){flash("这个节点已经在图上了");return;}
+    const back=(b.edges||[]).filter(e=>!G.edges.find(x=>x.id===e.id)&&(e.from===b.node.id||node(e.from))&&(e.to===b.node.id||node(e.to)));
+    commit(()=>{const n=clone(b.node);if(n.g&&!group(n.g))n.g="";G.nodes.push(n);G.edges.push(...clone(back));sel={type:"node",id:n.id};},{op:"add",target:b.node.id,text:`恢复已删除的节点「${b.node.title}」及 ${back.length} 条连线`});
+    closeBoard();focusNode(b.node.id);}
+  else if(b.group){if(group(b.group.id)){flash("这个分组已经在图上了");return;}
+    commit(()=>{G.groups.push(clone(b.group));(b.members||[]).forEach(id=>{const n=node(id);if(n&&!n.g)n.g=b.group.id;});},{op:"add",text:`恢复已删除的分组「${b.group.title}」`});closeBoard();}
+  else if(b.from){if(!node(b.from)||!node(b.to)){flash("连线的一端节点已不存在，先恢复节点");return;}if(G.edges.find(x=>x.from===b.from&&x.to===b.to)){flash("这条连线已经在图上了");return;}
+    commit(()=>{G.edges.push(clone(b));},{op:"link",target:b.from,text:`恢复连线「${nameOf(b.from)}」→「${nameOf(b.to)}」`});closeBoard();}
+}
+let boardDay="all";
+function openBoard(){$("#board").hidden=false;$("#bBoard").classList.add("on");renderBoard();}
+function closeBoard(){$("#board").hidden=true;$("#bBoard").classList.remove("on");}
+function renderBoard(){
+  if($("#board").hidden)return;
+  const days=[...new Set(logs.map(l=>l.day||dayOf(l.at)))];
+  if(boardDay!=="all"&&!days.includes(boardDay))boardDay="all";
+  const wd=d=>"周"+WEEK[new Date(d+"T00:00:00").getDay()];
+  $("#days").innerHTML=`<button type="button" class="day${boardDay==="all"?" on":""}" data-day="all">全部<b>${logs.length}</b></button>`+
+    days.map(d=>`<button type="button" class="day${boardDay===d?" on":""}" data-day="${esc(d)}">${esc(d.slice(5))} ${wd(d)}<b>${logs.filter(l=>(l.day||dayOf(l.at))===d).length}</b></button>`).join("");
+  const shown=logs.filter(l=>boardDay==="all"||(l.day||dayOf(l.at))===boardDay);
+  $("#bSum").textContent=(boardDay==="all"?`共 ${days.length} 天`:boardDay+" "+wd(boardDay))+` · ${shown.length} 条记录`+(mode==="db"?"":"（只存在本浏览器）");
+  $("#cols").innerHTML=COLS.map(([k,title])=>{
+    const items=shown.filter(l=>colOf(l.op)===k);let lastDay="";
+    return `<div class="col"><h3 style="--c:var(${OPS[k][1]})">${title}<b>${items.length}</b></h3>`+
+      (items.map(l=>{const d=l.day||dayOf(l.at);const hd=boardDay==="all"&&d!==lastDay?`<div class="dayhead">${esc(d)} ${wd(d)}</div>`:"";lastDay=d;
+        const canGo=l.target&&node(l.target),canRestore=l.before&&(l.op==="del"||l.op==="unlink");
+        return hd+`<div class="card"><span class="when">${esc(clock(l.at))}${l.op==="unlink"?" · 断开":l.op==="link"?" · 接入":""}</span><span>${esc(l.text)}</span>${canGo||canRestore?`<span class="acts">${canGo?`<button class="btn" type="button" data-bgo="${esc(l.target)}">在图上定位</button>`:""}${canRestore&&editable()?`<button class="btn" type="button" data-restore="${esc(l.id)}">恢复</button>`:""}</span>`:""}</div>`;}).join("")||'<p class="note">这一天没有这类改动。</p>')+"</div>";
+  }).join("");
+  $("#days").querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{boardDay=b.dataset.day;renderBoard();});
+  $("#cols").querySelectorAll("[data-bgo]").forEach(b=>b.onclick=()=>{closeBoard();focusNode(b.dataset.bgo);});
+  $("#cols").querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{const l=logs.find(x=>x.id===b.dataset.restore);if(l)restore(l);});
+}
+function toggleGroup(id){const g=group(id);if(!g)return;
+  commit(()=>{if(!g.collapsed){const b=frameBox.get(id);if(b){g.x=b.x;g.y=b.y;}}g.collapsed=!g.collapsed;},null);}
+function toggleNodeExp(id){const n=node(id);if(!n)return;commit(()=>{n.expanded=!n.expanded;},null);}
+function flash(t){const b=$("#banner");b.textContent=t;b.hidden=false;clearTimeout(flash.t);flash.t=setTimeout(()=>{if(mode!=="db-empty")b.hidden=true;},2600);}
+
+/* ---------- 画布交互 ---------- */
+function toWorld(cx,cy){const r=stage.getBoundingClientRect();return {x:(cx-r.left-view.x)/view.k,y:(cy-r.top-view.y)/view.k};}
+stage.addEventListener("pointerdown",e=>{
+  if(e.button!==0&&e.pointerType==="mouse")return;
+  if(e.target.closest("[data-exp],[data-gcol],.zoomer,.banner"))return;
+  const port=e.target.closest("[data-port]"),nodeEl=e.target.closest("[data-node]"),pill=e.target.closest("[data-gpill]"),gh=e.target.closest("[data-ghead]"),edge=e.target.closest("[data-edge],[data-elabel]");
+  const base={sx:e.clientX,sy:e.clientY,moved:false,pid:e.pointerId};
+  if(port&&editable()&&!port.dataset.port.startsWith("G:")){drag=Object.assign(base,{type:"link",from:port.dataset.port});}
+  else if(nodeEl){const n=node(nodeEl.dataset.node);drag=Object.assign(base,{type:"node",id:n.id,ox:n.x,oy:n.y,before:JSON.stringify(G),el:nodeEl});}
+  else if(pill||gh){const gid=(pill||gh).dataset.gpill||(pill||gh).dataset.ghead;const g=group(gid);
+    drag=Object.assign(base,{type:"group",id:gid,gx:g.x,gy:g.y,ms:G.nodes.filter(n=>n.g===gid).map(n=>[n,n.x,n.y]),before:JSON.stringify(G)});}
+  else if(edge){const id=edge.dataset.edge||edge.dataset.elabel;sel={type:"edge",id};tab="inspect";render();openSheet();return;}
+  else{drag=Object.assign(base,{type:"pan",vx:view.x,vy:view.y});stage.classList.add("panning");}
+  try{stage.setPointerCapture(e.pointerId);}catch(_){}
+});
+stage.addEventListener("pointermove",e=>{
+  if(!drag||e.pointerId!==drag.pid)return;
+  const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;if(!drag.moved&&Math.hypot(dx,dy)<4)return;drag.moved=true;
+  if(drag.type==="pan"){view.x=drag.vx+dx;view.y=drag.vy+dy;applyView();}
+  else if(drag.type==="node"){if(!editable())return;const n=node(drag.id);n.x=Math.round(drag.ox+dx/view.k);n.y=Math.round(drag.oy+dy/view.k);drag.el.style.transform=`translate(${n.x}px,${n.y}px)`;refreshGeometry();}
+  else if(drag.type==="group"){if(!editable())return;const g=group(drag.id),ddx=dx/view.k,ddy=dy/view.k;g.x=Math.round(drag.gx+ddx);g.y=Math.round(drag.gy+ddy);
+    drag.ms.forEach(([n,x,y])=>{n.x=Math.round(x+ddx);n.y=Math.round(y+ddy);const el=nodesEl.querySelector(`[data-node="${CSS.escape(n.id)}"]`);if(el)el.style.transform=`translate(${n.x}px,${n.y}px)`;});
+    const pe=nodesEl.querySelector(`[data-gpill="${CSS.escape(g.id)}"]`);if(pe)pe.style.transform=`translate(${g.x}px,${g.y}px)`;refreshGeometry();}
+  else if(drag.type==="link"){const a=rectOf(drag.from),p={x:a.x+a.w,y:a.y+a.h/2},q=toWorld(e.clientX,e.clientY);tmp.setAttribute("d",`M${p.x} ${p.y}C${p.x+60} ${p.y} ${q.x-60} ${q.y} ${q.x} ${q.y}`);}
+});
+function endDrag(e){
+  if(!drag||e.pointerId!==drag.pid)return;const d=drag;drag=null;stage.classList.remove("panning");
+  if(d.type==="pan"){if(!d.moved){if(connectMode&&connectFrom){connectFrom=null;}sel=null;render();}return;}
+  if(d.type==="link"){tmp.setAttribute("d","");const t=document.elementFromPoint(e.clientX,e.clientY);const tn=t&&t.closest("[data-node],[data-gpill]");
+    if(tn){const to=tn.dataset.node||("G:"+tn.dataset.gpill);connect(d.from,to);}return;}
+  if(d.type==="node"){
+    if(d.moved&&editable()){undoS.push(d.before);redoS=[];scheduleSave();return;}
+    if(connectMode&&editable()){if(!connectFrom){connectFrom=d.id;sel={type:"node",id:d.id};render();flash("再点目标节点完成连线");}else{const a=connectFrom;connectFrom=null;if(a!==d.id)connect(a,d.id);else render();}return;}
+    sel={type:"node",id:d.id};tab="inspect";render();openSheet();return;}
+  if(d.type==="group"){if(d.moved&&editable()){undoS.push(d.before);redoS=[];scheduleSave();}else{sel={type:"group",id:d.id};tab="inspect";render();openSheet();}}
+}
+stage.addEventListener("pointerup",endDrag);stage.addEventListener("pointercancel",e=>{if(drag&&drag.type==="link")tmp.setAttribute("d","");endDrag(e);});
+stage.addEventListener("click",e=>{const x=e.target.closest("[data-exp]");if(x){toggleNodeExp(x.dataset.exp);return;}const c=e.target.closest("[data-gcol]");if(c)toggleGroup(c.dataset.gcol);});
+stage.addEventListener("wheel",e=>{e.preventDefault();const r=stage.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+  if(e.ctrlKey||Math.abs(e.deltaY)>=Math.abs(e.deltaX)){zoomAt(px,py,Math.exp(-e.deltaY*(e.ctrlKey?0.01:0.0016)));}
+  else{view.x-=e.deltaX;applyView();}},{passive:false});
+function zoomAt(px,py,f){const k=Math.min(2,Math.max(.15,view.k*f));view.x=px-(px-view.x)*k/view.k;view.y=py-(py-view.y)*k/view.k;view.k=k;applyView();}
+$("#zIn").onclick=()=>{const r=stage.getBoundingClientRect();zoomAt(r.width/2,r.height/2,1.2);};
+$("#zOut").onclick=()=>{const r=stage.getBoundingClientRect();zoomAt(r.width/2,r.height/2,1/1.2);};
+function fit(ids){
+  const rs=(ids||G.nodes.filter(n=>!collapsed(n.g)).map(n=>n.id).concat(G.groups.filter(g=>g.collapsed).map(g=>"G:"+g.id))).map(rectOf);
+  if(!rs.length)return;let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;rs.forEach(r=>{x1=Math.min(x1,r.x);y1=Math.min(y1,r.y);x2=Math.max(x2,r.x+r.w);y2=Math.max(y2,r.y+r.h);});
+  const s=stage.getBoundingClientRect(),k=Math.min(1.1,Math.max(.15,Math.min((s.width-60)/(x2-x1+60),(s.height-60)/(y2-y1+60))));
+  view.k=k;view.x=(s.width-(x2-x1)*k)/2-x1*k;view.y=(s.height-(y2-y1)*k)/2-y1*k;applyView();
+}
+function focusNode(id){const n=node(id);if(!n)return;if(collapsed(n.g)){group(n.g).collapsed=false;}sel={type:"node",id};tab="inspect";render();
+  const s=stage.getBoundingClientRect(),r=rectOf(id);view.k=Math.max(view.k,.85);view.x=s.width/2-(r.x+r.w/2)*view.k;view.y=s.height/2-(r.y+r.h/2)*view.k;applyView();openSheet();}
+
+/* ---------- 工具栏与键盘 ---------- */
+$("#bAddNode").onclick=addNode;$("#bAddGroup").onclick=addGroup;$("#bUndo").onclick=undo;$("#bRedo").onclick=redo;$("#bFit").onclick=()=>fit();
+$("#bConnect").onclick=()=>{connectMode=!connectMode;connectFrom=null;if(connectMode)flash("连线模式：先点起点节点，再点终点节点");render();};
+$("#bExpandAll").onclick=()=>{const any=G.nodes.some(n=>!n.expanded);commit(()=>{G.nodes.forEach(n=>n.expanded=any);},null);};
+$("#bBoard").onclick=()=>{$("#board").hidden?openBoard():closeBoard();};$("#bCloseBoard").onclick=closeBoard;
+$("#q").addEventListener("input",e=>{search=e.target.value.trim();render();});
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){const m=G.nodes.find(matches);if(m&&search)focusNode(m.id);}});
+function updateButtons(){
+  $("#bUndo").disabled=!undoS.length||!editable();$("#bRedo").disabled=!redoS.length||!editable();
+  ["#bAddNode","#bAddGroup","#bConnect"].forEach(s=>$(s).disabled=!editable());
+  $("#bConnect").classList.toggle("on",connectMode);
+  $("#bExpandAll").textContent=G.nodes.some(n=>!n.expanded)?"展开全部详情":"收起全部详情";
+}
+document.addEventListener("keydown",e=>{
+  const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement&&document.activeElement.tagName);
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!typing){e.preventDefault();e.shiftKey?redo():undo();return;}
+  if(typing)return;
+  if(e.key==="Escape"){connectMode=false;connectFrom=null;sel=null;render();}
+  if((e.key==="Delete"||e.key==="Backspace")&&sel&&editable()){
+    if(sel.type==="edge"){e.preventDefault();deleteEdge(sel.id);}
+    else if(sel.type==="node"){e.preventDefault();armDelete("node:"+sel.id);}
+  }
+});
+
+/* ---------- 面板 ---------- */
+const aside=$("#aside");
+function openSheet(){aside.classList.remove("closed");$("#sheetToggle").textContent="▾";}
+$("#sheetToggle").onclick=()=>{aside.classList.toggle("closed");$("#sheetToggle").textContent=aside.classList.contains("closed")?"▴":"▾";};
+document.querySelectorAll(".tabs [data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderPanel();openSheet();});
+function armDelete(key){armedDelete=key;tab="inspect";renderPanel();openSheet();}
+function opts(map,cur){return Object.entries(map).map(([k,v])=>`<option value="${esc(k)}"${k===cur?" selected":""}>${esc(Array.isArray(v)?v[0]:v)}</option>`).join("");}
+function renderPanel(){
+  document.querySelectorAll(".tabs [data-tab]").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
+  if(tab==="overview")return panelOverview();
+  if(tab==="log")return panelLog();
+  if(tab==="reader")return panelReader();
+  if(!sel)return panelEmpty();
+  if(sel.type==="node")return panelNode(node(sel.id));
+  if(sel.type==="edge")return panelEdge(G.edges.find(e=>e.id===sel.id));
+  if(sel.type==="group")return panelGroup(group(sel.id));
+}
+function panelEmpty(){
+  pbody.innerHTML=`<div class="eyebrow">检视</div><h3>点画布上的节点、连线或分组标题</h3>
+  <p class="note">这张图是小八架构设计的底座：每次增删改都自动保存并写进「变更记录」，删除时连原内容一起留档。其它 Agent 读「Agent 读本」就能知道你要做什么。</p>
+  <h4>操作</h4><ul class="note" style="margin:0;padding-left:18px">
+  <li>拖动节点或分组标题：移动</li><li>从节点右侧圆点拖到另一个节点：接入（连线）</li><li>点连线：可改说明、改类型或断开</li>
+  <li>节点上的 ＋：展开详情；分组标题上的 ▾：收起整组</li><li>Delete 键删除选中项，Ctrl/⌘+Z 撤销</li></ul>
+  ${mode==="local"?'<p class="warn">现在没连上云端存储，修改只存在这个浏览器里。请用「Agent 读本」页的导出功能留底。</p>':""}`;
+}
+function connList(n){
+  const out=G.edges.filter(e=>e.from===n.id),inn=G.edges.filter(e=>e.to===n.id);
+  const li=(e,dir,other)=>`<li><span class="dir">${dir}</span><span class="t" data-go="${esc(other)}">${esc(nameOf(other))}${e.label?" · "+esc(e.label):""}</span><button class="mini" type="button" data-sel-edge="${esc(e.id)}" title="选中这条连线">✎</button><button class="mini" type="button" data-cut="${esc(e.id)}" title="断开" aria-label="断开">✕</button></li>`;
+  return out.length||inn.length?`<ul class="list">${out.map(e=>li(e,"出 →",e.to)).join("")}${inn.map(e=>li(e,"← 入",e.from)).join("")}</ul>`:'<p class="note">还没有连线。从节点右侧圆点拖到别的节点即可接入。</p>';
+}
+function panelNode(n){
+  if(!n)return panelEmpty();
+  const es=G.edges.filter(e=>e.from===n.id||e.to===n.id).length,armed=armedDelete==="node:"+n.id,ro=editable()?"":" disabled";
+  pbody.innerHTML=`<div class="eyebrow">节点 · <code>${esc(n.id)}</code></div>
+  <label>名称<input id="f-title" value="${esc(n.title)}"${ro}></label><div id="dupWarn" class="warn" hidden></div>
+  <label>一句话说明<input id="f-sub" value="${esc(n.sub)}"${ro}></label>
+  <div class="row2"><label>状态<select id="f-status"${ro}>${opts(STATUS,n.status)}</select></label>
+  <label>分组<select id="f-group"${ro}><option value="">未分组</option>${G.groups.map(g=>`<option value="${esc(g.id)}"${g.id===n.g?" selected":""}>${esc(g.title)}</option>`).join("")}</select></label></div>
+  <label>用户意图（你想让它做什么）<textarea id="f-intent"${ro}>${esc(n.intent)}</textarea></label>
+  <label>详细说明<textarea id="f-desc"${ro}>${esc(n.desc)}</textarea></label>
+  <label>代码与文档位置（每行一条）<textarea id="f-refs" class="mono"${ro}>${esc(n.refs)}</textarea></label>
+  <label>问题与待办（每行一条）<textarea id="f-issues"${ro}>${esc(n.issues)}</textarea></label>
+  <h4>连线</h4>${connList(n)}
+  <div class="btns"><button class="btn" type="button" id="b-exp">${n.expanded?"收起详情":"在图上展开详情"}</button>
+  <button class="btn" type="button" id="b-from"${ro}>从这里连线</button>
+  <button class="btn ${armed?"armed":"danger"}" type="button" id="b-del"${ro}>${armed?`确认删除（连带 ${es} 条连线）`:"删除节点"}</button></div>`;
+  const field=(id,key,label)=>{const el=$(id);el.addEventListener("change",()=>{const v=el.value;if(v===n[key])return;const old=n[key];
+    commit(()=>{n[key]=v;},{op:"edit",target:n.id,text:`「${n.title}」${label}：${short(old)} → ${short(v)}`});});};
+  $("#f-title").addEventListener("input",e=>{const d=dupTitle(e.target.value,n.id);const w=$("#dupWarn");w.hidden=!d;if(d)w.textContent="已有同名节点，可能重复："+d.title;});
+  $("#f-title").addEventListener("change",e=>{const v=e.target.value.trim()||n.title;if(v===n.title)return;const old=n.title;commit(()=>{n.title=v;},{op:"edit",target:n.id,text:`重命名节点：「${old}」→「${v}」`});});
+  field("#f-sub","sub","说明");field("#f-intent","intent","用户意图");field("#f-desc","desc","详细说明");field("#f-refs","refs","位置");field("#f-issues","issues","问题与待办");
+  $("#f-status").addEventListener("change",e=>{const v=e.target.value,old=n.status;commit(()=>{n.status=v;},{op:"edit",target:n.id,text:`「${n.title}」状态：${STATUS[old][0]} → ${STATUS[v][0]}`});});
+  $("#f-group").addEventListener("change",e=>{const v=e.target.value,old=n.g;commit(()=>{n.g=v;if(v&&collapsed(v))group(v).collapsed=false;},{op:"edit",target:n.id,text:`「${n.title}」移到分组：${old?group(old).title:"未分组"} → ${v?group(v).title:"未分组"}`});});
+  $("#b-exp").onclick=()=>toggleNodeExp(n.id);
+  $("#b-from").onclick=()=>{connectMode=true;connectFrom=n.id;render();flash("再点目标节点完成连线");};
+  $("#b-del").onclick=()=>{if(armedDelete==="node:"+n.id){armedDelete=null;deleteNode(n.id);}else{armedDelete="node:"+n.id;renderPanel();}};
+  bindLists();
+}
+function short(s){s=String(s||"（空）").replace(/\s+/g," ");return s.length>40?s.slice(0,40)+"…":s;}
+function bindLists(){
+  pbody.querySelectorAll("[data-go]").forEach(el=>el.onclick=()=>focusNode(el.dataset.go));
+  pbody.querySelectorAll("[data-cut]").forEach(el=>el.onclick=()=>deleteEdge(el.dataset.cut));
+  pbody.querySelectorAll("[data-sel-edge]").forEach(el=>el.onclick=()=>{sel={type:"edge",id:el.dataset.selEdge};render();});
+}
+function panelEdge(e){
+  if(!e)return panelEmpty();const ro=editable()?"":" disabled";
+  pbody.innerHTML=`<div class="eyebrow">连线 · <code>${esc(e.id)}</code></div>
+  <h3><span class="t" data-go="${esc(e.from)}" style="cursor:pointer">${esc(nameOf(e.from))}</span> → <span data-go="${esc(e.to)}" style="cursor:pointer">${esc(nameOf(e.to))}</span></h3>
+  <label>连线说明<input id="f-elabel" value="${esc(e.label)}"${ro}></label>
+  <label>类型<select id="f-ekind"${ro}>${opts(KINDS,e.kind)}</select></label>
+  <p class="note">普通＝已有的流转；旧链＝v1.6.4 旧执行链；待接通＝设计上要有、代码里还没有。</p>
+  <div class="btns"><button class="btn" type="button" id="b-rev"${ro}>反向</button><button class="btn danger" type="button" id="b-cut"${ro}>断开这条连线</button></div>`;
+  pbody.querySelectorAll("[data-go]").forEach(el=>el.onclick=()=>focusNode(el.dataset.go));
+  $("#f-elabel").addEventListener("change",ev=>{const v=ev.target.value,old=e.label;commit(()=>{e.label=v;},{op:"edit",text:`连线「${nameOf(e.from)}」→「${nameOf(e.to)}」说明：${short(old)} → ${short(v)}`});});
+  $("#f-ekind").addEventListener("change",ev=>{const v=ev.target.value,old=e.kind;commit(()=>{e.kind=v;},{op:"edit",text:`连线「${nameOf(e.from)}」→「${nameOf(e.to)}」类型：${KINDS[old]} → ${KINDS[v]}`});});
+  $("#b-rev").onclick=()=>commit(()=>{const t=e.from;e.from=e.to;e.to=t;},{op:"edit",text:`连线反向：现为「${nameOf(e.to)}」→「${nameOf(e.from)}」`});
+  $("#b-cut").onclick=()=>deleteEdge(e.id);
+}
+function panelGroup(g){
+  if(!g)return panelEmpty();const ms=G.nodes.filter(n=>n.g===g.id),armed=armedDelete==="group:"+g.id,ro=editable()?"":" disabled";
+  pbody.innerHTML=`<div class="eyebrow">分组 · <code>${esc(g.id)}</code></div>
+  <label>分组名称<input id="f-gtitle" value="${esc(g.title)}"${ro}></label>
+  <h4>成员（${ms.length}）</h4>${ms.length?`<ul class="list">${ms.map(n=>`<li><span class="chip" style="--c:var(${STATUS[n.status][1]})"></span><span class="t" data-go="${esc(n.id)}">${esc(n.title)}</span></li>`).join("")}</ul>`:'<p class="note">空分组。选中它后点「＋ 节点」即可在组内新增。</p>'}
+  <div class="btns"><button class="btn" type="button" id="b-gcol">${g.collapsed?"展开分组":"收起分组"}</button><button class="btn" type="button" id="b-gadd"${ro}>在组内新增节点</button>
+  <button class="btn ${armed?"armed":"danger"}" type="button" id="b-gdel"${ro}>${armed?"确认删除分组（节点保留）":"删除分组"}</button></div>`;
+  $("#f-gtitle").addEventListener("change",ev=>{const v=ev.target.value.trim()||g.title,old=g.title;if(v===old)return;commit(()=>{g.title=v;},{op:"edit",text:`重命名分组：「${old}」→「${v}」`});});
+  $("#b-gcol").onclick=()=>toggleGroup(g.id);$("#b-gadd").onclick=addNode;
+  $("#b-gdel").onclick=()=>{if(armedDelete==="group:"+g.id){armedDelete=null;deleteGroup(g.id);}else{armedDelete="group:"+g.id;renderPanel();}};
+  bindLists();
+}
+function panelOverview(){
+  const cnt=k=>G.nodes.filter(n=>n.status===k).length,iss=G.nodes.filter(n=>lines(n.issues).length),total=iss.reduce((a,n)=>a+lines(n.issues).length,0);
+  pbody.innerHTML=`<div class="eyebrow">总览</div><h3>${G.nodes.length} 个节点 · ${G.edges.length} 条连线 · ${G.groups.length} 个分组</h3>
+  <h4>按状态筛选（再点一次取消）</h4><div class="stats">${Object.entries(STATUS).map(([k,v])=>`<button type="button" class="chipf${filter===k?" on":""}" data-filter="${k}" style="--c:var(${v[1]})">${esc(v[0])}<b>${cnt(k)}</b></button>`).join("")}
+  <button type="button" class="chipf${issuesOnly?" on":""}" id="fIss" style="--c:var(--issue)">只看有问题的<b>${total}</b></button></div>
+  <h4>问题与待办（${iss.length} 个节点）</h4>
+  <ul class="list">${iss.map(n=>lines(n.issues).map(t=>`<li><span class="t" data-go="${esc(n.id)}" title="${esc(t)}"><b>${esc(n.title)}</b>：${esc(t)}</span></li>`).join("")).join("")||'<li><span class="t">暂无</span></li>'}</ul>`;
+  pbody.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{filter=filter===b.dataset.filter?null:b.dataset.filter;render();});
+  $("#fIss").onclick=()=>{issuesOnly=!issuesOnly;render();};bindLists();
+}
+function panelLog(){
+  let html="",last="";
+  logs.forEach(l=>{const d=l.day||dayOf(l.at);if(d!==last){html+=`<li class="dayhead" style="background:none;border:0;padding:6px 0 0">${esc(d)} 周${WEEK[new Date(d+"T00:00:00").getDay()]}</li>`;last=d;}
+    const o=OPS[l.op]||OPS.edit;html+=`<li><span class="when">${esc(clock(l.at))} · <span class="op" style="color:var(${o[1]})">${o[0]}</span></span><span>${esc(l.text)}</span></li>`;});
+  pbody.innerHTML=`<div class="eyebrow">变更记录</div><h3>${logs.length} 条，按日期排列</h3>
+  <p class="note">新增、删除、接入、断开、改名、改状态、改内容都记一条，删除的原内容一并留档、可在历史看板里恢复。移动位置不记。${mode==="db"?"记录保存在云端，Agent 读本会附上。":"现在只存在本浏览器。"}</p>
+  <div class="btns"><button class="btn" type="button" id="toBoard">打开历史看板</button></div>
+  <ul class="list log">${html||'<li><span class="note">还没有记录。第一次修改后会出现在这里。</span></li>'}</ul>`;
+  $("#toBoard").onclick=openBoard;
+}
+function readerText(){
+  const gname=id=>id&&group(id)?group(id).title:"未分组";
+  let t=`# 小八架构拓扑 · Agent 读本\n生成时间：${stamp(Date.now())}　节点 ${G.nodes.length} · 连线 ${G.edges.length} · 分组 ${G.groups.length}\n\n`;
+  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝v1.6.4 生产已有；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“最近变更”，避免重做用户已删除或已改掉的东西。\n\n`;
+  G.groups.concat([{id:"",title:"未分组"}]).forEach(g=>{
+    const ms=G.nodes.filter(n=>(n.g||"")===g.id);if(!ms.length&&!g.id)return;
+    t+=`## ${g.title}\n`;
+    ms.forEach(n=>{t+=`- 【${STATUS[n.status][0]}】${n.title}（${n.id}）${n.sub?"：“"+n.sub+"”":""}\n`;
+      if(n.intent)t+=`  - 用户意图：${n.intent}\n`;if(n.desc)t+=`  - 说明：${n.desc}\n`;
+      lines(n.refs).forEach(r=>t+=`  - 位置：${r}\n`);lines(n.issues).forEach(r=>t+=`  - 问题/待办：${r}\n`);});
+    t+="\n";
+  });
+  t+=`## 连线（起点 → 终点）\n`;G.edges.forEach(e=>{t+=`- ${nameOf(e.from)} → ${nameOf(e.to)}${e.label?"："+e.label:""}${e.kind!=="normal"?"［"+KINDS[e.kind]+"］":""}\n`;});
+  t+=`\n## 变更历史（按日期，新→旧）\n`;let lastD="";logs.slice(0,200).forEach(l=>{const d=l.day||dayOf(l.at);if(d!==lastD){t+=`### ${d}\n`;lastD=d;}t+=`- ${clock(l.at)} ［${(OPS[l.op]||OPS.edit)[0]}］${l.text}\n`;});if(!logs.length)t+="- 暂无\n";
+  return t;
+}
+function panelReader(){
+  const txt=readerText();
+  pbody.innerHTML=`<div class="eyebrow">Agent 读本</div><h3>给所有接入 Agent 的文字版</h3>
+  <p class="note">内容随图实时生成。Claude 能直接读到云端数据；其它 Agent（Codex、DSH、AGY…）请把下面的文字或 JSON 交给它，或让 Claude 同步到仓库文件。</p>
+  <div class="btns"><button class="btn" type="button" id="cpTxt">复制读本</button><button class="btn" type="button" id="cpJson">复制 JSON</button>${downloads?'<button class="btn" type="button" id="dlJson">下载 JSON</button>':""}</div>
+  <pre class="reader" id="readerPre"></pre>
+  <h4>导入</h4><label>粘贴之前导出的 JSON，整体替换当前拓扑（可撤销）<textarea id="impTxt" class="mono" placeholder='{"version":1,"groups":[...],"nodes":[...],"edges":[...]}'></textarea></label>
+  <div class="btns"><button class="btn" type="button" id="impBtn"${editable()?"":" disabled"}>替换为导入内容</button><button class="btn" type="button" id="baseBtn"${editable()?"":" disabled"}>恢复成 10-27 设计图基线</button></div><div id="impMsg" class="note"></div>`;
+  $("#readerPre").textContent=txt;
+  const copy=(s,btn)=>{const done=()=>{btn.textContent="已复制";setTimeout(()=>renderPanel(),1400);};
+    try{navigator.clipboard.writeText(s).then(done,()=>selectPre());}catch(_){selectPre();}};
+  const selectPre=()=>{const r=document.createRange();r.selectNodeContents($("#readerPre"));const s=getSelection();s.removeAllRanges();s.addRange(r);$("#impMsg").textContent="浏览器不允许自动复制，已选中读本，请手动复制。";};
+  $("#cpTxt").onclick=e=>copy(txt,e.target);$("#cpJson").onclick=e=>copy(JSON.stringify(G,null,1),e.target);
+  if(downloads)$("#dlJson").onclick=()=>downloads.save({filename:"小八架构拓扑-"+stamp(Date.now()).replace(/[: ]/g,"")+".json",data:JSON.stringify(G,null,1)}).catch(()=>{});
+  $("#impBtn").onclick=()=>{try{const d=JSON.parse($("#impTxt").value);if(!Array.isArray(d.nodes)||!Array.isArray(d.edges)||!Array.isArray(d.groups))throw 0;
+      const before={nodes:G.nodes.length,edges:G.edges.length};commit(()=>{G={version:1,groups:d.groups,nodes:d.nodes,edges:d.edges};sel=null;},{op:"edit",text:`导入 JSON 整体替换（原 ${before.nodes} 节点 / ${before.edges} 连线 → ${d.nodes.length} / ${d.edges.length}）`,before:null});fit();}
+    catch(_){$("#impMsg").textContent="不是有效的拓扑 JSON：需要 groups、nodes、edges 三个数组。";}};
+  $("#baseBtn").onclick=e=>{if(e.target.dataset.armed){commit(()=>{G=clone(BASE);sel=null;},{op:"edit",text:"整体恢复为 2026-10-27 设计图基线（可撤销）"});fit();}else{e.target.dataset.armed="1";e.target.textContent="再点一次确认恢复";e.target.classList.add("armed");}};
+}
+
+/* ---------- 启动与存储 ---------- */
+applyView();render();requestAnimationFrame(()=>fit());
+(async function boot(){
+  let db=null;
+  try{if(window.claude&&typeof window.claude.use==="function"){db=await window.claude.use("db");downloads=await window.claude.use("downloads");}}catch(_){db=null;}
+  if(!db){
+    mode="local";
+    try{const s=localStorage.getItem("xb-topology-v1");if(s){const d=JSON.parse(s);if(d&&Array.isArray(d.nodes))G=d;}const l=localStorage.getItem("xb-topology-log");if(l)logs=JSON.parse(l)||[];}catch(_){}
+    setSave("warn","只存在本浏览器");render();fit();return;
+  }
+  docRef=db.doc("topology/main");logCol=db.collection("changes");
+  let first=true;
+  docRef.onSnapshot(snap=>{
+    if(!snap.exists){if(first){first=false;mode="db";G=clone(BASE);setSave("busy","云端还是空的");
+        const b=$("#banner");b.innerHTML="云端还没有保存的拓扑，现在显示的是 10-27 设计图基线。第一次修改时会整体保存。";b.hidden=false;mode="db-empty";
+        setTimeout(()=>{mode="db";},0);render();fit();}return;}
+    const d=snap.data();if(snap.metadata.hasPendingWrites)return;
+    const body=JSON.stringify({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[]});
+    if(!first&&(drag||saving||saveT&&$("#saveState").classList.contains("busy")))return;
+    if(body===lastSaved&&!first)return;
+    G=JSON.parse(body);lastSaved=body;fixSel();mode="db";
+    if(first){first=false;render();fit();}else{render();}
+    setSave("ok",d.savedAt?"已保存 "+clock(d.savedAt):"已连接");$("#banner").hidden=true;
+  },err=>{setSave("warn","云端连接中断（"+(err&&err.code||"未知")+"），修改暂存本页");});
+  logCol.orderBy("at","desc").limit(1000).onSnapshot(qs=>{logs=qs.docs.map(x=>Object.assign({id:x.id},x.data()));if(tab==="log"||tab==="reader")renderPanel();renderBoard();},()=>{});
+})();
+window.addEventListener("resize",()=>{refreshGeometry();});
+})();
+</script>
