@@ -71,6 +71,21 @@ button,select,input,textarea{font:inherit;color:inherit}
 .chip::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--c,var(--s-old))}
 .iss{font-family:var(--f-mono);font-size:10.5px;color:var(--surface);background:var(--issue);border-radius:8px;padding:0 6px;line-height:15px}
 .ntop .mini{margin-left:auto}
+.pend{font-size:10.5px;color:var(--s-decide);border:1px solid var(--s-decide);border-radius:8px;padding:0 6px;line-height:15px}
+.draft{font-size:10.5px;color:var(--s-todo);border:1px dashed var(--s-todo);border-radius:8px;padding:0 6px;line-height:15px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:500}
+.btn.primary:disabled{background:var(--surface);color:var(--muted);border-color:var(--line)}
+.notebox{border:1.5px solid var(--s-todo);background:color-mix(in srgb,var(--s-todo) 7%,var(--surface));border-radius:7px;padding:10px;display:grid;gap:6px}
+.notebox textarea{min-height:84px}
+.hist{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.hist li{border-left:3px solid var(--c,var(--line));padding:4px 0 4px 9px;font-size:12.5px;line-height:1.5;display:grid;gap:2px}
+.hist .who{font-size:10.5px;letter-spacing:.04em;color:var(--muted);font-family:var(--f-mono)}
+.hist details summary{cursor:pointer;color:var(--muted);font-size:11.5px}
+.hist pre{white-space:pre-wrap;font-family:var(--f-mono);font-size:11px;margin:4px 0 0;color:var(--muted)}
+.subm{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px 10px;display:grid;gap:5px;font-size:12.5px;line-height:1.5}
+.subm .st{font-size:11px;font-weight:700}
+.subm .st.pending{color:var(--s-decide)} .subm .st.done{color:var(--s-done)}
+.subm ul{margin:0;padding-left:18px}
 .ntitle{font-weight:700;font-size:13.5px;line-height:1.35;text-wrap:balance}
 .nsub{font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px}
 .ndet{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:12px;line-height:1.5;display:grid;gap:5px}
@@ -98,8 +113,8 @@ button,select,input,textarea{font:inherit;color:inherit}
 .hint{position:absolute;left:10px;bottom:10px;font-size:11.5px;color:var(--muted);background:color-mix(in srgb,var(--bg) 85%,transparent);padding:3px 8px;border-radius:4px;max-width:calc(100% - 80px)}
 .banner{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--surface);border:1px solid var(--s-todo);border-radius:6px;padding:8px 12px;font-size:12.5px;max-width:calc(100% - 40px);box-shadow:0 4px 14px color-mix(in srgb,var(--ink) 12%,transparent)}
 aside{min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
-.tabs{display:flex;border-bottom:1px solid var(--line);flex-shrink:0}
-.tabs button{flex:1;border:0;background:transparent;padding:9px 4px;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:2px solid transparent}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.tabs button{flex:1 0 auto;white-space:nowrap;border:0;background:transparent;padding:9px 8px;cursor:pointer;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent}
 .tabs button.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:500}
 .sheet-toggle{display:none}
 .pbody{overflow:auto;padding:12px 14px 18px;display:grid;gap:12px;align-content:start;min-height:0}
@@ -138,7 +153,7 @@ code{font-family:var(--f-mono);font-size:11.5px}
 .day{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12.5px;display:flex;gap:6px;align-items:baseline}
 .day b{font-family:var(--f-mono);font-weight:500;font-size:11px;color:var(--muted)}
 .day.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
-.cols{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:10px;padding:12px 14px;overflow:auto;min-height:0}
+.cols{display:grid;grid-template-columns:repeat(5,minmax(200px,1fr));gap:10px;padding:12px 14px;overflow:auto;min-height:0}
 .col{display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px}
 .col h3{margin:0 0 2px;font-size:12.5px;display:flex;align-items:center;gap:6px}
 .col h3::before{content:"";width:9px;height:9px;border-radius:2px;background:var(--c)}
@@ -148,7 +163,7 @@ code{font-family:var(--f-mono);font-size:11.5px}
 .card .acts{display:flex;gap:6px;flex-wrap:wrap}
 .card .acts button{font-size:11.5px;padding:2px 8px}
 .dayhead{font-size:11px;letter-spacing:.06em;color:var(--muted);margin-top:4px}
-@media (max-width:760px){.cols{grid-template-columns:repeat(4,minmax(200px,80vw))}}
+@media (max-width:760px){.cols{grid-template-columns:repeat(5,minmax(200px,80vw))}}
 @media (max-width:760px){
   .main{grid-template-columns:minmax(0,1fr)}
   aside{position:absolute;left:0;right:0;bottom:0;height:52%;z-index:5;transition:transform .2s ease;box-shadow:0 -6px 18px color-mix(in srgb,var(--ink) 14%,transparent)}
@@ -178,6 +193,7 @@ code{font-family:var(--f-mono);font-size:11.5px}
     </div>
     <span class="sep"></span>
     <input class="search" id="q" type="search" placeholder="搜索节点，回车定位" aria-label="搜索节点">
+    <button class="btn primary" id="bSubmit" type="button" title="把各节点上的大白话想法和这段时间的增删改一起提交给 Agent 整理">提交本轮修改</button>
     <div class="save" id="saveState"><i></i><span>连接保存中…</span></div>
   </header>
   <div class="main">
@@ -207,6 +223,7 @@ code{font-family:var(--f-mono);font-size:11.5px}
         <button class="sheet-toggle" id="sheetToggle" type="button" aria-label="收起或展开面板">▾</button>
         <button type="button" data-tab="inspect" class="on">检视</button>
         <button type="button" data-tab="overview">总览</button>
+        <button type="button" data-tab="submits">提交</button>
         <button type="button" data-tab="log">变更记录</button>
         <button type="button" data-tab="reader">Agent 读本</button>
       </div>
@@ -300,6 +317,8 @@ edges:[
 ].map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:e[2],kind:e[3]||"normal"}))
 };
 BASE.nodes.forEach(n=>{n.expanded=false;});
+function normalize(g){g.nodes.forEach(n=>{if(typeof n.note!=="string")n.note="";if(!Array.isArray(n.history))n.history=[];n.pending=!!n.pending;});if(typeof g.lastSubmitAt!=="number")g.lastSubmitAt=0;return g;}
+normalize(BASE);
 
 const STATUS={done:["已上线（v1.6.4）","--s-done"],dev:["候选已开发","--s-dev"],todo:["待实现","--s-todo"],old:["旧执行链","--s-old"],decide:["待用户裁定","--s-decide"]};
 const KINDS={normal:"普通",old:"旧链",pending:"待接通"};
@@ -353,11 +372,11 @@ function nodeHTML(n){
     "</div>";
   }
   return `<div class="${cls.join(" ")}" data-node="${esc(n.id)}" style="transform:translate(${n.x}px,${n.y}px)">
-   <div class="ntop"><span class="chip" style="--c:var(${st[1]})">${esc(st[0])}</span>${iss.length?`<span class="iss" title="问题与待办">${iss.length}</span>`:""}<button class="mini" type="button" data-exp="${esc(n.id)}" aria-label="${n.expanded?"收起":"展开"}详情">${n.expanded?"−":"＋"}</button></div>
+   <div class="ntop"><span class="chip" style="--c:var(${st[1]})">${esc(st[0])}</span>${iss.length?`<span class="iss" title="问题与待办">${iss.length}</span>`:""}${n.pending?'<span class="pend" title="已提交，等 Agent 整理">待整理</span>':""}${n.note&&n.note.trim()?'<span class="draft" title="有还没提交的想法">未提交</span>':""}<button class="mini" type="button" data-exp="${esc(n.id)}" aria-label="${n.expanded?"收起":"展开"}详情">${n.expanded?"−":"＋"}</button></div>
    <div class="ntitle">${esc(n.title)}</div>${n.sub?`<div class="nsub">${esc(n.sub)}</div>`:""}${det}
    <span class="port" data-port="${esc(n.id)}" title="拖到另一个节点即连线"></span></div>`;
 }
-function render(){
+function render(keepPanel){
   const vis=G.nodes.filter(n=>!collapsed(n.g));
   let html=vis.map(nodeHTML).join("");
   G.groups.filter(g=>g.collapsed).forEach(g=>{
@@ -369,7 +388,7 @@ function render(){
   nodesEl.innerHTML=html;
   nodesEl.querySelectorAll("[data-node]").forEach(el=>sizes.set(el.dataset.node,{w:el.offsetWidth,h:el.offsetHeight}));
   nodesEl.querySelectorAll("[data-gpill]").forEach(el=>sizes.set("G:"+el.dataset.gpill,{w:el.offsetWidth,h:el.offsetHeight}));
-  drawFrames();drawEdges();renderPanel();updateButtons();
+  drawFrames();drawEdges();if(!keepPanel)renderPanel();updateButtons();
 }
 function rectOf(id){
   if(id.startsWith("G:")){const g=group(id.slice(2));const s=sizes.get(id)||{w:180,h:34};return {x:g.x,y:g.y,w:s.w,h:s.h};}
@@ -447,9 +466,9 @@ const clock=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinute
 const dayOf=t=>{const d=new Date(t);return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());};
 const stamp=t=>dayOf(t)+" "+clock(t);
 const WEEK="日一二三四五六";
-const OPS={add:["新增","--s-done"],edit:["修改","--s-dev"],del:["删除","--issue"],link:["接入","--s-todo"],unlink:["断开","--s-todo"]};
-const COLS=[["add","新增"],["edit","修改"],["del","删除"],["link","接入 · 断开"]];
-const colOf=op=>op==="unlink"?"link":(OPS[op]?op:"edit");
+const OPS={add:["新增","--s-done"],edit:["修改","--s-dev"],del:["删除","--issue"],link:["接入","--s-todo"],unlink:["断开","--s-todo"],submit:["提交","--s-decide"],agent:["Agent 整理","--s-decide"]};
+const COLS=[["add","新增"],["edit","修改"],["del","删除"],["link","接入 · 断开"],["submit","提交 · 整理"]];
+const colOf=op=>op==="unlink"?"link":op==="agent"?"submit":(OPS[op]?op:"edit");
 
 /* ---------- 编辑操作 ---------- */
 function centerWorld(){const r=stage.getBoundingClientRect();return {x:(r.width/2-view.x)/view.k-98,y:(r.height/2-view.y)/view.k-30};}
@@ -579,12 +598,15 @@ function focusNode(id){const n=node(id);if(!n)return;if(collapsed(n.g)){group(n.
 $("#bAddNode").onclick=addNode;$("#bAddGroup").onclick=addGroup;$("#bUndo").onclick=undo;$("#bRedo").onclick=redo;$("#bFit").onclick=()=>fit();
 $("#bConnect").onclick=()=>{connectMode=!connectMode;connectFrom=null;if(connectMode)flash("连线模式：先点起点节点，再点终点节点");render();};
 $("#bExpandAll").onclick=()=>{const any=G.nodes.some(n=>!n.expanded);commit(()=>{G.nodes.forEach(n=>n.expanded=any);},null);};
+$("#bSubmit").onclick=submitRound;
 $("#bBoard").onclick=()=>{$("#board").hidden?openBoard():closeBoard();};$("#bCloseBoard").onclick=closeBoard;
 $("#q").addEventListener("input",e=>{search=e.target.value.trim();render();});
 $("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){const m=G.nodes.find(matches);if(m&&search)focusNode(m.id);}});
 function updateButtons(){
   $("#bUndo").disabled=!undoS.length||!editable();$("#bRedo").disabled=!redoS.length||!editable();
   ["#bAddNode","#bAddGroup","#bConnect"].forEach(s=>$(s).disabled=!editable());
+  const dc=draftCount(),cc=changesSinceSubmit().length,sb=$("#bSubmit");
+  sb.disabled=!editable()||!(dc||cc);sb.textContent=dc||cc?`提交本轮修改（${dc+cc}）`:"提交本轮修改";
   $("#bConnect").classList.toggle("on",connectMode);
   $("#bExpandAll").textContent=G.nodes.some(n=>!n.expanded)?"展开全部详情":"收起全部详情";
 }
@@ -610,6 +632,7 @@ function renderPanel(){
   document.querySelectorAll(".tabs [data-tab]").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   if(tab==="overview")return panelOverview();
   if(tab==="log")return panelLog();
+  if(tab==="submits")return panelSubmits();
   if(tab==="reader")return panelReader();
   if(!sel)return panelEmpty();
   if(sel.type==="node")return panelNode(node(sel.id));
@@ -618,6 +641,7 @@ function renderPanel(){
 }
 function panelEmpty(){
   pbody.innerHTML=`<div class="eyebrow">检视</div><h3>点画布上的节点、连线或分组标题</h3>
+  <p class="note"><b>怎么改：</b>点一个节点，在「我的想法」里用大白话写，增删节点、连线也照常做；改完一轮点顶部「提交本轮修改」，再告诉 Claude「整理拓扑」。</p>
   <p class="note">这张图是小八架构设计的底座：每次增删改都自动保存并写进「变更记录」，删除时连原内容一起留档。其它 Agent 读「Agent 读本」就能知道你要做什么。</p>
   <h4>操作</h4><ul class="note" style="margin:0;padding-left:18px">
   <li>拖动节点或分组标题：移动</li><li>从节点右侧圆点拖到另一个节点：接入（连线）</li><li>点连线：可改说明、改类型或断开</li>
@@ -632,7 +656,11 @@ function connList(n){
 function panelNode(n){
   if(!n)return panelEmpty();
   const es=G.edges.filter(e=>e.from===n.id||e.to===n.id).length,armed=armedDelete==="node:"+n.id,ro=editable()?"":" disabled";
-  pbody.innerHTML=`<div class="eyebrow">节点 · <code>${esc(n.id)}</code></div>
+  pbody.innerHTML=`<div class="eyebrow">节点 · <code>${esc(n.id)}</code>${n.pending?' · <span style="color:var(--s-decide)">已提交，等 Agent 整理</span>':""}</div>
+  <h3>${esc(n.title)}</h3>
+  <div class="notebox"><label for="f-note" style="color:var(--ink);font-weight:500">我的想法（大白话就行）</label>
+  <textarea id="f-note" placeholder="想怎么改、哪里不对、这个模块该干什么……随便写。点顶部「提交本轮修改」后，原话存进历史，Agent 照你的意思改写下面的专业描述。"${ro}>${esc(n.note)}</textarea></div>
+  <h4>专业描述（Agent 整理，你也可以直接改）</h4>
   <label>名称<input id="f-title" value="${esc(n.title)}"${ro}></label><div id="dupWarn" class="warn" hidden></div>
   <label>一句话说明<input id="f-sub" value="${esc(n.sub)}"${ro}></label>
   <div class="row2"><label>状态<select id="f-status"${ro}>${opts(STATUS,n.status)}</select></label>
@@ -642,6 +670,7 @@ function panelNode(n){
   <label>代码与文档位置（每行一条）<textarea id="f-refs" class="mono"${ro}>${esc(n.refs)}</textarea></label>
   <label>问题与待办（每行一条）<textarea id="f-issues"${ro}>${esc(n.issues)}</textarea></label>
   <h4>连线</h4>${connList(n)}
+  <h4>这个节点的历史</h4>${nodeHistory(n)}
   <div class="btns"><button class="btn" type="button" id="b-exp">${n.expanded?"收起详情":"在图上展开详情"}</button>
   <button class="btn" type="button" id="b-from"${ro}>从这里连线</button>
   <button class="btn ${armed?"armed":"danger"}" type="button" id="b-del"${ro}>${armed?`确认删除（连带 ${es} 条连线）`:"删除节点"}</button></div>`;
@@ -649,6 +678,10 @@ function panelNode(n){
     commit(()=>{n[key]=v;},{op:"edit",target:n.id,text:`「${n.title}」${label}：${short(old)} → ${short(v)}`});});};
   $("#f-title").addEventListener("input",e=>{const d=dupTitle(e.target.value,n.id);const w=$("#dupWarn");w.hidden=!d;if(d)w.textContent="已有同名节点，可能重复："+d.title;});
   $("#f-title").addEventListener("change",e=>{const v=e.target.value.trim()||n.title;if(v===n.title)return;const old=n.title;commit(()=>{n.title=v;},{op:"edit",target:n.id,text:`重命名节点：「${old}」→「${v}」`});});
+  const noteEl=$("#f-note");let noteT=null;
+  const setNote=()=>{const cur=node(n.id);if(!cur)return null;cur.note=noteEl.value;return cur;};
+  noteEl.addEventListener("input",()=>{setNote();clearTimeout(noteT);noteT=setTimeout(()=>{const c=setNote();if(!c)return;scheduleSave();refreshNodeCard(c);updateButtons();},500);});
+  noteEl.addEventListener("change",()=>{const c=setNote();if(!c)return;scheduleSave();refreshNodeCard(c);updateButtons();});
   field("#f-sub","sub","说明");field("#f-intent","intent","用户意图");field("#f-desc","desc","详细说明");field("#f-refs","refs","位置");field("#f-issues","issues","问题与待办");
   $("#f-status").addEventListener("change",e=>{const v=e.target.value,old=n.status;commit(()=>{n.status=v;},{op:"edit",target:n.id,text:`「${n.title}」状态：${STATUS[old][0]} → ${STATUS[v][0]}`});});
   $("#f-group").addEventListener("change",e=>{const v=e.target.value,old=n.g;commit(()=>{n.g=v;if(v&&collapsed(v))group(v).collapsed=false;},{op:"edit",target:n.id,text:`「${n.title}」移到分组：${old?group(old).title:"未分组"} → ${v?group(v).title:"未分组"}`});});
@@ -656,6 +689,50 @@ function panelNode(n){
   $("#b-from").onclick=()=>{connectMode=true;connectFrom=n.id;render();flash("再点目标节点完成连线");};
   $("#b-del").onclick=()=>{if(armedDelete==="node:"+n.id){armedDelete=null;deleteNode(n.id);}else{armedDelete="node:"+n.id;renderPanel();}};
   bindLists();
+}
+function refreshNodeCard(n){const el=nodesEl.querySelector(`[data-node="${CSS.escape(n.id)}"]`);if(!el)return;const tmpd=document.createElement("div");tmpd.innerHTML=nodeHTML(n);el.replaceWith(tmpd.firstElementChild);}
+const FIELD_NAMES={title:"名称",sub:"一句话说明",status:"状态",intent:"用户意图",desc:"详细说明",refs:"位置",issues:"问题与待办"};
+function nodeHistory(n){
+  const own=(n.history||[]).map(h=>Object.assign({src:"h"},h));
+  const fromLog=logs.filter(l=>l.target===n.id&&l.op!=="submit"&&l.op!=="agent").map(l=>({src:"l",at:l.at,by:"log",text:l.text,op:l.op}));
+  const all=own.concat(fromLog).sort((a,b)=>b.at-a.at);
+  if(!all.length)return '<p class="note">还没有历史。写下想法并提交后，原话会出现在这里。</p>';
+  return `<ul class="hist">${all.map(h=>{
+    if(h.by==="user")return `<li style="--c:var(--s-todo)"><span class="who">${esc(stamp(h.at))} · 你的原话（已提交）</span><span>${esc(h.text)}</span></li>`;
+    if(h.by==="agent"){const b=h.before?Object.entries(h.before).map(([k,v])=>`${FIELD_NAMES[k]||k}：${v}`).join("\n"):"";
+      return `<li style="--c:var(--s-dev)"><span class="who">${esc(stamp(h.at))} · ${esc(h.agent||"Agent")} 整理</span><span>${esc(h.text)}</span>${b?`<details><summary>整理前的描述</summary><pre>${esc(b)}</pre></details>`:""}</li>`;}
+    return `<li style="--c:var(--line)"><span class="who">${esc(stamp(h.at))} · ${esc((OPS[h.op]||OPS.edit)[0])}</span><span>${esc(h.text)}</span></li>`;
+  }).join("")}</ul>`;
+}
+let submissions=[],subCol=null;
+function draftCount(){return G.nodes.filter(n=>n.note&&n.note.trim()).length;}
+function changesSinceSubmit(){return logs.filter(l=>l.at>(G.lastSubmitAt||0)&&l.op!=="submit"&&l.op!=="agent").slice().reverse();}
+let submitArmed=false;
+function submitRound(){
+  if(!editable())return;
+  const notes=G.nodes.filter(n=>n.note&&n.note.trim()).map(n=>({node:n.id,title:n.title,text:n.note.trim()}));
+  const changes=changesSinceSubmit().map(l=>({at:l.at,op:l.op,text:l.text,target:l.target||""}));
+  if(!notes.length&&!changes.length){flash("还没有新的想法或改动可以提交");return;}
+  const at=Date.now(),id="s"+at;
+  const sub={at,day:dayOf(at),status:"pending",notes,changes,result:"",doneAt:0,agent:""};
+  commit(()=>{G.nodes.forEach(n=>{if(n.note&&n.note.trim()){n.history.push({at,by:"user",text:n.note.trim(),submission:id});n.note="";n.pending=true;}});G.lastSubmitAt=at;},
+    {op:"submit",text:`提交本轮修改：${notes.length} 个节点写了想法，期间 ${changes.length} 项增删改，等 Agent 整理`,target:""});
+  if(mode==="db"&&subCol){subCol.doc(id).set(sub).catch(()=>flash("提交记录没存上，请稍后再点一次提交"));}
+  else{submissions.unshift(Object.assign({id},sub));try{localStorage.setItem("xb-topology-subs",JSON.stringify(submissions));}catch(_){} }
+  tab="submits";renderPanel();openSheet();
+}
+function panelSubmits(){
+  const d=draftCount(),c=changesSinceSubmit().length;
+  pbody.innerHTML=`<div class="eyebrow">提交</div><h3>${d||c?`待提交：${d} 个节点的想法 · ${c} 项增删改`:"没有待提交的内容"}</h3>
+  <p class="note">在节点的「我的想法」里用大白话写，然后点顶部「提交本轮修改」。提交后原话存进节点历史和变更记录，节点标为「待整理」。告诉 Claude「整理拓扑」，它会按你的原意改写专业描述，整理前的旧描述也会留在历史里。</p>
+  <div class="btns"><button class="btn primary" type="button" id="b-sub2"${d||c?"":" disabled"}>提交本轮修改</button></div>
+  <h4>提交记录</h4>
+  ${submissions.length?submissions.map(s=>`<div class="subm"><span class="when" style="font-family:var(--f-mono);font-size:11px;color:var(--muted)">${esc(stamp(s.at))}</span>
+    <span class="st ${s.status==="done"?"done":"pending"}">${s.status==="done"?`已整理${s.agent?"（"+esc(s.agent)+"，"+esc(stamp(s.doneAt))+"）":""}`:"待 Agent 整理"}</span>
+    ${s.notes&&s.notes.length?`<ul>${s.notes.map(x=>`<li><b class="t" data-go="${esc(x.node)}" style="cursor:pointer">${esc(x.title)}</b>：${esc(x.text)}</li>`).join("")}</ul>`:""}
+    ${s.changes&&s.changes.length?`<details><summary class="note">期间 ${s.changes.length} 项增删改</summary><ul>${s.changes.map(x=>`<li>${esc(x.text)}</li>`).join("")}</ul></details>`:""}
+    ${s.result?`<div><b>整理说明：</b>${esc(s.result)}</div>`:""}</div>`).join(""):'<p class="note">还没有提交过。</p>'}`;
+  $("#b-sub2").onclick=submitRound;bindLists();
 }
 function short(s){s=String(s||"（空）").replace(/\s+/g," ");return s.length>40?s.slice(0,40)+"…":s;}
 function bindLists(){
@@ -712,11 +789,15 @@ function panelLog(){
 function readerText(){
   const gname=id=>id&&group(id)?group(id).title:"未分组";
   let t=`# 小八架构拓扑 · Agent 读本\n生成时间：${stamp(Date.now())}　节点 ${G.nodes.length} · 连线 ${G.edges.length} · 分组 ${G.groups.length}\n\n`;
-  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝v1.6.4 生产已有；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“最近变更”，避免重做用户已删除或已改掉的东西。\n\n`;
+  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝v1.6.4 生产已有；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“变更历史”，避免重做用户已删除或已改掉的东西。\n- “用户原话”是用户亲笔写的大白话，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。\n\n`;
+  const pend=submissions.filter(s=>s.status!=="done");
+  if(pend.length){t+=`## 待 Agent 整理的提交（${pend.length}）\n`;pend.forEach(s=>{t+=`### ${stamp(s.at)}\n`;(s.notes||[]).forEach(x=>t+=`- ${x.title}（${x.node}）原话：${x.text}\n`);(s.changes||[]).forEach(x=>t+=`- 期间改动：${x.text}\n`);});t+="\n";}
   G.groups.concat([{id:"",title:"未分组"}]).forEach(g=>{
     const ms=G.nodes.filter(n=>(n.g||"")===g.id);if(!ms.length&&!g.id)return;
     t+=`## ${g.title}\n`;
-    ms.forEach(n=>{t+=`- 【${STATUS[n.status][0]}】${n.title}（${n.id}）${n.sub?"：“"+n.sub+"”":""}\n`;
+    ms.forEach(n=>{t+=`- 【${STATUS[n.status][0]}】${n.title}（${n.id}）${n.sub?"：“"+n.sub+"”":""}${n.pending?"　［待整理］":""}\n`;
+      const said=(n.history||[]).filter(h=>h.by==="user");if(said.length)t+=`  - 用户原话（${stamp(said[said.length-1].at)}）：${said[said.length-1].text}\n`;
+      if(n.note&&n.note.trim())t+=`  - 用户草稿（未提交）：${n.note.trim()}\n`;
       if(n.intent)t+=`  - 用户意图：${n.intent}\n`;if(n.desc)t+=`  - 说明：${n.desc}\n`;
       lines(n.refs).forEach(r=>t+=`  - 位置：${r}\n`);lines(n.issues).forEach(r=>t+=`  - 问题/待办：${r}\n`);});
     t+="\n";
@@ -740,7 +821,7 @@ function panelReader(){
   $("#cpTxt").onclick=e=>copy(txt,e.target);$("#cpJson").onclick=e=>copy(JSON.stringify(G,null,1),e.target);
   if(downloads)$("#dlJson").onclick=()=>downloads.save({filename:"小八架构拓扑-"+stamp(Date.now()).replace(/[: ]/g,"")+".json",data:JSON.stringify(G,null,1)}).catch(()=>{});
   $("#impBtn").onclick=()=>{try{const d=JSON.parse($("#impTxt").value);if(!Array.isArray(d.nodes)||!Array.isArray(d.edges)||!Array.isArray(d.groups))throw 0;
-      const before={nodes:G.nodes.length,edges:G.edges.length};commit(()=>{G={version:1,groups:d.groups,nodes:d.nodes,edges:d.edges};sel=null;},{op:"edit",text:`导入 JSON 整体替换（原 ${before.nodes} 节点 / ${before.edges} 连线 → ${d.nodes.length} / ${d.edges.length}）`,before:null});fit();}
+      const before={nodes:G.nodes.length,edges:G.edges.length};commit(()=>{G=normalize({version:1,groups:d.groups,nodes:d.nodes,edges:d.edges,lastSubmitAt:d.lastSubmitAt||0});sel=null;},{op:"edit",text:`导入 JSON 整体替换（原 ${before.nodes} 节点 / ${before.edges} 连线 → ${d.nodes.length} / ${d.edges.length}）`,before:null});fit();}
     catch(_){$("#impMsg").textContent="不是有效的拓扑 JSON：需要 groups、nodes、edges 三个数组。";}};
   $("#baseBtn").onclick=e=>{if(e.target.dataset.armed){commit(()=>{G=clone(BASE);sel=null;},{op:"edit",text:"整体恢复为 2026-10-27 设计图基线（可撤销）"});fit();}else{e.target.dataset.armed="1";e.target.textContent="再点一次确认恢复";e.target.classList.add("armed");}};
 }
@@ -752,24 +833,27 @@ applyView();render();requestAnimationFrame(()=>fit());
   try{if(window.claude&&typeof window.claude.use==="function"){db=await window.claude.use("db");downloads=await window.claude.use("downloads");}}catch(_){db=null;}
   if(!db){
     mode="local";
-    try{const s=localStorage.getItem("xb-topology-v1");if(s){const d=JSON.parse(s);if(d&&Array.isArray(d.nodes))G=d;}const l=localStorage.getItem("xb-topology-log");if(l)logs=JSON.parse(l)||[];}catch(_){}
+    try{const s=localStorage.getItem("xb-topology-v1");if(s){const d=JSON.parse(s);if(d&&Array.isArray(d.nodes))G=normalize(d);}const l=localStorage.getItem("xb-topology-log");if(l)logs=JSON.parse(l)||[];const sb=localStorage.getItem("xb-topology-subs");if(sb)submissions=JSON.parse(sb)||[];}catch(_){}
     setSave("warn","只存在本浏览器");render();fit();return;
   }
-  docRef=db.doc("topology/main");logCol=db.collection("changes");
+  docRef=db.doc("topology/main");logCol=db.collection("changes");subCol=db.collection("submissions");
+  subCol.orderBy("at","desc").limit(200).onSnapshot(qs=>{submissions=qs.docs.map(x=>Object.assign({id:x.id},x.data()));if(tab==="submits"||tab==="reader")renderPanel();},()=>{});
   let first=true;
   docRef.onSnapshot(snap=>{
     if(!snap.exists){if(first){first=false;mode="db";G=clone(BASE);setSave("busy","云端还是空的");
         const b=$("#banner");b.innerHTML="云端还没有保存的拓扑，现在显示的是 10-27 设计图基线。第一次修改时会整体保存。";b.hidden=false;mode="db-empty";
         setTimeout(()=>{mode="db";},0);render();fit();}return;}
     const d=snap.data();if(snap.metadata.hasPendingWrites)return;
-    const body=JSON.stringify({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[]});
+    const body=JSON.stringify(normalize({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0}));
     if(!first&&(drag||saving||saveT&&$("#saveState").classList.contains("busy")))return;
     if(body===lastSaved&&!first)return;
+    const typing=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)&&pbody.contains(document.activeElement);
     G=JSON.parse(body);lastSaved=body;fixSel();mode="db";
+    if(typing&&!first){render(true);setSave("ok","已同步他处的更新");return;}
     if(first){first=false;render();fit();}else{render();}
     setSave("ok",d.savedAt?"已保存 "+clock(d.savedAt):"已连接");$("#banner").hidden=true;
   },err=>{setSave("warn","云端连接中断（"+(err&&err.code||"未知")+"），修改暂存本页");});
-  logCol.orderBy("at","desc").limit(1000).onSnapshot(qs=>{logs=qs.docs.map(x=>Object.assign({id:x.id},x.data()));if(tab==="log"||tab==="reader")renderPanel();renderBoard();},()=>{});
+  logCol.orderBy("at","desc").limit(1000).onSnapshot(qs=>{logs=qs.docs.map(x=>Object.assign({id:x.id},x.data()));if(tab!=="inspect"||!(document.activeElement&&pbody.contains(document.activeElement)))renderPanel();renderBoard();updateButtons();},()=>{});
 })();
 window.addEventListener("resize",()=>{refreshGeometry();});
 })();

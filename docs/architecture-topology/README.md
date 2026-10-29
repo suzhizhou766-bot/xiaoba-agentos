@@ -8,7 +8,8 @@
 |---|---|
 | [AGENT_READER.md](AGENT_READER.md) | 文字版：每个分组的节点、状态、用户意图、代码位置、问题与待办、全部连线和按日期的变更历史。**Agent 从这里开始读** |
 | [topology.json](topology.json) | 拓扑原始数据：`groups`、`nodes`、`edges`，`savedAt` 为快照时间（毫秒） |
-| [changes.json](changes.json) | 变更记录（新→旧）：`op` 为 add / edit / del / link / unlink；删除和断开的原内容在 `before` 里 |
+| [changes.json](changes.json) | 变更记录（新→旧）：`op` 为 add / edit / del / link / unlink / submit / agent；删除和断开的原内容在 `before` 里 |
+| submissions.json | 用户的提交记录（有提交后才出现）：每轮的大白话原话、期间改动、整理状态 |
 | [topology-page.html](topology-page.html) | 交互页面源码，留作维护 |
 | [render_reader.py](render_reader.py) | 由两个 JSON 重新生成 `AGENT_READER.md` |
 
@@ -18,6 +19,16 @@
 - “用户意图”写的是用户想要的样子。代码和它不一致时，向用户报告差异，不要自行改图，也不要直接改这里的 JSON 冒充用户修改。
 - 状态为“待用户裁定”的节点，裁定前不要实现。
 - 动手前先看变更历史，避免重做用户已删除或已改掉的东西。
+
+## 用户提交与 Agent 整理
+
+用户在节点的“我的想法”里用大白话写，点“提交本轮修改”后：原话进入该节点的 `history`（`by: "user"`）和变更记录，节点标 `pending: true`，并生成一条 `submissions` 记录（`status: "pending"`）。用户说“整理拓扑”时，能读写云端数据的 Agent（目前是 Claude）按下面的规则整理：
+
+1. 读全部 `status: "pending"` 的提交和当前拓扑。
+2. 逐个节点按用户原话改写名称、一句话说明、用户意图、详细说明、位置、问题与待办。只表达用户说过的意思，不添加用户没说的方案；拿不准的写进“问题与待办”，以“待确认：”开头。需要时可以补代码位置等事实，但要能核实。
+3. 每个改写过的节点追加一条 `history`：`by: "agent"`、`agent`（谁整理的）、`text`（改了什么、为什么）、`before`（被改字段的旧值）；`pending` 改回 `false`。原话不删、不改。
+4. 写回拓扑时带上读到的版本号，避免覆盖用户刚做的修改；把提交记录改为 `status: "done"`，填 `result`、`doneAt`、`agent`；每个节点在变更记录里写一条 `op: "agent"`。
+5. 向用户逐条说明整理结果，再同步本目录和 `私人助理/工作区/小八架构拓扑/` 两处快照。
 
 ## 重新生成读本
 
