@@ -844,7 +844,8 @@ applyView();render();requestAnimationFrame(()=>fit());
         const b=$("#banner");b.innerHTML="云端还没有保存的拓扑，现在显示的是 10-27 设计图基线。第一次修改时会整体保存。";b.hidden=false;mode="db-empty";
         setTimeout(()=>{mode="db";},0);render();fit();}return;}
     const d=snap.data();if(snap.metadata.hasPendingWrites)return;
-    const body=JSON.stringify(normalize({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0}));
+    // Snapshot bodies are frozen: normalize a copy, never the delivered data.
+    const body=JSON.stringify(normalize(clone({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0})));
     if(!first&&(drag||saving||saveT&&$("#saveState").classList.contains("busy")))return;
     if(body===lastSaved&&!first)return;
     const typing=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)&&pbody.contains(document.activeElement);
