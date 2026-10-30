@@ -2,6 +2,23 @@
 
 2026-10-28，开发候选，承接用户明确的节点行为要求。
 
+## 第八批：每步一次CLI调用（保留回执卡）
+
+2026-10-29，开发候选。用户决定恢复“一次调用一次CLI”，回执卡功能保留：主入口把任务卡写成文件，每个步骤只启动一次`agy`，由它在节点固定工作区里用accept-edits权限自己写回执，主入口只读回执文件并校验。第七批的持续PTY会话保留为显式`agy_mode='interactive'`，默认不再是它。
+
+- 新增`xiaoba_review/resource_agy_cli.py`的`AgyCliResource`，对外接口与`AgyInteractiveResource`一致（`supports_resource_plan`、`persistent_resource`、`supports_workday_receipts`、`execution_mode='native_cli_per_step'`、`test_budget_seconds=120`、`pending_action=None`，方法`resource_identity`、`terminal_snapshot`、`retire`、`close`、`test_resource`、`initialize_workday`、`run`、`run_task`）。调用方无需改动。
+- `json_stdio_factory(source, workspace_root=None, agy_mode='cli')`：入口文件名是`agy`/`antigravity`时，默认返回CLI调用器，`agy_mode='interactive'`返回PTY调用器；其它入口保持原样。`agy_mode`只给测试和将来的显式配置用，不从网页或HTTP接收。
+- 每步argv固定为`--input-format stream-json --output-format stream-json --model <节点配置原值> --mode accept-edits --sandbox --print-timeout <N>s`，健康探针与开工初始化N=90，审查与普通工作N=0（等本轮结束）。不加print/prompt类参数、跳过权限、额外目录，也不用会让`--mode`失效的开关；不查模型目录、不读默认模型。任务正文只放在卡文件里，argv不含任务文字或卡路径。
+- stdin只写一行NDJSON `{"event":"user","message":{"content":…}}`后关闭。派发句沿用PTY写法，另加“只执行这张卡；不要检索旧任务记录、其它日期的工作日志或小八源码”，末尾附`XIAOBA_TASK_CARD=<卡路径>`。`cwd`是节点固定工作区，`start_new_session=True`以便按进程组回收；环境变量与PTY版同源但不设`TERM`。
+- 每适配器一把锁串行；每次调用期间持有工作区`.session.lock`，结束后释放，同工作区占用仍报`workspace_session_busy`。顺序仍是`verify`→`begin`→`workday.prepare`。`work`类任务先查`previous_work`，命中直接返回并带`replayed=True`，不再起进程；原记录失败则报`work_step_failed`。
+- stdout累计上限1MiB，超过即结束进程组并报`cli_output_limit`；stderr写入有界临时文件，原文不保存、不返回、不进证据。stdout新增可解析JSON行或回执文件大小变化都算进展；连续300秒无进展结束进程组并报`cli_no_progress`。健康探针与初始化总期限90秒，审查与工作无总期限。任何情况不自动重试、不换模型、不换后台。
+- 完成判定只看`workday.read(ticket)`：合格回执且进程已退出即成功；合格回执但进程未退出，最多再等30秒后结束进程组，回执仍有效并记`process_terminated_after_receipt: true`；退出码0且`result`为SUCCESS却没有合格回执报`receipt_missing`；退出码非0或`result`非SUCCESS时先查原生目录信任字样，命中抛`NativeWorkspaceConsent`（状态记blocked，不自动确认、不加任何跳过参数），其余报`cli_failed`并只保留`failure_class`（transient/permanent）。`workday.read`抛出的`WorkspaceError`原样上抛。
+- 证据字段为`provider='antigravity_cli'`、`model`（配置原值）、`route_source='native_cli_per_step'`、`model_source='node_configuration'`、`model_verification='not_performed'`、`call_id`（每次调用）、`execution_mode`、`reply_source='daily_worklog'`、`worklog`；不声称已核验实际上游模型。身份协议为`agy-cli-worklog-v1`，`implementation_sha256`由`resource_agy_cli.py`、`agent_workspace.py`、`workday.py`三文件字节拼接计算，`instance`在构造时生成、同一服务进程内不变，服务重启后必须重新测试。
+- 只读终端预览返回`supported`、`state`（`not_started`/`running`/`receipt_received`/`failed`/`closed`）、`session_id`（当前或最近一次`call_id`）、`turn`（已完成调用数），再合并`TerminalPreview().snapshot()`；正文是一行进度摘要（第几次调用、已收到几条流事件、回执字节数）加回执日志本轮新增部分的最后40行，统一经`set_screen()`脱敏限幅，不含stdout或stderr原文。
+- `retire()`置停用标志：无任务在跑立即关闭，有任务在跑等它结算后再关；停用后新任务报`session_closed`。`close()`结束进程组（SIGTERM，2秒后SIGKILL）并释放工作区锁。
+- 主入口核对时补了两处：结束进程组不再以agy主进程存活为前提，agy退出后留在本步进程组里的辅助进程也会被结束（先SIGTERM，2秒后SIGKILL；macOS对只剩未回收僵尸的组返回EPERM，先回收主进程，之后EPERM视为已无存活成员，主进程仍存活时被拒才报`session_cleanup_blocked`）；主进程退出后若辅助进程占着stdout，最多再等2秒即收尾，并在判定`receipt_missing`前补读一次回执。新增用例`test_helpers_left_in_the_call_group_are_ended_after_agy_exits`。
+- 本批在用户主机上全量146项通过（原126项保留，`tests/test_agy_cli.py`20项）。实现方在其嵌套沙箱环境中看到的`test_review.HttpTest.test_http_bound_diff_is_idempotent_and_preserves_human_rejection`失败是该环境`sandbox-exec`返回`Operation not permitted`所致，用户主机上改动前后均通过。`test_workday.py`改用CLI夹具，`test_agy_interactive.py`与`test_terminal_preview.py`显式走`agy_mode='interactive'`继续覆盖PTY。**本批只做离线实现，没有调用真实AGY；夹具通过不等于真实AGY可用，真实测试需用户另行授权。**
+
 ## 当前实现：当日台账与Agent＋模型周评估（第七批）
 
 本节取代下文第五、六批里依靠终端正文和JSON标记提取结果的历史做法；旧描述仅留作演进记录，不用于新派工。

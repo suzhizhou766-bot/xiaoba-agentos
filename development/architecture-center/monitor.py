@@ -22,7 +22,8 @@ class ArchitectureCenterModule(Module):
             Route('POST','/api/release-center/create',self.create,'write'),
             Route('POST','/api/release-center/validate',self.validate,'write'),
             Route('POST','/api/release-center/preflight',self.preflight,'write'),
-            Route('POST','/api/release-center/publish',self.publish,'write')]
+            Route('POST','/api/release-center/publish',self.publish,'write'),
+            Route('POST','/api/release-center/acknowledge',self.acknowledge,'write')]
         for name in ('index.html','style.css','data.js','app.js','editor.js','editor.css','native-center.js'):
             url='/architecture/' if name=='index.html' else '/architecture/'+name
             routes.append(Route('GET',url,lambda req,n=name:self.asset(n),'page'))
@@ -46,6 +47,7 @@ class ArchitectureCenterModule(Module):
     def validate(self,req):return self.action(lambda:self.center.validate(**req.json()))
     def preflight(self,req):return self.action(lambda:self.center.prepare_release(**req.json()))
     def publish(self,req):return self.action(lambda:self.center.publish(**req.json()))
+    def acknowledge(self,req):return self.action(lambda:self.center.acknowledge_release_unknown(**req.json()))
 
     def health(self):
         return {'status':'ok','detail':'模块编辑与待发布工作区可用；原生发版执行器'+('已接入' if self.center.driver else '未配置')}

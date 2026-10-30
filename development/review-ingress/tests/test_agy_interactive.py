@@ -18,7 +18,8 @@ class InteractiveFixture(fixtures.FixtureMixin):
     def setUp(self):
         super().setUp()
         self.workspaces = self.root/'workspaces';self.workspaces.mkdir()
-        self.backends = BackendRegistry(self.store, resource_factory=lambda source:json_stdio_factory(source,self.workspaces))
+        self.backends = BackendRegistry(self.store, resource_factory=lambda source:json_stdio_factory(
+            source,self.workspaces,agy_mode='interactive'))
         self.addCleanup(self.backends.close)
         self.pool = AgentPool(self.store,self.backends)
         self.entry = self.root/'agy'
@@ -199,7 +200,7 @@ class InteractiveTests(InteractiveFixture, unittest.TestCase):
 
     def test_selection_uses_entry_not_user_display_name_and_keeps_other_protocol(self):
         node=self.add()
-        self.assertIsInstance(json_stdio_factory(self.source(node)),AgyInteractiveResource)
+        self.assertIsInstance(json_stdio_factory(self.source(node),agy_mode='interactive'),AgyInteractiveResource)
         source=self.source(node);source['node']['entry']=str(self.root/'custom-json-resource')
         self.assertIsInstance(json_stdio_factory(source),JsonStdioResource)
 

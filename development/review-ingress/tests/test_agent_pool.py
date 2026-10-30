@@ -132,11 +132,16 @@ class PoolTests(fixtures.FixtureMixin,unittest.TestCase):
         source=self.toggle(self.add(),True);req=self.request_node(source,peer_channel='backend_adapter')
         assignment=next(a for a in req['assignments'] if a['role']=='peer')
         class Adapter:
-            kind='peer';source_ref=source['source_ref'];supports_resource_plan=False
+            kind='peer';source_ref=source['source_ref'];supports_resource_plan=True
+            def resource_identity(self):return {'TEST':'plan adapter'}
+            def test_resource(self,plan,challenge):
+                return {'output':challenge,'model':plan['model'],'provider':'TEST','route_source':'TEST'}
             def run(self,card):return {'verdict':'PASS','findings':'TEST executed callback','evidence_refs':['TEST'],'execution_evidence':{'model':'TEST wrong model'}}
         adapter=Adapter();self.backends.register(source['reviewer_id'],adapter)
-        with self.assertRaisesRegex(ValueError,'调用计划'):self.backends.execute(assignment['id'])
-        adapter.supports_resource_plan=True
+        # 带节点计划的任务卡先过测试资格；未测试时不会调用适配器。
+        with self.assertRaisesRegex(ValueError,'测试'):self.backends.execute(assignment['id'])
+        with self.native.read_only() as db:revision=node_state(self.store.source(db,source['reviewer_id']))['revision']
+        self.assertEqual(self.pool.runtime.test_run(source['reviewer_id'],revision,'TEST-plan-gate')['status'],'passed')
         with self.assertRaisesRegex(ValueError,'模型'):self.backends.execute(assignment['id'])
         self.assertEqual(self.count('ri_receipts'),0)
 
@@ -146,11 +151,18 @@ class PoolTests(fixtures.FixtureMixin,unittest.TestCase):
         entered,finish=threading.Event(),threading.Event()
         class Adapter:
             kind='peer';source_ref=source['source_ref'];supports_resource_plan=True
+            def resource_identity(self):return {'TEST':'in-flight adapter'}
+            def test_resource(self,plan,challenge):
+                return {'output':challenge,'model':plan['model'],'provider':'TEST','route_source':'TEST'}
             def run(self,card):
                 entered.set();finish.wait(5)
                 return {'verdict':'PASS','findings':'TEST authorized in-flight callback','evidence_refs':['TEST'],
                         'execution_evidence':{'provider':'TEST','model':card['resource_plan']['model']}}
         self.backends.register(source['reviewer_id'],Adapter())
+        # 带节点计划的任务卡要先有测试资格，之后才谈执行中停用。
+        with self.native.read_only() as db:revision=node_state(self.store.source(db,source['reviewer_id']))['revision']
+        self.assertEqual(self.pool.runtime.test_run(source['reviewer_id'],revision,'TEST-in-flight-gate')['status'],'passed')
+        with self.native.read_only() as db:source=self.store.source(db,source['reviewer_id'])
         with ThreadPoolExecutor(max_workers=1) as pool:
             future=pool.submit(self.backends.execute,assignment['id']);self.assertTrue(entered.wait(5))
             self.toggle(source,False);finish.set();receipt=future.result(5)

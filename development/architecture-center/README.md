@@ -71,6 +71,16 @@ upgrade-workspace/
 
 预检后改文件、基线、正式包或计划须重新核验；重复请求只结算一次，同一工作区只允许一个正式发布在运行。原生异常会暂停并记录失败，不重试。若服务中断或原生进程未明确返回，保留“发布中/待人工核对”，不能自动重启切换；需由部署者核对原生现场后开展恢复任务。
 
+## 发布结果未知（release_unknown）
+
+发布驱动返回 `requires_manual_readback`、驱动抛异常或返回无法解析的结果、或重启时发现遗留的 `publishing` 记录，候选都进入持久状态 `release_unknown`（页面上是“发布结果未知 · 必须先人工核对”）。这不是普通失败：结果可能已生效，因此不能重发，也不能沿用旧预检。
+
+- 工作区里只要有一条 `release_unknown`，`prepare_release` 和 `publish` 都拒绝，报错写明要先核对哪一条候选。该候选本身也不可修改、认领或重新检查。
+- 恢复入口 `acknowledge_release_unknown(cid, expected_revision, conclusion, evidence)`，页面为“登记核对结论”，HTTP 为 `POST /api/release-center/acknowledge`。结论只有两种：`applied`（已生效）进 `published` 并写带 `verified_by: manual_readback` 的版本记录；`not_applied`（已证实没有改动或已退回）进 `release_failed`，允许重新预检。`evidence` 必须写明核对依据，结论和依据都写进审计事件 `release_unknown_acknowledged`。
+- 恢复动作只记录人工核对结论，**绝不调用发布驱动**；恢复后是否重发仍由用户重新预检、重新确认。
+- 明确的干净失败（没有 `requires_manual_readback`）行为不变：仍记 `release_failed`，可重新预检。
+- 重启恢复在 `Center` 初始化时执行：遗留的 `publishing` 记录改记为 `release_unknown`，对应发布行同步改状态；审计链损坏时不写入，遗留的 `running` 行继续占住单飞锁。
+
 ## 验证
 
 ```bash

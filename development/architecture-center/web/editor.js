@@ -4,7 +4,8 @@
   const button=(title,action,parent,className)=>{const node=element('button',title,parent,className);node.type='button';node.addEventListener('click',action);return node;};
   let metadata=null,selectedChange=null,selectedModule=null,approval=null,publishing=false;
   const token=document.querySelector('meta[name="upgrade-page-token"]')?.content;
-  const stateLabels={awaiting_agent:'待 Agent 接续',claimed:'Agent 实施中',awaiting_validation:'待候选检查',validation_failed:'候选检查未通过',awaiting_package:'待接续构包与审查',awaiting_preflight:'待正式包预检',preflight_failed:'预检未通过',awaiting_release:'预检通过 · 等待用户正式发版',publishing:'正在正式发版',published:'已发布',release_failed:'发版失败 · 待人工核对'};
+  const stateLabels={awaiting_agent:'待 Agent 接续',claimed:'Agent 实施中',awaiting_validation:'待候选检查',validation_failed:'候选检查未通过',awaiting_package:'待接续构包与审查',awaiting_preflight:'待正式包预检',preflight_failed:'预检未通过',awaiting_release:'预检通过 · 等待用户正式发版',publishing:'正在正式发版',published:'已发布',release_failed:'发版失败 · 待人工核对',release_unknown:'发布结果未知 · 必须先人工核对'};
+  const lockedStates=['publishing','published','release_unknown'];
   const controls=element('div',undefined,document.querySelector('.header-actions'),'iteration-controls');
   const mode=element('span','架构查看',controls,'iteration-chip');
   button('模块规范',()=>openEditor(selectedModule),controls,'iteration-button');
@@ -71,21 +72,44 @@
     const message=element('div','',item,'upgrade-message');
     const actions=element('div',undefined,item,'upgrade-actions');
     const check=button('检查当前候选',async()=>{check.disabled=true;try{const result=await api('validate',{cid:change.id,expected_revision:change.revision});renderChange(result.result);await refresh();}catch(error){message.textContent=error.message;}finally{check.disabled=false;}},actions);
-    check.disabled=!!change.lease||['publishing','published'].includes(change.state);
+    check.disabled=!!change.lease||lockedStates.includes(change.state);
     const preflight=button('正式包预检',async()=>{preflight.disabled=true;try{const result=await api('preflight',{cid:change.id,expected_revision:change.revision});approval=result.result;if(!approval.preflight.ok){message.textContent=approval.preflight.error||'预检未通过';await showChange(change.id);}else{renderChange(approval.change);await refresh();}}catch(error){message.textContent=error.message;}finally{preflight.disabled=false;}},actions);
-    preflight.disabled=!metadata.driver_available||!change.package||!change.validation?.ok||!!change.lease||['publishing','published'].includes(change.state);
+    preflight.disabled=!metadata.driver_available||!change.package||!change.validation?.ok||!!change.lease||lockedStates.includes(change.state);
     const publishButton=button('正式发版',()=>{
       if(!approval||approval.change.id!==change.id||approval.revision!==change.revision){message.textContent='请先完成本次预检，阅读具体改动后确认。';return;}
       releaseText.replaceChildren();element('p','将执行原生正式切换流程。目标和源码清单如下；只有真实切换与回读通过才会记录为已发布。',releaseText);element('pre',JSON.stringify({change_id:change.id,previous_version:approval.preflight.previous_version,target_version:approval.preflight.version,files:change.files,checks:approval.preflight.checks,expires_at:approval.preflight.expires_at},null,2),releaseText);releaseConfirm.disabled=false;releaseDialog.showModal();
     },actions,'primary');
     publishButton.disabled=change.state!=='awaiting_release'||!approval||approval.change.id!==change.id||publishing;
     if(!metadata.driver_available)element('p','本机原生发布执行器未配置。模块提案和 Agent 接续可用，正式预检与发版尚不可用。',item);
+    else if(change.state==='release_unknown')recovery(change,message);
     else if(!change.package)element('p','等待接续 Agent 实施、功能验证、独立审查并构建受审正式包；尚不能直接发版。',item);
     if(change.validation)element('p','候选检查范围：语法与文件清单；'+(change.validation.ok?'已通过。':'未通过。'),item);
     if(change.release_error)element('p',change.release_error,item,'upgrade-message');
     section('Agent 接续入口与写入权限',{folder:change.folder,handoff:'HANDOFF.md',permissions:'ACCESS.json',checkpoint:change.checkpoint,next_step:change.next_step,lease:change.lease?{actor:change.lease.actor,expires_at:change.lease.expires_at}:null});
     for(const [path,diff] of Object.entries(change.diffs||{}))section('文件差异 · '+path,diff||'文件内容未变化');
     section('源码与候选清单',change.files);if(change.validation)section('候选检查结果',change.validation);if(change.last_preflight||change.preflight)section('正式包预检记录',change.last_preflight||change.preflight.native);if(change.release_result)section('实际发布与回读回执',change.release_result);section('完整修改与接续历史',change.history);
+  }
+  function recovery(change,message){
+    const box=element('div',undefined,item,'upgrade-recovery');
+    Object.assign(box.style,{margin:'16px 0',padding:'14px',border:'1px solid #e6cfa6',borderRadius:'10px',background:'#fdf8ee'});
+    element('h3','发布结果未知 · 人工核对恢复',box);
+    element('p','驱动没有给出可确认的结果，或上次发版中途中断。请先核对原生回执、活动版本、配置与源码指纹，再登记结论。登记只记录核对结论，不会再次执行发布；核对完成前预检和发版都保持拒绝。',box);
+    if(change.release_unknown?.note)element('p',change.release_unknown.note,box);
+    const label=element('label','核对结论',box);Object.assign(label.style,{display:'block',fontSize:'12px',color:'#51718a'});
+    const conclusion=element('select',undefined,label);
+    Object.assign(conclusion.style,{width:'100%',font:'inherit',padding:'8px 10px',border:'1px solid #cedfec',borderRadius:'8px',marginTop:'6px',background:'#fff'});
+    for(const [value,text] of [['not_applied','已证实没有改动或已退回（回到发版失败，可重新预检）'],['applied','已生效（记为已发布）']]){const option=element('option',text,conclusion);option.value=value;}
+    const evidenceLabel=element('label','核对依据（必填：看了哪些回执、活动版本和指纹，结论从哪来）',box);Object.assign(evidenceLabel.style,{display:'block',fontSize:'12px',color:'#51718a',marginTop:'10px'});
+    const evidence=element('textarea',undefined,evidenceLabel);evidence.placeholder='例如：原生回执 /var/.../receipt.json 显示 ok=false；活动指针仍为 v1.6.4；版本记录未更新 → 已证实没有改动';
+    Object.assign(evidence.style,{width:'100%',font:'inherit',minHeight:'90px',padding:'8px 10px',border:'1px solid #cedfec',borderRadius:'8px',marginTop:'6px',background:'#fff',resize:'vertical'});
+    const actions=element('div',undefined,box,'upgrade-actions');
+    const submit=button('登记核对结论',async()=>{
+      if(!evidence.value.trim()){message.textContent='需要写明核对依据。';return;}
+      submit.disabled=true;
+      try{const result=await api('acknowledge',{cid:change.id,expected_revision:change.revision,conclusion:conclusion.value,evidence:evidence.value.trim()});renderChange(result.result);await refresh();}
+      catch(error){message.textContent=error.message;}finally{submit.disabled=false;}
+    },actions,'primary');
+    element('p','恢复入口不会调用发布驱动；结论为“已生效”记为已发布，为“已证实没有改动”回到发版失败，可重新预检。',box);
   }
   async function publish(){
     if(!approval||publishing)return;publishing=true;releaseConfirm.disabled=true;
