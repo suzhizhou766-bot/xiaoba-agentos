@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 REPO = Path(__file__).resolve().parents[3]
 PACKAGE = REPO / 'architecture-package-20261027'
-sys.path[:0] = [str(PACKAGE / 'implementation/candidate-v1.6.5/src'),
+sys.path[:0] = [str(REPO / 'development/integrated-candidate/src'),
                 str(PACKAGE / 'shared/工具/小八监看'), str(Path(__file__).resolve().parents[1])]
 sys.dont_write_bytecode = True
 

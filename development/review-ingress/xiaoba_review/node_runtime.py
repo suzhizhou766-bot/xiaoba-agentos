@@ -87,6 +87,9 @@ class NodeRuntime:
 
     def execute_work(self,node_id,expected_revision,task_id,step_code,instruction,materials):
         with self.store.native.read_only() as db:
+            # B20：事件链坏了不派活。先校验再调适配器，避免干完才发现坏链。
+            if not self.store.native.verify_event_chain_tx(db)['ok']:
+                raise Conflict('事件链校验失败，停止派工')
             source=self.store.source(db,node_id);node=require_enabled(source)
             if type(expected_revision) is not int or node['revision']!=expected_revision:raise Conflict('节点已变化，请核对当前计划')
             if not self.readiness(db,source)['ready']:raise ValueError('节点尚未通过当前配置健康检测，未派发工作')

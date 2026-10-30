@@ -15,7 +15,7 @@ import time
 
 HERE = Path(__file__).resolve().parents[1]
 REPO = HERE.parents[1]
-sys.path.insert(0, str(REPO / 'architecture-package-20261027/implementation/candidate-v1.6.5/src'))
+sys.path.insert(0, str(REPO / 'development/integrated-candidate/src'))
 from xiaoba_agentos.store import EventStore
 from playwright.sync_api import sync_playwright, expect
 

@@ -70,7 +70,10 @@ class BackendRegistry:
             from .agent_pool import require_enabled
             source=self.store.source(db,row['source_id'])
             require_enabled(source)
-            if require_test:
+            # 带节点调用计划的任务卡一律先过测试资格，调用方传什么都不能跳过；
+            # 旧四字段来源没有 resource_plan，保持原有行为。
+            gated = require_test or bool(card.get('resource_plan'))
+            if gated:
                 from .agent_pool import AgentPool
                 if not AgentPool(self.store,self).runtime.readiness(db,source)['ready']:
                     raise ValueError('节点尚未通过当前入口和模型的测试，不能直接运行')
