@@ -55,6 +55,9 @@ class Conflict(ValueError):pass
 
 
 class Center:
+    UNKNOWN='release_unknown'
+    RECOVERY={'applied','not_applied'}
+
     def __init__(self, repository, workspace, catalog, driver=None):
         self.repository=Path(repository).resolve();self.workspace=Path(workspace).resolve()
         self.pending=self.workspace/'待发布';self.pending.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -70,6 +73,33 @@ class Center:
               CREATE UNIQUE INDEX IF NOT EXISTS one_running_publish ON publishes(state) WHERE state='running';
             ''')
         os.chmod(self.database,0o600)
+        self._recover_interrupted()
+
+    def _recover_interrupted(self):
+        """A publish that was still 'running' at startup has an unknown outcome; never retry it."""
+        try:
+            with self.tx() as db:
+                for row in db.execute('SELECT id,data FROM changes ORDER BY rowid').fetchall():
+                    change=json.loads(row['data'])
+                    if change.get('state')!='publishing':continue
+                    change['state']=self.UNKNOWN
+                    change['release_unknown']={'reason':'interrupted_publish','detected_at':time.time(),
+                        'note':'进程在正式发布中途退出，无法确认是否已生效；须人工核对后再恢复'}
+                    change.pop('preflight',None);change.pop('confirmation',None)
+                    self._event(db,change,'release_unknown','monitor-user',{'reason':'重启时发现遗留的发布中记录，结果未知'})
+                    self._save(db,change)
+                    db.execute("UPDATE publishes SET state=? WHERE change_id=? AND state='running'",(self.UNKNOWN,change['id']))
+        except Conflict:
+            # Audit chain is broken: no writes at all, and the stale 'running' row keeps publish blocked.
+            return
+
+    def _unknown(self,db):
+        return [row['id'] for row in db.execute('SELECT id,data FROM changes ORDER BY rowid')
+                if json.loads(row['data']).get('state')==self.UNKNOWN]
+
+    def _guard_unknown(self,db):
+        blocked=self._unknown(db)
+        if blocked:raise Conflict('存在发布结果未知的候选，需先人工核对并恢复：'+'、'.join(blocked))
 
     @contextmanager
     def tx(self):
@@ -171,6 +201,7 @@ class Center:
 
     def _revision(self,change,expected):
         if expected!=change['revision']:raise Conflict('候选版本已变化，请刷新后重试')
+        if change['state']==self.UNKNOWN:raise Conflict('发布结果未知，须先人工核对并恢复：'+change['id'])
         if change['state'] in {'publishing','published'}:raise Conflict('正式发版中或已发布的候选不可修改')
 
     def _lease(self,change,actor,lease_id):
@@ -275,7 +306,7 @@ class Center:
 
     def prepare_release(self,cid,expected_revision):
         with self.tx() as db:
-            change=self._load(db,cid);self._revision(change,expected_revision)
+            change=self._load(db,cid);self._guard_unknown(db);self._revision(change,expected_revision)
             if change.get('lease'):raise Conflict('尚有 Agent 执行权，不能预检发布')
             digest=self._integrity(change)
             if not change.get('validation',{}).get('ok') or change['validation']['fingerprint']!=digest:
@@ -306,7 +337,7 @@ class Center:
             if old:
                 if old['request_hash']!=request_hash:raise Conflict('同一发布请求 ID 的内容冲突')
                 return json.loads(old['result']) if old['result'] else {'ok':False,'state':'publishing','request_id':request_id}
-            change=self._load(db,cid);self._revision(change,expected_revision)
+            change=self._load(db,cid);self._guard_unknown(db);self._revision(change,expected_revision)
             if change['state']!='awaiting_release' or not confirmation or confirmation!=change.get('confirmation'):
                 raise Conflict('请从本次具体预检结果确认正式发版')
             fingerprint=self._integrity(change);package=self._package(change)
@@ -321,20 +352,54 @@ class Center:
             ticket_path=safe(self._folder(change),'reports/preflight.json')
         try:
             result=self.driver.apply(package,ticket_path)
-        except Exception as exc:result={'ok':False,'error':str(exc),'state':'release_failed','requires_manual_readback':True}
+        except Exception as exc:result={'ok':False,'error':str(exc),'requires_manual_readback':True}
+        if not isinstance(result,dict):result={'ok':False,'error':'发布驱动返回了无法解析的结果','requires_manual_readback':True}
+        # Unknown outcome wins over a self-reported success: only a human can settle it.
+        if result.get('requires_manual_readback'):
+            result={**result,'state':self.UNKNOWN}
+            state=self.UNKNOWN
+        else:state='published' if result.get('ok') is True else 'release_failed'
         with self.tx() as db:
-            change=self._load(db,cid);change['state']='published' if result.get('ok') else 'release_failed'
+            change=self._load(db,cid);change['state']=state
             change['release_result']=result
-            if not result.get('ok'):change.pop('preflight',None)
-            self._event(db,change,'publish_finished','monitor-user',{'request_id':request_id,'ok':result.get('ok'),'result':result})
+            if state!='published':change.pop('preflight',None)
+            if state==self.UNKNOWN:
+                change['release_unknown']={'reason':'driver_manual_readback','detected_at':time.time(),
+                    'note':'发布驱动未给出可确认的结果，须人工核对现场后再恢复'}
+            self._event(db,change,'publish_finished','monitor-user',{'request_id':request_id,'ok':result.get('ok') is True,'state':state,'result':result})
             self._save(db,change)
-            db.execute('UPDATE publishes SET state=?,result=? WHERE id=?',(change['state'],encoded(result).decode(),request_id))
+            db.execute('UPDATE publishes SET state=?,result=? WHERE id=?',(state,encoded(result).decode(),request_id))
             version=str(result.get('read_back',{}).get('version') or result.get('version') or ticket.get('version') or change.get('target_version') or 'unknown')
             record={'change_id':cid,'version':version,'base_version':change['base_version'],'base_source':change['base_source'],
                     'module_id':change['module_id'],'files':change['files'],'package':change.get('package'),
-                    'actual_release_result':result,'published':result.get('ok') is True,'request_id':request_id}
+                    'actual_release_result':result,'published':state=='published','request_id':request_id}
             atomic(safe(self.workspace,'版本记录/'+cid+'/RELEASE-RECORD.json'),encoded(record)+b'\n')
         return result
+
+    def acknowledge_release_unknown(self,cid,expected_revision,conclusion,evidence,actor='monitor-user'):
+        """Record the human read-back only.  Never calls the release driver."""
+        if conclusion not in self.RECOVERY:raise ValueError('核对结论只能是 applied（已生效）或 not_applied（已证实没有改动或已退回）')
+        if not isinstance(evidence,str) or not evidence.strip():raise ValueError('需要写明核对依据')
+        if not isinstance(actor,str) or not actor.strip():raise ValueError('需要核对人标识')
+        with self.tx() as db:
+            change=self._load(db,cid)
+            if change['state']!=self.UNKNOWN:raise Conflict('该候选不处于发布结果未知状态，无需恢复')
+            if expected_revision!=change['revision']:raise Conflict('候选版本已变化，请刷新后重试')
+            state='published' if conclusion=='applied' else 'release_failed'
+            change['state']=state
+            change['release_recovery']={'conclusion':conclusion,'evidence':evidence.strip(),'actor':actor,'at':time.time()}
+            change.pop('preflight',None);change.pop('confirmation',None)
+            if conclusion!='applied':change.pop('release_unknown',None)
+            self._event(db,change,'release_unknown_acknowledged',actor,{'conclusion':conclusion,'evidence':evidence.strip(),'state':state})
+            self._save(db,change)
+            db.execute("UPDATE publishes SET state=? WHERE change_id=? AND state=?",(state,cid,self.UNKNOWN))
+            if conclusion=='applied':
+                record={'change_id':cid,'version':str(change.get('target_version') or 'unknown'),
+                        'base_version':change['base_version'],'base_source':change['base_source'],'module_id':change['module_id'],
+                        'files':change['files'],'package':change.get('package'),'actual_release_result':change.get('release_result'),
+                        'published':True,'request_id':None,'verified_by':'manual_readback','evidence':evidence.strip()}
+                atomic(safe(self.workspace,'版本记录/'+cid+'/RELEASE-RECORD.json'),encoded(record)+b'\n')
+        return self.get(cid)
 
     def get(self,cid):
         with self.tx() as db:
