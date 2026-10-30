@@ -253,6 +253,33 @@ code{font-family:var(--f-mono);font-size:11.5px}
 #edges path.e.h-off{opacity:.13}
 .elabel.h-off{opacity:.2}
 
+
+/* 树状视图 */
+#treeView{position:absolute;inset:0;z-index:4;background:var(--bg);border-radius:8px;display:grid;grid-template-rows:auto 1fr;min-height:0}
+#treeView .bhead .note{flex:1 1 260px}
+.tree{overflow:auto;padding:4px 14px 28px;min-height:0}
+.tree ul{list-style:none;margin:0;padding:0 0 0 22px;border-left:1px dashed var(--line);margin-left:9px}
+.tree>ul{padding-left:0;border-left:0;margin-left:0}
+.tree li{margin:0}
+.tree li.closed>ul{display:none}
+.troot{margin-top:10px}
+.troot-h{font-size:11px;letter-spacing:.06em;color:var(--muted);margin:14px 0 4px}
+.trow{display:flex;align-items:center;gap:7px;padding:4px 8px;margin:2px 0;border-radius:5px;cursor:pointer;min-width:0;font-size:13px;line-height:1.4;width:max-content;max-width:100%}
+.trow:hover{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.trow.sel{background:var(--surface);box-shadow:inset 0 0 0 2px var(--sel)}
+.trow.flash{animation:tflash 1.2s ease-out}
+@keyframes tflash{0%{background:color-mix(in srgb,var(--h-up) 30%,transparent)}100%{background:transparent}}
+.trow b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tt{border:0;background:transparent;cursor:pointer;color:var(--muted);width:16px;padding:0;font-size:11px;flex:0 0 16px;transition:transform .15s}
+li:not(.closed)>.trow .tt{transform:rotate(90deg)}
+.tt0{flex:0 0 16px}
+.tlab{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:0 7px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.tcnt{font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+.trow.ref{color:var(--muted)} .trow.ref b{font-weight:400}
+.trow.ref .go{font-size:11px;color:var(--h-down)}
+.trow .ht-g{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 4px;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.trow.flash{animation:none}.tt{transition:none}}
+
 @media (prefers-reduced-motion:reduce){.node.sim-lit,.node.sim-warn,#edges path.e.sim-on,#stage.flowing #edges path.e{animation:none}}
 
 </style>
@@ -273,6 +300,7 @@ code{font-family:var(--f-mono);font-size:11.5px}
       <button class="btn" id="bExpandAll" type="button">展开全部详情</button>
       <button class="btn" id="bBoard" type="button">历史看板</button>
       <button class="btn" id="bSim" type="button" title="让一个虚拟任务沿链路跑一遍">▶ 模拟运行</button>
+      <button class="btn" id="bTree" type="button" title="按连线一层层展开的工作树">树状视图</button>
     </div>
     <span class="sep"></span>
     <input class="search" id="q" type="search" placeholder="搜索节点，回车定位" aria-label="搜索节点">
@@ -314,6 +342,10 @@ code{font-family:var(--f-mono);font-size:11.5px}
         <div class="talkchips" id="talkChips"></div>
       </div>
       <div class="banner" id="banner" hidden></div>
+      <section id="treeView" hidden aria-label="树状视图">
+        <div class="bhead"><h2>树状视图</h2><span class="note">从起点沿连线一层层往下展开；同一个节点只在离起点最近的位置展开一次，别处显示为「↪ 见上方」，点它跳过去。悬停看上游 / 下游，点节点在右侧查看。</span><button class="btn" type="button" id="tExpand">全部展开</button><button class="btn" type="button" id="tCollapse">只看前五层</button><button class="btn" type="button" id="tClose">回到拓扑图</button></div>
+        <div class="tree" id="treeBody"></div>
+      </section>
       <div class="hovtip" id="hovtip" hidden></div>
       <div class="hint" id="hint">悬停节点看上游 / 下游 · 拖动节点移动 · 从节点右侧圆点拖到另一节点即连线 · 点连线后可断开 · 拖空白处平移，滚轮缩放</div>
       <section id="board" hidden aria-label="历史看板">
@@ -536,7 +568,7 @@ function drawEdges(){
     ph+=`<path class="e k-${e.kind}${isSel?" sel":""}${dim?" dim":""}${simEdge(e.id)}${talkEdge(e.id)?" talk":""}" d="${P.d}" data-eid="${esc(e.id)}" data-m="url(#ar-${isSel?"sel":talkEdge(e.id)?"talk":simFlowEdge(e.id)&&e.kind!=="pending"?"flow":e.kind})" marker-end="url(#ar-${isSel?"sel":talkEdge(e.id)?"talk":simFlowEdge(e.id)&&e.kind!=="pending"?"flow":e.kind})"/><path class="hit" data-edge="${esc(e.id)}" d="${P.d}"/>`;
     if(e.label)lh+=`<div class="elabel${isSel?" sel":""}${talkEdge(e.id)?" talk":""}${dim?" dim":""}" data-elabel="${esc(e.id)}" style="left:${P.mx}px;top:${P.my}px" title="${esc(e.label)}">${esc(e.label)}</div>`;
   });
-  eg.innerHTML=ph;labelsEl.innerHTML=lh;if(typeof HOV!=="undefined"&&HOV)applyHover();
+  eg.innerHTML=ph;labelsEl.innerHTML=lh;if(typeof HOV!=="undefined"&&HOV)applyHover();if(typeof renderTree==="function"&&typeof treeView!=="undefined")renderTree();
 }
 function refreshGeometry(){drawFrames();drawEdges();}
 
@@ -1008,6 +1040,60 @@ stage.addEventListener("mouseover",ev=>{
 stage.addEventListener("mouseout",ev=>{const to=ev.relatedTarget;if(to&&to.closest&&to.closest("[data-node],[data-gpill],[data-edge],[data-elabel]"))return;hovClear();});
 stage.addEventListener("pointerdown",hovClear,true);
 stage.addEventListener("wheel",()=>{if(!hovtip.hidden)hovClear();},{passive:true});
+
+
+/* ---------- 树状视图（工作树） ---------- */
+var treeView=$("#treeView"),treeBody=$("#treeBody");
+var TREE_CLOSED=null;
+function treeData(){
+  const gi=id=>{const n=node(id);const k=G.groups.findIndex(g=>g.id===(n&&n.g));return k<0?99:k;};
+  const ord=(a,b)=>gi(a)-gi(b)||((node(a)||{}).y||0)-((node(b)||{}).y||0)||((node(a)||{}).x||0)-((node(b)||{}).x||0);
+  const ids=G.nodes.map(n=>n.id).sort(ord);
+  const hasIn=new Set(G.edges.map(e=>e.to));
+  const parent=new Map(),roots=[],depth=new Map();
+  const bfs=start=>{roots.push(start);depth.set(start,0);const q=[start];
+    while(q.length){const id=q.shift();G.edges.filter(e=>e.from===id).sort((a,b)=>ord(a.to,b.to)).forEach(e=>{if(!depth.has(e.to)){depth.set(e.to,depth.get(id)+1);parent.set(e.to,e);q.push(e.to);}});}};
+  ids.filter(id=>!hasIn.has(id)&&G.edges.some(e=>e.from===id)).forEach(id=>{if(!depth.has(id))bfs(id);});
+  ids.forEach(id=>{if(!depth.has(id)&&G.edges.some(e=>e.from===id||e.to===id))bfs(id);});
+  const lonely=ids.filter(id=>!depth.has(id));
+  return {roots,parent,depth,lonely,ord};
+}
+function renderTree(){
+  if(treeView.hidden)return;
+  const T=treeData();
+  if(!TREE_CLOSED){TREE_CLOSED=new Set();T.depth.forEach((d,id)=>{if(d>=5)TREE_CLOSED.add(id);});}
+  const row=(id,e,isRef)=>{const n=node(id);if(!n)return "";const st=STATUS[n.status]||STATUS.dev,iss=lines(n.issues).length;
+    const kids=isRef?[]:G.edges.filter(x=>x.from===id).sort((a,b)=>T.ord(a.to,b.to));
+    const s=sel&&sel.type==="node"&&sel.id===id;
+    const lab=e&&e.label?`<span class="tlab" title="${esc(e.label)}">${esc(e.label)}</span>`:"";
+    if(isRef)return `<li><div class="trow ref" data-tref="${esc(id)}"><span class="tt0"></span>${lab}<span class="go">↪</span><b>${esc(n.title)}</b><span class="ht-g">${esc(grpTag(id))}</span><span class="go">见上方</span></div></li>`;
+    const sub=kids.map(k=>{const own=T.parent.get(k.to)===k;return row(k.to,k,!own);}).join("");
+    return `<li class="${kids.length&&TREE_CLOSED.has(id)?"closed":""}"><div class="trow${s?" sel":""}" data-tnode="${esc(id)}">${kids.length?`<button class="tt" type="button" data-ttog="${esc(id)}" aria-label="展开或收起">▶</button>`:'<span class="tt0"></span>'}${lab}<span class="chip" style="--c:var(${st[1]})">${esc(st[0])}</span><b>${esc(n.title)}</b><span class="ht-g">${esc(grpTag(id))}</span>${iss?`<span class="iss">${iss}</span>`:""}${kids.length?`<span class="tcnt">${kids.length} 个下游</span>`:""}</div>${kids.length?`<ul>${sub}</ul>`:""}</li>`;};
+  let h="";
+  T.roots.forEach(r=>{h+=`<div class="troot"><ul>${row(r,null,false)}</ul></div>`;});
+  if(T.lonely.length)h+=`<div class="troot-h">没有连线的节点（底座类）</div><ul>${T.lonely.map(id=>row(id,null,false)).join("")}</ul>`;
+  treeBody.innerHTML=h;
+}
+function openTree(){closeBoard&&closeBoard();treeView.hidden=false;$("#bTree").classList.add("on");renderTree();}
+function closeTree(){treeView.hidden=true;$("#bTree").classList.remove("on");hovClear();}
+$("#bTree").onclick=()=>{treeView.hidden?openTree():closeTree();};
+$("#tClose").onclick=closeTree;
+$("#tExpand").onclick=()=>{TREE_CLOSED=new Set();renderTree();};
+$("#tCollapse").onclick=()=>{TREE_CLOSED=null;renderTree();};
+treeView.addEventListener("pointerdown",e=>e.stopPropagation());
+treeView.addEventListener("wheel",e=>e.stopPropagation());
+treeBody.addEventListener("click",e=>{
+  const tg=e.target.closest("[data-ttog]");if(tg){const id=tg.dataset.ttog;TREE_CLOSED.has(id)?TREE_CLOSED.delete(id):TREE_CLOSED.add(id);tg.closest("li").classList.toggle("closed");return;}
+  const rf=e.target.closest("[data-tref]");if(rf){const el=treeBody.querySelector(`[data-tnode="${CSS.escape(rf.dataset.tref)}"]`);if(el){let li=el.closest("li").parentElement.closest("li");while(li){li.classList.remove("closed");TREE_CLOSED.delete(li.querySelector(":scope>.trow").dataset.tnode);li=li.parentElement.closest("li");}
+      el.scrollIntoView({block:"center",behavior:"smooth"});el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");}return;}
+  const r=e.target.closest("[data-tnode]");if(r){sel={type:"node",id:r.dataset.tnode};tab="inspect";treeBody.querySelectorAll(".trow.sel").forEach(x=>x.classList.remove("sel"));r.classList.add("sel");renderPanel();openSheet();}
+});
+treeBody.addEventListener("mouseover",e=>{
+  const r=e.target.closest("[data-tnode],[data-tref]");if(!r)return;const id=r.dataset.tnode||r.dataset.tref;
+  const ins=G.edges.filter(x=>x.to===id),outs=G.edges.filter(x=>x.from===id),cg=(node(id)||{}).g;
+  hovAt(r,`<div class="ht-t">${esc(nameOf(id))}</div>`+hovList("上游 · 从哪里来",ins.map(x=>[x.from,x.label]),"up",cg)+hovList("下游 · 往哪里去",outs.map(x=>[x.to,x.label]),"down",cg));
+});
+treeBody.addEventListener("mouseleave",()=>{hovtip.hidden=true;});
 
 /* ---------- 跟讲：读 topology/pointer，Claude 写哪里就标哪里 ---------- */
 const TALK={nodes:new Set(),edges:new Set(),follow:true,at:0,first:true};
