@@ -228,6 +228,17 @@ code{font-family:var(--f-mono);font-size:11.5px}
 .talktext{font-size:13.5px;line-height:1.6;white-space:pre-wrap}
 .talkchips{display:flex;flex-wrap:wrap;gap:5px}
 .talkchips button{border:1px solid color-mix(in srgb,var(--talk) 55%,var(--line));background:var(--surface);border-radius:5px;padding:3px 8px;font-size:12px;cursor:pointer}
+
+.talktext{max-height:30vh;overflow:auto}
+.talkchips button.on{background:var(--talk);color:var(--surface);border-color:var(--talk)}
+.talkchips .qn{font-family:var(--f-mono);font-size:10.5px;opacity:.75;margin-right:4px}
+.talkdetail{border-top:1px solid var(--line);padding-top:7px;display:grid;gap:8px;max-height:34vh;overflow:auto}
+.talkdetail .q{display:grid;gap:3px}
+.talkdetail .q b{font-size:13px}
+.talkdetail .q p{margin:0;font-size:12.5px;line-height:1.6;white-space:pre-wrap}
+.talkdetail .q .qn{font-family:var(--f-mono);font-size:11px;color:var(--talk);margin-right:6px}
+.node.talk-focus{box-shadow:0 0 0 3px var(--talk),0 0 30px color-mix(in srgb,var(--talk) 55%,transparent)!important}
+
 @media (max-width:760px){.talkbar{top:auto;bottom:calc(52% + 10px)}}
 @media (prefers-reduced-motion:reduce){.node.talk,#edges path.e.talk,.talkhead i{animation:none}}
 
@@ -236,12 +247,17 @@ code{font-family:var(--f-mono);font-size:11.5px}
 :root{--h-up:#B8521C;--h-down:#2C5A86}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--h-up:#F2945F;--h-down:#7FB0DE}}
 :root[data-theme="dark"]{--h-up:#F2945F;--h-down:#7FB0DE}
-.hovtip{position:absolute;z-index:4;width:max-content;max-width:300px;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:8px 11px 9px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 16%,transparent);font-size:12.5px;line-height:1.5;pointer-events:none;display:grid;gap:2px}
-.hovtip .ht-t{font-weight:700;font-size:13px;margin-bottom:2px}
-.hovtip .ht-k{font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:5px;display:flex;align-items:center;gap:6px}
+.hovtip{position:absolute;z-index:4;width:max-content;max-width:min(340px,46%);max-height:44%;overflow:hidden;background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:8px;padding:8px 11px 9px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 14%,transparent);font-size:12.5px;line-height:1.45;pointer-events:none;display:grid;gap:3px;opacity:0;transition:opacity .12s ease}
+.hovtip.show{opacity:1}
+.hovtip .ht-t{font-weight:700;font-size:13px}
+.hovtip .ht-k{font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:6px}
 .hovtip .ht-k::before{content:"";width:12px;height:3px;border-radius:2px;background:var(--hc)}
 .hovtip .ht-k.up{--hc:var(--h-up)} .hovtip .ht-k.down{--hc:var(--h-down)}
-.hovtip ul{margin:0;padding-left:16px;display:grid;gap:1px}
+.hovtip .ht-cs{display:flex;flex-wrap:wrap;gap:4px}
+.hovtip .hc{display:inline-flex;align-items:baseline;gap:4px;border:1px solid color-mix(in srgb,var(--hc) 45%,var(--line));border-radius:4px;padding:1px 6px;font-size:12px;max-width:100%}
+.hovtip .hc b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.hovtip .hc i{font-style:normal;font-size:10px;color:var(--muted);white-space:nowrap}
+.hovtip .hc em{font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
 .hovtip .ht-g{font-size:10px;color:var(--muted);margin-left:6px;border:1px solid var(--line);border-radius:3px;padding:0 4px;white-space:nowrap}
 .hovtip .ht-l{display:block;font-size:11.5px;color:var(--muted)}
 .hovtip .ht-none{font-size:11.5px;color:var(--muted)}
@@ -301,6 +317,7 @@ li:not(.closed)>.trow .tt{transform:rotate(90deg)}
       <button class="btn" id="bBoard" type="button">历史看板</button>
       <button class="btn" id="bSim" type="button" title="让一个虚拟任务沿链路跑一遍">▶ 模拟运行</button>
       <button class="btn" id="bTree" type="button" title="按连线一层层展开的工作树">树状视图</button>
+      <button class="btn" id="bHov" type="button" title="悬停时在画面角落显示上下游详解">悬停详解：开</button>
     </div>
     <span class="sep"></span>
     <input class="search" id="q" type="search" placeholder="搜索节点，回车定位" aria-label="搜索节点">
@@ -340,6 +357,7 @@ li:not(.closed)>.trow .tt{transform:rotate(90deg)}
         <div class="talkhead"><i></i>Claude 正在讲<span class="when" id="talkWhen"></span><label><input type="checkbox" id="talkFollow" checked>镜头跟随</label><button class="mini" id="talkClose" type="button" aria-label="收起讲解">✕</button></div>
         <div class="talktext" id="talkText"></div>
         <div class="talkchips" id="talkChips"></div>
+        <div class="talkdetail" id="talkDetail" hidden></div>
       </div>
       <div class="banner" id="banner" hidden></div>
       <section id="treeView" hidden aria-label="树状视图">
@@ -1007,20 +1025,35 @@ function applyHover(){
 }
 const grpTag=id=>{const n=node(id),g=n&&group(n.g);return g?g.title.split("、")[0]+"组":"";};
 function hovList(title,items,cls,curG){
-  const MAX=8;
-  if(!items.length)return `<div class="ht-k ${cls}">${title}</div><div class="ht-none">无（这里是起点或终点）</div>`;
+  const MAX=10;
+  if(!items.length)return `<div class="ht-k ${cls}">${title}：无</div>`;
   const shown=items.slice(0,MAX).map(([id,label])=>{const n=node(id);
-    return `<li><b>${esc(nameOf(id))}</b>${n&&n.g!==curG?`<span class="ht-g">${esc(grpTag(id))}</span>`:""}${label?`<span class="ht-l">${esc(label)}</span>`:""}</li>`;}).join("");
-  return `<div class="ht-k ${cls}">${title}（${items.length}）</div><ul>${shown}</ul>${items.length>MAX?`<div class="ht-none">另有 ${items.length-MAX} 个</div>`:""}`;
+    return `<span class="hc">${esc(nameOf(id))?`<b>${esc(nameOf(id))}</b>`:""}${n&&n.g!==curG?`<i>${esc(grpTag(id))}</i>`:""}${label?`<em>${esc(label)}</em>`:""}</span>`;}).join("");
+  return `<div class="ht-k ${cls}">${title}（${items.length}）</div><div class="ht-cs" style="--hc:var(--h-${cls})">${shown}${items.length>MAX?`<span class="ht-none">另有 ${items.length-MAX} 个</span>`:""}</div>`;
 }
-function hovPlace(x,y,avoidLeft){
-  hovtip.hidden=false;const s=stage.getBoundingClientRect(),w=hovtip.offsetWidth,h=hovtip.offsetHeight;
-  let px=x;if(px+w>s.width-8)px=(avoidLeft!=null?avoidLeft:x)-w-20;if(px<8)px=8;
-  let py=y;if(py+h>s.height-8)py=s.height-h-8;if(py<8)py=8;
-  hovtip.style.left=px+"px";hovtip.style.top=py+"px";
+/* 详解停靠在画面四角里离悬停对象和高亮节点最远、遮挡最少的一角，不再贴着节点 */
+var HOV_ON=true;try{HOV_ON=localStorage.getItem("xb-hover-tip")!=="off";}catch(_){}
+let hovTimer=0;
+function hovRects(){const s=stage.getBoundingClientRect(),rel=r=>({x:r.left-s.left,y:r.top-s.top,w:r.width,h:r.height});
+  const hl=[...nodesEl.querySelectorAll(".h-up,.h-down,.h-self")].map(e=>rel(e.getBoundingClientRect()));
+  const tv=$("#treeView"),obs=["#talkbar","#simbar"].map(q=>$(q)).filter(e=>e&&!e.hidden).concat(tv&&!tv.hidden?[tv.querySelector(".bhead")]:[]).map(e=>rel(e.getBoundingClientRect()));
+  return {s,hl,obs,rel};}
+const ovl=(a,b)=>Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+function hovDock(target){
+  const {s,hl,obs}=hovRects(),w=hovtip.offsetWidth,h=hovtip.offsetHeight,W=s.width,H=s.height,m=10;
+  const cs=[[m,m],[W-w-m,m],[m,H-h-40],[W-w-56,H-h-m]].map(([x,y])=>({x:Math.max(m,x),y:Math.max(m,y),w,h}));
+  const t={x:target.x-16,y:target.y-16,w:target.w+32,h:target.h+32};
+  let best=cs[0],bs=1e18;
+  cs.forEach(c=>{const sc=ovl(c,t)*20+hl.reduce((a,r)=>a+ovl(c,r),0)*3+obs.reduce((a,r)=>a+ovl(c,r),0)*8;if(sc<bs){bs=sc;best=c;}});
+  hovtip.style.left=best.x+"px";hovtip.style.top=best.y+"px";
 }
-function hovAt(el,html){hovtip.innerHTML=html;hovtip.hidden=false;const s=stage.getBoundingClientRect(),r=el.getBoundingClientRect();hovPlace(r.right-s.left+12,r.top-s.top,r.left-s.left);}
-function hovClear(){if(!HOV&&hovtip.hidden)return;HOV=null;hovtip.hidden=true;applyHover();}
+function hovShow(html,targetRect){
+  clearTimeout(hovTimer);if(!HOV_ON)return;
+  hovTimer=setTimeout(()=>{hovtip.innerHTML=html;hovtip.hidden=false;hovtip.classList.remove("show");hovDock(targetRect());requestAnimationFrame(()=>hovtip.classList.add("show"));},260);
+}
+function hovAt(el,html){const s=stage.getBoundingClientRect();hovShow(html,()=>{const r=el.getBoundingClientRect();return {x:r.left-s.left,y:r.top-s.top,w:r.width,h:r.height};});}
+function hovPlace(x,y){/* 兼容旧调用：以鼠标点为目标 */hovDock({x:x-14,y:y-14,w:28,h:28});}
+function hovClear(){clearTimeout(hovTimer);if(!HOV&&hovtip.hidden)return;HOV=null;hovtip.hidden=true;hovtip.classList.remove("show");applyHover();}
 stage.addEventListener("mouseover",ev=>{
   if(drag||connectMode)return;
   const nd=ev.target.closest("[data-node]"),pl=ev.target.closest("[data-gpill]"),ed=ev.target.closest("[data-edge],[data-elabel]");
@@ -1034,14 +1067,15 @@ stage.addEventListener("mouseover",ev=>{
     hovAt(pl,`<div class="ht-t">${esc(group(gid).title)} · 已收起</div>`+hovList("上游 · 从哪里来",ins.map(e=>[e.from,"进入 "+nameOf(e.to)]),"up",gid)+hovList("下游 · 往哪里去",outs.map(e=>[e.to,"来自 "+nameOf(e.from)]),"down",gid));return;}
   if(ed){const eid=ed.dataset.edge||ed.dataset.elabel;const e=G.edges.find(x=>x.id===eid);if(!e||(HOV&&HOV.eid===eid))return;
     HOV={type:"edge",eid,from:e.from,to:e.to};applyHover();
-    hovtip.innerHTML=`<div class="ht-k up">从</div><div><b>${esc(nameOf(e.from))}</b><span class="ht-g">${esc(grpTag(e.from))}</span></div><div class="ht-k down">到</div><div><b>${esc(nameOf(e.to))}</b><span class="ht-g">${esc(grpTag(e.to))}</span></div>${e.label?`<div class="ht-l">${esc(e.label)}</div>`:""}${e.kind!=="normal"?`<div class="ht-none">${esc(KINDS[e.kind])}</div>`:""}`;
-    const s=stage.getBoundingClientRect();hovPlace(ev.clientX-s.left+14,ev.clientY-s.top+14);return;}
+    {const s=stage.getBoundingClientRect(),px=ev.clientX-s.left,py=ev.clientY-s.top;hovShow(`<div class="ht-k up">从</div><div><b>${esc(nameOf(e.from))}</b><span class="ht-g">${esc(grpTag(e.from))}</span></div><div class="ht-k down">到</div><div><b>${esc(nameOf(e.to))}</b><span class="ht-g">${esc(grpTag(e.to))}</span></div>${e.label?`<div class="ht-l">${esc(e.label)}</div>`:""}${e.kind!=="normal"?`<div class="ht-none">${esc(KINDS[e.kind])}</div>`:""}`,()=>({x:px-14,y:py-14,w:28,h:28}));}return;}
 });
 stage.addEventListener("mouseout",ev=>{const to=ev.relatedTarget;if(to&&to.closest&&to.closest("[data-node],[data-gpill],[data-edge],[data-elabel]"))return;hovClear();});
 stage.addEventListener("pointerdown",hovClear,true);
 stage.addEventListener("wheel",()=>{if(!hovtip.hidden)hovClear();},{passive:true});
 
 
+const bHov=$("#bHov");const syncHov=()=>{bHov.textContent="悬停详解："+(HOV_ON?"开":"关");bHov.classList.toggle("on",HOV_ON);};syncHov();
+bHov.onclick=()=>{HOV_ON=!HOV_ON;try{localStorage.setItem("xb-hover-tip",HOV_ON?"on":"off");}catch(_){}if(!HOV_ON){clearTimeout(hovTimer);hovtip.hidden=true;}syncHov();};
 /* ---------- 树状视图（工作树） ---------- */
 var treeView=$("#treeView"),treeBody=$("#treeBody");
 var TREE_CLOSED=null;
@@ -1093,7 +1127,7 @@ treeBody.addEventListener("mouseover",e=>{
   const ins=G.edges.filter(x=>x.to===id),outs=G.edges.filter(x=>x.from===id),cg=(node(id)||{}).g;
   hovAt(r,`<div class="ht-t">${esc(nameOf(id))}</div>`+hovList("上游 · 从哪里来",ins.map(x=>[x.from,x.label]),"up",cg)+hovList("下游 · 往哪里去",outs.map(x=>[x.to,x.label]),"down",cg));
 });
-treeBody.addEventListener("mouseleave",()=>{hovtip.hidden=true;});
+treeBody.addEventListener("mouseleave",()=>{clearTimeout(hovTimer);hovtip.hidden=true;});
 
 /* ---------- 跟讲：读 topology/pointer，Claude 写哪里就标哪里 ---------- */
 const TALK={nodes:new Set(),edges:new Set(),follow:true,at:0,first:true};
@@ -1121,15 +1155,28 @@ function talkApply(d){
   // 被讲到的节点如果在收起的分组里，临时展开（只影响本页显示）
   [...TALK.nodes].forEach(id=>{const n=node(id);const g=n&&group(n.g);if(g&&g.collapsed)g.collapsed=false;});
   $("#talkText").textContent=d.text||"";
-  $("#talkChips").innerHTML=[...TALK.nodes].map(id=>`<button type="button" data-talkgo="${esc(id)}">${esc(nameOf(id))}</button>`).join("");
+  TALK.questions=Array.isArray(d.questions)?d.questions:[];TALK.focus=null;$("#talkDetail").hidden=true;
+  const qOf=id=>TALK.questions.filter(q=>(q.nodes||[]).includes(id)).map(q=>q.n);
+  $("#talkChips").innerHTML=[...TALK.nodes].map(id=>{const qs=qOf(id);return `<button type="button" data-talkgo="${esc(id)}" title="点击在图上聚焦，并看完整问题">${qs.length?`<span class="qn">${esc(qs.join("·"))}</span>`:""}${esc(nameOf(id))}</button>`;}).join("");
   talkbar.hidden=false;talkWhen();
   render(true);
   const ids=[...TALK.nodes];TALK.edges.forEach(id=>{const e=G.edges.find(x=>x.id===id);if(e)ids.push(e.from,e.to);});
   if(TALK.follow&&ids.length)requestAnimationFrame(()=>panTo(ids));
 }
 $("#talkFollow").onchange=e=>{TALK.follow=e.target.checked;};
+["#talkbar","#simbar"].forEach(q=>{const el=$(q);if(!el)return;el.addEventListener("pointerdown",e=>e.stopPropagation());el.addEventListener("wheel",e=>e.stopPropagation());});
 $("#talkClose").onclick=()=>{talkbar.hidden=true;TALK.nodes.clear();TALK.edges.clear();render(true);};
-$("#talkChips").addEventListener("click",e=>{const b=e.target.closest("[data-talkgo]");if(!b)return;sel={type:"node",id:b.dataset.talkgo};tab="inspect";render();openSheet();});
+$("#talkChips").addEventListener("click",e=>{const b=e.target.closest("[data-talkgo]");if(!b)return;const id=b.dataset.talkgo;
+  if(!treeView.hidden)closeTree();if(!$("#board").hidden)closeBoard();
+  TALK.focus=id;$("#talkChips").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  focusNode(id);
+  // 被讲解框挡住时往左挪一点
+  const s=stage.getBoundingClientRect(),w=talkbar.offsetWidth;if(!talkbar.hidden&&s.width>760){view.x-=Math.min(w/2+10,s.width/4);applyView();}
+  nodesEl.querySelectorAll(".talk-focus").forEach(x=>x.classList.remove("talk-focus"));const el=nodesEl.querySelector(`[data-node="${CSS.escape(id)}"]`);if(el)el.classList.add("talk-focus");
+  const qs=TALK.questions.filter(q=>(q.nodes||[]).includes(id)),det=$("#talkDetail");
+  det.innerHTML=`<div class="eyebrow">${esc(nameOf(id))}</div>`+(qs.length?qs.map(q=>`<div class="q"><b><span class="qn">${esc(q.n)}</span>${esc(q.title||"")}</b><p>${esc(q.text||"")}</p></div>`).join(""):'<div class="q"><p>这个节点没有单独的问题说明，看上面的总述。</p></div>');
+  det.hidden=false;det.scrollTop=0;
+});
 
 /* ---------- 面板 ---------- */
 const aside=$("#aside");
