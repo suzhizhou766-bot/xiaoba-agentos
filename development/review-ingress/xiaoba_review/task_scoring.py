@@ -38,8 +38,11 @@ class TaskScoring:
         if not facts:raise ValueError('找不到已接收的业务任务回执；健康探针不能计为业务能力分')
         models={v['model'] for v in facts}
         if len(models)!=1 or None in models:raise ValueError('同一任务的模型归属不明确')
-        if outcome=='good' and any(v['status']!='completed' for v in facts):
-            raise ValueError('受阻或失败的工作回执不能记为完成得好')
+        if outcome=='good':
+            if any(v['status']!='completed' for v in facts):
+                raise ValueError('受阻或失败的工作回执不能记为完成得好')
+            if any(v.get('is_review') and not v.get('review_qualified') for v in facts):
+                raise ValueError('审查不合格的回执不能记为完成得好')
         model=next(iter(models))
         key=digest([facts[0]['source_ref'],model,task_id])
         # The day/weekly bucket comes from host completion time, not a date

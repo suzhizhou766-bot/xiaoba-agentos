@@ -55,7 +55,16 @@ class JsonStdioResource:
     def run(self, card):
         value=self.call({'protocol':self.protocol,'operation':'review','card':card})
         if value.get('card_digest')!=card['card_digest']:raise ValueError('入口响应未绑定本任务')
-        return value
+        result = {
+            'verdict': value.get('verdict'),
+            'findings': value.get('findings'),
+            'evidence_refs': value.get('evidence_refs'),
+            'execution_evidence': value.get('execution_evidence', {})
+        }
+        for key in ('review_type', 'score', 'scores', 'applicability', 'duplicate_of'):
+            if key in value:
+                result[key] = value[key]
+        return result
 
 
 def json_stdio_factory(source, workspace_root=None, agy_mode='cli'):

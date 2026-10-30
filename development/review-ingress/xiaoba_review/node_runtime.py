@@ -4,7 +4,7 @@ Resource readiness is never a human experience approval.
 """
 import json
 import time
-from .agent_pool import node_state, require_enabled, resource_plan
+from .agent_pool import independence, node_state, require_enabled, resource_plan
 from .store import Conflict, canonical, digest, identifier
 from xiaoba_agentos.output_hygiene import contains_non_answer_markers, detect_reasoning_leak
 
@@ -48,7 +48,7 @@ class NodeRuntime:
                     blockers.append({'node_id':source['reviewer_id'],'reason':'workday_adapter_required'});continue
                 chosen[kind]=source
         if questions or blockers:return {'route':'ask_user' if questions else 'blocked','questions':questions,'blockers':blockers,'model_tasks_sent':0}
-        if len({v['source_ref'] for v in chosen.values()})!=len(chosen):
+        if len({independence(v) for v in chosen.values()})!=len(chosen):
             return {'route':'blocked','blockers':[{'reason':'independent_source_required'}],'model_tasks_sent':0}
         fingerprint=digest([required_kinds,selections])
         with self.store.transaction() as db:
@@ -271,7 +271,7 @@ class NodeRuntime:
                     if missing:questions.extend({'kind':kind,'field':k,'question':FIELDS[k]} for k in FIELDS if k in missing)
                     else:questions.append({'kind':kind,'field':'readiness','question':'当前节点尚不可直接运行，请在运行总览开启并完成测试；只补处理列出的缺项。'})
             if len(chosen)==len(required_kinds):
-                if len({s['source_ref'] for s in chosen.values()})!=len(chosen):
-                    return {'route':'ask_user','questions':[{'field':'independent_source','question':'需要不同实际来源的后台节点，别名或换模型不能替代独立来源。'}],'blockers':[]}
+                if len({independence(s) for s in chosen.values()})!=len(chosen):
+                    return {'route':'ask_user','questions':[{'field':'independent_source','question':'需要不同入口程序的后台节点：同一入口换模型算两个，改名称或换会话不算。'}],'blockers':[]}
                 return {'route':'run','questions':[],'selections':{k:s['reviewer_id'] for k,s in chosen.items()}}
         return {'route':'ask_user','questions':questions,'blockers':blockers,'selections':{k:s['reviewer_id'] for k,s in chosen.items()}}

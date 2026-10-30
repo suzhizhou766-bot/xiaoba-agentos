@@ -103,10 +103,9 @@ class BackendRegistry:
             payload = {key: card[key] for key in ('review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision', 'reviewer_id',
                        'source_ref', 'candidate_sha256', 'input_digest', 'card_digest')}
             payload.update({key: result[key] for key in ('verdict', 'findings', 'evidence_refs')})
-            if 'scores' in result:
-                payload['scores'] = result['scores']
-            if 'execution_evidence' in result:
-                payload['execution_evidence'] = result['execution_evidence']
+            for key in ('review_type', 'score', 'applicability', 'duplicate_of', 'scores', 'execution_evidence'):
+                if key in result:
+                    payload[key] = result[key]
             payload.update(receipt_id=token, started_at=started, finished_at=time.time())
             with self.store.transaction() as db:
                 current = db.execute('SELECT running,active FROM ri_assignments WHERE id=?', (assignment_id,)).fetchone()
@@ -120,7 +119,7 @@ class BackendRegistry:
             with self.store.transaction() as db:
                 self.store.event(db, row['request_id'], 'backend_failed',
                                  {'assignment_id': assignment_id, 'attempt': token, 'error_type': type(exc).__name__})
-                if require_test and not getattr(exc,'preserve_node_health',False):
+                if gated and not getattr(exc,'preserve_node_health',False):
                     source=self.store.source(db,row['source_id'])
                     node=source['node'];node['test']={'status':'failed','reason':'task_execution_failed'};node['revision']+=1
                     db.execute('UPDATE ri_sources SET data=? WHERE id=?',(canonical(source),row['source_id']))
@@ -129,6 +128,8 @@ class BackendRegistry:
                 if getattr(exc,'preserve_node_health',False):
                     raise ValueError(getattr(exc,'user_message','工作回执已保存，业务审查未完成；节点健康资格保留。')) from None
                 raise ValueError('节点调用未完成（'+type(exc).__name__+'）；已停止直跑，不自动重试或替换后台') from None
+            if getattr(exc,'preserve_node_health',False):
+                raise ValueError(getattr(exc,'user_message','工作回执已保存，业务审查未完成；节点健康资格保留。')) from None
             raise
         finally:
             with self.store.transaction() as db:

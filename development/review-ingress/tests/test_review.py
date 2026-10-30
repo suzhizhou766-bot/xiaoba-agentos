@@ -48,13 +48,20 @@ class FixtureMixin:
         return self.store.create(self.candidate['task_id'], 'fixture-dsh', 'fixture-peer',
                                   '核查夹具方法', [{'ref': 'fixture-execution', 'sha256': 'a'*64}], **kwargs)
 
-    def receipt(self, assignment, verdict='PASS'):
+    def receipt(self, assignment, verdict='PASS', **kwargs):
         card = assignment['card']
+        contract = card.get('receipt_contract', {})
+        version = contract.get('version', 1)
         payload = {key: card[key] for key in ('review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision', 'reviewer_id',
                    'source_ref', 'candidate_sha256', 'input_digest', 'card_digest')}
+        refs = [c['ref'] for c in card.get('evidence_refs', []) if isinstance(c, dict)] or ['fixture']
         payload.update(receipt_id='receipt-'+assignment['id'], verdict=verdict,
-                       findings='仅测试夹具审查正文；未执行真实任务。', evidence_refs=['fixture'],
+                       findings='仅测试夹具审查正文；未执行真实任务。', evidence_refs=refs,
                        started_at=time.time()-1, finished_at=time.time())
+        if version >= 2:
+            payload.update(review_type=card.get('review_type', 'new_experience'),
+                           score=8, applicability='仅测试夹具适用条件说明')
+        payload.update(kwargs)
         return payload
 
     def complete(self, request, verdict='PASS'):

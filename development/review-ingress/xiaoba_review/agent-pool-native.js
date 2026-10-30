@@ -43,6 +43,7 @@
       const toggle=action(card,'',()=>pool.toggle(node),'ap-toggle');toggle.dataset.nodeId=node.node_id;toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','启用 '+node.name);toggle.setAttribute('aria-checked',String(node.enabled));toggle.title=node.enabled?'关闭节点':'开启节点';toggle.disabled=!writable;
     }
     action(column,'＋ 添加节点',()=>pool.add(),'ap-add').disabled=!writable;
+    action(column,'派工审查',()=>pool.dispatch(),'ap-add').disabled=!writable;
     action(column,'管理 / 已移除 '+(state?.nodes.filter(n=>n.removed).length||0),()=>pool.manage(),'ap-manage');
     column.scrollTop=scroll;
     drawRoutes();

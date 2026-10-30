@@ -2,6 +2,7 @@
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -156,6 +157,58 @@ class AgentWorkspace:
             if worklog['date']!=day:continue
             seen.add(row['receipt_sha256'])
             result=receipt.get('result') or {}
+            is_review = record.startswith('review-')
+            review_qualified = None
+            if is_review:
+                meta = result.get('metadata') or {}
+                verdict = meta.get('审查结论') or meta.get('verdict')
+                has_verdict = verdict in {'PASS', 'FAIL', 'NEEDS_INFO'}
+                refs = result.get('evidence_refs') or []
+                has_refs = bool(refs) and all(r is not None and (not isinstance(r, str) or bool(r.strip())) for r in refs)
+                status_ok = (result.get('status') or receipt.get('status')) in {'completed', 'execution_completed'}
+                no_failure = not receipt.get('reason') and not receipt.get('failure_reason')
+
+                card_file = root / '任务记录' / record / '任务卡.json'
+                card_data = {}
+                if card_file.exists():
+                    try:
+                        raw_card = json.loads(self._read(card_file))
+                        card_data = raw_card.get('context') if isinstance(raw_card.get('context'), dict) else raw_card
+                    except Exception:
+                        pass
+                contract = card_data.get('receipt_contract') or {}
+                is_v2 = contract.get('version', 1) >= 2
+                v2_ok = True
+                if is_v2:
+                    rtype = meta.get('审查类型') or meta.get('review_type')
+                    score_raw = meta.get('评分') or meta.get('score')
+                    app = meta.get('适用条件') or meta.get('适用条件与限制') or meta.get('applicability')
+                    score_ok = False
+                    if score_raw is not None:
+                        try:
+                            s = float(score_raw)
+                            if math.isfinite(s) and 0 <= s <= 10:
+                                score_ok = True
+                        except (ValueError, TypeError):
+                            pass
+                    rtype_ok = rtype in {'new_experience', 'revalidation', 'reuse_change'}
+                    app_ok = isinstance(app, str) and bool(app.strip())
+                    card_evidence = card_data.get('evidence_refs', [])
+                    def match_ref(r):
+                        if isinstance(r, str):
+                            return bool(r.strip()) and any(c.get('ref') == r for c in card_evidence if isinstance(c, dict))
+                        if isinstance(r, dict):
+                            ref_val = r.get('ref')
+                            sha_val = r.get('sha256')
+                            return (bool(ref_val and isinstance(ref_val, str) and ref_val.strip()) and
+                                    bool(sha_val and isinstance(sha_val, str) and sha_val.strip()) and
+                                    any(c.get('ref') == ref_val and c.get('sha256') == sha_val for c in card_evidence if isinstance(c, dict)))
+                        return False
+                    refs_ok = bool(refs) and all(match_ref(r) for r in refs)
+                    v2_ok = rtype_ok and score_ok and app_ok and refs_ok
+
+                review_qualified = bool(status_ok and no_failure and has_verdict and has_refs and v2_ok)
+
             items.append({'task_id':worklog['task_id'],'step_code':worklog['step_code'],
                 'record':record,'receipt_sha256':row['receipt_sha256'],'worklog':worklog,
                 'node_id':self.node_id,'source_ref':self.source_ref,'model':evidence.get('model'),
@@ -163,7 +216,9 @@ class AgentWorkspace:
                 'failure_reason':receipt.get('reason'),
                 'evidence_refs':result.get('evidence_refs',[]),'completed_at':row['time'],
                 'elapsed_seconds':max(0,row['time']-starts.get(record,row['time'])),
-                'health_check':record.startswith('test-'),'self_report_is_independently_verified':False,
+                'health_check':record.startswith('test-'),
+                'is_review':is_review,'review_qualified':review_qualified,
+                'self_report_is_independently_verified':False,
                 'user_delivery_accepted':receipt.get('user_delivery_accepted',False),
                 'experience_approved':False})
         return items

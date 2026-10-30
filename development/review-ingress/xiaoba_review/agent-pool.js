@@ -4,7 +4,7 @@
   const byId=id=>document.getElementById(id),drawer=byId('apDrawer');
   if(!drawer)return;
   const token=drawer.dataset.pageToken;
-  let state=null,selected=null,mode=null,pendingAdd=null,removeConfirm=false,returnFocus=null,drawerSignature=null;
+  let state=null,selected=null,mode=null,pendingAdd=null,pendingDispatch=null,removeConfirm=false,returnFocus=null,drawerSignature=null;
   const watchers=[];
   let previewOpen=false,previewTimer=null,previewAbort=null,previewGeneration=0;
   function stopPreview(){clearTimeout(previewTimer);previewTimer=null;previewAbort?.abort();previewAbort=null;previewGeneration++;}
@@ -16,10 +16,10 @@
   function open(next,node){
     stopPreview();previewOpen=false;
     returnFocus=document.activeElement;mode=next;selected=node?.node_id||null;removeConfirm=false;drawerSignature=null;
-    drawer.hidden=false;byId('apScrim').hidden=false;byId('apForm').hidden=next!=='add';byId('apDetail').hidden=next!=='detail';byId('apManage').hidden=next!=='manage';
-    byId('apTitle').textContent=next==='add'?'添加 Agent 节点':next==='manage'?'管理后台节点':node.name;note('');
+    drawer.hidden=false;byId('apScrim').hidden=false;byId('apForm').hidden=next!=='add';byId('apDetail').hidden=next!=='detail';byId('apManage').hidden=next!=='manage';byId('apDispatch').hidden=next!=='dispatch';
+    byId('apTitle').textContent=next==='add'?'添加 Agent 节点':next==='manage'?'管理后台节点':next==='dispatch'?'派工审查':node.name;note('');
     if(next==='add'){byId('apForm').reset();byId('apForm').elements.name.focus();}
-    else {renderDrawer();byId('apClose').focus();}
+    else {renderDrawer();if(next==='dispatch')byId('apDispatchGo').disabled=!writable();byId('apClose').focus();}
   }
   function writable(){return Boolean(token&&token!=='__TOKEN__'&&state?.event_chain.ok);}
   function terminal(root,node){
@@ -109,6 +109,23 @@
     event.preventDefault();const submit=event.submitter;submit.disabled=true;
     try{const value=Object.fromEntries(new FormData(event.target)),signature=JSON.stringify(value);if(!pendingAdd||pendingAdd.signature!==signature)pendingAdd={signature,id:crypto.randomUUID()};const added=await api('nodes',{node_id:pendingAdd.id,...value,agent:value.name});const id=added.result.reviewer_id;pendingAdd=null;await refresh();open('detail',state.nodes.find(n=>n.node_id===id));note('节点已添加，保持关闭；请开启并测试运行。');}catch(error){note(error);}finally{submit.disabled=false;}
   });
-  window.XiaobaAgentPool={watch(fn){watchers.push(fn);fn(state,writable());},add(){open('add');},manage(){open('manage');},open(node){open('detail',node);},toggle(node){return change(node,'toggle',!node.enabled);},report:note};
+  byId('apDispatchGo').addEventListener('click',async()=>{
+    const go=byId('apDispatchGo');go.disabled=true;
+    try{
+      const review_type=byId('apReviewType').value;
+      if(!review_type)throw Error('请选择审查类型');
+      const candidate_id=byId('apCandidate').value.trim(),scope=byId('apScope').value.trim();
+      if(!candidate_id||!scope)throw Error('请填写原经验卡 ID 和审查范围');
+      let evidence;try{evidence=JSON.parse(byId('apEvidence').value||'[]');}catch(error){throw Error('证据引用需要 JSON 数组');}
+      const value={candidate_id,scope,evidence,review_type},signature=JSON.stringify(value);
+      if(!pendingDispatch||pendingDispatch.signature!==signature)pendingDispatch={signature,id:crypto.randomUUID()};
+      const result=(await api('dispatch',{...value,request_id:pendingDispatch.id})).result;pendingDispatch=null;
+      if(result.route==='completed')note('派工完成；任务卡与回执在开放审查页查看。');
+      else if(result.route==='ask_user')note((result.questions||[]).map(q=>q.question).join(' ')||'需要先补齐节点资料或选定节点。');
+      else note('派工未完成：'+((result.blockers||[]).map(b=>b.reason).join('、')||'节点不可用'));
+      await refresh();
+    }catch(error){note(error);}finally{go.disabled=!writable();}
+  });
+  window.XiaobaAgentPool={watch(fn){watchers.push(fn);fn(state,writable());},add(){open('add');},manage(){open('manage');},dispatch(){open('dispatch');},open(node){open('detail',node);},toggle(node){return change(node,'toggle',!node.enabled);},report:note};
   refresh();setInterval(()=>{if(!document.hidden&&mode!=='add')refresh();},5000);
 })();

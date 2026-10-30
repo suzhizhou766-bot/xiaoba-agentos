@@ -11,6 +11,14 @@
     <label>模型<input name="model" placeholder="填写你已选定的模型" required maxlength="200"></label>
     <p class="ap-note">名称、调用方式、入口和模型均由你指定，也可通过与小八对话补齐。新节点先关闭；开启并测试通过后，小八直接使用适用节点，不重复问这些资料。AGY CLI 使用脚本＋持续交互 PTY，可在节点内查看只读终端；其他 CLI、桌面或 Web 需要对应受信调用器。</p><button type="submit" class="ap-primary ap-wide">添加节点</button>
   </form>
+  <section id="apDispatch" hidden>
+    <p class="ap-note">派工审查由本机按角色挑已开启、已测试通过的节点执行。审查类型必须由你选择：不选不会派工，也不会生成第 1 版任务卡。</p>
+    <label>审查类型<select id="apReviewType"><option value="">-- 请选择审查类型 --</option><option value="new_experience">新经验</option><option value="revalidation">复验</option><option value="reuse_change">复用改动</option></select></label>
+    <label>原经验卡 ID<input id="apCandidate" maxlength="128" placeholder="当前待审的原经验卡 ID"></label>
+    <label>审查范围<input id="apScope" maxlength="2048" placeholder="本次要审查什么"></label>
+    <label>证据引用 JSON<textarea id="apEvidence" rows="3" style="width:100%;box-sizing:border-box;border:1px solid var(--line,#52727d);border-radius:8px;padding:10px 11px;background:var(--bg,#102b37);color:var(--text,#d9e8ee);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace" placeholder='[{"ref":"任务或产物版本","sha256":"实际证据摘要"}]'></textarea></label>
+    <button id="apDispatchGo" type="button" class="ap-primary ap-wide">派工审查</button>
+  </section>
   <section id="apDetail" hidden></section><section id="apManage" hidden></section>
   <p class="ap-scope">资料缺失时小八只补问缺项；已开启且当前入口与模型测试通过时直接调用。关闭、移除、入口变化或执行失败会阻止继续直跑。当前覆盖开放审查链，旧 Worker 后台名单仍按原配置；技术测试不批准经验。</p>
 </aside>

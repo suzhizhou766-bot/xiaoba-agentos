@@ -135,14 +135,31 @@ class ReviewStore:
         if channel not in {'external_handoff', 'backend_adapter'}:
             raise ValueError('未知接入通道')
         common = json.loads(request['common'])
+        contract_version = common.get('contract_version') or (2 if common.get('review_type') is not None else 1)
+        if contract_version >= 2:
+            receipt_contract = {
+                'version': 2,
+                'verdicts': ['PASS', 'FAIL', 'NEEDS_INFO'],
+                'review_types': ['new_experience', 'revalidation', 'reuse_change'],
+                'required': ['receipt_id', 'card_digest', 'review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision',
+                             'reviewer_id', 'source_ref', 'input_digest', 'candidate_sha256',
+                             'verdict', 'findings', 'evidence_refs', 'started_at', 'finished_at',
+                             'review_type', 'score', 'applicability'],
+                'optional': ['duplicate_of'],
+            }
+        else:
+            receipt_contract = {
+                'version': 1,
+                'verdicts': ['PASS', 'FAIL', 'NEEDS_INFO'],
+                'required': ['receipt_id', 'card_digest', 'review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision',
+                             'reviewer_id', 'source_ref', 'input_digest', 'candidate_sha256',
+                             'verdict', 'findings', 'evidence_refs', 'started_at', 'finished_at'],
+            }
         card = {'assignment_id': identifier(), 'review_request_id': request['id'],
                 'plan_revision': request['revision'], 'reviewer_role': role,
                 'reviewer_id': source_id, 'source_ref': source['source_ref'],
                 'channel': channel, 'input_digest': digest(common), **common,
-                'receipt_contract': {'version': 1, 'verdicts': ['PASS', 'FAIL', 'NEEDS_INFO'],
-                    'required': ['receipt_id', 'card_digest', 'review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision',
-                                 'reviewer_id', 'source_ref', 'input_digest', 'candidate_sha256',
-                                 'verdict', 'findings', 'evidence_refs', 'started_at', 'finished_at']}}
+                'receipt_contract': receipt_contract}
         if plan is not None:
             card['resource_plan'] = plan
         card['card_digest'] = digest(card)
@@ -151,19 +168,36 @@ class ReviewStore:
         return card
 
     def create(self, candidate_id, dsh_id, peer_id, scope, evidence, request_id=None,
-               dsh_channel='external_handoff', peer_channel='external_handoff'):
+               dsh_channel='external_handoff', peer_channel='external_handoff',
+               contract_version=None, review_type=None, duplicate_of=None):
         if not isinstance(scope, str) or not scope.strip() or not isinstance(evidence, list) or not evidence:
             raise ValueError('需要审查范围和证据引用')
         if any(not isinstance(ref, dict) or not isinstance(ref.get('ref'), str) or not ref['ref'].strip()
                or not isinstance(ref.get('sha256'), str) or not re.fullmatch('[0-9a-f]{64}', ref['sha256']) for ref in evidence):
             raise ValueError('每份证据需要非空 ref 和 SHA-256；摘要只绑定材料，不证明实际执行')
+        if contract_version is None:
+            contract_version = 2 if review_type is not None else 1
+        if contract_version not in (1, 2):
+            raise ValueError('不支持的合同版本')
+        if contract_version >= 2:
+            if not review_type:
+                raise ValueError('新任务卡必须指定审查类型 (review_type)')
+            if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:
+                raise ValueError('未知审查类型')
+            if duplicate_of is not None and not isinstance(duplicate_of, str):
+                raise ValueError('重复经验标识异常')
         request_id = request_id or identifier()
         with self.transaction() as db:
             subject = self.subject(db, candidate_id)
             dsh, peer = self.source(db, dsh_id), self.source(db, peer_id)
-            if dsh['source_ref'] == peer['source_ref']:
-                raise ValueError('两方实际来源相同，别名不能凑独立意见')
-            common = {**subject, 'scope': scope, 'evidence_refs': evidence}
+            from .agent_pool import independence
+            if independence(dsh) == independence(peer):
+                raise ValueError('两方实际来源相同（入口程序与模型一致），不能凑独立意见')
+            common = {**subject, 'scope': scope, 'evidence_refs': evidence, 'contract_version': contract_version}
+            if review_type is not None:
+                common['review_type'] = review_type
+            if duplicate_of is not None and duplicate_of.strip():
+                common['duplicate_of'] = duplicate_of.strip()
             from xiaoba_agentos.validation_migration import is_validation_extension_installed
             has_extension = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('experience_validation_meta','experience_validation_lineages','experience_validation_records')").fetchone()
             if has_extension and not is_validation_extension_installed(db):
@@ -235,10 +269,12 @@ class ReviewStore:
                 raise ValueError('找不到任务卡；未关联回执不写入经验')
             request = db.execute('SELECT * FROM ri_requests WHERE id=?', (assignment['request_id'],)).fetchone()
             card = json.loads(assignment['card'])
+            contract = card.get('receipt_contract', {})
+            contract_version = contract.get('version', 1)
             reason = ''
             for key in ('review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision', 'reviewer_id', 'source_ref',
                         'candidate_sha256', 'input_digest', 'card_digest'):
-                if data.get(key) != card[key]:
+                if data.get(key) != card.get(key):
                     reason = '任务卡关联不符：' + key
                     break
             text = data.get('findings')
@@ -247,6 +283,47 @@ class ReviewStore:
                                or contains_non_answer_markers(text) or detect_reasoning_leak(text)
                                or not isinstance(data.get('evidence_refs'), list) or not data['evidence_refs']):
                 reason = '缺少有效审查正文、结论或证据，或违反 B19'
+            if not reason:
+                for item in data['evidence_refs']:
+                    if item is None or (isinstance(item, str) and not item.strip()):
+                        reason = '证据引用包含空值或空字符串'
+                        break
+                    if contract_version >= 2:
+                        matched = False
+                        card_evidence = card.get('evidence_refs', [])
+                        if isinstance(item, str):
+                            matched = any(isinstance(c, dict) and c.get('ref') == item for c in card_evidence)
+                        elif isinstance(item, dict):
+                            ref = item.get('ref')
+                            sha = item.get('sha256')
+                            if isinstance(ref, str) and ref.strip() and isinstance(sha, str) and re.fullmatch('[0-9a-f]{64}', sha):
+                                matched = any(isinstance(c, dict) and c.get('ref') == ref and c.get('sha256') == sha for c in card_evidence)
+                        if not matched:
+                            reason = '证据引用未对应任务卡材料：' + str(item)
+                            break
+            if not reason and contract_version >= 2:
+                review_type = data.get('review_type')
+                if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:
+                    reason = '缺少审查类型或审查类型无效'
+                elif card.get('review_type') and review_type != card['review_type']:
+                    reason = '审查类型与任务卡不符'
+                if not reason:
+                    if 'score' not in data or data['score'] is None:
+                        reason = '缺少评分'
+                    else:
+                        score = data['score']
+                        if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not (0 <= score <= 10):
+                            reason = '评分超出有效范围（0–10）'
+                if not reason:
+                    applicability = data.get('applicability')
+                    if not isinstance(applicability, str) or not applicability.strip():
+                        reason = '缺少适用条件与限制说明'
+                    elif contains_non_answer_markers(applicability) or detect_reasoning_leak(applicability):
+                        reason = '适用条件违反 B19'
+                if not reason:
+                    dup = data.get('duplicate_of')
+                    if dup is not None and not isinstance(dup, str):
+                        reason = '重复经验标识格式无效'
             start, finish = data.get('started_at'), data.get('finished_at')
             if not reason and (any(type(x) not in (int, float) or not math.isfinite(x) for x in (start, finish))
                                or finish < start or start <= 0 or finish > time.time() + 300):
@@ -295,7 +372,8 @@ class ReviewStore:
                              'identity_basis': receipt['attestation']})
         if len(assignments) != 2 or {a['role'] for a in assignments} != {'dsh', 'peer'}:
             return
-        if len({self.source(db, a['source_id'])['source_ref'] for a in assignments}) != 2:
+        from .agent_pool import independence
+        if len({independence(self.source(db, a['source_id'])) for a in assignments}) != 2:
             raise ValueError('实际来源不独立')
         prior_failures = [json.loads(r['data']) for r in db.execute(
             "SELECT data FROM ri_receipts WHERE request_id=? AND status='valid' ORDER BY rowid", (request['id'],))
@@ -305,6 +383,10 @@ class ReviewStore:
                   'prior_failures': prior_failures,
                   'all_pass': all(r['receipt']['verdict'] == 'PASS' for r in receipts) and not prior_failures,
                   'approval': 'human_required', 'native_validation_gate': 'unchanged'}
+        scores = {r['receipt']['reviewer_role']: r['receipt']['score']
+                  for r in receipts if 'score' in r['receipt'] and r['receipt']['score'] is not None}
+        if scores:
+            packet['scores'] = scores
         checksum = digest(packet)
         # Receipt-version changes supersede old packets, retaining their full history.
         packet_id = request['id'] + ':' + checksum
@@ -326,7 +408,8 @@ class ReviewStore:
             if old['running']:
                 raise Conflict('后台仍执行中，不能无痕换人；先等待执行结束')
             dsh = db.execute("SELECT source_id FROM ri_assignments WHERE request_id=? AND role='dsh' AND active=1", (request_id,)).fetchone()
-            if self.source(db, source_id)['source_ref'] == self.source(db, dsh['source_id'])['source_ref']:
+            from .agent_pool import independence
+            if independence(self.source(db, source_id)) == independence(self.source(db, dsh['source_id'])):
                 raise ValueError('实际来源不独立')
             db.execute('UPDATE ri_assignments SET active=0 WHERE id=?', (old['id'],))
             db.execute("UPDATE ri_requests SET revision=revision+1,state='waiting_receipts' WHERE id=?", (request_id,))
