@@ -2,7 +2,7 @@
 
 ## 架构拓扑（Agent 先读）
 
-用户维护的架构设计底座快照见 [docs/architecture-topology](docs/architecture-topology/README.md)：从 [AGENT_READER.md](docs/architecture-topology/AGENT_READER.md) 读每个模块的状态、用户意图、问题与待办和按日期的变更历史。
+用户维护的架构设计底座快照见 [docs/architecture-topology](docs/architecture-topology/README.md)：从 [AGENT_READER.md](docs/architecture-topology/AGENT_READER.md) 读每个模块的状态、用户意图、问题与待办和按日期的变更历史；待裁决项和旧规则覆盖见 [DECISIONS.md](docs/architecture-topology/DECISIONS.md)，图上画不出来的规则见 [CONTRACTS.md](docs/architecture-topology/CONTRACTS.md)。
 
 ## 当前云端开发
 
@@ -20,7 +20,7 @@
 
 | 目录 | 是什么 |
 |---|---|
-| `release/` | v1.6.1 不可变发布包的原样拷贝（232 个文件加 `FILES.sha256` 清单）。包含 `agentos/`（源码、脚本、配置、测试、文档）、`interface/`（已安装入口）、`second-brain/`（发布生成的 30 篇规则与发布状态笔记）、`RELEASE.json`。可用 `FILES.sha256` 逐文件核对 |
+| `release/` | v1.6.1 不可变发布包的原样拷贝（232 个文件加 `FILES.sha256` 清单）。包含 `agentos/`（源码、脚本、配置、测试、文档）、`interface/`（已安装入口）、`second-brain/`（发布生成的 31 个规则与发布状态文件）、`RELEASE.json`。可用 `FILES.sha256` 逐文件核对；其中 `./agentos/SOURCE_MANIFEST.json` 和 `./agentos/docs/VERSIONING.md` 两项不符，是提交 `6eea89f` 在定版快照之后改的，清单保留定版时的样子，不重算 |
 | `content/skills/` | 上线时的 8 个技能，连同 `catalog.json` 与 `index.json`。自 v1.6.1 起技能不在发布包内，线上位置是 `私人助理/skills/` |
 | `content/价值文件索引/` | 价值文件的目录与索引。原文不在这里（它们是项目材料） |
 | `monitor/` | 小八监看中心与 Key 池代理的定版快照（本机仓库 `私人助理/工具/小八监看` 的提交 `24c6eb9`，2026-10-14），含冻结任务列表与单个恢复。监看中心不随 AgentOS 发布，在本机独立仓库开发，这里只是留存。`keypool.json`、`run/`、`logs/`、`monitor.log` 被 `.gitignore` 排除，不在这里 |
@@ -36,5 +36,5 @@
 
 运行数据库、凭据、配置里的模型线路覆盖文件、第二大脑里的经验与内容笔记、项目素材。发布包本身不含这些。
 
-文件里有本机的目录路径（`/Users/…`），所以这个仓库保持私有。测试文件里形如 `sk-…`、`AKIA…EXAMPLE` 的字符串是测试用的假凭据，不是真的。
+这个仓库是用户有意公开的（2026-10-30 确认）。文件里有本机的目录路径（`/Users/…`）和工作记录；继续上传时不放凭据、运行数据库和真实 Agent 工作原文。测试文件里形如 `sk-…`、`AKIA…EXAMPLE` 的字符串是测试用的假凭据，不是真的。
 

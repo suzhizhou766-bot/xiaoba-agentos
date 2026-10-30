@@ -9,6 +9,8 @@
 
 后续源码审计与复测见 [阶段 A 云端记录](PHASE-A-CLOUD-AUDIT-20261027.md)；待实现的权威核验、跨模块发布、自举及恢复方案见 [关键集成契约草案](V1.6.5-INTEGRATION-CONTRACTS-DRAFT.md)。其中发布恢复、生成器旧规则与验证链未贯通仍属正式切换阻断，不能仅完成本地部署就视为可发布。
 
+> 2026-10-30 补注：第 2 节是 10-27 的裁决，之后用户在架构拓扑上有更新。2.1“固定 DSH”已被“Agent 池不固定品牌”取代；2.5 任务综合评分已被评分中心三本账取代。以 `docs/architecture-topology/`（`AGENT_READER.md`、`DECISIONS.md`）为准。
+
 ## 1. 版本、源码和证据基线
 
 | 对象 | 明确状态 / 定位 |
@@ -18,7 +20,7 @@
 | 原始材料提交 | `b655dff2b4bf9127ca21f847a8e2e3da82d32517` |
 | 开放审查扩展提交 | `1a3d8da334aa91bd85b54247d4ca3af8f1d4b044` |
 | 当前云端开发基线 | `87b547990cedf67c7eb33eeb947bcf6f96facc6b`；含架构升级中心及审查扩展 |
-| 仓库 | <https://github.com/suzhizhou766-bot/xiaoba-agentos>（私有） |
+| 仓库 | <https://github.com/suzhizhou766-bot/xiaoba-agentos>（用户 2026-10-30 确认有意公开） |
 | 原始完整包 | `architecture-package-20261027/`；3,831 文件、50,819,807 字节；云端已复核其原始清单 |
 | 旧 v1.6.1 | 仓库历史材料，仅作参考；不能当成本次生产基线 |
 | 在线 HTML | <https://xiaoba-architecture-20261027.suzhizhou766.chatgpt.site>；只读设计展示，未连接用户 Mac |

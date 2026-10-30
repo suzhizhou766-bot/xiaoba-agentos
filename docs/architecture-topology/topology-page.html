@@ -173,6 +173,131 @@ code{font-family:var(--f-mono);font-size:11.5px}
   .hint{display:none}
 }
 @media (prefers-reduced-motion:reduce){aside{transition:none}}
+/* 模拟运行 */
+:root{--flow:#C8571F}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--flow:#F2945F}}
+:root[data-theme="dark"]{--flow:#F2945F}
+.node{transition:opacity .35s ease,border-color .3s ease}
+.node.sim-dim{opacity:.26}
+.node.sim-past{border-color:color-mix(in srgb,var(--flow) 55%,var(--line))}
+.node.sim-lit{border-color:var(--flow);animation:simPulse 1.4s ease-in-out infinite;box-shadow:0 0 0 3px color-mix(in srgb,var(--flow) 35%,transparent),0 0 22px color-mix(in srgb,var(--flow) 40%,transparent)}
+.node.sim-warn{border-color:var(--issue);animation:simWarn 1s ease-in-out infinite;box-shadow:0 0 0 3px color-mix(in srgb,var(--issue) 35%,transparent),0 0 22px color-mix(in srgb,var(--issue) 40%,transparent)}
+@keyframes simPulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--flow) 14%,transparent),0 0 32px color-mix(in srgb,var(--flow) 28%,transparent)}}
+@keyframes simWarn{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--issue) 14%,transparent),0 0 32px color-mix(in srgb,var(--issue) 28%,transparent)}}
+#edges path.e{transition:opacity .35s ease}
+#edges path.e.sim-dim{opacity:.1}
+#edges path.e.sim-on{stroke:var(--flow);stroke-width:2.8;stroke-dasharray:8 6;animation:simDash .6s linear infinite}
+#edges path.e.sim-past{stroke:color-mix(in srgb,var(--flow) 65%,var(--edge));stroke-width:2.2}
+#edges path.e.k-pending.sim-on,#edges path.e.k-pending.sim-past{stroke:var(--s-todo)}
+@keyframes simDash{to{stroke-dashoffset:-14}}
+#stage.flowing #edges path.e:not(.sim-dim):not(.k-old){stroke-dasharray:6 7;animation:simDash 1.1s linear infinite}
+#edges path.simtrack{fill:none;stroke:none}
+#edges circle.simdot{fill:var(--flow);stroke:var(--surface);stroke-width:2.5}
+#edges circle.simhalo{fill:var(--flow);opacity:.22}
+#edges circle.simdot.pend{fill:var(--s-todo)} #edges circle.simhalo.pend{fill:var(--s-todo)}
+.simbar{position:absolute;left:10px;top:10px;z-index:3;width:min(560px,calc(100% - 20px));box-sizing:border-box;background:color-mix(in srgb,var(--surface) 94%,transparent);border:1px solid var(--line);border-left:3px solid var(--flow);border-radius:8px;padding:8px 10px;display:grid;gap:7px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 12%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.simrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.simrow select{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 6px;font-size:12.5px;min-width:0}
+#simSel{flex:1 1 220px}
+.simrow .mini{margin-left:auto;font-size:15px}
+.simchk{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer}
+.simcap{display:grid;gap:6px;font-size:13px;line-height:1.5}
+.simstep{font-weight:500}
+.simstep .n{font-family:var(--f-mono);font-size:11px;color:var(--flow);margin-right:8px;font-variant-numeric:tabular-nums}
+.simtargets{display:flex;flex-wrap:wrap;gap:6px}
+.simgo{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:4px 9px;text-align:left;cursor:pointer;display:grid;gap:1px;max-width:100%}
+.simgo b{font-size:12.5px} .simgo span{font-size:10.5px;color:var(--muted)}
+.simgo.w{border-color:var(--issue)} .simgo em{font-style:normal;font-size:11.5px;color:var(--issue);line-height:1.45}
+.simnote{font-size:11.5px;color:var(--s-todo)}
+.simend{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}
+
+/* 跟讲：Claude 说到哪里，图上就标到哪里 */
+:root{--talk:#6B45C8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--talk:#B79CF5}}
+:root[data-theme="dark"]{--talk:#B79CF5}
+.node.talk{border-color:var(--talk);border-width:2px;animation:talkPulse 1.3s ease-in-out infinite;box-shadow:0 0 0 4px color-mix(in srgb,var(--talk) 30%,transparent),0 0 26px color-mix(in srgb,var(--talk) 45%,transparent);z-index:2}
+@keyframes talkPulse{50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--talk) 12%,transparent),0 0 36px color-mix(in srgb,var(--talk) 30%,transparent)}}
+#edges path.e.talk{stroke:var(--talk);stroke-width:3.2;stroke-dasharray:9 6;animation:simDash .55s linear infinite;opacity:1}
+.elabel.talk{color:var(--talk);font-weight:700;opacity:1}
+.talkbar{position:absolute;right:10px;top:10px;z-index:3;width:min(420px,calc(100% - 20px));box-sizing:border-box;background:color-mix(in srgb,var(--surface) 95%,transparent);border:1px solid var(--line);border-left:3px solid var(--talk);border-radius:8px;padding:9px 11px;display:grid;gap:7px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 12%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.talkhead{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.06em;color:var(--talk);font-weight:700}
+.talkhead i{width:7px;height:7px;border-radius:50%;background:var(--talk);animation:talkBlink 1.2s ease-in-out infinite}
+@keyframes talkBlink{50%{opacity:.25}}
+.talkhead .when{font-family:var(--f-mono);font-weight:400;color:var(--muted);letter-spacing:0}
+.talkhead label{margin-left:auto;display:flex;align-items:center;gap:4px;font-weight:400;color:var(--muted);letter-spacing:0;font-size:12px;cursor:pointer}
+.talktext{font-size:13.5px;line-height:1.6;white-space:pre-wrap}
+.talkchips{display:flex;flex-wrap:wrap;gap:5px}
+.talkchips button{border:1px solid color-mix(in srgb,var(--talk) 55%,var(--line));background:var(--surface);border-radius:5px;padding:3px 8px;font-size:12px;cursor:pointer}
+
+.talktext{max-height:30vh;overflow:auto}
+.talkchips button.on{background:var(--talk);color:var(--surface);border-color:var(--talk)}
+.talkchips .qn{font-family:var(--f-mono);font-size:10.5px;opacity:.75;margin-right:4px}
+.talkdetail{border-top:1px solid var(--line);padding-top:7px;display:grid;gap:8px;max-height:34vh;overflow:auto}
+.talkdetail .q{display:grid;gap:3px}
+.talkdetail .q b{font-size:13px}
+.talkdetail .q p{margin:0;font-size:12.5px;line-height:1.6;white-space:pre-wrap}
+.talkdetail .q .qn{font-family:var(--f-mono);font-size:11px;color:var(--talk);margin-right:6px}
+.node.talk-focus{box-shadow:0 0 0 3px var(--talk),0 0 30px color-mix(in srgb,var(--talk) 55%,transparent)!important}
+
+@media (max-width:760px){.talkbar{top:auto;bottom:calc(52% + 10px)}}
+@media (prefers-reduced-motion:reduce){.node.talk,#edges path.e.talk,.talkhead i{animation:none}}
+
+
+/* 悬停：上游 / 下游 */
+:root{--h-up:#B8521C;--h-down:#2C5A86}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--h-up:#F2945F;--h-down:#7FB0DE}}
+:root[data-theme="dark"]{--h-up:#F2945F;--h-down:#7FB0DE}
+.hovtip{position:absolute;z-index:4;width:max-content;max-width:min(340px,46%);max-height:44%;overflow:hidden;background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:8px;padding:8px 11px 9px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 14%,transparent);font-size:12.5px;line-height:1.45;pointer-events:none;display:grid;gap:3px;opacity:0;transition:opacity .12s ease}
+.hovtip.show{opacity:1}
+.hovtip .ht-t{font-weight:700;font-size:13px}
+.hovtip .ht-k{font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:6px}
+.hovtip .ht-k::before{content:"";width:12px;height:3px;border-radius:2px;background:var(--hc)}
+.hovtip .ht-k.up{--hc:var(--h-up)} .hovtip .ht-k.down{--hc:var(--h-down)}
+.hovtip .ht-cs{display:flex;flex-wrap:wrap;gap:4px}
+.hovtip .hc{display:inline-flex;align-items:baseline;gap:4px;border:1px solid color-mix(in srgb,var(--hc) 45%,var(--line));border-radius:4px;padding:1px 6px;font-size:12px;max-width:100%}
+.hovtip .hc b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.hovtip .hc i{font-style:normal;font-size:10px;color:var(--muted);white-space:nowrap}
+.hovtip .hc em{font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.hovtip .ht-g{font-size:10px;color:var(--muted);margin-left:6px;border:1px solid var(--line);border-radius:3px;padding:0 4px;white-space:nowrap}
+.hovtip .ht-l{display:block;font-size:11.5px;color:var(--muted)}
+.hovtip .ht-none{font-size:11.5px;color:var(--muted)}
+.node.h-self{box-shadow:0 0 0 2px var(--ink)}
+.node.h-up{border-color:var(--h-up);box-shadow:0 0 0 2px color-mix(in srgb,var(--h-up) 40%,transparent)}
+.node.h-down{border-color:var(--h-down);box-shadow:0 0 0 2px color-mix(in srgb,var(--h-down) 40%,transparent)}
+#edges path.e.h-in{stroke:var(--h-up);stroke-width:2.6;opacity:1;stroke-dasharray:none}
+#edges path.e.h-out{stroke:var(--h-down);stroke-width:2.6;opacity:1;stroke-dasharray:none}
+#edges path.e.h-off{opacity:.13}
+.elabel.h-off{opacity:.2}
+
+
+/* 树状视图 */
+#treeView{position:absolute;inset:0;z-index:4;background:var(--bg);border-radius:8px;display:grid;grid-template-rows:auto 1fr;min-height:0}
+#treeView .bhead .note{flex:1 1 260px}
+.tree{overflow:auto;padding:4px 14px 28px;min-height:0}
+.tree ul{list-style:none;margin:0;padding:0 0 0 22px;border-left:1px dashed var(--line);margin-left:9px}
+.tree>ul{padding-left:0;border-left:0;margin-left:0}
+.tree li{margin:0}
+.tree li.closed>ul{display:none}
+.troot{margin-top:10px}
+.troot-h{font-size:11px;letter-spacing:.06em;color:var(--muted);margin:14px 0 4px}
+.trow{display:flex;align-items:center;gap:7px;padding:4px 8px;margin:2px 0;border-radius:5px;cursor:pointer;min-width:0;font-size:13px;line-height:1.4;width:max-content;max-width:100%}
+.trow:hover{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.trow.sel{background:var(--surface);box-shadow:inset 0 0 0 2px var(--sel)}
+.trow.flash{animation:tflash 1.2s ease-out}
+@keyframes tflash{0%{background:color-mix(in srgb,var(--h-up) 30%,transparent)}100%{background:transparent}}
+.trow b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tt{border:0;background:transparent;cursor:pointer;color:var(--muted);width:16px;padding:0;font-size:11px;flex:0 0 16px;transition:transform .15s}
+li:not(.closed)>.trow .tt{transform:rotate(90deg)}
+.tt0{flex:0 0 16px}
+.tlab{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:0 7px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.tcnt{font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+.trow.ref{color:var(--muted)} .trow.ref b{font-weight:400}
+.trow.ref .go{font-size:11px;color:var(--h-down)}
+.trow .ht-g{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 4px;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.trow.flash{animation:none}.tt{transition:none}}
+
+@media (prefers-reduced-motion:reduce){.node.sim-lit,.node.sim-warn,#edges path.e.sim-on,#stage.flowing #edges path.e{animation:none}}
+
 </style>
 
 <div class="app">
@@ -190,6 +315,9 @@ code{font-family:var(--f-mono);font-size:11.5px}
       <button class="btn" id="bFit" type="button">适应画面</button>
       <button class="btn" id="bExpandAll" type="button">展开全部详情</button>
       <button class="btn" id="bBoard" type="button">历史看板</button>
+      <button class="btn" id="bSim" type="button" title="让一个虚拟任务沿链路跑一遍">▶ 模拟运行</button>
+      <button class="btn" id="bTree" type="button" title="按连线一层层展开的工作树">树状视图</button>
+      <button class="btn" id="bHov" type="button" title="悬停时在画面角落显示上下游详解">悬停详解：开</button>
     </div>
     <span class="sep"></span>
     <input class="search" id="q" type="search" placeholder="搜索节点，回车定位" aria-label="搜索节点">
@@ -205,12 +333,39 @@ code{font-family:var(--f-mono);font-size:11.5px}
           <marker id="ar-old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--s-old)"/></marker>
           <marker id="ar-pending" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--s-todo)"/></marker>
           <marker id="ar-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--sel)"/></marker>
-        </defs><g id="eg"></g><path class="tmp" id="tmp" d="" /></svg>
+        <marker id="ar-hin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--h-up)"/></marker>
+        <marker id="ar-hout" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--h-down)"/></marker>
+        <marker id="ar-talk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--talk)"/></marker>
+        <marker id="ar-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--flow)"/></marker>
+        </defs><g id="eg"></g><g id="simg"></g><path class="tmp" id="tmp" d="" /></svg>
         <div id="labels"></div>
         <div id="nodes"></div>
       </div>
+      <div class="simbar" id="simbar" hidden>
+        <div class="simrow">
+          <select id="simSel" aria-label="选择要演示的链路"></select>
+          <button class="btn primary" id="simPlay" type="button">▶ 播放</button>
+          <button class="btn" id="simNext" type="button">下一步</button>
+          <select id="simSpeed" aria-label="播放速度"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+          <label class="simchk"><input type="checkbox" id="simFollow" checked>镜头跟随</label>
+          <button class="btn" id="simFlow" type="button" title="全图连线持续流动">全图流动</button>
+          <button class="mini" id="simClose" type="button" aria-label="关闭模拟">✕</button>
+        </div>
+        <div class="simcap" id="simcap" aria-live="polite"></div>
+      </div>
+      <div class="talkbar" id="talkbar" hidden aria-live="polite">
+        <div class="talkhead"><i></i>Claude 正在讲<span class="when" id="talkWhen"></span><label><input type="checkbox" id="talkFollow" checked>镜头跟随</label><button class="mini" id="talkClose" type="button" aria-label="收起讲解">✕</button></div>
+        <div class="talktext" id="talkText"></div>
+        <div class="talkchips" id="talkChips"></div>
+        <div class="talkdetail" id="talkDetail" hidden></div>
+      </div>
       <div class="banner" id="banner" hidden></div>
-      <div class="hint" id="hint">拖动节点移动 · 从节点右侧圆点拖到另一节点即连线 · 点连线后可断开 · 拖空白处平移，滚轮缩放</div>
+      <section id="treeView" hidden aria-label="树状视图">
+        <div class="bhead"><h2>树状视图</h2><span class="note">从起点沿连线一层层往下展开；同一个节点只在离起点最近的位置展开一次，别处显示为「↪ 见上方」，点它跳过去。悬停看上游 / 下游，点节点在右侧查看。</span><button class="btn" type="button" id="tExpand">全部展开</button><button class="btn" type="button" id="tCollapse">只看前五层</button><button class="btn" type="button" id="tClose">回到拓扑图</button></div>
+        <div class="tree" id="treeBody"></div>
+      </section>
+      <div class="hovtip" id="hovtip" hidden></div>
+      <div class="hint" id="hint">悬停节点看上游 / 下游 · 拖动节点移动 · 从节点右侧圆点拖到另一节点即连线 · 点连线后可断开 · 拖空白处平移，滚轮缩放</div>
       <section id="board" hidden aria-label="历史看板">
         <div class="bhead"><h2>历史看板</h2><span class="note" id="bSum"></span><button class="btn" type="button" id="bCloseBoard">回到拓扑图</button></div>
         <div class="days" id="days"></div>
@@ -361,6 +516,7 @@ function nodeHTML(n){
   if(sel&&sel.type==="node"&&sel.id===n.id)cls.push("selected");
   if(connectFrom===n.id)cls.push("src");
   if(filtering()&&!matches(n))cls.push("dim");
+  simCls(n.id,cls);talkCls(n.id,cls);
   let det="";
   if(n.expanded){
     det='<div class="ndet">'+
@@ -427,10 +583,10 @@ function drawEdges(){
     const [p,q,dir,s]=anchor(rectOf(a),rectOf(b));const P=pathFor(p,q,dir,s);
     const isSel=sel&&sel.type==="edge"&&sel.id===e.id;
     const na=node(e.from),nb=node(e.to);const dim=filtering()&&!(na&&matches(na)||nb&&matches(nb));
-    ph+=`<path class="e k-${e.kind}${isSel?" sel":""}${dim?" dim":""}" d="${P.d}" marker-end="url(#ar-${isSel?"sel":e.kind})"/><path class="hit" data-edge="${esc(e.id)}" d="${P.d}"/>`;
-    if(e.label)lh+=`<div class="elabel${isSel?" sel":""}${dim?" dim":""}" data-elabel="${esc(e.id)}" style="left:${P.mx}px;top:${P.my}px" title="${esc(e.label)}">${esc(e.label)}</div>`;
+    ph+=`<path class="e k-${e.kind}${isSel?" sel":""}${dim?" dim":""}${simEdge(e.id)}${talkEdge(e.id)?" talk":""}" d="${P.d}" data-eid="${esc(e.id)}" data-m="url(#ar-${isSel?"sel":talkEdge(e.id)?"talk":simFlowEdge(e.id)&&e.kind!=="pending"?"flow":e.kind})" marker-end="url(#ar-${isSel?"sel":talkEdge(e.id)?"talk":simFlowEdge(e.id)&&e.kind!=="pending"?"flow":e.kind})"/><path class="hit" data-edge="${esc(e.id)}" d="${P.d}"/>`;
+    if(e.label)lh+=`<div class="elabel${isSel?" sel":""}${talkEdge(e.id)?" talk":""}${dim?" dim":""}" data-elabel="${esc(e.id)}" style="left:${P.mx}px;top:${P.my}px" title="${esc(e.label)}">${esc(e.label)}</div>`;
   });
-  eg.innerHTML=ph;labelsEl.innerHTML=lh;
+  eg.innerHTML=ph;labelsEl.innerHTML=lh;if(typeof HOV!=="undefined"&&HOV)applyHover();if(typeof renderTree==="function"&&typeof treeView!=="undefined")renderTree();
 }
 function refreshGeometry(){drawFrames();drawEdges();}
 
@@ -444,17 +600,40 @@ function undo(){if(!undoS.length||!editable())return;redoS.push(JSON.stringify(G
 function redo(){if(!redoS.length||!editable())return;undoS.push(JSON.stringify(G));G=JSON.parse(redoS.pop());fixSel();render();scheduleSave();writeLog({op:"edit",text:"重做了一步"});}
 function fixSel(){if(!sel)return;if(sel.type==="node"&&!node(sel.id)||sel.type==="edge"&&!G.edges.find(e=>e.id===sel.id)||sel.type==="group"&&!group(sel.id))sel=null;}
 function setSave(cls,text){const el=$("#saveState");el.className="save "+cls;el.querySelector("span").textContent=text;}
-let saveT=null,saving=false,again=false,lastSaved="";
+let saveT=null,saving=false,again=false,lastSaved="",baseSavedAt=0,conflict=false;
 function scheduleSave(){clearTimeout(saveT);setSave("busy","有未保存的修改");saveT=setTimeout(doSave,600);}
 async function doSave(){
   const body=JSON.stringify(G);
   if(mode==="local"){try{localStorage.setItem("xb-topology-v1",body);setSave("warn","只存在本浏览器");}catch(_){setSave("warn","本浏览器也存不下，请导出");}return;}
   if(mode!=="db")return;
+  if(conflict){setSave("warn","云端有新修改，本页修改未保存");return;}
   if(saving){again=true;return;}
   saving=true;setSave("busy","保存中…");
-  try{await docRef.set(Object.assign(JSON.parse(body),{savedAt:Date.now()}));lastSaved=body;setSave("ok","已保存 "+clock(Date.now()));}
+  try{
+    // 页面写入没有版本校验：保存前比对云端的保存时间，别用旧图盖掉 Agent 或其它窗口刚写的内容。
+    const cur=await docRef.get();const remote=cur.exists?cur.data():null;
+    if(remote&&(remote.savedAt||0)!==baseSavedAt){saving=false;again=false;showConflict(remote);return;}
+    const savedAt=Date.now();
+    await docRef.set(Object.assign(JSON.parse(body),{savedAt}));baseSavedAt=savedAt;lastSaved=body;setSave("ok","已保存 "+clock(Date.now()));
+  }
   catch(err){setSave("warn",err&&err.code==="quota_exceeded"?"存储已满，请导出备份后清理":"保存失败："+(err&&err.code||"未知")+"，修改仍在本页");}
   saving=false;if(again){again=false;doSave();}
+}
+function showConflict(remote){
+  conflict=true;setSave("warn","云端有新修改，本页修改未保存");
+  const b=$("#banner");clearTimeout(flash.t);
+  b.innerHTML=`云端在 ${remote.savedAt?clock(remote.savedAt):"刚才"} 有新修改（Agent 或其它窗口）。本页的修改还没保存，也没有覆盖它。<button id="cfLoad">载入云端最新（放弃本页修改）</button> <button id="cfKeep">用本页覆盖云端（云端那次修改会丢失）</button>`;
+  b.hidden=false;
+  $("#cfLoad").onclick=()=>resolveConflict(true);
+  $("#cfKeep").onclick=()=>resolveConflict(false);
+}
+async function resolveConflict(load){
+  const cur=await docRef.get();const d=cur.exists?cur.data():null;
+  conflict=false;$("#banner").hidden=true;
+  if(!d){await doSave();return;}
+  baseSavedAt=d.savedAt||0;
+  if(load){const body=JSON.stringify(normalize(clone({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0})));G=JSON.parse(body);lastSaved=body;fixSel();render();setSave("ok","已载入云端最新");}
+  else await doSave();
 }
 function writeLog(entry){
   const rec={at:Date.now(),day:dayOf(Date.now()),op:entry.op,text:entry.text,target:entry.target||"",before:entry.before?JSON.stringify(entry.before):""};
@@ -619,6 +798,318 @@ document.addEventListener("keydown",e=>{
     if(sel.type==="edge"){e.preventDefault();deleteEdge(sel.id);}
     else if(sel.type==="node"){e.preventDefault();armDelete("node:"+sel.id);}
   }
+});
+
+/* ---------- 模拟运行：虚拟任务沿链路流动（只是演示，不改任何数据） ---------- */
+/* 预设链路的来源是 scenarios.json；改它之后运行 check_topology.py 核对。 */
+const SCEN=[{"name":"① 日常任务：宿主直接处理，没有经验","steps":[{"e":[["user","host"]],"say":"用户下达一个任务"},{"e":[["host","knowledge"],["host","routing"]],"say":"宿主查知识与能力，日常任务不过入口，自己判断走哪条路"},{"e":[["routing","direct"]],"say":"日常任务，宿主直接处理"},{"e":[["direct","work"]],"say":"宿主把活干完"},{"e":[["work","result"]],"say":"写入任务结果与审计回执"},{"e":[["result","delivery"]],"say":"用户说“交付”"},{"e":[["delivery","archive"]],"say":"归档；没有新经验，也没用经验，到此结束"}]},{"name":"② 新经验：审查员打分，评分中心放行进初审","steps":[{"e":[["delivery","new_exp"]],"say":"交付时宿主写出新经验"},{"e":[["new_exp","candidate"]],"say":"写入前过 B19，登记为候选"},{"e":[["candidate","backends"]],"say":"送审查员打分"},{"e":[["backends","card"]],"say":"从 Agent 池取节点，交身份任务卡"},{"e":[["card","dsh"],["card","peer"]],"say":"派给至少两个审查员"},{"e":[["dsh","receipts"],["peer","receipts"]],"say":"回执进统一回执入口"},{"e":[["receipts","review_evidence"]],"say":"核实回执确实出自审查员、字段齐全"},{"e":[["review_evidence","confirmed"]],"say":"核对独立性，汇总各审查员的分数"},{"e":[["confirmed","evidence"]],"say":"分数交评分中心判定"},{"e":[["evidence","initial"]],"say":"分歧大、平均分 ≥ 6 或与已有经验重复，进用户初审；否则丢弃"}]},{"name":"③ 待验证经验：第一轮通过，终审后入库","steps":[{"e":[["initial","initial_pass"]],"say":"用户初审通过"},{"e":[["initial_pass","evidence_port"]],"say":"进入核验"},{"e":[["evidence_port","run1"]],"say":"开始第一轮"},{"e":[["run1","pending_index"]],"say":"经验进入待验证索引"},{"e":[["host","retrieve"],["pending_index","retrieve"]],"say":"新任务进来，宿主查到相似的待验证经验"},{"e":[["retrieve","apply"]],"say":"核对适用条件"},{"e":[["apply","worker"]],"say":"拉取经验和工具清单，交编排器"},{"e":[["worker","backends"]],"say":"按角色派活"},{"e":[["backends","card"]],"say":"身份任务卡区分协作员和审查员"},{"e":[["card","collab"]],"say":"协作员（或宿主）用这条经验干活，告诉用户"},{"e":[["collab","receipts"],["collab","work"]],"say":"交回执，产出交宿主核验"},{"e":[["card","dsh"],["card","peer"]],"say":"用完后派审查员"},{"e":[["dsh","receipts"],["peer","receipts"]],"say":"审查回执进入口"},{"e":[["receipts","review_evidence"]],"say":"核实回执"},{"e":[["review_evidence","confirmed"]],"say":"汇总结论"},{"e":[["confirmed","feedback"]],"say":"审查结论进验证材料，等交付事件"},{"e":[["work","result"]],"say":"任务完成"},{"e":[["result","delivery"]],"say":"用户说“交付”"},{"e":[["delivery","used"],["apply","used"]],"say":"读应用记录，确认本次确实用过"},{"e":[["used","feedback"]],"say":"交付事件也到了"},{"e":[["feedback","v1_result"]],"say":"两样都到，写第一轮结果"},{"e":[["v1_result","final_queue"]],"say":"全部审查员通过，自动进待终审"},{"e":[["final_queue","final_user"]],"say":"用户人工终审"},{"e":[["final_user","publish_checks"]],"say":"终审通过，做发布检查"},{"e":[["publish_checks","formal"]],"say":"写入正式经验"},{"e":[["formal","knowledge"]],"say":"以后按永久总分供检索"}]},{"name":"④ 第一轮失败，第二轮通过","steps":[{"e":[["feedback","v1_result"]],"say":"第一轮有审查员 FAIL"},{"e":[["v1_result","failed1"]],"say":"保留失败证据"},{"e":[["failed1","run2"]],"say":"开始第二轮"},{"e":[["run2","pending_index"]],"say":"再次进入待验证索引"},{"e":[["pending_index","retrieve"]],"say":"等下一个相似任务"},{"e":[["retrieve","apply"]],"say":"核对适用条件并实际应用"},{"e":[["confirmed","feedback"],["used","feedback"]],"say":"审查结论和交付事件都到了"},{"e":[["feedback","v2_result"]],"say":"写第二轮结果"},{"e":[["v2_result","diff"]],"say":"通过，核对两轮差异"},{"e":[["diff","final_queue"]],"say":"带差异进待终审"},{"e":[["final_queue","final_user"]],"say":"用户人工终审"}]},{"name":"⑤ 两轮都没过，经验退役","steps":[{"e":[["feedback","v2_result"]],"say":"第二轮全部审查员 FAIL"},{"e":[["v2_result","retired"]],"say":"直接退役，停止检索和复用"},{"e":[["retired","retire_view"]],"say":"在监看中心展示两轮记录和原因"},{"e":[["retire_view","delete"]],"say":"用户确认后才手动删除"}]},{"name":"⑥ 复用正式经验，没有改动","steps":[{"e":[["host","knowledge"]],"say":"宿主检索到正式经验"},{"e":[["knowledge","apply"]],"say":"确实用到时登记"},{"e":[["routing","direct"]],"say":"宿主直接处理"},{"e":[["direct","work"]],"say":"把活干完"},{"e":[["work","result"]],"say":"任务完成"},{"e":[["result","delivery"]],"say":"用户说“交付”"},{"e":[["delivery","used"],["apply","used"]],"say":"读应用记录，确认是复用的正式经验"},{"e":[["used","feedback"]],"say":"写入验证材料"},{"e":[["feedback","nf2evuw"]],"say":"原样好用，复用计分 +1"},{"e":[["nf2evuw","evidence"]],"say":"计数和永久总分存档"}]},{"name":"⑦ 复用时改动了经验，提交终审","steps":[{"e":[["feedback","nf2evuw"]],"say":"这次复用有改动，记 0、不扣分，写明改了哪里"},{"e":[["nf2evuw","final_user"]],"say":"提交裁决中心"},{"e":[["final_user","publish_checks"]],"say":"用户通过，做发布检查"},{"e":[["publish_checks","formal"]],"say":"存成新版本，旧版本保留"}]},{"name":"⑧ 14 天没用过","steps":[{"e":[["formal","nf2evuw"]],"say":"复用计分发现 14 天未被调用"},{"e":[["nf2evuw","final_user"]],"say":"合并成一批提交裁决中心"},{"e":[["final_user","delete"],["final_user","nf2evuw"]],"say":"用不上就删除；有价值就保留，重新计时"}]},{"name":"⑨ 用户试错后放弃","steps":[{"e":[["routing","direct"]],"say":"用户临时想试一下，宿主直接做"},{"e":[["direct","work"]],"say":"试了不行，用户放弃，没有交付"},{"e":[["work","new_exp"]],"say":"过程中有值得留的经验，直接登记"},{"e":[["new_exp","candidate"]],"say":"和普通新经验一样送审"}]},{"name":"⑩ 审查员掉线","steps":[{"e":[["card","dsh"]],"say":"派给审查员"},{"e":[["dsh","receipts"]],"say":"默认连续 300 秒无进度，判掉线"},{"e":[["receipts","review_evidence"]],"say":"已完成部分和掉线情况交这里"},{"e":[["review_evidence","ask"]],"say":"只停这次审查，任务不停，问用户换谁"},{"e":[["ask","host"]],"say":"用户定了，宿主继续"}]},{"name":"⑪ 审查员要补材料（NEEDS_INFO）","steps":[{"e":[["receipts","review_evidence"]],"say":"回执字段齐全，结论是 NEEDS_INFO"},{"e":[["review_evidence","confirmed"]],"say":"汇总结论"},{"e":[["confirmed","ask"]],"say":"暂停补材料，不算失败，不耗轮次"},{"e":[["ask","host"]],"say":"宿主补材料或重新派活"}]},{"name":"⑫ 全部审查员不可用：宿主兜底","steps":[{"e":[["candidate","backends"]],"say":"新经验要审查，但没有可用审查员"},{"e":[["backends","evidence"]],"say":"问用户；用户选宿主兜底，标明“无独立审查”"},{"e":[["evidence","initial"]],"say":"带着评分和审查结果进用户初审"}]},{"name":"⑬ 终审后发布检查没过","steps":[{"e":[["final_user","publish_checks"]],"say":"用户终审通过"},{"e":[["publish_checks","final_user"]],"say":"检查未过，不写入，退回并说明原因"}]},{"name":"⑭ 需要追问：澄清后再继续","steps":[{"e":[["routing","ask"]],"say":"宿主拿不准，问用户"},{"e":[["ask","host"]],"say":"用户澄清"},{"e":[["host","routing"]],"say":"带着澄清结果重新判断"}]},{"name":"⑮ 协作员领活","steps":[{"e":[["host","entry"]],"say":"要派后台，先过统一入口"},{"e":[["entry","routing"]],"say":"校验通过"},{"e":[["routing","queue"]],"say":"要派给协作员"},{"e":[["queue","worker"]],"say":"排队交给编排器"},{"e":[["worker","backends"]],"say":"按角色从 Agent 池挑节点"},{"e":[["backends","card"]],"say":"身份任务卡派活"},{"e":[["card","collab"]],"say":"协作员领活"},{"e":[["collab","receipts"],["collab","work"]],"say":"交回执，产出交宿主核验和集成"},{"e":[["work","result"]],"say":"任务完成"}]},{"name":"⑯ 第二轮有分歧，交用户终审","steps":[{"e":[["feedback","v2_result"]],"say":"第二轮有人通过、有人 FAIL"},{"e":[["v2_result","diff"]],"say":"不退役，带着分歧和两轮差异"},{"e":[["diff","final_queue"]],"say":"进待终审"},{"e":[["final_queue","final_user"]],"say":"用户看分歧后裁决"}]},{"name":"⑰ 第二轮前改了经验正文","steps":[{"e":[["v1_result","failed1"]],"say":"第一轮未通过，保留失败证据"},{"e":[["failed1","initial"]],"say":"改了正文，旧批准失效，回用户初审"},{"e":[["initial","initial_pass"]],"say":"用户通过新版本"},{"e":[["initial_pass","evidence_port"]],"say":"进入核验，已用轮次不清零"},{"e":[["evidence_port","run2"]],"say":"继续第二轮，不重新算第一轮"},{"e":[["run2","pending_index"]],"say":"进入待验证索引"}]}];
+const SIM={on:false,playing:false,busy:false,sc:0,i:0,speed:1,follow:true,gen:0,timer:0,
+  nodes:new Set(),edges:new Set(),lit:new Set(),warn:new Set(),past:new Set(),onE:new Set(),pastE:new Set()};
+const simg=document.getElementById("simg"),simbar=$("#simbar"),simcap=$("#simcap");
+const findEdge=(f,t)=>G.edges.find(e=>e.from===f&&e.to===t);
+const isWarn=n=>!!n&&(lines(n.issues).length>0||n.status==="decide"||n.status==="todo");
+function simCls(id,cls){
+  if(!SIM.on)return;
+  if(SIM.warn.has(id))cls.push("sim-warn");else if(SIM.lit.has(id))cls.push("sim-lit");
+  else if(SIM.past.has(id))cls.push("sim-past");else if(!SIM.nodes.has(id))cls.push("sim-dim");
+}
+function simEdge(id){
+  if(!SIM.on)return "";
+  if(SIM.onE.has(id))return " sim-on";if(SIM.pastE.has(id))return " sim-past";
+  return SIM.edges.has(id)?"":" sim-dim";
+}
+const simFlowEdge=id=>SIM.on&&(SIM.onE.has(id)||SIM.pastE.has(id));
+function simPaint(){
+  nodesEl.querySelectorAll("[data-node]").forEach(el=>{
+    el.classList.remove("sim-dim","sim-lit","sim-past","sim-warn");
+    const c=[];simCls(el.dataset.node,c);c.forEach(x=>el.classList.add(x));
+  });
+  drawEdges();
+}
+function simReset(sc){
+  SIM.gen++;clearTimeout(SIM.timer);simg.innerHTML="";
+  SIM.sc=sc;SIM.i=0;SIM.busy=false;SIM.on=true;
+  ["nodes","edges","lit","warn","past","onE","pastE"].forEach(k=>SIM[k].clear());
+  SCEN[sc].steps.forEach(st=>st.e.forEach(([f,t])=>{const e=findEdge(f,t);if(e)SIM.edges.add(e.id);SIM.nodes.add(f);SIM.nodes.add(t);}));
+  const first=SCEN[sc].steps[0].e.map(x=>x[0]);first.forEach(id=>SIM.lit.add(id));
+  simPaint();
+  if(SIM.follow)panTo(first,true);
+  simcap.innerHTML=`<div class="simstep"><span class="n">0 / ${SCEN[sc].steps.length}</span>${esc(SCEN[sc].name)}</div>`;
+  simUI();
+}
+function simUI(){
+  const done=SIM.i>=SCEN[SIM.sc].steps.length;
+  $("#simPlay").textContent=SIM.playing?"❚❚ 暂停":done?"↺ 重播":"▶ 播放";
+  $("#simNext").disabled=SIM.busy||done;
+  $("#bSim").classList.toggle("on",!simbar.hidden);
+}
+function tween(to,ms){
+  const from={x:view.x,y:view.y,k:view.k},t0=performance.now(),g=SIM.gen;
+  const step=now=>{if(g!==SIM.gen||drag)return;const t=Math.min(1,(now-t0)/ms),e=1-Math.pow(1-t,3);
+    view.x=from.x+(to.x-from.x)*e;view.y=from.y+(to.y-from.y)*e;view.k=from.k+(to.k-from.k)*e;applyView();if(t<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+function panTo(ids,reset){
+  const rs=[...new Set(ids.map(endOf).filter(Boolean))].map(rectOf);if(!rs.length)return;
+  let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;rs.forEach(r=>{x1=Math.min(x1,r.x);y1=Math.min(y1,r.y);x2=Math.max(x2,r.x+r.w);y2=Math.max(y2,r.y+r.h);});
+  const s=stage.getBoundingClientRect(),fitK=Math.min(.95,Math.max(.3,Math.min((s.width-80)/(x2-x1+120),(s.height-200)/(y2-y1+120))));
+  const k=Math.min(fitK,.85);
+  tween({k,x:s.width/2-(x1+x2)/2*k,y:(s.height+90)/2-(y1+y2)/2*k},520/Math.max(1,SIM.speed*.8));
+}
+function dot(e,dur){
+  return new Promise(res=>{
+    const a=endOf(e.from),b=endOf(e.to);if(!a||!b||a===b){setTimeout(res,dur);return;}
+    const [p,q,dir,s]=anchor(rectOf(a),rectOf(b)),P=pathFor(p,q,dir,s),NS="http://www.w3.org/2000/svg",pk=e.kind==="pending"?" pend":"";
+    const tr=document.createElementNS(NS,"path");tr.setAttribute("d",P.d);tr.setAttribute("class","simtrack");
+    const halo=document.createElementNS(NS,"circle");halo.setAttribute("r","14");halo.setAttribute("class","simhalo"+pk);
+    const c=document.createElementNS(NS,"circle");c.setAttribute("r","6.5");c.setAttribute("class","simdot"+pk);
+    simg.append(tr,halo,c);const L=tr.getTotalLength(),t0=performance.now(),g=SIM.gen;
+    const clean=()=>{tr.remove();halo.remove();c.remove();res();};
+    const step=now=>{if(g!==SIM.gen){clean();return;}
+      const t=Math.min(1,(now-t0)/dur),k=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2,pt=tr.getPointAtLength(L*k);
+      [halo,c].forEach(x=>{x.setAttribute("cx",pt.x);x.setAttribute("cy",pt.y);});
+      if(t<1)requestAnimationFrame(step);else clean();};
+    requestAnimationFrame(step);
+  });
+}
+function caption(st,targets,arrived,pend){
+  const sc=SCEN[SIM.sc];
+  const items=targets.map(id=>{const n=node(id);if(!n)return "";const w=arrived&&isWarn(n),iss=lines(n.issues)[0];
+    const st2=STATUS[n.status]||STATUS.dev;
+    return `<button type="button" class="simgo${w?" w":""}" data-simgo="${esc(id)}"><b>${esc(n.title)}</b><span>${esc(st2[0])}</span>${w?`<em>⚠ ${esc(iss||(n.status==="decide"?"待你裁定":"还没实现"))}</em>`:""}</button>`;}).join("");
+  simcap.innerHTML=`<div class="simstep"><span class="n">${SIM.i+1} / ${sc.steps.length}</span>${esc(st.say)}</div><div class="simtargets">${items}</div>`+
+    (pend?'<div class="simnote">橙色虚线这一段还没接通，现在只是设计。</div>':"");
+}
+function runStep(){
+  const sc=SCEN[SIM.sc],st=sc.steps[SIM.i];if(!st){simFinish();return;}
+  SIM.busy=true;const g=SIM.gen;
+  const es=st.e.map(([f,t])=>({f,t,e:findEdge(f,t)})),targets=[...new Set(es.map(x=>x.t))];
+  const pend=es.some(x=>x.e&&x.e.kind==="pending");
+  SIM.lit.forEach(id=>SIM.past.add(id));SIM.warn.forEach(id=>SIM.past.add(id));SIM.lit.clear();SIM.warn.clear();
+  es.forEach(x=>{if(x.e)SIM.onE.add(x.e.id);SIM.past.add(x.f);});
+  simPaint();simUI();
+  if(SIM.follow)panTo(es.flatMap(x=>[x.f,x.t]));
+  caption(st,targets,false,pend);
+  const dur=1050/SIM.speed;
+  Promise.all(es.map(x=>x.e?dot(x.e,dur):new Promise(r=>setTimeout(r,dur)))).then(()=>{
+    if(g!==SIM.gen)return;
+    es.forEach(x=>{if(x.e){SIM.onE.delete(x.e.id);SIM.pastE.add(x.e.id);}});
+    targets.forEach(id=>{SIM.past.delete(id);(isWarn(node(id))?SIM.warn:SIM.lit).add(id);});
+    simPaint();caption(st,targets,true,pend);
+    SIM.i++;SIM.busy=false;simUI();
+    const hold=(targets.some(id=>SIM.warn.has(id))?1800:500)/SIM.speed;
+    if(SIM.i>=sc.steps.length){SIM.timer=setTimeout(()=>{if(g===SIM.gen)simFinish();},hold);return;}
+    if(SIM.playing)SIM.timer=setTimeout(()=>{if(g===SIM.gen&&SIM.playing&&!SIM.busy)runStep();},hold);
+  });
+}
+function simFinish(){
+  SIM.playing=false;SIM.i=SCEN[SIM.sc].steps.length;
+  const warns=[...SIM.nodes].filter(id=>isWarn(node(id)));
+  simcap.insertAdjacentHTML("beforeend",`<div class="simend">这条链路走完了${warns.length?`，途中 ${warns.length} 个节点有问题或待裁定（红框）`:""}。可以换一条，或点 ↺ 重播。</div>`);
+  simUI();
+}
+function simPlay(){
+  if(SIM.i>=SCEN[SIM.sc].steps.length)simReset(SIM.sc);
+  SIM.playing=true;simUI();if(!SIM.busy)runStep();
+}
+function simOpen(sc){
+  simbar.hidden=false;
+  if(!$("#simSel").options.length)$("#simSel").innerHTML=SCEN.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join("");
+  $("#simSel").value=String(sc);simReset(sc);simPlay();
+}
+function simClose(){
+  SIM.gen++;clearTimeout(SIM.timer);simg.innerHTML="";SIM.on=false;SIM.playing=false;SIM.busy=false;
+  simbar.hidden=true;render(true);simUI();
+}
+$("#bSim").onclick=()=>{simbar.hidden?simOpen(+$("#simSel").value||0):simClose();};
+$("#simClose").onclick=simClose;
+$("#simSel").onchange=e=>{SIM.playing=false;simReset(+e.target.value);simPlay();};
+$("#simPlay").onclick=()=>{if(SIM.playing){SIM.playing=false;clearTimeout(SIM.timer);simUI();}else simPlay();};
+$("#simNext").onclick=()=>{SIM.playing=false;clearTimeout(SIM.timer);if(!SIM.busy&&SIM.i<SCEN[SIM.sc].steps.length)runStep();simUI();};
+$("#simSpeed").onchange=e=>{SIM.speed=+e.target.value||1;};
+$("#simFollow").onchange=e=>{SIM.follow=e.target.checked;};
+$("#simFlow").onclick=()=>{$("#simFlow").classList.toggle("on",stage.classList.toggle("flowing"));};
+simcap.addEventListener("click",e=>{const b=e.target.closest("[data-simgo]");if(!b)return;sel={type:"node",id:b.dataset.simgo};tab="inspect";render();openSheet();});
+
+
+
+/* ---------- 悬停：显示上游（从哪里来）与下游（往哪里去） ---------- */
+var HOV=null;
+const hovtip=$("#hovtip");
+function hovEdgeCls(e){
+  if(!HOV)return "";
+  if(HOV.type==="edge")return e.id===HOV.eid?"h-in":"h-off";
+  const M=HOV.members;
+  const isIn=M?M.has(e.to)&&!M.has(e.from):e.to===HOV.id, isOut=M?M.has(e.from)&&!M.has(e.to):e.from===HOV.id;
+  return isIn?"h-in":isOut?"h-out":"h-off";
+}
+function applyHover(){
+  if(typeof nodesEl==="undefined")return;
+  nodesEl.querySelectorAll("[data-node]").forEach(el=>{
+    el.classList.remove("h-self","h-up","h-down");if(!HOV)return;const id=el.dataset.node;
+    if(HOV.type==="edge"){if(id===HOV.from)el.classList.add("h-up");else if(id===HOV.to)el.classList.add("h-down");return;}
+    if(id===HOV.id)el.classList.add("h-self");else if(HOV.up.has(id))el.classList.add("h-up");else if(HOV.down.has(id))el.classList.add("h-down");
+  });
+  eg.querySelectorAll("path.e[data-eid]").forEach(p=>{
+    p.classList.remove("h-in","h-out","h-off");p.setAttribute("marker-end",p.dataset.m);
+    const e=G.edges.find(x=>x.id===p.dataset.eid);if(!e)return;const c=hovEdgeCls(e);if(!c)return;
+    p.classList.add(c);if(c==="h-in")p.setAttribute("marker-end","url(#ar-hin)");if(c==="h-out")p.setAttribute("marker-end","url(#ar-hout)");
+  });
+  labelsEl.querySelectorAll("[data-elabel]").forEach(l=>{l.classList.remove("h-off");const e=G.edges.find(x=>x.id===l.dataset.elabel);if(e&&hovEdgeCls(e)==="h-off")l.classList.add("h-off");});
+}
+const grpTag=id=>{const n=node(id),g=n&&group(n.g);return g?g.title.split("、")[0]+"组":"";};
+function hovList(title,items,cls,curG){
+  const MAX=10;
+  if(!items.length)return `<div class="ht-k ${cls}">${title}：无</div>`;
+  const shown=items.slice(0,MAX).map(([id,label])=>{const n=node(id);
+    return `<span class="hc">${esc(nameOf(id))?`<b>${esc(nameOf(id))}</b>`:""}${n&&n.g!==curG?`<i>${esc(grpTag(id))}</i>`:""}${label?`<em>${esc(label)}</em>`:""}</span>`;}).join("");
+  return `<div class="ht-k ${cls}">${title}（${items.length}）</div><div class="ht-cs" style="--hc:var(--h-${cls})">${shown}${items.length>MAX?`<span class="ht-none">另有 ${items.length-MAX} 个</span>`:""}</div>`;
+}
+/* 详解停靠在画面四角里离悬停对象和高亮节点最远、遮挡最少的一角，不再贴着节点 */
+var HOV_ON=true;try{HOV_ON=localStorage.getItem("xb-hover-tip")!=="off";}catch(_){}
+let hovTimer=0;
+function hovRects(){const s=stage.getBoundingClientRect(),rel=r=>({x:r.left-s.left,y:r.top-s.top,w:r.width,h:r.height});
+  const hl=[...nodesEl.querySelectorAll(".h-up,.h-down,.h-self")].map(e=>rel(e.getBoundingClientRect()));
+  const tv=$("#treeView"),obs=["#talkbar","#simbar"].map(q=>$(q)).filter(e=>e&&!e.hidden).concat(tv&&!tv.hidden?[tv.querySelector(".bhead")]:[]).map(e=>rel(e.getBoundingClientRect()));
+  return {s,hl,obs,rel};}
+const ovl=(a,b)=>Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+function hovDock(target){
+  const {s,hl,obs}=hovRects(),w=hovtip.offsetWidth,h=hovtip.offsetHeight,W=s.width,H=s.height,m=10;
+  const cs=[[m,m],[W-w-m,m],[m,H-h-40],[W-w-56,H-h-m]].map(([x,y])=>({x:Math.max(m,x),y:Math.max(m,y),w,h}));
+  const t={x:target.x-16,y:target.y-16,w:target.w+32,h:target.h+32};
+  let best=cs[0],bs=1e18;
+  cs.forEach(c=>{const sc=ovl(c,t)*20+hl.reduce((a,r)=>a+ovl(c,r),0)*3+obs.reduce((a,r)=>a+ovl(c,r),0)*8;if(sc<bs){bs=sc;best=c;}});
+  hovtip.style.left=best.x+"px";hovtip.style.top=best.y+"px";
+}
+function hovShow(html,targetRect){
+  clearTimeout(hovTimer);if(!HOV_ON)return;
+  hovTimer=setTimeout(()=>{hovtip.innerHTML=html;hovtip.hidden=false;hovtip.classList.remove("show");hovDock(targetRect());requestAnimationFrame(()=>hovtip.classList.add("show"));},260);
+}
+function hovAt(el,html){const s=stage.getBoundingClientRect();hovShow(html,()=>{const r=el.getBoundingClientRect();return {x:r.left-s.left,y:r.top-s.top,w:r.width,h:r.height};});}
+function hovPlace(x,y){/* 兼容旧调用：以鼠标点为目标 */hovDock({x:x-14,y:y-14,w:28,h:28});}
+function hovClear(){clearTimeout(hovTimer);if(!HOV&&hovtip.hidden)return;HOV=null;hovtip.hidden=true;hovtip.classList.remove("show");applyHover();}
+stage.addEventListener("mouseover",ev=>{
+  if(drag||connectMode)return;
+  const nd=ev.target.closest("[data-node]"),pl=ev.target.closest("[data-gpill]"),ed=ev.target.closest("[data-edge],[data-elabel]");
+  if(nd){const id=nd.dataset.node;if(HOV&&HOV.type==="node"&&HOV.id===id)return;
+    const ins=G.edges.filter(e=>e.to===id),outs=G.edges.filter(e=>e.from===id),cg=(node(id)||{}).g;
+    HOV={type:"node",id,up:new Set(ins.map(e=>e.from)),down:new Set(outs.map(e=>e.to))};applyHover();
+    hovAt(nd,`<div class="ht-t">${esc(nameOf(id))}</div>`+hovList("上游 · 从哪里来",ins.map(e=>[e.from,e.label]),"up",cg)+hovList("下游 · 往哪里去",outs.map(e=>[e.to,e.label]),"down",cg));return;}
+  if(pl){const gid=pl.dataset.gpill;if(HOV&&HOV.id==="G:"+gid)return;const ms=new Set(G.nodes.filter(n=>n.g===gid).map(n=>n.id));
+    const ins=G.edges.filter(e=>ms.has(e.to)&&!ms.has(e.from)),outs=G.edges.filter(e=>ms.has(e.from)&&!ms.has(e.to));
+    HOV={type:"node",id:"G:"+gid,members:ms,up:new Set(ins.map(e=>e.from)),down:new Set(outs.map(e=>e.to))};applyHover();
+    hovAt(pl,`<div class="ht-t">${esc(group(gid).title)} · 已收起</div>`+hovList("上游 · 从哪里来",ins.map(e=>[e.from,"进入 "+nameOf(e.to)]),"up",gid)+hovList("下游 · 往哪里去",outs.map(e=>[e.to,"来自 "+nameOf(e.from)]),"down",gid));return;}
+  if(ed){const eid=ed.dataset.edge||ed.dataset.elabel;const e=G.edges.find(x=>x.id===eid);if(!e||(HOV&&HOV.eid===eid))return;
+    HOV={type:"edge",eid,from:e.from,to:e.to};applyHover();
+    {const s=stage.getBoundingClientRect(),px=ev.clientX-s.left,py=ev.clientY-s.top;hovShow(`<div class="ht-k up">从</div><div><b>${esc(nameOf(e.from))}</b><span class="ht-g">${esc(grpTag(e.from))}</span></div><div class="ht-k down">到</div><div><b>${esc(nameOf(e.to))}</b><span class="ht-g">${esc(grpTag(e.to))}</span></div>${e.label?`<div class="ht-l">${esc(e.label)}</div>`:""}${e.kind!=="normal"?`<div class="ht-none">${esc(KINDS[e.kind])}</div>`:""}`,()=>({x:px-14,y:py-14,w:28,h:28}));}return;}
+});
+stage.addEventListener("mouseout",ev=>{const to=ev.relatedTarget;if(to&&to.closest&&to.closest("[data-node],[data-gpill],[data-edge],[data-elabel]"))return;hovClear();});
+stage.addEventListener("pointerdown",hovClear,true);
+stage.addEventListener("wheel",()=>{if(!hovtip.hidden)hovClear();},{passive:true});
+
+
+const bHov=$("#bHov");const syncHov=()=>{bHov.textContent="悬停详解："+(HOV_ON?"开":"关");bHov.classList.toggle("on",HOV_ON);};syncHov();
+bHov.onclick=()=>{HOV_ON=!HOV_ON;try{localStorage.setItem("xb-hover-tip",HOV_ON?"on":"off");}catch(_){}if(!HOV_ON){clearTimeout(hovTimer);hovtip.hidden=true;}syncHov();};
+/* ---------- 树状视图（工作树） ---------- */
+var treeView=$("#treeView"),treeBody=$("#treeBody");
+var TREE_CLOSED=null;
+function treeData(){
+  const gi=id=>{const n=node(id);const k=G.groups.findIndex(g=>g.id===(n&&n.g));return k<0?99:k;};
+  const ord=(a,b)=>gi(a)-gi(b)||((node(a)||{}).y||0)-((node(b)||{}).y||0)||((node(a)||{}).x||0)-((node(b)||{}).x||0);
+  const ids=G.nodes.map(n=>n.id).sort(ord);
+  const hasIn=new Set(G.edges.map(e=>e.to));
+  const parent=new Map(),roots=[],depth=new Map();
+  const bfs=start=>{roots.push(start);depth.set(start,0);const q=[start];
+    while(q.length){const id=q.shift();G.edges.filter(e=>e.from===id).sort((a,b)=>ord(a.to,b.to)).forEach(e=>{if(!depth.has(e.to)){depth.set(e.to,depth.get(id)+1);parent.set(e.to,e);q.push(e.to);}});}};
+  ids.filter(id=>!hasIn.has(id)&&G.edges.some(e=>e.from===id)).forEach(id=>{if(!depth.has(id))bfs(id);});
+  ids.forEach(id=>{if(!depth.has(id)&&G.edges.some(e=>e.from===id||e.to===id))bfs(id);});
+  const lonely=ids.filter(id=>!depth.has(id));
+  return {roots,parent,depth,lonely,ord};
+}
+function renderTree(){
+  if(treeView.hidden)return;
+  const T=treeData();
+  if(!TREE_CLOSED){TREE_CLOSED=new Set();T.depth.forEach((d,id)=>{if(d>=5)TREE_CLOSED.add(id);});}
+  const row=(id,e,isRef)=>{const n=node(id);if(!n)return "";const st=STATUS[n.status]||STATUS.dev,iss=lines(n.issues).length;
+    const kids=isRef?[]:G.edges.filter(x=>x.from===id).sort((a,b)=>T.ord(a.to,b.to));
+    const s=sel&&sel.type==="node"&&sel.id===id;
+    const lab=e&&e.label?`<span class="tlab" title="${esc(e.label)}">${esc(e.label)}</span>`:"";
+    if(isRef)return `<li><div class="trow ref" data-tref="${esc(id)}"><span class="tt0"></span>${lab}<span class="go">↪</span><b>${esc(n.title)}</b><span class="ht-g">${esc(grpTag(id))}</span><span class="go">见上方</span></div></li>`;
+    const sub=kids.map(k=>{const own=T.parent.get(k.to)===k;return row(k.to,k,!own);}).join("");
+    return `<li class="${kids.length&&TREE_CLOSED.has(id)?"closed":""}"><div class="trow${s?" sel":""}" data-tnode="${esc(id)}">${kids.length?`<button class="tt" type="button" data-ttog="${esc(id)}" aria-label="展开或收起">▶</button>`:'<span class="tt0"></span>'}${lab}<span class="chip" style="--c:var(${st[1]})">${esc(st[0])}</span><b>${esc(n.title)}</b><span class="ht-g">${esc(grpTag(id))}</span>${iss?`<span class="iss">${iss}</span>`:""}${kids.length?`<span class="tcnt">${kids.length} 个下游</span>`:""}</div>${kids.length?`<ul>${sub}</ul>`:""}</li>`;};
+  let h="";
+  T.roots.forEach(r=>{h+=`<div class="troot"><ul>${row(r,null,false)}</ul></div>`;});
+  if(T.lonely.length)h+=`<div class="troot-h">没有连线的节点（底座类）</div><ul>${T.lonely.map(id=>row(id,null,false)).join("")}</ul>`;
+  treeBody.innerHTML=h;
+}
+function openTree(){closeBoard&&closeBoard();treeView.hidden=false;$("#bTree").classList.add("on");renderTree();}
+function closeTree(){treeView.hidden=true;$("#bTree").classList.remove("on");hovClear();}
+$("#bTree").onclick=()=>{treeView.hidden?openTree():closeTree();};
+$("#tClose").onclick=closeTree;
+$("#tExpand").onclick=()=>{TREE_CLOSED=new Set();renderTree();};
+$("#tCollapse").onclick=()=>{TREE_CLOSED=null;renderTree();};
+treeView.addEventListener("pointerdown",e=>e.stopPropagation());
+treeView.addEventListener("wheel",e=>e.stopPropagation());
+treeBody.addEventListener("click",e=>{
+  const tg=e.target.closest("[data-ttog]");if(tg){const id=tg.dataset.ttog;TREE_CLOSED.has(id)?TREE_CLOSED.delete(id):TREE_CLOSED.add(id);tg.closest("li").classList.toggle("closed");return;}
+  const rf=e.target.closest("[data-tref]");if(rf){const el=treeBody.querySelector(`[data-tnode="${CSS.escape(rf.dataset.tref)}"]`);if(el){let li=el.closest("li").parentElement.closest("li");while(li){li.classList.remove("closed");TREE_CLOSED.delete(li.querySelector(":scope>.trow").dataset.tnode);li=li.parentElement.closest("li");}
+      el.scrollIntoView({block:"center",behavior:"smooth"});el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");}return;}
+  const r=e.target.closest("[data-tnode]");if(r){sel={type:"node",id:r.dataset.tnode};tab="inspect";treeBody.querySelectorAll(".trow.sel").forEach(x=>x.classList.remove("sel"));r.classList.add("sel");renderPanel();openSheet();}
+});
+treeBody.addEventListener("mouseover",e=>{
+  const r=e.target.closest("[data-tnode],[data-tref]");if(!r)return;const id=r.dataset.tnode||r.dataset.tref;
+  const ins=G.edges.filter(x=>x.to===id),outs=G.edges.filter(x=>x.from===id),cg=(node(id)||{}).g;
+  hovAt(r,`<div class="ht-t">${esc(nameOf(id))}</div>`+hovList("上游 · 从哪里来",ins.map(x=>[x.from,x.label]),"up",cg)+hovList("下游 · 往哪里去",outs.map(x=>[x.to,x.label]),"down",cg));
+});
+treeBody.addEventListener("mouseleave",()=>{clearTimeout(hovTimer);hovtip.hidden=true;});
+
+/* ---------- 跟讲：读 topology/pointer，Claude 写哪里就标哪里 ---------- */
+const TALK={nodes:new Set(),edges:new Set(),follow:true,at:0,first:true};
+const talkbar=$("#talkbar");
+function talkCls(id,cls){if(TALK.nodes.has(id))cls.push("talk");}
+const talkEdge=id=>TALK.edges.has(id);
+function resolveEdge(x){
+  if(typeof x!=="string")return null;
+  if(G.edges.find(e=>e.id===x))return x;
+  const m=x.split(/>|->|→/).map(t=>t.trim());
+  if(m.length===2){const e=G.edges.find(e=>e.from===m[0]&&e.to===m[1]);return e?e.id:null;}
+  return null;
+}
+function talkWhen(){if(!TALK.at||talkbar.hidden)return;const s=Math.round((Date.now()-TALK.at)/1000);
+  $("#talkWhen").textContent=s<10?"刚刚":s<60?s+" 秒前":Math.round(s/60)+" 分钟前";}
+setInterval(talkWhen,5000);
+function talkApply(d){
+  const first=TALK.first;TALK.first=false;
+  if(!d||d.clear||!d.at||(first&&Date.now()-d.at>30*60*1000)){
+    TALK.nodes.clear();TALK.edges.clear();talkbar.hidden=true;render(true);return;}
+  if(d.at===TALK.at)return;TALK.at=d.at;
+  TALK.nodes=new Set((d.nodes||[]).filter(id=>node(id)));
+  TALK.edges=new Set((d.edges||[]).map(resolveEdge).filter(Boolean));
+  TALK.edges.forEach(id=>{const e=G.edges.find(x=>x.id===id);if(e&&!d.nodesOnly){/* 连线两端一起标 */}});
+  // 被讲到的节点如果在收起的分组里，临时展开（只影响本页显示）
+  [...TALK.nodes].forEach(id=>{const n=node(id);const g=n&&group(n.g);if(g&&g.collapsed)g.collapsed=false;});
+  $("#talkText").textContent=d.text||"";
+  TALK.questions=Array.isArray(d.questions)?d.questions:[];TALK.focus=null;$("#talkDetail").hidden=true;
+  const qOf=id=>TALK.questions.filter(q=>(q.nodes||[]).includes(id)).map(q=>q.n);
+  $("#talkChips").innerHTML=[...TALK.nodes].map(id=>{const qs=qOf(id);return `<button type="button" data-talkgo="${esc(id)}" title="点击在图上聚焦，并看完整问题">${qs.length?`<span class="qn">${esc(qs.join("·"))}</span>`:""}${esc(nameOf(id))}</button>`;}).join("");
+  talkbar.hidden=false;talkWhen();
+  render(true);
+  const ids=[...TALK.nodes];TALK.edges.forEach(id=>{const e=G.edges.find(x=>x.id===id);if(e)ids.push(e.from,e.to);});
+  if(TALK.follow&&ids.length)requestAnimationFrame(()=>panTo(ids));
+}
+$("#talkFollow").onchange=e=>{TALK.follow=e.target.checked;};
+["#talkbar","#simbar"].forEach(q=>{const el=$(q);if(!el)return;el.addEventListener("pointerdown",e=>e.stopPropagation());el.addEventListener("wheel",e=>e.stopPropagation());});
+$("#talkClose").onclick=()=>{talkbar.hidden=true;TALK.nodes.clear();TALK.edges.clear();render(true);};
+$("#talkChips").addEventListener("click",e=>{const b=e.target.closest("[data-talkgo]");if(!b)return;const id=b.dataset.talkgo;
+  if(!treeView.hidden)closeTree();if(!$("#board").hidden)closeBoard();
+  TALK.focus=id;$("#talkChips").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  focusNode(id);
+  // 被讲解框挡住时往左挪一点
+  const s=stage.getBoundingClientRect(),w=talkbar.offsetWidth;if(!talkbar.hidden&&s.width>760){view.x-=Math.min(w/2+10,s.width/4);applyView();}
+  nodesEl.querySelectorAll(".talk-focus").forEach(x=>x.classList.remove("talk-focus"));const el=nodesEl.querySelector(`[data-node="${CSS.escape(id)}"]`);if(el)el.classList.add("talk-focus");
+  const qs=TALK.questions.filter(q=>(q.nodes||[]).includes(id)),det=$("#talkDetail");
+  det.innerHTML=`<div class="eyebrow">${esc(nameOf(id))}</div>`+(qs.length?qs.map(q=>`<div class="q"><b><span class="qn">${esc(q.n)}</span>${esc(q.title||"")}</b><p>${esc(q.text||"")}</p></div>`).join(""):'<div class="q"><p>这个节点没有单独的问题说明，看上面的总述。</p></div>');
+  det.hidden=false;det.scrollTop=0;
 });
 
 /* ---------- 面板 ---------- */
@@ -789,14 +1280,14 @@ function panelLog(){
 function readerText(){
   const gname=id=>id&&group(id)?group(id).title:"未分组";
   let t=`# 小八架构拓扑 · Agent 读本\n生成时间：${stamp(Date.now())}　节点 ${G.nodes.length} · 连线 ${G.edges.length} · 分组 ${G.groups.length}\n\n`;
-  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝v1.6.4 生产已有；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“变更历史”，避免重做用户已删除或已改掉的东西。\n- “用户原话”是用户亲笔写的大白话，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。\n\n`;
+  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝节点的基础能力 v1.6.4 已有，新意图是否实现看“问题/待办”；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“变更历史”，避免重做用户已删除或已改掉的东西。\n- “用户原话”是用户亲笔写的大白话，按时间列出，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。\n- “待确认”是还没定的事，括号里的建议不算用户决定；已定的裁决见 DECISIONS.md。\n- 同一件事以用户最新的决定为准：变更历史和较早原话里的待确认、120 秒、以是否交付判定本轮等说法已被取代，现行规则看“用户意图”和 DECISIONS.md。\n\n`;
   const pend=submissions.filter(s=>s.status!=="done");
   if(pend.length){t+=`## 待 Agent 整理的提交（${pend.length}）\n`;pend.forEach(s=>{t+=`### ${stamp(s.at)}\n`;(s.notes||[]).forEach(x=>t+=`- ${x.title}（${x.node}）原话：${x.text}\n`);(s.changes||[]).forEach(x=>t+=`- 期间改动：${x.text}\n`);});t+="\n";}
   G.groups.concat([{id:"",title:"未分组"}]).forEach(g=>{
     const ms=G.nodes.filter(n=>(n.g||"")===g.id);if(!ms.length&&!g.id)return;
     t+=`## ${g.title}\n`;
     ms.forEach(n=>{t+=`- 【${STATUS[n.status][0]}】${n.title}（${n.id}）${n.sub?"：“"+n.sub+"”":""}${n.pending?"　［待整理］":""}\n`;
-      const said=(n.history||[]).filter(h=>h.by==="user");if(said.length)t+=`  - 用户原话（${stamp(said[said.length-1].at)}）：${said[said.length-1].text}\n`;
+      const said=(n.history||[]).filter(h=>h.by==="user");said.forEach(h=>t+=`  - 用户原话（${stamp(h.at)}）：${h.text}\n`);
       if(n.note&&n.note.trim())t+=`  - 用户草稿（未提交）：${n.note.trim()}\n`;
       if(n.intent)t+=`  - 用户意图：${n.intent}\n`;if(n.desc)t+=`  - 说明：${n.desc}\n`;
       lines(n.refs).forEach(r=>t+=`  - 位置：${r}\n`);lines(n.issues).forEach(r=>t+=`  - 问题/待办：${r}\n`);});
@@ -834,9 +1325,13 @@ applyView();render();requestAnimationFrame(()=>fit());
   if(!db){
     mode="local";
     try{const s=localStorage.getItem("xb-topology-v1");if(s){const d=JSON.parse(s);if(d&&Array.isArray(d.nodes))G=normalize(d);}const l=localStorage.getItem("xb-topology-log");if(l)logs=JSON.parse(l)||[];const sb=localStorage.getItem("xb-topology-subs");if(sb)submissions=JSON.parse(sb)||[];}catch(_){}
-    setSave("warn","只存在本浏览器");render();fit();return;
+    setSave("warn","只存在本浏览器");
+    let saved=false;try{saved=!!localStorage.getItem("xb-topology-v1");}catch(_){}
+    if(!saved){const b=$("#banner");b.textContent="这是离线打开的副本，显示的是 10-27 设计图基线，不是最新拓扑。最新内容看 topology.json 或云端页面。";b.hidden=false;}
+    render();fit();return;
   }
-  docRef=db.doc("topology/main");logCol=db.collection("changes");subCol=db.collection("submissions");
+  docRef=db.doc("topology/main");
+  db.doc("topology/pointer").onSnapshot(snap=>talkApply(snap.exists?snap.data():null),()=>{});logCol=db.collection("changes");subCol=db.collection("submissions");
   subCol.orderBy("at","desc").limit(200).onSnapshot(qs=>{submissions=qs.docs.map(x=>Object.assign({id:x.id},x.data()));if(tab==="submits"||tab==="reader")renderPanel();},()=>{});
   let first=true;
   docRef.onSnapshot(snap=>{
@@ -846,7 +1341,8 @@ applyView();render();requestAnimationFrame(()=>fit());
     const d=snap.data();if(snap.metadata.hasPendingWrites)return;
     // Snapshot bodies are frozen: normalize a copy, never the delivered data.
     const body=JSON.stringify(normalize(clone({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0})));
-    if(!first&&(drag||saving||saveT&&$("#saveState").classList.contains("busy")))return;
+    if(!first&&(drag||saving||conflict||saveT&&$("#saveState").classList.contains("busy")))return;
+    baseSavedAt=d.savedAt||0;
     if(body===lastSaved&&!first)return;
     const typing=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)&&pbody.contains(document.activeElement);
     G=JSON.parse(body);lastSaved=body;fixSel();mode="db";

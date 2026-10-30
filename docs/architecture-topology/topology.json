@@ -1,800 +1,4 @@
 {
- "version": 1,
- "groups": [
-  {
-   "collapsed": false,
-   "id": "g1",
-   "title": "一、接入、路由与任务执行",
-   "x": 40,
-   "y": 40
-  },
-  {
-   "collapsed": false,
-   "id": "g2",
-   "title": "二、交付、候选与真实任务应用",
-   "x": 40,
-   "y": 560
-  },
-  {
-   "collapsed": false,
-   "id": "g3",
-   "title": "三、经验核验状态机",
-   "x": 40,
-   "y": 1000
-  },
-  {
-   "collapsed": false,
-   "id": "g4",
-   "title": "四、独立审查接入",
-   "x": 40,
-   "y": 1470
-  },
-  {
-   "collapsed": false,
-   "id": "g5",
-   "title": "五、共享底座与贯穿治理",
-   "x": 40,
-   "y": 1760
-  }
- ],
- "nodes": [
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "user",
-   "intent": "唯一规范制定者；初审判定经验是否值得，终审批准写入第二大脑。",
-   "issues": "",
-   "refs": "私人助理/AGENTS.md",
-   "status": "done",
-   "sub": "目标、授权、成品验收、人工裁决",
-   "title": "用户",
-   "x": 70,
-   "y": 90
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "host",
-   "intent": "主入口 Agent：决策与质量判断；v1.6.5 起任务由宿主直接执行。",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "Codex / Claude / 其它接入者",
-   "title": "宿主 Agent",
-   "x": 70,
-   "y": 230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "knowledge",
-   "intent": "索引只定位，命中后回读原文。",
-   "issues": "",
-   "refs": "私人助理/第二大脑/00_小八AgentOS.md",
-   "status": "done",
-   "sub": "第二大脑 / KnowLP / 正式经验 / 技能与价值文件索引",
-   "title": "知识与能力发现",
-   "x": 70,
-   "y": 390
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "entry",
-   "intent": "",
-   "issues": "已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成",
-   "refs": "~/.agents/skills/xiaoba-agentos/scripts/xiaoba",
-   "status": "done",
-   "sub": "发布、配置与源码绑定校验",
-   "title": "统一 xiaoba 入口",
-   "x": 330,
-   "y": 230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "routing",
-   "intent": "",
-   "issues": "",
-   "refs": "integrated-candidate/src/xiaoba_agentos/routing.py",
-   "status": "done",
-   "sub": "",
-   "title": "消息路由",
-   "x": 580,
-   "y": 230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "direct",
-   "intent": "日常任务直接在私人助理做，不进队列。",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "宿主直接处理",
-   "x": 830,
-   "y": 110
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "queue",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "任务队列",
-   "x": 830,
-   "y": 240
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "ask",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "人工审核 / 必要追问",
-   "x": 830,
-   "y": 370
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "work",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "实际执行、宿主集成与技术验证",
-   "x": 1080,
-   "y": 100
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "worker",
-   "intent": "",
-   "issues": "",
-   "refs": "integrated-candidate/src/xiaoba_agentos/orchestrator.py",
-   "status": "old",
-   "sub": "预算、执行权、租约与回执",
-   "title": "Worker 与任务编排器",
-   "x": 1080,
-   "y": 250
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "backends",
-   "intent": "",
-   "issues": "v1.6.5 C1：AGY 恢复每步一次 CLI 调用并保留回执卡；离线 146 项通过，未提交、未做真实调用",
-   "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py",
-   "status": "old",
-   "sub": "AGY / DSH；Qoder 受限备用 —— 旧执行链，不是新审查组合",
-   "title": "后台执行适配器",
-   "x": 1330,
-   "y": 250
-  },
-  {
-   "desc": "裁判给的是回答排名分（挑胜出者），不是审查结论。",
-   "expanded": false,
-   "g": "g1",
-   "id": "qc",
-   "intent": "",
-   "issues": "总纲 2.5 与规则 MF-011：回答排名分不等于审查通过，不能作为经验核验依据",
-   "refs": "orchestrator.py:1138 judge.decided",
-   "status": "done",
-   "sub": "",
-   "title": "输出验收与确定性裁判",
-   "x": 1330,
-   "y": 100
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g1",
-   "id": "result",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "任务结果与审计回执",
-   "x": 1580,
-   "y": 100
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "delivery",
-   "intent": "交付即接受明确任务和版本的成品；一次交齐交付记录、经验候选和踩坑、打法、偏好。",
-   "issues": "",
-   "refs": "experience_loop.py record_delivery",
-   "status": "dev",
-   "sub": "本次成品已验收",
-   "title": "用户说“交付”",
-   "x": 70,
-   "y": 620
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "archive",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "交付记录、踩坑、打法、偏好",
-   "title": "交付归档",
-   "x": 320,
-   "y": 600
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "new_exp",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "本次产生的新经验",
-   "x": 320,
-   "y": 720
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "used",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "仅对已实际使用的原卡回流",
-   "title": "本次确实应用的旧候选",
-   "x": 320,
-   "y": 840
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "candidate",
-   "intent": "",
-   "issues": "",
-   "refs": "memory-candidate-create",
-   "status": "done",
-   "sub": "",
-   "title": "新经验候选",
-   "x": 570,
-   "y": 720
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "initial",
-   "intent": "“值得”由用户判，不交给 Agent 或评分。",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "由用户判定这条经验是否值得",
-   "title": "用户初审",
-   "x": 820,
-   "y": 720
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "initial_pass",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "进入核验流程，不自动发布",
-   "title": "初审通过",
-   "x": 1070,
-   "y": 720
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "pending_index",
-   "intent": "",
-   "issues": "只做 problem_key 精确匹配或标题子串匹配；“派发任务时自动检索”尚未接线",
-   "refs": "experience_loop.py pending_index",
-   "status": "dev",
-   "sub": "与正式长期记忆分开",
-   "title": "待验证经验独立索引",
-   "x": 1320,
-   "y": 620
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "retrieve",
-   "intent": "小八按用户派发任务的关联性，检索有无相似旧经验。",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "区分待验证候选与正式经验",
-   "title": "后续相似真实任务检索",
-   "x": 1570,
-   "y": 620
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "apply",
-   "intent": "",
-   "issues": "",
-   "refs": "memory-application-record",
-   "status": "dev",
-   "sub": "检索或阅读不算实际应用",
-   "title": "核对适用条件并实际应用",
-   "x": 1820,
-   "y": 620
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "evidence",
-   "intent": "复用工作中双审介入，交付后双审评分。",
-   "issues": "数值评分为 null，等 B5 量表",
-   "refs": "",
-   "status": "dev",
-   "sub": "绑定候选版本、任务与成品版本",
-   "title": "记录执行证据与独立评分",
-   "x": 2070,
-   "y": 620
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "later_delivery",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "确认该次成品验收",
-   "title": "后续任务用户说“交付”",
-   "x": 2070,
-   "y": 780
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g2",
-   "id": "feedback",
-   "intent": "",
-   "issues": "设计图标“待实现”，B4 已有离线实现，口径待统一",
-   "refs": "docs/EXPERIENCE_LOOP.md",
-   "status": "dev",
-   "sub": "证据、评分、应用位置与限制",
-   "title": "验证材料自动回写原候选",
-   "x": 570,
-   "y": 860
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "evidence_port",
-   "intent": "",
-   "issues": "问题2：外部独立审查是可选项，没有审查请求时直接放行（validation_evidence.py:121、131）",
-   "refs": "validation_evidence.py ingress_evidence",
-   "status": "dev",
-   "sub": "沿用原卡当前轮次，不重置；不能凭回写直接待终审",
-   "title": "核验材料接入",
-   "x": 70,
-   "y": 1120
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "wait1",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "",
-   "title": "待隔离验证 · 第一轮",
-   "x": 320,
-   "y": 1040
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "run1",
-   "intent": "",
-   "issues": "问题1：通过与否仍读旧链原生双审 judge.decided（validation_evidence.py:100），新双审只是附加项\n问题3：外部 FAIL / NEEDS_INFO 会让本轮卡住而不是记为失败（experience_workflow.py:700）",
-   "refs": "experience_workflow.py advance_validation_round",
-   "status": "decide",
-   "sub": "隔离执行、必要检查与独立审查",
-   "title": "执行第一轮隔离验证",
-   "x": 570,
-   "y": 1080
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "v1_result",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "",
-   "title": "第一轮结果",
-   "x": 820,
-   "y": 1080
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "final_queue",
-   "intent": "终审材料：首次提取场景、复用场景、双审评价。",
-   "issues": "",
-   "refs": "experience_loop.py final_binding",
-   "status": "dev",
-   "sub": "仅核验通过后进入；不自动批准",
-   "title": "自动进入待终审",
-   "x": 1070,
-   "y": 1040
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "final_user",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "",
-   "title": "裁决中心 · 用户人工终审",
-   "x": 1320,
-   "y": 1040
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "publish_checks",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "敏感检查与索引复验",
-   "title": "终审通过后",
-   "x": 1570,
-   "y": 1040
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "formal",
-   "intent": "经验价值高低是晋升、合并、退役的依据之一。",
-   "issues": "还没有价值高低与合并机制",
-   "refs": "第二大脑/70_复利规则/长期复用门禁.md",
-   "status": "done",
-   "sub": "",
-   "title": "正式经验与长期记忆索引",
-   "x": 1820,
-   "y": 1040
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "failed1",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "失败原因、执行结果与评分",
-   "title": "保留第一轮失败证据",
-   "x": 820,
-   "y": 1230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "wait2",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "",
-   "title": "待重新验证 · 第二轮",
-   "x": 1070,
-   "y": 1230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "run2",
-   "intent": "",
-   "issues": "同问题1、问题3",
-   "refs": "",
-   "status": "decide",
-   "sub": "针对首轮问题采取措施并重新核验",
-   "title": "执行第二轮重新验证",
-   "x": 1320,
-   "y": 1230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "v2_result",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "",
-   "title": "第二轮结果",
-   "x": 1570,
-   "y": 1230
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "diff",
-   "intent": "",
-   "issues": "问题4：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）",
-   "refs": "",
-   "status": "dev",
-   "sub": "重点标记：第二轮验证通过",
-   "title": "核对两轮差异与原因",
-   "x": 1570,
-   "y": 1150
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "retired",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "dev",
-   "sub": "停止检索与复用",
-   "title": "经验直接退役",
-   "x": 1820,
-   "y": 1300
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "retire_view",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "todo",
-   "sub": "两轮记录与退役原因",
-   "title": "监看中心展示",
-   "x": 2070,
-   "y": 1300
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g3",
-   "id": "delete",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "todo",
-   "sub": "系统不自动删除",
-   "title": "用户确认后手动删除",
-   "x": 2320,
-   "y": 1300
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g4",
-   "id": "card",
-   "intent": "",
-   "issues": "",
-   "refs": "review-ingress/xiaoba_review/store.py assignment",
-   "status": "dev",
-   "sub": "关联原卡、轮次与版本",
-   "title": "身份任务卡",
-   "x": 70,
-   "y": 1550
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g4",
-   "id": "dsh",
-   "intent": "总纲 2.1：固定 DSH 一方。",
-   "issues": "真实 DSH 联调未做",
-   "refs": "review-ingress/xiaoba_review/backends.py",
-   "status": "dev",
-   "sub": "",
-   "title": "固定 DSH 审查",
-   "x": 330,
-   "y": 1500
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g4",
-   "id": "peer",
-   "intent": "",
-   "issues": "AGY 在 stream-json 模式下不能响应权限确认，命令类操作会被拒\nAGY 沙箱能否读到工作区外的证据文件，未验证",
-   "refs": "resource_agy_cli.py",
-   "status": "dev",
-   "sub": "任意外部 Agent / 后台 Agent",
-   "title": "开放第二审查 Agent",
-   "x": 330,
-   "y": 1620
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g4",
-   "id": "receipts",
-   "intent": "",
-   "issues": "问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡",
-   "refs": "review-ingress store.py receive",
-   "status": "dev",
-   "sub": "任务关联、来源、版本与输出核验",
-   "title": "统一回执入口",
-   "x": 590,
-   "y": 1560
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g4",
-   "id": "confirmed",
-   "intent": "",
-   "issues": "问题5：独立性只比对 source_ref 字符串（store.py:164）",
-   "refs": "review-ingress store.py attest",
-   "status": "dev",
-   "sub": "自填身份或哈希不等于认证",
-   "title": "实际来源确认与独立性核对",
-   "x": 850,
-   "y": 1560
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g4",
-   "id": "review_evidence",
-   "intent": "回执齐备不等于核验通过。",
-   "issues": "回执合同里没有评分和适用限制字段（B5 待定）",
-   "refs": "",
-   "status": "dev",
-   "sub": "结论、理由、评分、分歧与限制",
-   "title": "当轮独立审查证据",
-   "x": 1110,
-   "y": 1560
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g5",
-   "id": "data",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "SQLite、候选文件、回执与事件哈希链",
-   "title": "数据与运行底座",
-   "x": 70,
-   "y": 1810
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g5",
-   "id": "governance",
-   "intent": "",
-   "issues": "",
-   "refs": "私人助理/工作区/小八规则清单与目标架构/小八规则清单.md",
-   "status": "done",
-   "sub": "B09 配置一致 / B19 输出合格 / B20 原子与幂等结算",
-   "title": "贯穿约束",
-   "x": 330,
-   "y": 1810
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g5",
-   "id": "monitor",
-   "intent": "",
-   "issues": "",
-   "refs": "私人助理/工具/小八监看",
-   "status": "dev",
-   "sub": "进度、身份、任务卡、回执、轮次、退役、删除确认",
-   "title": "运行监看",
-   "x": 590,
-   "y": 1810
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g5",
-   "id": "capabilities",
-   "intent": "",
-   "issues": "",
-   "refs": "",
-   "status": "done",
-   "sub": "项目 / 导演 / 资产 / 审美 / OriginCut / Remotion / AE / 达芬奇 / BGM 与 SFX / REA",
-   "title": "共享业务能力",
-   "x": 850,
-   "y": 1810
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g5",
-   "id": "workday",
-   "intent": "",
-   "issues": "健康探针：总纲 2.2 不许发探针，HANDOFF 却设计了每日开工探针——待用户裁定",
-   "refs": "review-ingress/xiaoba_review/workday.py",
-   "status": "dev",
-   "sub": "Agent 每天的工作回执",
-   "title": "工作日台账",
-   "x": 1110,
-   "y": 1810
-  },
-  {
-   "desc": "",
-   "expanded": false,
-   "g": "g5",
-   "id": "scoring",
-   "intent": "接替已退役的策略进化：什么 Agent 配什么模型得什么评分，用于同类任务择优。",
-   "issues": "是否计成本：总纲 2.5 列了成本，HANDOFF 写“不记录资源投入”——待用户裁定\n审查回执尚未进入周评分",
-   "refs": "review-ingress/xiaoba_review/task_scoring.py",
-   "status": "decide",
-   "sub": "7 天一周期（B5）",
-   "title": "Agent＋模型周评分与择优",
-   "x": 1370,
-   "y": 1810
-  }
- ],
  "edges": [
   {
    "from": "user",
@@ -814,35 +18,35 @@
    "from": "host",
    "id": "e2",
    "kind": "normal",
-   "label": "",
+   "label": "上班或派后台时",
    "to": "entry"
   },
   {
    "from": "entry",
    "id": "e3",
    "kind": "normal",
-   "label": "",
+   "label": "校验通过",
    "to": "routing"
   },
   {
    "from": "routing",
    "id": "e4",
    "kind": "normal",
-   "label": "",
+   "label": "日常任务",
    "to": "direct"
   },
   {
    "from": "routing",
    "id": "e5",
    "kind": "normal",
-   "label": "",
+   "label": "要派给协作员",
    "to": "queue"
   },
   {
    "from": "routing",
    "id": "e6",
    "kind": "normal",
-   "label": "",
+   "label": "拿不准就问用户",
    "to": "ask"
   },
   {
@@ -869,30 +73,16 @@
   {
    "from": "worker",
    "id": "e10",
-   "kind": "old",
-   "label": "显式调用",
+   "kind": "normal",
+   "label": "按角色派活",
    "to": "backends"
   },
   {
    "from": "worker",
    "id": "e11",
    "kind": "normal",
-   "label": "",
+   "label": "交回实际执行",
    "to": "work"
-  },
-  {
-   "from": "work",
-   "id": "e12",
-   "kind": "normal",
-   "label": "",
-   "to": "qc"
-  },
-  {
-   "from": "qc",
-   "id": "e13",
-   "kind": "normal",
-   "label": "",
-   "to": "result"
   },
   {
    "from": "result",
@@ -912,14 +102,14 @@
    "from": "delivery",
    "id": "e16",
    "kind": "normal",
-   "label": "",
+   "label": "产生了新经验",
    "to": "new_exp"
   },
   {
    "from": "delivery",
    "id": "e17",
    "kind": "normal",
-   "label": "",
+   "label": "用过经验",
    "to": "used"
   },
   {
@@ -930,109 +120,32 @@
    "to": "candidate"
   },
   {
-   "from": "candidate",
-   "id": "e19",
-   "kind": "normal",
-   "label": "",
-   "to": "initial"
-  },
-  {
    "from": "initial",
    "id": "e20",
    "kind": "normal",
-   "label": "",
+   "label": "初审通过",
    "to": "initial_pass"
-  },
-  {
-   "from": "initial_pass",
-   "id": "e21",
-   "kind": "normal",
-   "label": "",
-   "to": "pending_index"
-  },
-  {
-   "from": "initial_pass",
-   "id": "e22",
-   "kind": "normal",
-   "label": "初审通过后开始第一轮",
-   "to": "wait1"
-  },
-  {
-   "from": "pending_index",
-   "id": "e23",
-   "kind": "normal",
-   "label": "",
-   "to": "retrieve"
   },
   {
    "from": "retrieve",
    "id": "e24",
    "kind": "normal",
-   "label": "",
+   "label": "匹配结果",
    "to": "apply"
-  },
-  {
-   "from": "apply",
-   "id": "e25",
-   "kind": "normal",
-   "label": "",
-   "to": "evidence"
-  },
-  {
-   "from": "evidence",
-   "id": "e26",
-   "kind": "normal",
-   "label": "",
-   "to": "later_delivery"
-  },
-  {
-   "from": "later_delivery",
-   "id": "e27",
-   "kind": "normal",
-   "label": "",
-   "to": "used"
   },
   {
    "from": "used",
    "id": "e28",
    "kind": "normal",
-   "label": "",
+   "label": "应用与验证材料",
    "to": "feedback"
-  },
-  {
-   "from": "feedback",
-   "id": "e29",
-   "kind": "normal",
-   "label": "",
-   "to": "evidence_port"
   },
   {
    "from": "evidence_port",
    "id": "e30",
    "kind": "normal",
-   "label": "仅当原卡为第一轮",
+   "label": "初审通过、未终审（第一轮）",
    "to": "run1"
-  },
-  {
-   "from": "evidence_port",
-   "id": "e31",
-   "kind": "normal",
-   "label": "仅当原卡为第二轮",
-   "to": "run2"
-  },
-  {
-   "from": "wait1",
-   "id": "e32",
-   "kind": "normal",
-   "label": "",
-   "to": "run1"
-  },
-  {
-   "from": "run1",
-   "id": "e33",
-   "kind": "normal",
-   "label": "",
-   "to": "v1_result"
   },
   {
    "from": "v1_result",
@@ -1049,38 +162,17 @@
    "to": "final_queue"
   },
   {
-   "from": "failed1",
-   "id": "e36",
-   "kind": "normal",
-   "label": "",
-   "to": "wait2"
-  },
-  {
-   "from": "wait2",
-   "id": "e37",
-   "kind": "normal",
-   "label": "",
-   "to": "run2"
-  },
-  {
-   "from": "run2",
-   "id": "e38",
-   "kind": "normal",
-   "label": "",
-   "to": "v2_result"
-  },
-  {
    "from": "v2_result",
    "id": "e39",
    "kind": "normal",
-   "label": "通过",
+   "label": "通过或有分歧",
    "to": "diff"
   },
   {
    "from": "v2_result",
    "id": "e40",
    "kind": "normal",
-   "label": "未通过",
+   "label": "全部 FAIL",
    "to": "retired"
   },
   {
@@ -1101,22 +193,15 @@
    "from": "final_user",
    "id": "e43",
    "kind": "normal",
-   "label": "",
+   "label": "终审通过",
    "to": "publish_checks"
   },
   {
    "from": "publish_checks",
    "id": "e44",
    "kind": "normal",
-   "label": "",
+   "label": "检查通过",
    "to": "formal"
-  },
-  {
-   "from": "formal",
-   "id": "e45",
-   "kind": "normal",
-   "label": "正式经验后续复用",
-   "to": "retrieve"
   },
   {
    "from": "retired",
@@ -1136,14 +221,14 @@
    "from": "card",
    "id": "e48",
    "kind": "normal",
-   "label": "",
+   "label": "审查派活",
    "to": "dsh"
   },
   {
    "from": "card",
    "id": "e49",
    "kind": "normal",
-   "label": "",
+   "label": "审查派活",
    "to": "peer"
   },
   {
@@ -1161,54 +246,3670 @@
    "to": "receipts"
   },
   {
-   "from": "receipts",
-   "id": "e52",
+   "from": "work",
+   "id": "e93239058",
    "kind": "normal",
-   "label": "",
-   "to": "confirmed"
+   "label": "任务完成",
+   "to": "result"
   },
   {
-   "from": "confirmed",
-   "id": "e53",
+   "from": "formal",
+   "id": "ev5sm1m",
+   "kind": "normal",
+   "label": "读永久总分，用于检索排序",
+   "to": "evidence"
+  },
+  {
+   "from": "pending_index",
+   "id": "e0jopz8",
+   "kind": "normal",
+   "label": "只匹配待验证经验",
+   "to": "retrieve"
+  },
+  {
+   "from": "apply",
+   "id": "ejtdjkb",
+   "kind": "normal",
+   "label": "拉取经验和工具（不自动执行）",
+   "to": "worker"
+  },
+  {
+   "from": "backends",
+   "id": "e9hp2np",
+   "kind": "normal",
+   "label": "派审查或协作",
+   "to": "card"
+  },
+  {
+   "from": "initial_pass",
+   "id": "emops1k",
    "kind": "normal",
    "label": "",
+   "to": "evidence_port"
+  },
+  {
+   "from": "archive",
+   "id": "etvok78",
+   "kind": "normal",
+   "label": "交付后记干活分",
+   "to": "evidence"
+  },
+  {
+   "from": "run1",
+   "id": "e0gmdi8",
+   "kind": "normal",
+   "label": "第一轮",
+   "to": "pending_index"
+  },
+  {
+   "from": "receipts",
+   "id": "ed4s0sm",
+   "kind": "normal",
+   "label": "回执",
    "to": "review_evidence"
   },
   {
    "from": "review_evidence",
-   "id": "e54",
+   "id": "ede2v5t",
    "kind": "normal",
-   "label": "支持第一轮核验",
-   "to": "run1"
+   "label": "来源和字段核实后",
+   "to": "confirmed"
   },
   {
-   "from": "review_evidence",
-   "id": "e55",
+   "from": "final_user",
+   "id": "e37770061",
    "kind": "normal",
-   "label": "支持第二轮核验",
+   "label": "用户裁定退役",
+   "to": "retired"
+  },
+  {
+   "from": "backends",
+   "id": "e37770062",
+   "kind": "pending",
+   "label": "兜底：全部审查员不可用，用户选宿主独立审查",
+   "to": "evidence"
+  },
+  {
+   "from": "evidence",
+   "id": "e37770063",
+   "kind": "normal",
+   "label": "平均 ≥6、分歧大或重复；兜底：携带评分与独立审查结果",
+   "to": "initial"
+  },
+  {
+   "from": "formal",
+   "id": "eb9vi3g",
+   "kind": "normal",
+   "label": "每条正式经验一个计数",
+   "to": "nf2evuw"
+  },
+  {
+   "from": "nf2evuw",
+   "id": "ev224o1",
+   "kind": "normal",
+   "label": "计数和永久总分存档",
+   "to": "evidence"
+  },
+  {
+   "from": "evidence",
+   "id": "enhip8e",
+   "kind": "normal",
+   "label": "宿主读评分选人",
+   "to": "work"
+  },
+  {
+   "from": "nf2evuw",
+   "id": "e71235465",
+   "kind": "normal",
+   "label": "提交：复用中有改动或不适用 / 长期未用",
+   "to": "final_user"
+  },
+  {
+   "from": "final_user",
+   "id": "e71235466",
+   "kind": "normal",
+   "label": "长期未用：用户决定删除",
+   "to": "delete"
+  },
+  {
+   "from": "final_user",
+   "id": "e71235467",
+   "kind": "normal",
+   "label": "保留：取消本轮提交，重新计时",
+   "to": "nf2evuw"
+  },
+  {
+   "from": "formal",
+   "id": "evrk527",
+   "kind": "normal",
+   "label": "按永久总分提供检索",
+   "to": "knowledge"
+  },
+  {
+   "from": "evidence",
+   "id": "ejc6xfr",
+   "kind": "normal",
+   "label": "按评分择优",
+   "to": "worker"
+  },
+  {
+   "from": "failed1",
+   "id": "e17417668",
+   "kind": "normal",
+   "label": "不改正文：直接第二轮",
    "to": "run2"
   },
   {
-   "from": "apply",
-   "id": "e56",
-   "kind": "pending",
-   "label": "复用中双审介入",
-   "to": "card"
-  },
-  {
-   "from": "workday",
-   "id": "e57",
+   "from": "run2",
+   "id": "e17417669",
    "kind": "normal",
-   "label": "每日回执",
-   "to": "scoring"
+   "label": "第二轮",
+   "to": "pending_index"
   },
   {
-   "from": "receipts",
-   "id": "e58",
-   "kind": "pending",
-   "label": "审查回执未接入",
-   "to": "scoring"
+   "from": "feedback",
+   "id": "e7vdn51",
+   "kind": "normal",
+   "label": "第二轮验证经验 · 审查结论",
+   "to": "v2_result"
+  },
+  {
+   "from": "feedback",
+   "id": "eg8qdx0",
+   "kind": "normal",
+   "label": "第一轮验证经验 · 审查结论",
+   "to": "v1_result"
+  },
+  {
+   "from": "candidate",
+   "id": "ehnyu45",
+   "kind": "normal",
+   "label": "送审查员打分",
+   "to": "backends"
+  },
+  {
+   "from": "initial",
+   "id": "eph7ass",
+   "kind": "normal",
+   "label": "初审不通过：退役",
+   "to": "retire_view"
+  },
+  {
+   "from": "feedback",
+   "id": "e2bn6xc",
+   "kind": "normal",
+   "label": "复用的正式经验",
+   "to": "nf2evuw"
+  },
+  {
+   "from": "card",
+   "id": "e55gq4h",
+   "kind": "normal",
+   "label": "替补：审查或协作",
+   "to": "nfpbqu1"
+  },
+  {
+   "from": "card",
+   "id": "eb0ou99",
+   "kind": "normal",
+   "label": "宿主兼任审查",
+   "to": "work"
+  },
+  {
+   "from": "nfpbqu1",
+   "id": "ejbmpht",
+   "kind": "normal",
+   "label": "",
+   "to": "receipts"
+  },
+  {
+   "from": "work",
+   "id": "ea4elsb",
+   "kind": "normal",
+   "label": "宿主兼任审查的回执",
+   "to": "receipts"
+  },
+  {
+   "from": "confirmed",
+   "id": "efix00",
+   "kind": "normal",
+   "label": "新经验：各审查员 0–10 分",
+   "to": "evidence"
+  },
+  {
+   "from": "host",
+   "id": "efix01",
+   "kind": "normal",
+   "label": "接任务时查待验证经验",
+   "to": "retrieve"
+  },
+  {
+   "from": "apply",
+   "id": "efix02",
+   "kind": "normal",
+   "label": "宿主也可使用待验证经验",
+   "to": "direct"
+  },
+  {
+   "from": "confirmed",
+   "id": "efix03",
+   "kind": "normal",
+   "label": "复验 / 复用改动：审查结论",
+   "to": "feedback"
+  },
+  {
+   "from": "knowledge",
+   "id": "efix04",
+   "kind": "normal",
+   "label": "正式经验确实用到时登记",
+   "to": "apply"
+  },
+  {
+   "from": "apply",
+   "id": "efix05",
+   "kind": "normal",
+   "label": "应用记录",
+   "to": "used"
+  },
+  {
+   "from": "work",
+   "id": "efix06",
+   "kind": "normal",
+   "label": "试错放弃：不经交付也可产出",
+   "to": "new_exp"
+  },
+  {
+   "from": "review_evidence",
+   "id": "efix07",
+   "kind": "normal",
+   "label": "掉线：暂停并问用户换人",
+   "to": "ask"
+  },
+  {
+   "from": "confirmed",
+   "id": "efix08",
+   "kind": "normal",
+   "label": "NEEDS_INFO：暂停补材料",
+   "to": "ask"
+  },
+  {
+   "from": "publish_checks",
+   "id": "efix09",
+   "kind": "normal",
+   "label": "检查未过：退回裁决",
+   "to": "final_user"
+  },
+  {
+   "from": "card",
+   "id": "efix10",
+   "kind": "normal",
+   "label": "协作派活",
+   "to": "collab"
+  },
+  {
+   "from": "collab",
+   "id": "efix11",
+   "kind": "normal",
+   "label": "协作回执",
+   "to": "receipts"
+  },
+  {
+   "from": "collab",
+   "id": "efix12",
+   "kind": "normal",
+   "label": "产出交宿主核验",
+   "to": "work"
+  },
+  {
+   "from": "failed1",
+   "id": "efix20",
+   "kind": "normal",
+   "label": "改了正文：回初审，轮次不清零",
+   "to": "initial"
+  },
+  {
+   "from": "evidence_port",
+   "id": "efix21",
+   "kind": "normal",
+   "label": "改正文后重新初审：继续第二轮",
+   "to": "run2"
+  },
+  {
+   "from": "host",
+   "id": "efix30",
+   "kind": "normal",
+   "label": "日常任务：不过入口，宿主直接判断",
+   "to": "routing"
   }
  ],
- "savedAt": 1793260570820
+ "groups": [
+  {
+   "collapsed": false,
+   "id": "g1",
+   "title": "一、接入、路由与任务执行",
+   "x": 44,
+   "y": 30
+  },
+  {
+   "collapsed": false,
+   "id": "g2",
+   "title": "二、交付、候选与真实任务应用",
+   "x": 44,
+   "y": 354
+  },
+  {
+   "collapsed": false,
+   "id": "g3",
+   "title": "三、经验核验状态机",
+   "x": 44,
+   "y": 678
+  },
+  {
+   "collapsed": false,
+   "id": "g4",
+   "title": "四、独立审查接入",
+   "x": 44,
+   "y": 985
+  },
+  {
+   "collapsed": false,
+   "id": "g5",
+   "title": "五、共享底座与贯穿治理",
+   "x": 44,
+   "y": 1327
+  }
+ ],
+ "lastSubmitAt": 1793369207292,
+ "nodes": [
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [],
+   "id": "user",
+   "intent": "唯一规范制定者；初审判定经验是否值得，终审批准写入第二大脑。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/AGENTS.md",
+   "status": "done",
+   "sub": "目标、授权、成品验收、人工裁决",
+   "title": "用户",
+   "x": 70,
+   "y": 108
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [],
+   "id": "host",
+   "intent": "主入口 Agent：决策与质量判断；v1.6.5 起任务由宿主直接执行。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "Codex / Claude / 其它接入者",
+   "title": "宿主 Agent",
+   "x": 320,
+   "y": 116
+  },
+  {
+   "desc": "正式经验库按永久总分从高到低提供给本节点；宿主接任务时在这里检索。检索或阅读不算复用：确实用到时经「核对适用条件并实际应用」登记，交付后才由「复用计分」计数。",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "写入：正式经验按永久总分供宿主检索（用户已接线）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200529,
+     "before": {
+      "desc": "正式经验库按永久总分从高到低提供给本节点；宿主接任务时在这里检索复用（复用由「复用计分」计数）。",
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "写清：检索不算复用，确实用到才登记"
+    }
+   ],
+   "id": "knowledge",
+   "intent": "索引只定位，命中后回读原文。",
+   "issues": "新意图待实现：按永久总分排序",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/第二大脑/00_小八AgentOS.md",
+   "status": "done",
+   "sub": "第二大脑 / KnowLP / 正式经验 / 技能与价值文件索引",
+   "title": "知识与能力发现",
+   "x": 571,
+   "y": 242
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "用户决定：后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可以随时添加、删除、开启、关闭。每个节点单独设角色：审查、分工协作，或者两样都做。现在的节点角色\"dsh / peer\"（槽位 A / B）要改成\"审查 / 协作\"。旧的 AGY + DSH 固定名单退役。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "按 v1.6.5 入口决定改写意图（提交里贴入的是 Agent 池原话，内容已转到「后台执行适配器」）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200531,
+     "before": {
+      "issues": "已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成"
+     },
+     "by": "agent",
+     "text": "标记：日常任务是否过本入口"
+    },
+    {
+     "at": 1793363839002,
+     "by": "user",
+     "text": "全部按建议。（问题：日常任务不说“上班”时是否也要过统一入口；建议：不需要，入口校验只在上班和派后台时做；把图改成日常任务可直接路由）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839011,
+     "before": {
+      "intent": "宿主进入小八体系的唯一大门；进门前核对已安装版本、配置与源码是同一套，对得上才放行。用户决定：把 v1.6.5 正式接到统一入口上，替换现在装着的 v1.6.4 启动环节，让实际运行和图上的 v1.6.5 流程一致；完成后核实新会话启动走的确实是 v1.6.5。",
+      "issues": "已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成\n待确认：日常任务不说“上班”时是否也要过本入口（AGENTS 现在写的是不需要，图上是都要过）"
+     },
+     "by": "agent",
+     "text": "上班和派后台时才过入口，日常任务可直接路由"
+    }
+   ],
+   "id": "entry",
+   "intent": "上班和派后台任务时必须过的大门，日常任务不需要过；进门前核对已安装版本、配置与源码是同一套，对得上才放行。用户决定：把 v1.6.5 正式接到统一入口上，替换现在装着的 v1.6.4 启动环节，让实际运行和图上的 v1.6.5 流程一致；完成后核实新会话启动走的确实是 v1.6.5。",
+   "issues": "已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成",
+   "note": "",
+   "pending": false,
+   "refs": "~/.agents/skills/xiaoba-agentos/scripts/xiaoba",
+   "status": "done",
+   "sub": "发布、配置与源码绑定校验",
+   "title": "统一 xiaoba 入口",
+   "x": 570,
+   "y": 60
+  },
+  {
+   "desc": "高风险请求（凭据、付款、删除、对外发送、发版这类，规则 B01、B02、MB-035）不得由宿主直接处理，先走「人工审核 / 必要追问」。旧规则 MB-036“动作类请求必走审查”不再强制。\n走任务队列前要先过「统一 xiaoba 入口」。",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "由宿主自己判断。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：由宿主自己判断分流"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200533,
+     "before": {
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "标记：宿主判断与旧硬规则的边界"
+    },
+    {
+     "at": 1793363839003,
+     "by": "user",
+     "text": "全部按建议。（问题：宿主自行判断路由，是否覆盖“动作类请求必走审查、高风险不得直答”；建议：日常判断归宿主，高风险操作保留硬底线）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839013,
+     "before": {
+      "desc": "",
+      "issues": "待确认：宿主自行判断是否覆盖旧规则“动作类请求必走审查、高风险不得直答”（MB-035、MB-036）（建议：日常判断归宿主，高风险操作保留硬底线）"
+     },
+     "by": "agent",
+     "text": "高风险操作保留硬底线；派后台前先过入口"
+    }
+   ],
+   "id": "routing",
+   "intent": "由宿主自己判断走哪条路：宿主直接处理、进任务队列派给协作员，或停下来问用户。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "integrated-candidate/src/xiaoba_agentos/routing.py",
+   "status": "done",
+   "sub": "",
+   "title": "消息路由",
+   "x": 829,
+   "y": 99
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [],
+   "id": "direct",
+   "intent": "日常任务直接在私人助理做，不进队列。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "",
+   "title": "宿主直接处理",
+   "x": 1074,
+   "y": 31
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "用户决定：保留任务队列，用来给协作角色的 Agent 排队派活。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": "",
+      "sub": ""
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "意图改为：保留，给协作角色 Agent 排队派活"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200535,
+     "before": {
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "标记实现差距"
+    }
+   ],
+   "id": "queue",
+   "intent": "保留任务队列。用途从旧双后台排队，改为给 Agent 池里协作角色的节点排队派活。",
+   "issues": "新意图待实现：只给协作角色排队",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "给协作角色的 Agent 排队派活",
+   "title": "任务队列",
+   "x": 1094,
+   "y": 114
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200537,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "补说明：何时停下来问用户"
+    }
+   ],
+   "id": "ask",
+   "intent": "需要用户决定时停下来问：路由拿不准、审查结论 NEEDS_INFO 要补材料、审查员或协作员掉线要换人。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "",
+   "title": "人工审核 / 必要追问",
+   "x": 1098,
+   "y": 265
+  },
+  {
+   "desc": "审查只是辅助：只判断宿主产出的经验能不能进初审；认为有问题时只挡那条经验，不拦截宿主的任务回执和交付。宿主权限高于审查。原「输出验收与确定性裁判」已删除。\n宿主核验协作员产出时，可同时担任审查员（由身份任务卡指派），审查结果写入统一回执入口。\n试错放弃没有交付事件：产生的经验经「本次产生的新经验」进入，不走交付。",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "用户决定：宿主执行完任务后按是否产生经验分流。产生了经验（或宿主认为值得保留的东西），就送 Agent 池中的审查节点双审，核验价值、是否值得提交初审，并检索有没有重复的已有经验。没有产生经验，就直接进入\"任务结果与审计回执\"，任务结束。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "desc": "",
+      "intent": "",
+      "sub": ""
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "写入按是否产生经验分流的决定"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "可以"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "宿主执行完任务后按是否产生经验分流：产生了经验（或宿主认为值得保留的东西），经交付后的新经验候选送 Agent 池审查节点双审，核验价值、是否值得提交初审、是否与已有经验重复；没有产生经验，直接进入「任务结果与审计回执」，任务结束。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "文字修正：去掉“未产生经验”这条线的误导"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "双审只是辅助：只判断宿主产出的经验能不能进初审；认为有问题时只挡那条经验，不拦截宿主的任务回执和交付。宿主权限高于双审。原「输出验收与确定性裁判」已删除。"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "补充：宿主核验协作员产出时可兼任审查员"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200539,
+     "before": {
+      "desc": "双审只是辅助：只判断宿主产出的经验能不能进初审；认为有问题时只挡那条经验，不拦截宿主的任务回执和交付。宿主权限高于双审。原「输出验收与确定性裁判」已删除。\n宿主核验协作员产出时，可同时担任审查员（由身份任务卡指派），审查结果写入统一回执入口。"
+     },
+     "by": "agent",
+     "text": "文字修正：双审改审查；写明试错放弃的去向"
+    }
+   ],
+   "id": "work",
+   "intent": "宿主（或协作员）把任务做完，进入「任务结果与审计回执」。产生了经验（或宿主认为值得保留的东西）的，交付后经新经验候选送审查员核验；没产生经验的，交付后就结束。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "宿主或协作节点把任务做出来",
+   "title": "实际执行、宿主集成与技术验证",
+   "x": 1343,
+   "y": 20
+  },
+  {
+   "desc": "不依赖宿主会话的自动步骤由本节点执行：交付后的新经验审查、派活后的掉线判定。宿主已退出时，需要用户处理的事写进运行总览“待你处理”。详见 docs/architecture-topology/CONTRACTS.md。",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "用户决定：保留编排器，但不再读旧的固定后台名单，改成按角色从 Agent 池里挑已开启、已测试通过的节点派活。顺序上排在\"恢复 CLI 调用 + 保留回执卡\"之后再改。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": "",
+      "issues": "",
+      "status": "old",
+      "sub": "预算、执行权、租约与回执"
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "状态由旧执行链改为待实现；按角色从 Agent 池派活"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200541,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "写明不依赖宿主会话的自动步骤"
+    }
+   ],
+   "id": "worker",
+   "intent": "保留编排器，但不再读旧的 AGY＋DSH 固定后台名单，改成按角色从 Agent 池里挑已开启、已测试通过的节点派活。",
+   "issues": "排期：放在「恢复每步一次 CLI 调用＋保留回执卡」完成之后再改\n现状：orchestrator 仍读旧 Worker 后台名单；Agent 池派活只覆盖开放审查与工作卡接口",
+   "note": "",
+   "pending": false,
+   "refs": "integrated-candidate/src/xiaoba_agentos/orchestrator.py",
+   "status": "todo",
+   "sub": "按角色从 Agent 池挑节点派活；预算、执行权、租约与回执",
+   "title": "Worker 与任务编排器",
+   "x": 2015,
+   "y": 59
+  },
+  {
+   "desc": "兜底：Agent 池审查员全部不可用时，先问用户；用户选了宿主兜底，才由宿主 Agent 独立审查；产出的新经验和复用经验记入工作日台账，标明“宿主 Agent 独立审查产出”，直接提交评分中心评分，再携带评分和独立审查结果提交用户初审。\n审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。宿主读取评分中心的数据，自行判断选用哪几个。\n新经验审查员只打分，值不值得进初审由评分中心判定（见「新经验候选」）；和已有经验重复的，也提交用户初审，由用户判定两条经验重复的部分留哪一条。本节点是节点登记表，审查派活走「身份任务卡」，不直接通向用户初审。\n另设「备用角色」：可当审查员也可当协作员，由身份任务卡在需要替补时派活。",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "用户决定：后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可以随时添加、删除、开启、关闭。每个节点单独设角色：审查、分工协作，或者两样都做。现在的节点角色\"dsh / peer\"（槽位 A / B）要改成\"审查 / 协作\"。旧的 AGY + DSH 固定名单退役。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": "",
+      "issues": "v1.6.5 C1：AGY 恢复每步一次 CLI 调用并保留回执卡；离线 146 项通过，未提交、未做真实调用",
+      "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py",
+      "status": "old",
+      "sub": "AGY / DSH；Qoder 受限备用 —— 旧执行链，不是新审查组合",
+      "title": "后台执行适配器"
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "改为插件化 Agent 池；角色改为 审查 / 协作"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "补充兜底：全部审查员不可用时宿主独立审查"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": "兜底：Agent 池所有审查员（协作员）都不可用时，由宿主 Agent 独立执行任务；产出的新经验和复用经验记入工作日台账，标明“宿主 Agent 独立审查产出”，直接提交评分中心评分，再携带评分和独立审查结果提交用户初审。"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：审查员最少两个，宿主按评分选用"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "新经验通过后进入用户初审，没价值就直接丢弃不留痕，经验重复要提交用户初审，让用户判定两条经验的重复区域谁更值得留下。当然不，审查员是审查员，协作员是协作员。区分开，审查至少2个，协作员可以有也可以没有，有就用，没有就不用。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "兜底：Agent 池所有审查员（协作员）都不可用时，由宿主 Agent 独立执行任务；产出的新经验和复用经验记入工作日台账，标明“宿主 Agent 独立审查产出”，直接提交评分中心评分，再携带评分和独立审查结果提交用户初审。\n审查员（协作员）最少两个，不限于 A、B 两个；宿主读取评分中心的数据，自行判断选用哪几个。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：审查员与协作员分开；没价值丢弃、重复交用户初审"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "我新建了一个「备用角色」节点"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "兜底：Agent 池审查员全部不可用时，由宿主 Agent 独立执行任务；产出的新经验和复用经验记入工作日台账，标明“宿主 Agent 独立审查产出”，直接提交评分中心评分，再携带评分和独立审查结果提交用户初审。\n审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。宿主读取评分中心的数据，自行判断选用哪几个。\n新经验审查结果：有价值 → 用户初审；没价值 → 直接丢弃，不留痕；和已有经验重复 → 也提交用户初审，由用户判定两条经验重复的部分留哪一条。"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "补充：备用角色"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200543,
+     "before": {
+      "desc": "兜底：Agent 池审查员全部不可用时，由宿主 Agent 独立执行任务；产出的新经验和复用经验记入工作日台账，标明“宿主 Agent 独立审查产出”，直接提交评分中心评分，再携带评分和独立审查结果提交用户初审。\n审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。宿主读取评分中心的数据，自行判断选用哪几个。\n新经验审查结果：有价值 → 用户初审；没价值 → 直接丢弃，不留痕；和已有经验重复 → 也提交用户初审，由用户判定两条经验重复的部分留哪一条。\n另设「备用角色」：可当审查员也可当协作员，由身份任务卡在需要替补时派活。",
+      "issues": "v1.6.5 C1：AGY 恢复每步一次 CLI 调用并保留回执卡；离线 146 项通过，未提交、未做真实调用\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH"
+     },
+     "by": "agent",
+     "text": "文字修正：审查员只打分；本节点是登记表"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495726,
+     "before": {
+      "desc": "兜底：Agent 池审查员全部不可用时，由宿主 Agent 独立执行任务；产出的新经验和复用经验记入工作日台账，标明“宿主 Agent 独立审查产出”，直接提交评分中心评分，再携带评分和独立审查结果提交用户初审。\n审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。宿主读取评分中心的数据，自行判断选用哪几个。\n新经验审查员只打分，值不值得进初审由评分中心判定（见「新经验候选」）；和已有经验重复的，也提交用户初审，由用户判定两条经验重复的部分留哪一条。本节点是节点登记表，审查派活走「身份任务卡」，不直接通向用户初审。\n另设「备用角色」：可当审查员也可当协作员，由身份任务卡在需要替补时派活。",
+      "issues": "v1.6.5 C1：AGY 恢复每步一次 CLI 调用并保留回执卡；离线 146 项通过，未提交、未做真实调用\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\n待确认（裁决 3）：全部审查员不可用时是自动由宿主兜底，还是先问用户（建议：暂停时把宿主兜底作为一个选项问用户）"
+     },
+     "by": "agent",
+     "text": "裁决 3：全部不可用时先问用户"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793369207299,
+     "before": {
+      "issues": "v1.6.5 C1：AGY 恢复每步一次 CLI 调用并保留回执卡；离线 146 项通过，未提交、未做真实调用\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH"
+     },
+     "by": "agent",
+     "text": "问题说明改成明确的代码现状；写明 146 项证据只在本机"
+    }
+   ],
+   "id": "backends",
+   "intent": "后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可随时添加、删除、开启、关闭；每个节点单独设角色：审查、分工协作，或两样都做。旧的 AGY＋DSH 固定名单退役。",
+   "issues": "代码现状：v1.6.5 C1（AGY 恢复每步一次 CLI 调用并保留回执卡）只在用户本机工作区，未提交；离线 146 项通过的证据也只在本机，GitHub 版接入口是 126 项；未做真实调用，结论看任务卡 8。\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH",
+   "note": "",
+   "pending": false,
+   "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py\nreview-ingress/xiaoba_review/agent_pool.py\nreview-ingress/AGENT_POOL.md",
+   "status": "dev",
+   "sub": "插件化节点，可加 / 删 / 开 / 关；每个节点角色＝审查、协作或两者",
+   "title": "后台执行适配器 · Agent 池",
+   "x": 2319,
+   "y": 160
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g1",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200545,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "补说明：这里不验收"
+    }
+   ],
+   "id": "result",
+   "intent": "记录任务结果和审计回执；这里不验收，也不代表用户交付。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "",
+   "title": "任务结果与审计回执",
+   "x": 1564,
+   "y": 182
+  },
+  {
+   "desc": "面向用户的任务没有“没交付 / 失败”的结局：没交付就一直改到交付为止。唯一的例外是用户临时起意的试错，试了不行就放弃——这不算项目，主导者只有宿主 Agent：审查员只看试错过程中有没有产出有价值的经验，协作员只看宿主有没有给它派活。\n审查员 / 协作员的回执是面向宿主 Agent 的，不等于用户交付。\n一次交付只结算一次（任务＋成品版本）；引用、否定或讨论“交付”不触发。同一任务多次交付，每条经验最多 +1 一次。\n交付后这几件事可以同时发生：归档一定做；产生了新经验走新经验线；用了待验证经验走复验线；用了正式经验走复用线。\n试错放弃没有交付事件：经验从「实际执行」直接进「本次产生的新经验」；试用过的待验证经验本轮作废，不耗轮次。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "没交付的任务会修改到交付为止，因为交付是直接面向用户的命令，用户是不可能因为一件事没有完成就放弃整个项目，所以没有“没交付”“失败”这样的结局，审查员审查的经验调用相关，协作员工作产出的回执是面向宿主Agent的，所以面向用户不存在没交付的情况。但是也有一种特殊情况，就是用户临时想到了一件事，想要试一试，结果失败了，然后用户就放弃了，那么这个不等于项目启动，而属于是这件事的主导者本来就只有宿主Agent，而审查员或者协作员都是辅助，审查员看这个试错过程中是否产出有价值经验，协作员看这个工作有没有宿主Agent的派活。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：面向用户的任务没有“没交付”"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200547,
+     "before": {
+      "desc": "面向用户的任务没有“没交付 / 失败”的结局：没交付就一直改到交付为止。唯一的例外是用户临时起意的试错，试了不行就放弃——这不算项目，主导者只有宿主 Agent：审查员只看试错过程中有没有产出有价值的经验，协作员只看宿主有没有给它派活。\n审查员 / 协作员的回执是面向宿主 Agent 的，不等于用户交付。",
+      "intent": "交付即接受明确任务和版本的成品；一次交齐交付记录、经验候选和踩坑、打法、偏好。"
+     },
+     "by": "agent",
+     "text": "写明交付结算规则；与交付归档的分工对齐"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839015,
+     "before": {
+      "intent": "交付即接受明确任务和版本的成品；交付记录和用户偏好进 Playbook，方法和踩坑沉淀为新经验（见「交付归档」）。"
+     },
+     "by": "agent",
+     "text": "写明当场指出的问题不等交付"
+    }
+   ],
+   "id": "delivery",
+   "intent": "交付即接受明确任务和版本的成品；交付记录和用户偏好进 Playbook，方法和踩坑沉淀为新经验；用户当场指出的问题当场记，不等交付（见「交付归档」）。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "experience_loop.py record_delivery",
+   "status": "dev",
+   "sub": "本次成品已验收",
+   "title": "用户说“交付”",
+   "x": 70,
+   "y": 440
+  },
+  {
+   "desc": "Playbook 面向“Agent 理解用户”：任何宿主一接入小八就了解用户。做事的方法和踩坑沉淀为新经验，面向“Agent 借助小八复用更好的做法”。两者分开记录。\nB19：写进Playbook前检查工具调用标记、泄露的思考过程、终端残留，不合格不写入。\n用户当场指出的问题当场记进 Playbook/踩坑，不等交付；有复用价值的再登记经验候选。\nAgent 推断的偏好，写入时列在交付回复里给用户看；一次性的不外推。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "用户决定：用户说\"交付\"后，把本次交付记录，以及过程中体现出的用户偏好和习惯记进 Playbook。Playbook 面向\"Agent 理解用户\"，让任何宿主一接入小八就了解用户。做事的方法和踩坑沉淀为新经验，面向\"Agent 借助小八复用更好的做法\"，两者分开记录。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "desc": "",
+      "intent": "",
+      "sub": "交付记录、踩坑、打法、偏好"
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "写入 Playbook 与经验的分工"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "desc": "Playbook 面向“Agent 理解用户”：任何宿主一接入小八就了解用户。做事的方法和踩坑沉淀为新经验，面向“Agent 借助小八复用更好的做法”。两者分开记录。"
+     },
+     "by": "agent",
+     "text": "写入 B19 进记忆前检查"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200549,
+     "before": {
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "标记：踩坑去向与偏好写入把关"
+    },
+    {
+     "at": 1793363839004,
+     "by": "user",
+     "text": "全部按建议。（问题：用户当场指出的问题，立刻记 Playbook/踩坑还是归新经验；建议：当场记，不等交付；可复用的再登记候选）"
+    },
+    {
+     "at": 1793363839005,
+     "by": "user",
+     "text": "全部按建议。（问题：Agent 推断的偏好写入 Playbook 前要不要给用户过目；建议：写入时列在交付回复里，一次性的不外推）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839017,
+     "before": {
+      "desc": "Playbook 面向“Agent 理解用户”：任何宿主一接入小八就了解用户。做事的方法和踩坑沉淀为新经验，面向“Agent 借助小八复用更好的做法”。两者分开记录。\nB19：写进Playbook前检查工具调用标记、泄露的思考过程、终端残留，不合格不写入。",
+      "issues": "待确认：用户当场指出的问题仍按“指出即记录”立刻写 Playbook/踩坑，还是也归新经验（建议：当场记，不等交付；可复用的再登记候选）\n待确认：Agent 推断的偏好写入 Playbook 前要不要给用户过目（建议：写入时列在交付回复里，一次性的不外推）\n新意图待实现：写入 Playbook 前的 B19 检查"
+     },
+     "by": "agent",
+     "text": "写明踩坑当场记；偏好写入时给用户看"
+    }
+   ],
+   "id": "archive",
+   "intent": "用户说“交付”后，把本次交付记录，以及过程中体现出的用户偏好和习惯记进 Playbook。",
+   "issues": "新意图待实现：写入 Playbook 前的 B19 检查",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "交付记录＋用户偏好与习惯 → Playbook",
+   "title": "交付归档",
+   "x": 570,
+   "y": 384
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200551,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "补说明：谁在什么时候写什么"
+    }
+   ],
+   "id": "new_exp",
+   "intent": "交付时（或试错放弃时）由宿主写出：问题、做法、适用条件和限制、证据。没有复用价值的不登记。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "",
+   "title": "本次产生的新经验",
+   "x": 320,
+   "y": 402
+  },
+  {
+   "desc": "在当天台账写 Markdown 记录：除宿主信息外，重点记录参与协作的 Agent 池节点（哪个节点、什么模型、做了什么、产生了什么经验、证据）。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "**用户决定：本次用了旧候选经验时，在当天的文件夹里写一份 Markdown 记录。除了宿主 Agent 的信息，重点记录参与协作的 Agent 池节点：哪个节点、用的什么模型、做了哪些事、产生了什么经验，以及评分和证据。写完后给那条旧经验留评分记录，然后接到\"后续用户说交付\"。**"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": "",
+      "issues": "",
+      "refs": ""
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "写入原材料记录要求；新增两条评分去向"
+    },
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "经验评分基于「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」节点信息"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": "本次用了旧候选经验时，在当天的工作区文件夹里写一份 Markdown 记录：除宿主 Agent 信息外，重点记录参与协作的 Agent 池节点——哪个节点、用的什么模型、做了哪些事、产生了什么经验，以及评分和证据。写完后给那条旧经验留评分记录，然后接到“后续用户说交付”。",
+      "issues": "经验本身的评分口径未定（讲到「记录执行证据与独立评分」时再定）"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入：复用情况交评分中心计分"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "补充：分清复验与复用"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "「复用计分」连着「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」，而「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」连着「后台执行适配器 · Agent 池」，「后台执行适配器 · Agent 池」连着「身份任务卡」，「身份任务卡」结束节点连着「实际来源确认与独立性核对」，「实际来源确认与独立性核对」连着「用户说交付」，然后闭环"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "用到的若是待验证经验（复验），记录作为该经验的验证材料；若是正式经验（复用），交「复用计分」计数。两者分开记录、互不计分。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：复用通知走评分闭环"
+    },
+    {
+     "at": 1793354570628,
+     "by": "user",
+     "submission": "s1793354570628",
+     "text": "区分验证用的隔离验证经验，还是复用的正式经验"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793354639950,
+     "before": {
+      "desc": "用到的若是待验证经验（复验），记录作为该经验的验证材料；若是正式经验（复用），交「复用计分」计数。两者分开记录、互不计分。\n复用计分的闭环（用户说明）：复用计分 → 评分中心 → Agent 池 → 身份任务卡 → 审查 → 实际来源确认与独立性核对 → 用户说“交付” → 本次确实应用的旧候选 → 回写 → 评分中心。",
+      "intent": "本次用了旧候选经验时，在当天台账文件夹写 Markdown 记录：除宿主信息外，重点记录参与协作的 Agent 池节点（哪个节点、什么模型、做了什么、产生了什么经验、证据）。复用是否交付由评分中心计分（用了且交付 +1，用了没交付 −1）。",
+      "sub": "仅对已实际使用的原卡回流"
+     },
+     "by": "agent",
+     "submission": "s1793354570628",
+     "text": "按原话：区分隔离验证经验与复用的正式经验"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200553,
+     "before": {
+      "intent": "交付后核验本次实际用到的经验，先区分：是正在做隔离验证的待验证经验，还是复用的正式经验。然后交「验证材料自动回写原候选」分流。",
+      "refs": "私人助理/工作区/<当天文件夹>/*.md"
+     },
+     "by": "agent",
+     "text": "写明数据来源；修正台账路径"
+    }
+   ],
+   "id": "used",
+   "intent": "交付后读「核对适用条件并实际应用」登记的应用记录，核验本次实际用到的经验，先区分：是正在做隔离验证的待验证经验，还是复用的正式经验。然后交「验证材料自动回写原候选」分流。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工作区/YYYY-MM-DD-小八台账/",
+   "status": "dev",
+   "sub": "区分：隔离验证中的经验 / 复用的正式经验",
+   "title": "本次确实应用经验核验",
+   "x": 320,
+   "y": 478
+  },
+  {
+   "desc": "评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，丢弃（只留摘要和分数）；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。\nB19：写进新经验候选前检查工具调用标记、泄露的思考过程、终端残留，不合格不写入。\n判定顺序：先看分歧，分歧大就交用户初审；不分歧才看平均分。至少有 2 份合格回执才判定；与已有经验重复的由审查员在回执里标明。\n这两条线先用 2–4 周，看过滤记录再调。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "写入：先经 Agent 池审查员核验再进初审（连线已由用户改好）"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "产生新经验候选后应提交审查员进行双审判定评分，是否值得进入用户初审节点，值得就进入。值不值得的衡量标准是审查员自己模型的判断力，如果不值得就直接退役。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "新经验进入用户初审之前，先交给 Agent 池中的审查员核验：有没有价值、与已有经验是否重复。通过了才进入用户初审，初审通过后进入待验证。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入审查员判定标准与去向"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "5、b"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "intent": "产生新经验候选后，交审查员双审判定并评分，看是否值得进入用户初审；值不值得以审查员自己模型的判断为准。值得 → 用户初审；不值得 → 直接丢弃，不留痕；与已有经验重复 → 提交用户初审，由用户决定留哪条。"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "按原话：审查员有分歧交用户初审（5 选 b）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793356404153,
+     "before": {
+      "intent": "产生新经验候选后，交审查员双审判定并评分，看是否值得进入用户初审；值不值得以审查员自己模型的判断为准。值得 → 用户初审；不值得 → 直接丢弃，不留痕；与已有经验重复 → 提交用户初审，由用户决定留哪条。\n审查员之间有分歧（有人认为值得、有人认为不值得）时，交用户初审，分歧原样带上。",
+      "issues": ""
+     },
+     "by": "agent",
+     "submission": "s1793356359376",
+     "text": "同步：值不值得改由评分中心按分数决定"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "",
+      "issues": "待确认：评分中心按什么线判“值得”（比如平均分 ≥ 6），分差多大算“分歧大”（比如相差 ≥ 4 分）"
+     },
+     "by": "agent",
+     "text": "写入分数线与分歧线"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "desc": "评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，直接丢弃不留痕；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。"
+     },
+     "by": "agent",
+     "text": "写入 B19 进记忆前检查"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200555,
+     "before": {
+      "desc": "评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，直接丢弃不留痕；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。\nB19：写进新经验候选前检查工具调用标记、泄露的思考过程、终端残留，不合格不写入。",
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "写明判定顺序；标记不留痕与分数线"
+    },
+    {
+     "at": 1793363495711,
+     "by": "user",
+     "text": "全部按建议。（裁决 1，问题：低分新经验“丢弃不留痕”留到什么程度；6 分和 4 分这两条线是否沿用；建议：不进用户队列、不留正文，事件链只留摘要和各审查员分数；分歧优先于均分；用 2–4 周后再调线）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495722,
+     "before": {
+      "desc": "评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，直接丢弃不留痕；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。\nB19：写进新经验候选前检查工具调用标记、泄露的思考过程、终端残留，不合格不写入。\n判定顺序：先看分歧，分歧大就交用户初审；不分歧才看平均分。至少有 2 份合格回执才判定；与已有经验重复的由审查员在回执里标明。",
+      "intent": "产生新经验候选后，交审查员打分（0–10 分），由评分中心根据分数决定是否值得进入用户初审。值得 → 用户初审；不值得 → 直接丢弃，不留痕；与已有经验重复 → 提交用户初审，由用户决定留哪条。审查员之间分歧大时，交用户初审，分歧原样带上。",
+      "issues": "待确认（裁决 1）：“不留痕”到什么程度——它和“系统不自动删除”、事件链冲突（建议：不进用户队列、不留正文；事件链留摘要和各审查员分数）\n待确认（裁决 1）：平均 6 分、相差 4 分最初是整理时举的例子，没有校准（建议：先用 2–4 周，看过滤记录再调）\n新意图待实现：打分、判定和丢弃"
+     },
+     "by": "agent",
+     "text": "裁决 1：丢弃只留摘要和分数；分歧优先"
+    }
+   ],
+   "id": "candidate",
+   "intent": "产生新经验候选后，交审查员打分（0–10 分），由评分中心根据分数决定是否值得进入用户初审。值得 → 用户初审；不值得 → 丢弃（不进用户队列、不留正文，事件链只留摘要和各审查员分数）；与已有经验重复 → 提交用户初审，由用户决定留哪条。审查员之间分歧大时，交用户初审，分歧原样带上。",
+   "issues": "新意图待实现：打分、判定和丢弃",
+   "note": "",
+   "pending": false,
+   "refs": "memory-candidate-create",
+   "status": "done",
+   "sub": "",
+   "title": "新经验候选",
+   "x": 1084,
+   "y": 368
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "连线了，没通过就直接丢弃退役。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "“值得”由用户判，不交给 Agent 或评分。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：初审不通过直接退役"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200557,
+     "before": {
+      "intent": "“值得”由用户判，不交给 Agent 或评分。初审通过 → 进入核验；初审不通过 → 直接退役（在监看中心展示，用户确认后手动删除）。",
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "文字修正：评分中心只做预筛，值不值得仍由用户判"
+    }
+   ],
+   "id": "initial",
+   "intent": "能进到初审的，先过评分中心按分数的预筛（平均分 ≥ 6、分歧大或与已有经验重复）。进到初审后，“值得”由用户判，不交给 Agent 或评分。初审通过 → 进入核验；初审不通过 → 直接退役（在监看中心展示，用户确认后手动删除）。",
+   "issues": "新意图待实现：初审不通过直接退役",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "由用户判定这条经验是否值得",
+   "title": "用户初审",
+   "x": 1070,
+   "y": 478
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g2",
+   "history": [],
+   "id": "initial_pass",
+   "intent": "",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "进入核验流程，不自动发布",
+   "title": "初审通过",
+   "x": 1071,
+   "y": 582
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "初审通过后进入"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入：初审通过后进入"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200559,
+     "before": {
+      "issues": "只做 problem_key 精确匹配或标题子串匹配；“派发任务时自动检索”尚未接线"
+     },
+     "by": "agent",
+     "text": "标记：长期未命中怎么办"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495754,
+     "before": {
+      "intent": "只有通过用户初审的新经验进入本索引。",
+      "issues": "只做 problem_key 精确匹配或标题子串匹配；“派发任务时自动检索”尚未接线\n待确认（裁决 8）：长期没有相似任务的待验证经验怎么办（建议：30 天未命中进“待你处理”提醒，不自动退役）"
+     },
+     "by": "agent",
+     "text": "裁决 8：30 天未命中提醒"
+    }
+   ],
+   "id": "pending_index",
+   "intent": "只有通过用户初审的新经验进入本索引。30 天没碰到相似任务时提醒用户（进“待你处理”），不自动退役。",
+   "issues": "只做 problem_key 精确匹配或标题子串匹配；“派发任务时自动检索”尚未接线",
+   "note": "",
+   "pending": false,
+   "refs": "experience_loop.py pending_index",
+   "status": "dev",
+   "sub": "与正式长期记忆分开",
+   "title": "待验证经验独立索引",
+   "x": 1568,
+   "y": 392
+  },
+  {
+   "desc": "这里是新经验的复验通道；正式经验的复用不走这里，由「复用计分」计数。\n宿主接任务时发起查询。相似的判断：problem_key 相同优先，任务描述和关键词补充召回；匹配分只表示相关性，命中只是建议。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": "小八按用户派发任务的关联性，检索有无相似旧经验。"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入每日新经验 / 复用经验记录"
+    },
+    {
+     "at": 1793332620730,
+     "by": "user",
+     "submission": "s1793332620730",
+     "text": "主要对待验证经验及第二轮待验证经验进行相似真实任务做匹配索引提交「核对适用条件并实际应用」节点"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": "",
+      "intent": "按正式经验库的评分顺序检索相似经验。小八上班后，在工作区当天的台账文件夹里建立「每日新经验产出记录」和「复用经验记录」，作为评分中心复用计分的依据。"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "按原话：只为待验证经验做相似任务匹配"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "已修改"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {},
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "用户已修改连线"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200561,
+     "before": {
+      "desc": "这里是新经验的复验通道；正式经验的复用不走这里，由「复用计分」计数。",
+      "intent": "只对待验证经验（含第一轮失败后的第二轮待验证经验）做相似真实任务匹配，匹配结果提交「核对适用条件并实际应用」。小八上班后，在当天台账建立每日新经验产出记录和复用经验记录。",
+      "sub": "区分待验证候选与正式经验"
+     },
+     "by": "agent",
+     "text": "写明查询由谁发起、相似怎么判；每日记录归工作日台账"
+    }
+   ],
+   "id": "retrieve",
+   "intent": "只对待验证经验（含第一轮失败后的第二轮待验证经验）做相似真实任务匹配，匹配结果提交「核对适用条件并实际应用」。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "只匹配待验证经验",
+   "title": "后续相似真实任务检索",
+   "x": 1820,
+   "y": 440
+  },
+  {
+   "desc": "经验相关的工具调用从「共享业务能力」取。拉取只是列出工具，命中不自动执行命令，是否执行由宿主按当前任务授权决定。\n应用记录写明：经验版本、真实任务、应用位置、采用或偏离的步骤、证据；复用正式经验有改动的，写明改了哪里、补充了什么、摒弃了什么。交付时由「本次确实应用经验核验」读取。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793332620730,
+     "by": "user",
+     "submission": "s1793332620730",
+     "text": "核实由上游节点提交的相似真实任务匹配索引辅助任务编排器直接拉取经验及经验相关工具调用"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "按原话：辅助编排器拉取经验与相关工具"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "补充：工具从共享业务能力取"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200563,
+     "before": {
+      "desc": "经验相关的工具调用从「共享业务能力」取。",
+      "intent": "核实上游提交的相似真实任务匹配结果，辅助任务编排器直接拉取经验及经验相关的工具调用。",
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "扩到正式经验登记；写明拉取不等于执行"
+    },
+    {
+     "at": 1793363495718,
+     "by": "user",
+     "text": "全部按建议。（裁决 8，问题：待验证经验谁能用，怎么验；建议：宿主和协作员都能用，用的时候告诉用户；带命令的经验先进沙箱；审查员必须看到应用记录和产物；30 天没碰到相似任务就提醒，不自动退役）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495752,
+     "before": {
+      "issues": "待确认（裁决 8）：待验证经验是否只能由协作员用（“由协作员使用”在记录里查不到用户原话）（建议：宿主和协作员都能用，试用时告诉用户；「应用 → 宿主直接处理」这条线暂标待接通）"
+     },
+     "by": "agent",
+     "text": "裁决 8：宿主和协作员都能用"
+    }
+   ],
+   "id": "apply",
+   "intent": "核实上游提交的相似真实任务匹配结果，辅助任务编排器直接拉取经验及经验相关的工具调用。正式经验确实用到时也在这里登记。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "memory-application-record",
+   "status": "dev",
+   "sub": "检索或阅读不算实际应用",
+   "title": "核对适用条件并实际应用",
+   "x": 2070,
+   "y": 440
+  },
+  {
+   "desc": "完整链路（用户说明）：干完活 → 审查核对 → 用户交付 → 本次确实应用经验核验 → 验证材料回写 → 复用计分 → 评分中心。交付后只有三种情况：① 宿主直接把活干了，没产出新经验、也没用正式经验，结束；② 产生了新经验 → 走「本次产生的新经验」链路；③ 复用了正式经验 → 「本次确实应用经验核验」→ 验证材料 → 复用计分 → 评分中心。\n库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用、用户选了宿主兜底时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。\n新经验值不值得进初审，由本节点根据各审查员的 0–10 分决定（审查员只打分）。评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，丢弃（只留摘要和分数）；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。\n本节点有三本账，名字分开：价值分（0–10，新经验准入）、干活分（+1 / 0，Agent＋模型＋角色）、复用分（+1，正式经验永久总分）。\n结算时账本和事件链在同一事务写入 SQLite，再导出到 工具/模型综合数据。\nAgent＋模型只按周算，不设永久总分；永久总分只属于正式经验。\n「正式经验 → 本节点」是检索排序读永久总分；「交付归档 → 本节点」是交付后记 Agent＋模型干活分。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "issues": "数值评分为 null，等 B5 量表"
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "补充：这里承接旧经验本身的评分"
+    },
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "本节点固定数据留存在/Users/suzhizhou/Documents/私人助理/工具/模型综合数据，用于给 Agent 池节点（Agent＋配置模型）打分，以及复用经验打分。宿主核实节点的任务回执后，做得好加 1 分、不好记 0 分，按自然周汇总；不记资源投入，设永久总分。宿主自己完成、没有节点参与的任务不计分。周评分用于同一角色下多个可用节点之间的择优，按「审查 / 协作」角色筛选。给新经验本身的评分另记在「记录执行证据与独立评分」。只保留模型综合模型数据以及复用经验的周度评分记录，不保留经验使用细节信息。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "desc": "",
+      "intent": "复用工作中双审介入，交付后双审评分。",
+      "issues": "数值评分为 null，等 B5 量表\n承接「本次确实应用的旧候选」给经验本身的评分；口径未定",
+      "refs": "",
+      "sub": "绑定候选版本、任务与成品版本"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "定为评分中心：基础模型评分库＋两类计分"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793324894822,
+     "before": {
+      "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和经验池复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按自然周汇总；不记资源投入；宿主独自完成、无节点参与的任务不计分。用于同一角色下多个可用节点之间择优（按审查 / 协作筛选）。\n② 复用经验计分：依据「后续相似真实任务检索」记录的复用情况；用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰（经「经验淘汰」提交裁决中心）。经验保留累计分，供正式经验库按分数排序检索。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 ±1 计分、晋升 / 淘汰计数未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分\n待用户确认：“设永久总分”理解为经验保留累计分；Agent＋模型仍只按周汇总"
+     },
+     "by": "agent",
+     "text": "写入永久总分"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和经验池复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按自然周汇总；不记资源投入；宿主独自完成、无节点参与的任务不计分。用于同一角色下多个可用节点之间择优（按审查 / 协作筛选）。\n② 复用经验计分：依据「后续相似真实任务检索」记录的复用情况；用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰（经「经验淘汰」提交裁决中心）。经验保留永久总分，为正式经验的检索排序、晋升和退役服务。"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：复用计分只服务正式经验；复验与复用分开"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "2条连线我删了，没用"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 ±1 计分、晋升 / 淘汰计数未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：两条用途不明的线已由用户删除"
+    },
+    {
+     "at": 1793354570628,
+     "by": "user",
+     "submission": "s1793354570628",
+     "text": "因为干完活到核对结束再到用户交付，交付后就进入本次确实应用的旧候选，再到验证候选再到复用计分再到评分中心，这不就是一条完整链路么，跟你理解的意思差不多，交付后只有3种情况，1种是宿主直接把活干了，没产出新经验也没用正式经验。第二种是产生了新经验，走「本次产生的新经验」的节点链路走，复用了正式经验，就走我新接的，先通过「本次确实应用经验核验」节点验证，然后再到验证材料，再到复用计分、再到评分中心"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793354639950,
+     "before": {
+      "desc": "库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。",
+      "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和正式经验复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按自然周汇总；不记资源投入；宿主独自完成、无节点参与的任务不计分。宿主读取本节点数据，自行判断选用哪几个审查员 / 协作员。\n② 正式经验复用计分：由「复用计分」计数后存入本节点（用了且交付 +1、没交付 −1，3 次晋升 / 淘汰），经验保留永久总分，为正式经验的检索排序、晋升和退役服务。\n复验（新经验的两轮验证）和复用（正式经验被再次使用）是两种情况，分开记录，互不计分。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 ±1 计分、晋升 / 淘汰计数未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分\n待确认：「核对 → 评分中心（审查员干活评分）」已断开，审查员 / 协作员的干活评分改从哪里来"
+     },
+     "by": "agent",
+     "submission": "s1793354570628",
+     "text": "按原话：交付后三种情况与完整链路；去掉 −1 淘汰"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793356404153,
+     "before": {
+      "desc": "完整链路（用户说明）：干完活 → 审查核对 → 用户交付 → 本次确实应用经验核验 → 验证材料回写 → 复用计分 → 评分中心。交付后只有三种情况：① 宿主直接把活干了，没产出新经验、也没用正式经验，结束；② 产生了新经验 → 走「本次产生的新经验」链路；③ 复用了正式经验 → 「本次确实应用经验核验」→ 验证材料 → 复用计分 → 评分中心。\n库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 +1 计分未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分"
+     },
+     "by": "agent",
+     "submission": "s1793356359376",
+     "text": "补充：由本节点按审查员分数判定新经验值不值得"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "完整链路（用户说明）：干完活 → 审查核对 → 用户交付 → 本次确实应用经验核验 → 验证材料回写 → 复用计分 → 评分中心。交付后只有三种情况：① 宿主直接把活干了，没产出新经验、也没用正式经验，结束；② 产生了新经验 → 走「本次产生的新经验」链路；③ 复用了正式经验 → 「本次确实应用经验核验」→ 验证材料 → 复用计分 → 评分中心。\n库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。\n新经验值不值得进初审，由本节点根据各审查员的 0–10 分决定（审查员只打分）。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 +1 计分未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分\n待确认：判“值得”的分数线和“分歧大”的分差"
+     },
+     "by": "agent",
+     "text": "写入分数线与分歧线"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200565,
+     "before": {
+      "desc": "完整链路（用户说明）：干完活 → 审查核对 → 用户交付 → 本次确实应用经验核验 → 验证材料回写 → 复用计分 → 评分中心。交付后只有三种情况：① 宿主直接把活干了，没产出新经验、也没用正式经验，结束；② 产生了新经验 → 走「本次产生的新经验」链路；③ 复用了正式经验 → 「本次确实应用经验核验」→ 验证材料 → 复用计分 → 评分中心。\n库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。\n新经验值不值得进初审，由本节点根据各审查员的 0–10 分决定（审查员只打分）。评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，直接丢弃不留痕；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。",
+      "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和正式经验复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按自然周汇总；不记资源投入；宿主独自完成、无节点参与的任务不计分。宿主读取本节点数据，自行判断选用哪几个审查员 / 协作员。\n② 正式经验复用计分：由「复用计分」计数后存入本节点，只有晋升（交付 +1），经验保留永久总分，为正式经验的检索排序服务。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 +1 计分未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分",
+      "sub": "评分中心：Agent＋模型干活评分 · 复用经验使用计分"
+     },
+     "by": "agent",
+     "text": "三本账分开；干活分按角色；写明结算方式"
+    },
+    {
+     "at": 1793363495721,
+     "by": "user",
+     "text": "全部按建议。（裁决 10，问题：第二轮前能否改正文；Agent＋模型要不要永久总分；建议：能改，但回初审，已用轮次不清零；Agent＋模型只按周算，经验保留永久总分）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495724,
+     "before": {
+      "desc": "完整链路（用户说明）：干完活 → 审查核对 → 用户交付 → 本次确实应用经验核验 → 验证材料回写 → 复用计分 → 评分中心。交付后只有三种情况：① 宿主直接把活干了，没产出新经验、也没用正式经验，结束；② 产生了新经验 → 走「本次产生的新经验」链路；③ 复用了正式经验 → 「本次确实应用经验核验」→ 验证材料 → 复用计分 → 评分中心。\n库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。\n新经验值不值得进初审，由本节点根据各审查员的 0–10 分决定（审查员只打分）。评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，直接丢弃不留痕；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。\n本节点有三本账，名字分开：价值分（0–10，新经验准入）、干活分（+1 / 0，Agent＋模型＋角色）、复用分（+1，正式经验永久总分）。\n结算时账本和事件链在同一事务写入 SQLite，再导出到 工具/模型综合数据。",
+      "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和正式经验复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按 Agent＋模型＋角色（审查 / 协作）和自然周汇总，同时显示任务数和成功率；不合格回执不计分；不记资源投入；宿主独自完成、无节点参与的任务不计分。宿主读取本节点数据，自行判断选用哪几个审查员 / 协作员。\n② 正式经验复用计分：由「复用计分」计数后存入本节点，只有晋升（交付 +1），经验保留永久总分，为正式经验的检索排序服务。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 +1 计分未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分\n待确认（裁决 10）：Agent＋模型要不要永久总分。10-29 原话“设永久总分”写在 Agent＋模型这一句里，整理时搬给了经验，记录里查不到确认（建议：Agent＋模型只按周，经验保留永久总分）\n待确认：「正式经验 → 本节点」「交付归档 → 本节点」这两条线传什么（建议：前者读永久总分，后者交付后记干活分）\n待确认：节点名较长，全文都叫评分中心，是否改名"
+     },
+     "by": "agent",
+     "text": "裁决 1、2、3、10：丢弃口径、复用分规则、兜底要问用户、Agent＋模型只按周"
+    },
+    {
+     "at": 1793363839006,
+     "by": "user",
+     "text": "全部按建议。（问题：「正式经验 → 评分中心」「交付归档 → 评分中心」传什么；建议：前者读永久总分，后者交付后记干活分）"
+    },
+    {
+     "at": 1793363839007,
+     "by": "user",
+     "text": "全部按建议。（问题：评分中心节点名太长，是否改名；建议：改叫“评分中心”）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839019,
+     "before": {
+      "desc": "完整链路（用户说明）：干完活 → 审查核对 → 用户交付 → 本次确实应用经验核验 → 验证材料回写 → 复用计分 → 评分中心。交付后只有三种情况：① 宿主直接把活干了，没产出新经验、也没用正式经验，结束；② 产生了新经验 → 走「本次产生的新经验」链路；③ 复用了正式经验 → 「本次确实应用经验核验」→ 验证材料 → 复用计分 → 评分中心。\n库里只保留模型综合数据与周度 / 累计评分记录，不保留经验使用细节；细节在当天工作日台账的 Markdown 里。兜底：Agent 池审查员全部不可用、用户选了宿主兜底时，宿主独立审查的新经验和复用经验直接送本节点评分，再携带评分与独立审查结果进入用户初审。\n新经验值不值得进初审，由本节点根据各审查员的 0–10 分决定（审查员只打分）。评分中心判定线（用户 2026-10-30 采纳）：各审查员平均分 ≥ 6 分 → 进用户初审；平均分 < 6 → 不值得，丢弃（只留摘要和分数）；最高分与最低分相差 ≥ 4 分 → 算分歧大，直接交用户初审，分歧原样带上。\n本节点有三本账，名字分开：价值分（0–10，新经验准入）、干活分（+1 / 0，Agent＋模型＋角色）、复用分（+1，正式经验永久总分）。\n结算时账本和事件链在同一事务写入 SQLite，再导出到 工具/模型综合数据。\nAgent＋模型只按周算，不设永久总分；永久总分只属于正式经验。",
+      "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 +1 计分未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分\n待确认：「正式经验 → 本节点」「交付归档 → 本节点」这两条线传什么（建议：前者读永久总分，后者交付后记干活分）\n待确认：节点名较长，全文都叫评分中心，是否改名",
+      "title": "记录执行证据与Agent 池节点（Agent＋配置模型）独立评分"
+     },
+     "by": "agent",
+     "text": "节点改名为评分中心；写明两条线传什么"
+    }
+   ],
+   "id": "evidence",
+   "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和正式经验复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按 Agent＋模型＋角色（审查 / 协作）和自然周汇总，同时显示任务数和成功率；不合格回执不计分；不记资源投入；宿主独自完成、无节点参与的任务不计分。宿主读取本节点数据，自行判断选用哪几个审查员 / 协作员。\n② 正式经验复用计分：由「复用计分」计数后存入本节点，只有晋升（原样好用且交付 +1；改过或不适用记 0，不扣分），经验保留永久总分，为正式经验的检索排序服务。",
+   "issues": "代码现状：task_scoring.py 只实现了 Agent＋模型周评分，复用经验 +1 计分未实现\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色\n审查回执尚未进入周评分",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工具/模型综合数据\nreview-ingress/xiaoba_review/task_scoring.py\nreview-ingress/xiaoba_review/node_runtime.py:256（择优）",
+   "status": "dev",
+   "sub": "评分中心：新经验价值分 · Agent＋模型干活分 · 正式经验复用分",
+   "title": "评分中心",
+   "x": 822,
+   "y": 377
+  },
+  {
+   "desc": "这是复验结论和复用改动结论的唯一汇合点。任务放弃时本轮作废，不耗轮次。结算时把回执和证据入库（见「数据与运行底座」）。",
+   "expanded": false,
+   "g": "g2",
+   "history": [
+    {
+     "at": 1793354570628,
+     "by": "user",
+     "submission": "s1793354570628",
+     "text": "验证任务每日台账，复用正式经验走复用计分节点，第一、二轮隔离验证经验分别提交第一轮、第二轮结果"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793354639950,
+     "before": {
+      "intent": "",
+      "sub": "证据、评分、应用位置与限制"
+     },
+     "by": "agent",
+     "submission": "s1793354570628",
+     "text": "按原话：按经验类型分流回写"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200567,
+     "before": {
+      "desc": "",
+      "intent": "验证材料写入当天工作日台账，再按经验类型分流：复用的正式经验 → 「复用计分」；第一轮隔离验证的经验 → 「第一轮结果」；第二轮隔离验证的经验 → 「第二轮结果」。"
+     },
+     "by": "agent",
+     "text": "写明汇合规则：结论和交付都到才出结果"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793369207297,
+     "before": {
+      "issues": "设计图标“待实现”，B4 已有离线实现，口径待统一"
+     },
+     "by": "agent",
+     "text": "问题说明改成明确的代码现状"
+    }
+   ],
+   "id": "feedback",
+   "intent": "验证材料写入当天工作日台账，再按经验类型分流：复用的正式经验 → 「复用计分」；第一轮隔离验证的经验 → 「第一轮结果」；第二轮隔离验证的经验 → 「第二轮结果」。审查结论和交付事件都到了才写本轮结果：先到的一方等另一方，重复到达不重复结算。",
+   "issues": "代码现状：B4 有离线实现（development/integrated-candidate/src/xiaoba_agentos/experience_loop.py，交付和验证结果谁先到都会刷新证据），未上线。合同要求的结算键（任务 ID＋成品版本）和“重复到达不重复结算”还没逐项核对。",
+   "note": "",
+   "pending": false,
+   "refs": "docs/EXPERIENCE_LOOP.md",
+   "status": "dev",
+   "sub": "验证材料写入台账，按经验类型分流",
+   "title": "验证材料自动回写原候选",
+   "x": 570,
+   "y": 496
+  },
+  {
+   "desc": "改过正文、重新初审通过的经验已用过第一轮，从这里继续第二轮，不重新算第一轮。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "因为宿主没有产生新经验以及复用经验，就不需要审查员审查。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入准入条件"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200569,
+     "before": {
+      "sub": "沿用原卡当前轮次，不重置；不能凭回写直接待终审"
+     },
+     "by": "agent",
+     "text": "副标题修正：回写线已断开"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495760,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "裁决 10：改正文回初审后继续第二轮"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793369207298,
+     "before": {
+      "issues": "问题2：外部独立审查是可选项，没有审查请求时直接放行（validation_evidence.py:121、131）"
+     },
+     "by": "agent",
+     "text": "问题说明改成明确的代码现状；写明旧裁判退出时要改成必需审查"
+    }
+   ],
+   "id": "evidence_port",
+   "intent": "只有通过初审、尚未终审的新经验进入本节点；核验材料齐后进入「执行第一轮隔离验证」。宿主既没产生新经验、也没复用经验时，不需要审查员审查。",
+   "issues": "代码现状：外部独立审查还是可选项，没有审查请求时直接放行（validation_evidence.py:121、131）。旧裁判（judge.decided）退出时必须改成必需审查，不能只删旧裁判，已记入后续卡。",
+   "note": "",
+   "pending": false,
+   "refs": "validation_evidence.py ingress_evidence",
+   "status": "dev",
+   "sub": "只接通过初审、尚未终审的新经验",
+   "title": "核验材料接入",
+   "x": 70,
+   "y": 747
+  },
+  {
+   "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；任一 FAIL＝未通过；NEEDS_INFO＝暂停补材料。\n有 FAIL 也有 NEEDS_INFO 时，等全部回执到齐再判；调用故障不消耗轮次。\n审查员必须看到应用记录和产物。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "拿着「当轮独立审查证据」节点的内容看这条经验是否进入待隔离验证"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入：进入待验证索引，在真实任务中验证"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": "",
+      "issues": "问题1：通过与否仍读旧链原生双审 judge.decided（validation_evidence.py:100），新双审只是附加项\n问题3：外部 FAIL / NEEDS_INFO 会让本轮卡住而不是记为失败（experience_workflow.py:700）",
+      "status": "decide"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "旧裁判已删，通过与否以当轮独立审查证据为准"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "核验材料接入后开始第一轮隔离验证：经验进入「待验证经验独立索引」，在后续相似真实任务中复用，由 Agent 池审查给出「第一轮结果」。",
+      "sub": "隔离执行、必要检查与独立审查"
+     },
+     "by": "agent",
+     "text": "两轮入口对称；以是否交付判定本轮"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "连线了"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "通过与否以当轮独立审查证据（审查员 A、B…的结论）为准，不再读旧裁判 judge.decided。",
+      "intent": "核验材料接入后开始第一轮：经验进入「待验证经验独立索引」，在后续相似真实任务中由协作员使用。同一条经验在两个相似但不完全一样的真实任务里各用一次，各得一轮结论：协作员用这条经验完成工作后，交付了＝本轮通过，没交付＝本轮失败。两轮入口对称。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：本轮结果由审查结束后传回"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200571,
+     "before": {
+      "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；任一 FAIL＝未通过；NEEDS_INFO＝暂停补材料。",
+      "intent": "核验材料接入后开始第一轮：经验进入「待验证经验独立索引」，在相似真实任务中由协作员使用；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」传回本节点。两轮入口对称。",
+      "issues": "代码仍读 judge.decided（validation_evidence.py:100），待改\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）",
+      "sub": "进入待验证索引，在相似真实任务中复用"
+     },
+     "by": "agent",
+     "text": "审查结论改走验证材料；术语修正；标记隔离验证"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495746,
+     "before": {
+      "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；任一 FAIL＝未通过；NEEDS_INFO＝暂停补材料。\n有 FAIL 也有 NEEDS_INFO 时，等全部回执到齐再判；调用故障不消耗轮次。",
+      "intent": "核验材料接入后开始第一轮：经验进入「待验证经验独立索引」，在相似真实任务中由协作员使用；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」进入「验证材料自动回写原候选」，和交付事件一起形成本轮结果。两轮入口对称。",
+      "issues": "代码仍读 judge.decided（validation_evidence.py:100），待改\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）\n待确认（裁决 8）：还做不做沙箱隔离验证——现在写的是在真实任务里使用，节点名仍叫“隔离”（建议：命令类经验仍进沙箱，其余在真实任务验证并告诉用户；审查员必须看到应用记录和产物）"
+     },
+     "by": "agent",
+     "text": "裁决 8：宿主和协作员都能用；带命令的先进沙箱"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793369207294,
+     "before": {
+      "intent": "核验材料接入后开始第一轮：经验进入「待验证经验独立索引」，在相似真实任务中由宿主或协作员使用，用的时候告诉用户；带命令的经验先进沙箱；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」进入「验证材料自动回写原候选」，和交付事件一起形成本轮结果。两轮入口对称。"
+     },
+     "by": "agent",
+     "text": "去掉“两轮入口对称”：两轮入口不同，连线已写明"
+    }
+   ],
+   "id": "run1",
+   "intent": "核验材料接入后开始第一轮：经验进入「待验证经验独立索引」，在相似真实任务中由宿主或协作员使用，用的时候告诉用户；带命令的经验先进沙箱；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」进入「验证材料自动回写原候选」，和交付事件一起形成本轮结果。",
+   "issues": "代码仍读 judge.decided（validation_evidence.py:100），待改\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）",
+   "note": "",
+   "pending": false,
+   "refs": "experience_workflow.py advance_validation_round",
+   "status": "dev",
+   "sub": "进入待验证索引，在相似真实任务中使用",
+   "title": "执行第一轮隔离验证",
+   "x": 300,
+   "y": 880
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "写入判定依据"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "同样是由审查结束后传回结果"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "第一轮结论：协作员用这条经验完成相似真实任务后，交付了＝通过，没交付＝失败。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：由审查结束后传回结果"
+    }
+   ],
+   "id": "v1_result",
+   "intent": "第一轮结论由审查结束后传回（经验证材料回写）：全部审查员通过＝通过，任一 FAIL＝未通过。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "",
+   "title": "第一轮结果",
+   "x": 536,
+   "y": 826
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "可以"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "终审材料：首次提取场景、复用场景、双审评价。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "文字修正：终审材料"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200577,
+     "before": {
+      "intent": "终审材料：首次提取场景、复用场景、各审查员结论（分开记录）、两轮复验结果。"
+     },
+     "by": "agent",
+     "text": "文字修正：一轮通过时只有一轮结果"
+    }
+   ],
+   "id": "final_queue",
+   "intent": "终审材料：首次提取场景、复用场景、各审查员结论（分开记录）、已完成各轮的复验结果（第一轮通过时只有一轮）。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "experience_loop.py final_binding",
+   "status": "dev",
+   "sub": "仅核验通过后进入；不自动批准",
+   "title": "自动进入待终审",
+   "x": 1076,
+   "y": 750
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200579,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "补说明：裁决三类提交"
+    }
+   ],
+   "id": "final_user",
+   "intent": "裁决三类提交：新经验终审、复用中有改动、14 天未用。批准与否只由用户决定。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "",
+   "title": "裁决中心 · 用户人工终审",
+   "x": 1320,
+   "y": 709
+  },
+  {
+   "desc": "B19、敏感检查和索引复验在这里做。检查未过不写入正式库，退回裁决中心并说明原因。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200581,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "补失败出口"
+    }
+   ],
+   "id": "publish_checks",
+   "intent": "",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "done",
+   "sub": "敏感检查与索引复验",
+   "title": "终审通过后",
+   "x": 1533,
+   "y": 876
+  },
+  {
+   "desc": "B19：写进正式经验库前检查工具调用标记、泄露的思考过程、终端残留，不合格不写入。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "价值高低与合并机制基于「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」节点信息判定"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": "经验价值高低是晋升、合并、退役的依据之一。",
+      "issues": "还没有价值高低与合并机制"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入按评分排序检索"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793324894822,
+     "before": {
+      "intent": "经验价值高低、合并依据评分中心的累计分。复用检索按分数从高到低依次匹配，不做全经验扫描；不适用和长期不用的经验经「经验淘汰」提交裁决中心。"
+     },
+     "by": "agent",
+     "text": "写入：永久总分与准入"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "intent": "经验价值高低、合并、晋升和退役依据评分中心的永久总分。复用检索按分数从高到低依次匹配，不做全经验扫描；不适用和长期不用的经验经「经验淘汰」提交裁决中心。只有用户终审通过的经验才进入本库，审查通过不直接写入。"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：晋升 / 淘汰只属于正式经验"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "经验晋升就是索引排名靠前的意思。文字问题可以，你改吧。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "经验价值高低、合并、晋升和退役依据评分中心的永久总分。复用检索按分数从高到低依次匹配，不做全经验扫描；不适用和长期不用的经验经「经验淘汰」提交裁决中心。只有用户终审通过的经验才进入本库，审查通过不直接写入。\n晋升和淘汰是正式经验的机制，由「复用计分」计数，与新经验的两轮复验无关。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：晋升＝索引排名靠前；去掉已删节点的提法"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793354639950,
+     "before": {
+      "intent": "经验价值高低、合并、晋升和退役依据评分中心的永久总分。晋升＝索引排名靠前。复用检索按分数从高到低依次匹配，不做全经验扫描；不适用和长期不用的经验由「复用计分」提交裁决中心。只有用户终审通过的经验才进入本库，审查通过不直接写入。晋升和淘汰是正式经验的机制，与新经验的两轮复验无关。"
+     },
+     "by": "agent",
+     "submission": "s1793354570628",
+     "text": "同步：取消 −1 淘汰"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "写入 B19 进记忆前检查"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200583,
+     "before": {
+      "intent": "经验价值高低、合并和晋升依据评分中心的永久总分。晋升＝索引排名靠前。复用检索按分数从高到低依次匹配，不做全经验扫描。复用中有改动的经验、14 天未用的经验，由「复用计分」提交裁决中心。只有用户终审通过的经验才进入本库，审查通过不直接写入。"
+     },
+     "by": "agent",
+     "text": "检索顺序改为先相关后分数；新经验留位置"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839025,
+     "before": {
+      "intent": "经验价值高低、合并和晋升依据评分中心的永久总分。晋升＝索引排名靠前。复用检索先按相关性筛出匹配的经验，再按分数从高到低取前几条，不做全经验逐条阅读；新入库、分数低的经验留少量位置，避免永远排不上。复用中有改动的经验、14 天未用的经验，由「复用计分」提交裁决中心。只有用户终审通过的经验才进入本库，审查通过不直接写入。"
+     },
+     "by": "agent",
+     "text": "写明 14 天规则的延长"
+    }
+   ],
+   "id": "formal",
+   "intent": "经验价值高低、合并和晋升依据评分中心的永久总分。晋升＝索引排名靠前。复用检索先按相关性筛出匹配的经验，再按分数从高到低取前几条，不做全经验逐条阅读；新入库、分数低的经验留少量位置，避免永远排不上。复用中有改动的经验、14 天未用（保留后延长到 30、90 天）的经验，由「复用计分」提交裁决中心。只有用户终审通过的经验才进入本库，审查通过不直接写入。",
+   "issues": "排序检索、合并机制未实现",
+   "note": "",
+   "pending": false,
+   "refs": "第二大脑/70_复利规则/长期复用门禁.md",
+   "status": "done",
+   "sub": "",
+   "title": "正式经验与长期记忆索引",
+   "x": 1802,
+   "y": 829
+  },
+  {
+   "desc": "第二轮前可以改经验正文：改了就绑定新版本、回用户初审，已用轮次不清零；不改就原样进第二轮。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "at": 1793289176451,
+     "by": "user",
+     "submission": "s1793289176451",
+     "text": "第一轮失败后提交「核对适用条件并实际应用」节点等待第二轮隔离验证。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入：失败后回到真实任务等待第二轮"
+    },
+    {
+     "at": 1793332620730,
+     "by": "user",
+     "submission": "s1793332620730",
+     "text": "第一轮验证失败后直接提交「后续相似真实任务检索」节点进行后续相似真实任务检索"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "intent": "第一轮失败后保留失败证据，提交「核对适用条件并实际应用」，在后续真实任务中等待第二轮隔离验证。"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "按原话：失败后直接回相似任务检索"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "第一轮验证失败后保留失败证据，直接提交「后续相似真实任务检索」，在后续相似真实任务中进行第二轮验证。"
+     },
+     "by": "agent",
+     "text": "改为经「执行第二轮重新验证」进入索引，与第一轮对称"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495758,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "裁决 10：第二轮前可改正文"
+    }
+   ],
+   "id": "failed1",
+   "intent": "第一轮失败后保留失败证据，交「执行第二轮重新验证」，再进入待验证索引，在后续相似真实任务中进行第二轮。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "失败原因、执行结果与评分",
+   "title": "保留第一轮失败证据",
+   "x": 982,
+   "y": 884
+  },
+  {
+   "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；全部 FAIL＝未通过，退役；有人通过、有人 FAIL＝有分歧，带着分歧交用户终审；NEEDS_INFO＝暂停补材料。\n有 FAIL 也有 NEEDS_INFO、没人通过时，等全部回执到齐后暂停补材料，补完再判（全部 FAIL 才退役）；调用故障不消耗轮次。\n审查员必须看到应用记录和产物。第二轮前可以改经验正文，但要回初审，已用轮次不清零。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": "",
+      "issues": "同问题1、问题3",
+      "status": "decide"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "旧裁判已删，通过与否以当轮独立审查证据为准"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "",
+      "sub": "针对首轮问题采取措施并重新核验"
+     },
+     "by": "agent",
+     "text": "两轮入口对称；以是否交付判定本轮"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "通过与否以当轮独立审查证据（审查员 A、B…的结论）为准，不再读旧裁判 judge.decided。",
+      "intent": "第一轮失败后开始第二轮：经验再次进入「待验证经验独立索引」，在另一个相似但不完全一样的真实任务中由协作员使用。同一条经验在两个相似但不完全一样的真实任务里各用一次，各得一轮结论：协作员用这条经验完成工作后，交付了＝本轮通过，没交付＝本轮失败。两轮入口对称。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：本轮结果由审查结束后传回"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200573,
+     "before": {
+      "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；任一 FAIL＝未通过；NEEDS_INFO＝暂停补材料。",
+      "intent": "第一轮失败后开始第二轮：经验进入「待验证经验独立索引」，在相似真实任务中由协作员使用；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」传回本节点。两轮入口对称。"
+     },
+     "by": "agent",
+     "text": "审查结论改走验证材料"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495748,
+     "before": {
+      "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；任一 FAIL＝未通过；NEEDS_INFO＝暂停补材料。\n有 FAIL 也有 NEEDS_INFO 时，等全部回执到齐再判；调用故障不消耗轮次。",
+      "intent": "第一轮失败后开始第二轮：经验进入「待验证经验独立索引」，在相似真实任务中由协作员使用；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」进入「验证材料自动回写原候选」，和交付事件一起形成本轮结果。两轮入口对称。"
+     },
+     "by": "agent",
+     "text": "裁决 7、8、10：第二轮分歧交用户；使用规则；可改正文"
+    },
+    {
+     "at": 1793369207293,
+     "by": "user",
+     "text": "直接改。（问题：第二轮一人 FAIL、一人 NEEDS_INFO 合同没写，建议暂停补材料、补完再判；连同 Muse 第二次复查采纳的其它文档小修，要不要直接改）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793369207295,
+     "before": {
+      "desc": "本轮通不通过以审查结论为准：全部审查员通过＝通过；全部 FAIL＝未通过，退役；有人通过、有人 FAIL＝有分歧，带着分歧交用户终审；NEEDS_INFO＝暂停补材料。\n有 FAIL 也有 NEEDS_INFO 时，等全部回执到齐再判；调用故障不消耗轮次。\n审查员必须看到应用记录和产物。第二轮前可以改经验正文，但要回初审，已用轮次不清零。",
+      "intent": "第一轮失败后开始第二轮：经验进入「待验证经验独立索引」，在相似真实任务中由宿主或协作员使用，用的时候告诉用户；带命令的经验先进沙箱；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」进入「验证材料自动回写原候选」，和交付事件一起形成本轮结果。两轮入口对称。"
+     },
+     "by": "agent",
+     "text": "去掉“两轮入口对称”；写明第二轮有 FAIL 也有 NEEDS_INFO、没人通过时暂停补材料"
+    }
+   ],
+   "id": "run2",
+   "intent": "第一轮失败后开始第二轮：经验进入「待验证经验独立索引」，在相似真实任务中由宿主或协作员使用，用的时候告诉用户；带命令的经验先进沙箱；用完后由审查员审查，审查结论经「实际来源确认与独立性核对」进入「验证材料自动回写原候选」，和交付事件一起形成本轮结果。",
+   "issues": "代码仍读 judge.decided（validation_evidence.py:100），待改\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "第一轮失败后，进入待验证索引再用一次",
+   "title": "执行第二轮重新验证",
+   "x": 1292,
+   "y": 815
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "写入判定依据"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "同样是由审查结束后传回结果"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "intent": "第二轮结论：协作员用这条经验完成相似真实任务后，交付了＝通过，没交付＝失败。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "按原话：由审查结束后传回结果"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200575,
+     "before": {
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "标记：一票 FAIL 退役"
+    },
+    {
+     "at": 1793363495717,
+     "by": "user",
+     "text": "全部按建议。（裁决 7，问题：第二轮一票 FAIL 是否退役；建议：全部 FAIL 才退役；有人过、有人不过，带着分歧交用户终审）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495750,
+     "before": {
+      "intent": "第二轮结论由审查结束后传回（经验证材料回写）：全部审查员通过＝通过，任一 FAIL＝未通过。",
+      "issues": "待确认（裁决 7）：一票 FAIL 就退役，而且退役不能复活（建议：全部 FAIL 才退役；有分歧带着分歧交终审）"
+     },
+     "by": "agent",
+     "text": "裁决 7：全部 FAIL 才退役；有分歧交终审"
+    }
+   ],
+   "id": "v2_result",
+   "intent": "第二轮结论由审查结束后传回（经验证材料回写）：全部审查员通过＝通过；全部 FAIL＝未通过，退役；有人通过、有人 FAIL＝有分歧，带着分歧交用户终审。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "",
+   "title": "第二轮结果",
+   "x": 578,
+   "y": 728
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "intent": "",
+      "issues": "问题4：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）"
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：各审查员结论分开记录"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200585,
+     "before": {
+      "intent": "各审查员的结论分开记录，分歧原样保留，交用户终审。",
+      "issues": "问题4（待改代码）：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）"
+     },
+     "by": "agent",
+     "text": "写明两轮差异要标什么；标记能否改正文"
+    },
+    {
+     "at": 1793363495720,
+     "by": "user",
+     "text": "全部按建议。（裁决 10，问题：第二轮前能否改正文；Agent＋模型要不要永久总分；建议：能改，但回初审，已用轮次不清零；Agent＋模型只按周算，经验保留永久总分）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495762,
+     "before": {
+      "issues": "问题4（待改代码）：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）\n待确认（裁决 10）：第二轮前能不能改正文（建议：能改，但绑定新版本并回初审，不重置轮次）"
+     },
+     "by": "agent",
+     "text": "裁决 10：写明改正文的处理"
+    }
+   ],
+   "id": "diff",
+   "intent": "各审查员的结论分开记录，分歧原样保留，交用户终审。重点标明：首轮未通过原因、采取的变化、两轮证据差异、适用范围和残余限制。",
+   "issues": "问题4（待改代码）：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "重点标记：第二轮验证通过",
+   "title": "核对两轮差异与原因",
+   "x": 827,
+   "y": 633
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [],
+   "id": "retired",
+   "intent": "",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "停止检索与复用",
+   "title": "经验直接退役",
+   "x": 1570,
+   "y": 620
+  },
+  {
+   "desc": "初审不通过的经验没有两轮记录，只显示退役原因。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200587,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "补说明：初审不通过的显示"
+    }
+   ],
+   "id": "retire_view",
+   "intent": "",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "todo",
+   "sub": "两轮记录与退役原因",
+   "title": "监看中心展示",
+   "x": 1820,
+   "y": 718
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g3",
+   "history": [],
+   "id": "delete",
+   "intent": "",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "todo",
+   "sub": "系统不自动删除",
+   "title": "用户确认后手动删除",
+   "x": 2070,
+   "y": 756
+  },
+  {
+   "desc": "审查员和协作员是两类，分开设：审查员至少 2 个（含替补的备用角色或兼任的宿主）；协作员可有可无。宿主读取评分中心的数据，自行判断选用哪几个。\n每张卡绑定：经验卡 ID、版本摘要、轮次、任务 ID、审查类型（新经验价值分 / 复验 / 复用改动）。\n宿主只有这次没亲自干活、也不是这条经验的作者时才算一票。全部审查员不可用时可以兜底，但要在终审材料标明“无独立审查”。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "用于分发宿主Agent发出的任务队列进行分发，信息采集「后台执行适配器 · Agent 池」节点中用户手动填写的节点信息。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入分发职责"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：审查员最少两个，宿主按评分选用"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "不能，审查员和协作员是分开的"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "审查员（协作员）最少两个，不限于 A、B 两个；宿主读取评分中心的数据，自行判断选用哪几个。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：审查员与协作员分开"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "身份任务卡的功能是区分审查员和协作员，为了避免Agent池发来的任务有可能是上一轮执行任务的角色在本轮又继续担任审查员，所以我想填一个角色节点，既可以是审查员又可以是协作员，例如上轮执行任务的角色本轮又被指派担任审查员，那么身份任务卡就应该不给正在开启的其中一个重复角色的审查员派活，而是把这个审查工作发给另一个备用角色和宿主执行审查并写入统一回执入口，因为协作员干完活回来依旧还是要通过宿主核验的，这个时候就可以利用宿主核验的过程同时担任审查员。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。宿主读取评分中心的数据，自行判断选用哪几个。",
+      "intent": "分发宿主 Agent 发出的任务（审查与协作），节点信息取自「后台执行适配器 · Agent 池」中用户手动填写的资料。",
+      "sub": "关联原卡、轮次与版本"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "按原话：区分审查员与协作员，上一轮干活的不当本轮审查员"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200591,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个（含替补的备用角色或兼任的宿主）；协作员可有可无。宿主读取评分中心的数据，自行判断选用哪几个。",
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "写回版本绑定；标记宿主审查条件"
+    },
+    {
+     "at": 1793363495715,
+     "by": "user",
+     "text": "全部按建议。（裁决 5，问题：宿主算不算审查员；建议：这次没亲自干活、也不是作者才算一票；全部审查员不可用时可以兜底，但要标明“无独立审查”）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495738,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个（含替补的备用角色或兼任的宿主）；协作员可有可无。宿主读取评分中心的数据，自行判断选用哪几个。\n每张卡绑定：经验卡 ID、版本摘要、轮次、任务 ID、审查类型（新经验价值分 / 复验 / 复用改动）。",
+      "issues": "待确认（裁决 5）：宿主什么时候算审查员。直接任务里宿主本人就是执行者和作者（建议：只有这次没亲自干活、也不是作者才算一票；兜底例外，并在终审材料标“无独立审查”）"
+     },
+     "by": "agent",
+     "text": "裁决 5：宿主算一票的条件"
+    }
+   ],
+   "id": "card",
+   "intent": "身份任务卡负责区分审查员和协作员，并派活。如果 Agent 池派来的某个角色上一轮刚执行过这个任务，本轮又被指派当审查员，就不给它派审查活，改派给「备用角色」和宿主一起审查，结果写入统一回执入口。协作员干完活本来就要经宿主核验，宿主可以借核验过程同时担任审查员。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "review-ingress/xiaoba_review/store.py assignment",
+   "status": "dev",
+   "sub": "区分审查员 / 协作员；避免同一角色既干活又审查",
+   "title": "身份任务卡",
+   "x": 70,
+   "y": 1080
+  },
+  {
+   "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无。独立性按“入口程序＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "实现测试联调"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": "总纲 2.1：固定 DSH 一方。",
+      "issues": "真实 DSH 联调未做",
+      "sub": "",
+      "title": "固定 DSH 审查"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "改为审查节点 A，不固定 Agent"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：A / B 只是示意，最少两个"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "审查员（协作员）最少两个，不限于 A、B 两个；宿主读取评分中心的数据，自行判断选用哪几个。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：审查员与协作员分开"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "看命名和模型就行了，A用了A模型是1、A用了B模型是2"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "按原话：独立性看名称＋模型"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495742,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无。独立性按“Agent 名称＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。"
+     },
+     "by": "agent",
+     "text": "裁决 6：独立性改看入口程序＋模型"
+    }
+   ],
+   "id": "dsh",
+   "intent": "具体用哪个 Agent 由 Agent 池决定。Agent 池没有固定节点：用就开，不用就关。",
+   "issues": "待实现测试联调",
+   "note": "",
+   "pending": false,
+   "refs": "review-ingress/xiaoba_review/backends.py",
+   "status": "dev",
+   "sub": "由 Agent 池按需开启；不固定任何 Agent",
+   "title": "审查节点 A",
+   "x": 320,
+   "y": 1128
+  },
+  {
+   "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无。独立性按“入口程序＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "进行实现测试后确定联调方式"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": "",
+      "issues": "AGY 在 stream-json 模式下不能响应权限确认，命令类操作会被拒\nAGY 沙箱能否读到工作区外的证据文件，未验证",
+      "sub": "任意外部 Agent / 后台 Agent",
+      "title": "开放第二审查 Agent"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "改为审查节点 B，不固定 Agent"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：A / B 只是示意，最少两个"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "审查员（协作员）最少两个，不限于 A、B 两个；宿主读取评分中心的数据，自行判断选用哪几个。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：审查员与协作员分开"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "跟审查节点A一样"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无，有就用，没有就不用。同一个 Agent 在同一任务里不能既协作又审查。"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "按原话：独立性看名称＋模型"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200593,
+     "before": {
+      "issues": "实现测试后确定联调方式\nAGY 在 stream-json 模式下不能响应权限确认（旧问题，待改用 CLI 每步调用后复核）"
+     },
+     "by": "agent",
+     "text": "标记：位置里的文件还没上 GitHub"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495744,
+     "before": {
+      "desc": "审查员和协作员是两类，分开设：审查员至少 2 个；协作员可有可无。独立性按“Agent 名称＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。"
+     },
+     "by": "agent",
+     "text": "裁决 6：独立性改看入口程序＋模型"
+    }
+   ],
+   "id": "peer",
+   "intent": "具体用哪个 Agent 由 Agent 池决定。Agent 池没有固定节点：用就开，不用就关。",
+   "issues": "实现测试后确定联调方式\nAGY 在 stream-json 模式下不能响应权限确认（旧问题，待改用 CLI 每步调用后复核）\n位置里的 resource_agy_cli.py 还没提交到 GitHub",
+   "note": "",
+   "pending": false,
+   "refs": "resource_agy_cli.py",
+   "status": "dev",
+   "sub": "由 Agent 池按需开启；不固定任何 Agent",
+   "title": "审查节点 B",
+   "x": 320,
+   "y": 1015
+  },
+  {
+   "desc": "回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分、适用条件与限制。\nB19 检查由「当轮独立审查证据」统一执行，本节点不重复判。\n台账里的回执是工作副本，结算时入库（见「数据与运行底座」）。审查期间回执先放各审查员自己的目录，齐了才收进共用的 回执/，避免后交的人先看到别人的结论。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "统一任务卡发布记录和任务卡完成回执存放入口路径/Users/suzhizhou/Documents/私人助理/工作区，注意与其他文件区分开"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入存放路径与掉线判定"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。派活后某个审查员（协作员）连续 120 秒没有任何工作进度，视为掉线：把它的完成回执或已完成的部分上传「实际来源确认与独立性核对」核实；健康的继续写入本入口。"
+     },
+     "by": "agent",
+     "text": "写入掉线后暂停任务"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "1、同意。4、同意建议。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "",
+      "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。派活后某个审查员（协作员）连续 120 秒没有任何工作进度，视为掉线：把它的完成回执或已完成部分上传「实际来源确认与独立性核对」核实，任务暂停，等用户决定由哪个 Agent 接续。"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "分工：只负责收回执和判掉线；回执必填字段"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "desc": "回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分、适用条件与限制。"
+     },
+     "by": "agent",
+     "text": "写入 B19 检查点"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200595,
+     "before": {
+      "desc": "回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分、适用条件与限制。\nB19 检查点：回执缺必填字段，或证据引用指不到任务卡给的材料＝不合格，不算完成、不计分，按 NEEDS_INFO 处理。",
+      "issues": "问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡",
+      "sub": "任务关联、来源、版本与输出核验"
+     },
+     "by": "agent",
+     "text": "职责对齐：只收回执、判掉线；写明盲审和入库；标记 120 秒"
+    },
+    {
+     "at": 1793363495714,
+     "by": "user",
+     "text": "全部按建议。（裁决 4，问题：多久没进度算掉线，120 秒还是 300 秒；建议：默认 300 秒，可按节点调；人工转交的不自动判掉线）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495734,
+     "before": {
+      "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。负责判掉线：派活后某个审查员（协作员）连续 120 秒没有任何工作进度，视为掉线，把它已完成的部分连同掉线情况交「当轮独立审查证据」处理。",
+      "issues": "问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡\n待确认（裁决 4）：120 秒和此前用户定的“连续 300 秒无进展”不一致，模型思考超过 2 分钟会误判，人工转交的外部 Agent 也不适用（建议：默认 300 秒，按节点设置；转交通道不自动判掉线；先定义什么算进度）"
+     },
+     "by": "agent",
+     "text": "裁决 4：默认 300 秒，人工转交不自动判"
+    }
+   ],
+   "id": "receipts",
+   "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。负责判掉线：派活后某个审查员（协作员）连续 300 秒（默认，可按节点调）没有任何工作进度，视为掉线（人工转交的外部 Agent 不自动判），把它已完成的部分连同掉线情况交「当轮独立审查证据」处理。",
+   "issues": "问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡\n待实现：定义什么算工作进度（文件回执方式下用什么信号，见任务卡 8）",
+   "note": "",
+   "pending": false,
+   "refs": "review-ingress store.py receive",
+   "status": "dev",
+   "sub": "收回执、判掉线",
+   "title": "统一回执入口",
+   "x": 570,
+   "y": 1072
+  },
+  {
+   "desc": "下游：新经验分数交评分中心；复验和复用改动的结论进「验证材料自动回写原候选」；NEEDS_INFO 回「人工审核 / 必要追问」。审查结束后任务继续等用户说“交付”，这里不触发交付。审查通过不等于进正式库，只有用户终审通过的经验才进正式经验库。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793284765968,
+     "by": "user",
+     "submission": "s1793284765968",
+     "text": "根据「统一回执入口」节点产出的回执信息判定是否双审查通过与否，如果双审查有损坏，暂停任务反馈宿主Agent，让宿主Agent主动询问用户用哪个备用Agent代替。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "写入掉线处理"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793324894822,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "写明下游：只送评分中心，审查结论经 Agent 池交回"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "根据统一回执入口的回执判定双审是否通过。有审查员掉线时，核实其已完成部分，并通知宿主 Agent 主动问用户换哪个备用 Agent。只暂停经验审查，不拦截宿主的任务交付。"
+     },
+     "by": "agent",
+     "text": "写入审查结论规则与掉线暂停"
+    },
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "我连线了，"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "desc": "下游只有评分中心（审查员干活评分）。审查结论不另拉线，经「后台执行适配器 · Agent 池」交回发起方：新经验交用户初审，验证中的经验交第一轮 / 第二轮结果。审查通过不等于进正式库，只有用户终审通过的经验才进正式经验库。"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "更新下游说明（用户已重新接线）"
+    },
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "5、b"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "intent": "根据统一回执入口的回执判定审查是否通过。审查结论：FAIL＝本轮未通过；NEEDS_INFO＝先暂停、由宿主补材料，不算失败；全部审查员通过才算通过；每位审查员的结论分开记录。\n审查员 / 协作员掉线（派活后 120 秒无任何进度）时：任务流程暂停，宿主 Agent 通知用户——谁挂了、任务干到哪一步、接续任务由哪个 Agent 执行（用户决定）。区别：审查结论不通过只挡经验、不拦交付；审查员掉线则暂停任务。",
+      "issues": "问题5：独立性只比对 source_ref 字符串（store.py:164）"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "分工：只核对独立性并汇总结论；分歧交用户初审"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793356404153,
+     "before": {
+      "intent": "只做两件事：① 核对审查员彼此独立（独立性按“Agent 名称＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。）；② 汇总结论：复验时全部审查员通过才算通过，FAIL＝本轮未通过，NEEDS_INFO＝暂停补材料；新经验“值不值得”出现分歧时，交用户初审，分歧原样带上。每位审查员的结论分开记录。"
+     },
+     "by": "agent",
+     "submission": "s1793356359376",
+     "text": "同步：评分交评分中心判定"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200597,
+     "before": {
+      "desc": "下游：审查结论传回「执行第一 / 二轮验证」；任务回到「用户说“交付”」形成闭环。审查通过不等于进正式库，只有用户终审通过的经验才进正式经验库。",
+      "issues": "问题5：代码只比对 source_ref 字符串（store.py:164），且把同一 CLI 路径 / 同一网站视为同一来源，与“名称＋模型”规则不一致，需改",
+      "sub": "自填身份或哈希不等于认证"
+     },
+     "by": "agent",
+     "text": "下游改为按审查类型分流，不再触发交付；标记独立性"
+    },
+    {
+     "at": 1793363495716,
+     "by": "user",
+     "text": "全部按建议。（裁决 6，问题：两个审查员怎样才算独立；建议：看“入口程序＋模型”；A 用 A 模型、A 用 B 模型仍算两个）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495740,
+     "before": {
+      "intent": "只做两件事：① 核对审查员彼此独立（独立性按“Agent 名称＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。）；② 汇总结论：复验时全部审查员通过才算通过，FAIL＝本轮未通过，NEEDS_INFO＝暂停补材料；新经验的 0–10 分汇总后交评分中心判定值不值得；分歧大时交用户初审，分歧原样带上。每位审查员的结论分开记录。",
+      "issues": "问题5：代码只比对 source_ref 字符串（store.py:164），且把同一 CLI 路径 / 同一网站视为同一来源，与“名称＋模型”规则不一致，需改\n待确认（裁决 6）：“名称＋模型”改个名字就能多一票（建议：改为“入口程序＋模型”，A 用 A 模型、A 用 B 模型仍算两个）"
+     },
+     "by": "agent",
+     "text": "裁决 6、7：独立性改看入口程序＋模型；第二轮分歧交用户"
+    }
+   ],
+   "id": "confirmed",
+   "intent": "只做两件事：① 核对审查员彼此独立（独立性按“入口程序＋模型”判断：同一个 Agent 用 A 模型算 1 个、用 B 模型算另 1 个。）；② 汇总结论：复验第一轮全部审查员通过才算通过，任一 FAIL＝未通过；第二轮全部 FAIL 才退役，有分歧带着分歧交用户终审；NEEDS_INFO＝暂停补材料；新经验的 0–10 分汇总后交评分中心判定值不值得；分歧大时交用户初审，分歧原样带上。每位审查员的结论分开记录。",
+   "issues": "问题5：代码只比对 source_ref 字符串（store.py:164），且把同一 CLI 路径 / 同一网站视为同一来源，与“入口程序＋模型”规则不一致，需改",
+   "note": "",
+   "pending": false,
+   "refs": "review-ingress store.py attest",
+   "status": "dev",
+   "sub": "核对独立性并汇总结论",
+   "title": "实际来源确认与独立性核对",
+   "x": 1105,
+   "y": 1070
+  },
+  {
+   "desc": "回执齐备不等于核验通过。回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分（0–10 分）、适用条件与限制。审查员只打分（0–10 分），不下“值不值得”的结论；值不值得由评分中心根据各审查员的分数决定。\nB19 检查点：回执缺必填字段，或证据引用指不到任务卡给的材料＝不合格，不算完成、不计分，按 NEEDS_INFO 处理。\n回执还要写审查类型和“与已有经验重复”（可空）。新经验以评分为准，结论只用来标 NEEDS_INFO；复验以结论为准。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793345809572,
+     "by": "user",
+     "submission": "s1793345809572",
+     "text": "写了"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "issues": "回执合同里没有评分和适用限制字段（B5 待定）"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "原话“写了”，字段未见新内容"
+    },
+    {
+     "at": 1793354570628,
+     "by": "user",
+     "submission": "s1793354570628",
+     "text": "这个节点的作用就是验证统一回执信息中是否是2个审查员（协作员）写的，如果挂了一个或者都挂了，就在这个节点暂停任务，并通知宿主Agent主动向用户报告实际情况以及替代审查员（协作员）用哪个"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793354639950,
+     "before": {
+      "desc": "",
+      "intent": "回执齐备不等于核验通过。",
+      "sub": "结论、理由、评分、分歧与限制"
+     },
+     "by": "agent",
+     "submission": "s1793354570628",
+     "text": "按原话：核实回执出自审查员，掉线在此暂停"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "desc": "回执齐备不等于核验通过。",
+      "intent": "核实统一回执里的内容是否确实由派出的审查员（协作员，至少 2 个）写的。挂了一个或者全挂了，就在本节点暂停任务，通知宿主 Agent 主动向用户报告实际情况，并请用户选定替代的审查员（协作员）。",
+      "issues": "回执合同里没有评分和适用限制字段（B5 待定）\n待确认：用户说“写了”，但节点里未见新内容，可能没保存"
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "分工：核实回执来源；掉线在此暂停"
+    },
+    {
+     "at": 1793356359376,
+     "by": "user",
+     "submission": "s1793356359376",
+     "text": "b，只需要评分，至于到底值不值得交给评分中心去决定"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793356404153,
+     "before": {
+      "desc": "回执齐备不等于核验通过。回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分、适用条件与限制。",
+      "issues": "回执合同里还没有评分和适用限制字段\n待确认：评分尺度——只给“值得 / 不值得”，还是 0–10 分"
+     },
+     "by": "agent",
+     "submission": "s1793356359376",
+     "text": "按原话：评分 0–10，值不值得交评分中心"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "desc": "回执齐备不等于核验通过。回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分（0–10 分）、适用条件与限制。审查员只打分（0–10 分），不下“值不值得”的结论；值不值得由评分中心根据各审查员的分数决定。"
+     },
+     "by": "agent",
+     "text": "写入 B19 检查点"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200599,
+     "before": {
+      "desc": "回执齐备不等于核验通过。回执必填：结论（通过 / FAIL / NEEDS_INFO）、理由、证据引用（必须指向任务卡给的材料）、对这条经验的评分（0–10 分）、适用条件与限制。审查员只打分（0–10 分），不下“值不值得”的结论；值不值得由评分中心根据各审查员的分数决定。\nB19 检查点：回执缺必填字段，或证据引用指不到任务卡给的材料＝不合格，不算完成、不计分，按 NEEDS_INFO 处理。",
+      "issues": "回执合同里还没有评分和适用限制字段"
+     },
+     "by": "agent",
+     "text": "回执补审查类型和重复字段；标记掉线暂停范围"
+    },
+    {
+     "at": 1793363495713,
+     "by": "user",
+     "text": "全部按建议。（裁决 3，问题：审查员掉线暂停什么；全部不可用时是否自动由宿主兜底；建议：审查员掉线只停审查，协作员掉线才停任务；全部不可用时把宿主兜底作为一个选项问用户）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495730,
+     "before": {
+      "intent": "核实每份回执确实出自派出去的那个审查员（含备用角色、兼任的宿主），并对应这张任务卡；检查回执必填字段是否齐全。有人掉线（挂了一个或全挂）就在本节点暂停任务，通知宿主 Agent 主动向用户报告实际情况，并请用户选定替代的审查员（协作员）。",
+      "issues": "回执合同里还没有评分和适用限制字段\n待确认（裁决 3）：掉线时暂停的是审查还是整个任务——新经验审查在交付后，已没有任务可停（建议：审查员掉线只停审查，协作员掉线才停任务）"
+     },
+     "by": "agent",
+     "text": "裁决 3：审查员掉线只停审查"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793369207296,
+     "before": {
+      "issues": "回执合同里还没有评分和适用限制字段"
+     },
+     "by": "agent",
+     "text": "问题说明改成明确的代码现状"
+    }
+   ],
+   "id": "review_evidence",
+   "intent": "核实每份回执确实出自派出去的那个审查员（含备用角色、兼任的宿主），并对应这张任务卡；检查回执必填字段是否齐全。审查员掉线（挂了一个或全挂）就在本节点暂停这次审查，不停任务，用户说“交付”照常有效；通知宿主 Agent 主动向用户报告实际情况，并请用户选定替代的审查员，全部不可用时把“宿主兜底”作为一个选项。协作员掉线才暂停任务，请用户选定替代的协作员。",
+   "issues": "代码现状：回执合同还是第 1 版（development/review-ingress/xiaoba_review/store.py:142），没有评分、适用限制、审查类型和重复经验字段；上面的说明写的是设计要求。任务卡 2 修。",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "dev",
+   "sub": "核实回执是否出自审查员；掉线在此暂停",
+   "title": "当轮独立审查证据",
+   "x": 820,
+   "y": 1080
+  },
+  {
+   "desc": "被这些节点使用：评分中心、复用计分、正式经验与长期记忆索引、待验证经验独立索引、统一回执入口（事件链）、工作日台账（总目录）。\n结算时把回执和证据按哈希存进长期存储，台账被清理也不影响终审、周评分和 14 天判定。\n以什么为准：SQLite 和事件链是准，_索引.jsonl 负责定位，台账.md 只给人看。",
+   "expanded": false,
+   "g": "g5",
+   "history": [
+    {
+     "at": 1793279767530,
+     "by": "user",
+     "submission": "s1793279767530",
+     "text": "**用户决定：小八每天在工作区建一个当天的文件夹。当天所有接入小八的宿主，比如 Claude、Codex，产出的内容（图片、视频、音频等）和记录都统一放进去，方便后面的 Agent 直接接续。**"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793279932390,
+     "before": {
+      "intent": "",
+      "refs": "",
+      "sub": "SQLite、候选文件、回执与事件哈希链"
+     },
+     "by": "agent",
+     "submission": "s1793279767530",
+     "text": "写入工作区每日文件夹规则"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "",
+      "intent": "小八每天在工作区建一个当天的文件夹。当天所有接入小八的宿主（Claude、Codex 等）产出的内容（图片、视频、音频等）和记录都统一放进去，方便后面的 Agent 直接接续。",
+      "refs": "私人助理/工作区/",
+      "sub": "SQLite、候选文件、回执与事件哈希链；工作区每日文件夹"
+     },
+     "by": "agent",
+     "text": "只管长期存储；每日文件夹移交工作日台账"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200601,
+     "before": {
+      "desc": "被这些节点使用：评分中心、复用计分、正式经验与长期记忆索引、待验证经验独立索引、统一回执入口（事件链）、工作日台账（总目录）。"
+     },
+     "by": "agent",
+     "text": "写明证据入库和以谁为准"
+    }
+   ],
+   "id": "data",
+   "intent": "只管长期存的东西：SQLite、候选文件、回执与事件哈希链、工具/模型综合数据（评分库）、每日台账索引总目录。每天的文件夹、索引和接续清单归「工作日台账」。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工具/模型综合数据\n私人助理/工具/每日台账索引总目录/",
+   "status": "done",
+   "sub": "长期存储：SQLite、事件哈希链、评分库、台账总目录",
+   "title": "数据与运行底座",
+   "uses": [
+    "evidence",
+    "nf2evuw",
+    "formal",
+    "pending_index",
+    "receipts",
+    "workday"
+   ],
+   "x": 70,
+   "y": 1366
+  },
+  {
+   "desc": "作用于全部节点。",
+   "expanded": false,
+   "g": "g5",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "",
+      "intent": "",
+      "issues": "",
+      "sub": "B09 配置一致 / B19 输出合格 / B20 原子与幂等结算"
+     },
+     "by": "agent",
+     "text": "按用户采纳的建议改写全局规则；B09 / B20 写明内容"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "intent": "全局规则（用户 2026-10-30 采纳）：\n· 用户是唯一裁决者：初审、终审、删除、换 Agent 都由用户定，Agent 不能代批；\n· 系统不自动删除任何东西；\n· 复验（新经验）与复用（正式经验）分开记录、互不计分；\n· 审查不通过只挡经验，不拦交付；审查员掉线则暂停任务问用户；\n· 上班不发健康探针，但宿主要核验运行总览里后台 Agent 节点的检测报告；\n· B09 配置一致：会话、已安装入口、后台进程和裁决中心必须用内容一致的配置，发现分歧就拒绝执行；配置结构与读取它的代码同批修改；\n· B20 恰好结算一次：任务完成与经验候选登记要么一起成功、要么一起失败，重复调用不能重复结算；状态变化写进可校验的事件链，链坏就停派任务（用户 10-22 定：只针对多 Agent 任务，不拦日常单 Agent 任务），异常要释放租约；重试只补失败的一侧且不超预算。",
+      "issues": "待确认：B19“非答案不算成功”（空输出、只有工具调用标记、泄露思考过程的输出不得交付、复用或进入记忆）是否保留",
+      "sub": "用户裁决 · 不自动删除 · 复验复用分开 · 审查不拦交付 · 上班核验检测报告 · B09 · B20"
+     },
+     "by": "agent",
+     "text": "写入 B19 产出合格（改写版）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200603,
+     "before": {
+      "intent": "全局规则（用户 2026-10-30 采纳）：\n· 用户是唯一裁决者：初审、终审、删除、换 Agent 都由用户定，Agent 不能代批；\n· 系统不自动删除任何东西；\n· 复验（新经验）与复用（正式经验）分开记录、互不计分；\n· 审查不通过只挡经验，不拦交付；审查员掉线则暂停任务问用户；\n· 上班不发健康探针，但宿主要核验运行总览里后台 Agent 节点的检测报告；\n· B09 配置一致：会话、已安装入口、后台进程和裁决中心必须用内容一致的配置，发现分歧就拒绝执行；配置结构与读取它的代码同批修改；\n· B20 恰好结算一次：任务完成与经验候选登记要么一起成功、要么一起失败，重复调用不能重复结算；状态变化写进可校验的事件链，链坏就停派任务（用户 10-22 定：只针对多 Agent 任务，不拦日常单 Agent 任务），异常要释放租约；重试只补失败的一侧且不超预算。\n· B19 产出合格（用户 2026-10-30 采纳改写）：① 统一回执入口 / 当轮独立审查证据检查回执——缺必填字段，或证据引用指不到任务卡给的材料，即不合格；② 写进新经验候选、正式经验库、Playbook 前，额外检查工具调用标记、泄露的思考过程、终端残留；宿主与用户的正常对话不检查，不误伤正常正文；③ 不合格＝不算完成、不计分（不 +1、不进周评分）、不进记忆，按 NEEDS_INFO 处理，由宿主补材料或重新派活，不自动重试；同一 Agent 连续不合格显示在运行总览，由用户决定是否换掉。",
+      "issues": ""
+     },
+     "by": "agent",
+     "text": "B20 改以交付结算为准；指向裁决和覆盖表"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495732,
+     "before": {
+      "intent": "全局规则（用户 2026-10-30 采纳）：\n· 用户是唯一裁决者：初审、终审、删除、换 Agent 都由用户定，Agent 不能代批；\n· 系统不自动删除任何东西；\n· 复验（新经验）与复用（正式经验）分开记录、互不计分；\n· 审查不通过只挡经验，不拦交付；审查员掉线则暂停任务问用户；\n· 上班不发健康探针，但宿主要核验运行总览里后台 Agent 节点的检测报告；\n· B09 配置一致：会话、已安装入口、后台进程和裁决中心必须用内容一致的配置，发现分歧就拒绝执行；配置结构与读取它的代码同批修改；\n· B20 恰好结算一次：交付结算（归档、经验候选登记、应用记录、计分待办）要么一起成功、要么一起失败，重复调用不能重复结算；状态变化写进可校验的事件链，链坏就停派任务（用户 10-22 定：只针对多 Agent 任务，不拦日常单 Agent 任务），异常要释放租约；重试只补失败的一侧且不超预算。\n· B19 产出合格（用户 2026-10-30 采纳改写）：① 统一回执入口 / 当轮独立审查证据检查回执——缺必填字段，或证据引用指不到任务卡给的材料，即不合格；② 写进新经验候选、正式经验库、Playbook 前，额外检查工具调用标记、泄露的思考过程、终端残留；宿主与用户的正常对话不检查，不误伤正常正文；③ 不合格＝不算完成、不计分（不 +1、不进周评分）、不进记忆，按 NEEDS_INFO 处理，由宿主补材料或重新派活，不自动重试；同一 Agent 连续不合格显示在运行总览，由用户决定是否换掉。"
+     },
+     "by": "agent",
+     "text": "裁决 3：掉线只停审查"
+    },
+    {
+     "at": 1793363839010,
+     "by": "user",
+     "text": "全部按建议。（问题：B15 恢复冻结任务要新鲜健康记录，上班不发探针后从哪来；建议：改由手动「测试运行」提供）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839023,
+     "before": {
+      "intent": "全局规则（用户 2026-10-30 采纳）：\n· 用户是唯一裁决者：初审、终审、删除、换 Agent 都由用户定，Agent 不能代批；\n· 系统不自动删除任何东西；\n· 复验（新经验）与复用（正式经验）分开记录、互不计分；\n· 审查不通过只挡经验，不拦交付；审查员掉线只暂停审查并问用户，协作员掉线才暂停任务；\n· 上班不发健康探针，但宿主要核验运行总览里后台 Agent 节点的检测报告；\n· B09 配置一致：会话、已安装入口、后台进程和裁决中心必须用内容一致的配置，发现分歧就拒绝执行；配置结构与读取它的代码同批修改；\n· B20 恰好结算一次：交付结算（归档、经验候选登记、应用记录、计分待办）要么一起成功、要么一起失败，重复调用不能重复结算；状态变化写进可校验的事件链，链坏就停派任务（用户 10-22 定：只针对多 Agent 任务，不拦日常单 Agent 任务），异常要释放租约；重试只补失败的一侧且不超预算。\n· B19 产出合格（用户 2026-10-30 采纳改写）：① 统一回执入口 / 当轮独立审查证据检查回执——缺必填字段，或证据引用指不到任务卡给的材料，即不合格；② 写进新经验候选、正式经验库、Playbook 前，额外检查工具调用标记、泄露的思考过程、终端残留；宿主与用户的正常对话不检查，不误伤正常正文；③ 不合格＝不算完成、不计分（不 +1、不进周评分）、不进记忆，按 NEEDS_INFO 处理，由宿主补材料或重新派活，不自动重试；同一 Agent 连续不合格显示在运行总览，由用户决定是否换掉。",
+      "issues": "待裁决项和旧规则覆盖表见 docs/architecture-topology/DECISIONS.md；第二大脑治理原文和规则清单要等发版同步\n待确认：B15 恢复冻结任务要新鲜健康记录，原来来自上班探针，现在上班不发探针（建议：改由手动「测试运行」提供）\n自动步骤谁来跑、数据以谁为准见 docs/architecture-topology/CONTRACTS.md"
+     },
+     "by": "agent",
+     "text": "写入：恢复冻结任务的健康记录来源"
+    }
+   ],
+   "id": "governance",
+   "intent": "全局规则（用户 2026-10-30 采纳）：\n· 用户是唯一裁决者：初审、终审、删除、换 Agent 都由用户定，Agent 不能代批；\n· 系统不自动删除任何东西；\n· 复验（新经验）与复用（正式经验）分开记录、互不计分；\n· 审查不通过只挡经验，不拦交付；审查员掉线只暂停审查并问用户，协作员掉线才暂停任务；\n· 上班不发健康探针，但宿主要核验运行总览里后台 Agent 节点的检测报告；恢复冻结任务所需的健康记录，由手动「测试运行」提供；\n· B09 配置一致：会话、已安装入口、后台进程和裁决中心必须用内容一致的配置，发现分歧就拒绝执行；配置结构与读取它的代码同批修改；\n· B20 恰好结算一次：交付结算（归档、经验候选登记、应用记录、计分待办）要么一起成功、要么一起失败，重复调用不能重复结算；状态变化写进可校验的事件链，链坏就停派任务（用户 10-22 定：只针对多 Agent 任务，不拦日常单 Agent 任务），异常要释放租约；重试只补失败的一侧且不超预算。\n· B19 产出合格（用户 2026-10-30 采纳改写）：① 统一回执入口 / 当轮独立审查证据检查回执——缺必填字段，或证据引用指不到任务卡给的材料，即不合格；② 写进新经验候选、正式经验库、Playbook 前，额外检查工具调用标记、泄露的思考过程、终端残留；宿主与用户的正常对话不检查，不误伤正常正文；③ 不合格＝不算完成、不计分（不 +1、不进周评分）、不进记忆，按 NEEDS_INFO 处理，由宿主补材料或重新派活，不自动重试；同一 Agent 连续不合格显示在运行总览，由用户决定是否换掉。",
+   "issues": "待裁决项和旧规则覆盖表见 docs/architecture-topology/DECISIONS.md；第二大脑治理原文和规则清单要等发版同步\n自动步骤谁来跑、数据以谁为准见 docs/architecture-topology/CONTRACTS.md",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工作区/小八规则清单与目标架构/小八规则清单.md",
+   "status": "done",
+   "sub": "用户裁决 · 不自动删除 · 复验复用分开 · 审查不拦交付 · 上班核验检测报告 · B09 · B19 · B20",
+   "title": "贯穿约束",
+   "uses": "all",
+   "x": 320,
+   "y": 1366
+  },
+  {
+   "desc": "被这些节点使用：后台执行适配器 · Agent 池、身份任务卡、统一回执入口、用户初审、裁决中心、复用计分、工作日台账、评分中心。",
+   "expanded": false,
+   "g": "g5",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793326054964,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "写入：运行总览展示 Agent 池节点状态"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "",
+      "intent": "「运行总览」展示 Agent 池各节点的开关、测试资格、本地检查结果和派活后的掉线情况；上班不发探针，用户在这里自行查看节点状态。",
+      "sub": "进度、身份、任务卡、回执、轮次、退役、删除确认"
+     },
+     "by": "agent",
+     "text": "写入运行总览要显示的内容"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793358109654,
+     "before": {
+      "intent": "「运行总览」显示：\n· Agent 池各节点的开关、测试资格、本地检测报告和派活后的掉线情况（上班不发探针，宿主核验这份检测报告，用户也在这里看）；\n· 待用户处理：初审队列、终审队列、复用计分提交的（有改动 / 14 天未用）、掉线待换人；\n· 今日台账：今天的任务、谁在干、干到哪；\n· 评分：Agent＋模型周评分、正式经验排名。"
+     },
+     "by": "agent",
+     "text": "补充：显示连续不合格的 Agent"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200605,
+     "before": {
+      "intent": "「运行总览」显示：\n· Agent 池各节点的开关、测试资格、本地检测报告和派活后的掉线情况（上班不发探针，宿主核验这份检测报告，用户也在这里看）；\n· 待用户处理：初审队列、终审队列、复用计分提交的（有改动 / 14 天未用）、掉线待换人；\n· 今日台账：今天的任务、谁在干、干到哪；\n· 评分：Agent＋模型周评分、正式经验排名。\n· B19：同一 Agent 连续产出不合格的记录，由用户决定是否换掉。"
+     },
+     "by": "agent",
+     "text": "待用户处理补两项"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495756,
+     "before": {
+      "intent": "「运行总览」显示：\n· Agent 池各节点的开关、测试资格、本地检测报告和派活后的掉线情况（上班不发探针，宿主核验这份检测报告，用户也在这里看）；\n· 待用户处理：初审队列、终审队列、复用计分提交的（有改动 / 14 天未用）、掉线待换人、NEEDS_INFO 待补材料、退役待删除；\n· 今日台账：今天的任务、谁在干、干到哪；\n· 评分：Agent＋模型周评分、正式经验排名。\n· B19：同一 Agent 连续产出不合格的记录，由用户决定是否换掉。"
+     },
+     "by": "agent",
+     "text": "裁决 8：待用户处理加上长期未命中"
+    }
+   ],
+   "id": "monitor",
+   "intent": "「运行总览」显示：\n· Agent 池各节点的开关、测试资格、本地检测报告和派活后的掉线情况（上班不发探针，宿主核验这份检测报告，用户也在这里看）；\n· 待用户处理：初审队列、终审队列、复用计分提交的（有改动 / 14 天未用）、掉线待换人、NEEDS_INFO 待补材料、退役待删除、待验证经验 30 天未命中；\n· 今日台账：今天的任务、谁在干、干到哪；\n· 评分：Agent＋模型周评分、正式经验排名。\n· B19：同一 Agent 连续产出不合格的记录，由用户决定是否换掉。",
+   "issues": "",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工具/小八监看",
+   "status": "dev",
+   "sub": "Agent 池状态 · 待你处理 · 今日台账 · 评分排名",
+   "title": "运行监看",
+   "uses": [
+    "backends",
+    "card",
+    "receipts",
+    "initial",
+    "final_user",
+    "nf2evuw",
+    "workday",
+    "evidence"
+   ],
+   "x": 570,
+   "y": 1366
+  },
+  {
+   "desc": "被这些节点使用：实际执行、宿主集成与技术验证；核对适用条件并实际应用（经验相关的工具调用从这里取）；协作员 / 备用角色。",
+   "expanded": false,
+   "g": "g5",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "",
+      "intent": "",
+      "issues": "",
+      "refs": "",
+      "sub": "项目 / 导演 / 资产 / 审美 / OriginCut / Remotion / AE / 达芬奇 / BGM 与 SFX / REA"
+     },
+     "by": "agent",
+     "text": "写入：干活时调用的工具箱；落地时迁到 私人助理/工具"
+    }
+   ],
+   "id": "capabilities",
+   "intent": "宿主和协作员干活时可以调用的工具。具体调用哪个工具，取决于宿主的判断和所用经验的内容。",
+   "issues": "落地本机时：把工具相关文件全部迁移到 /Users/suzhizhou/Documents/私人助理/工具",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工具/",
+   "status": "done",
+   "sub": "干活时可调用的工具箱：项目 / 导演 / 资产 / 审美 / OriginCut / Remotion / AE / 达芬奇 / BGM 与 SFX / REA",
+   "title": "共享业务能力",
+   "uses": [
+    "work",
+    "apply",
+    "collab",
+    "nfpbqu1"
+   ],
+   "x": 820,
+   "y": 1357
+  },
+  {
+   "desc": "① 说「上班了小八助理」时创建 工作区/YYYY-MM-DD-小八台账/，内分 回执/、新经验/、复用经验/，另有给人看的 台账.md。成品（图片、视频、音频）留在项目目录，台账只记路径。\n② 每日索引：当天台账里的 _索引.jsonl。任何节点写文件就追加一行（路径、节点、任务ID、Agent＋模型、类型、状态、时间、文件哈希），只追加不改旧行；读别人的产出先查索引，不翻文件夹。\n③ 总目录：私人助理/工具/每日台账索引总目录/，记录每天台账的位置、各类条目数和未完成任务；跨天查找（周评分、14 天未用经验）先查总目录再读当天索引，不全量扫描。用户会定时清理工作区，总目录需容忍某天台账已被清理。\n④ 上班时读前一天未完成条目，写进当天台账的「接续清单」，接手的宿主直接接着干。\n⑤ 细节留在台账；评分中心只把汇总分写进 工具/模型综合数据。\n⑥ 上班不发健康探针（用户 2026-10-30 裁定，方案 A）：说「上班了小八助理」后只建当天台账、读接续清单，并做不调用模型的本地检查（节点是否开启、测试资格是否仍有效、配置 / 入口 / 模型有无改动、入口程序是否存在）。节点实际能否工作，交给首次派活的无进度判定（默认 300 秒）；掉线问用户换备用，全部不可用时问用户，可选宿主兜底。宿主要核验运行监看「运行总览」里后台 Agent 节点的检测报告，用户也在那里查看节点状态。手动「测试运行」保留。\n被这些节点使用：宿主 Agent、统一回执入口、本次确实应用经验核验、验证材料自动回写原候选、后续相似真实任务检索、交付归档。\n⑦ 当天没说“上班”也能用：第一次写入时自动建台账并登记总目录；说“上班”只额外读接续清单和做本地检查。\n⑧ 接续读“最近一本台账”，不是“前一天”；任务跨天时按任务 ID 串起来。\n⑨ 索引由工具写入，不由模型手写，多个宿主同时写要加锁；台账.md 从索引生成。\n⑩ 本地检测报告同时落文件，运行总览没开也能核验。",
+   "expanded": false,
+   "g": "g5",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793289377700,
+     "before": {
+      "intent": "",
+      "issues": "健康探针：总纲 2.2 不许发探针，HANDOFF 却设计了每日开工探针——待用户裁定"
+     },
+     "by": "agent",
+     "submission": "s1793284765968",
+     "text": "标记：台账动态索引方案待用户确认"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793324894822,
+     "before": {
+      "desc": "",
+      "intent": "工作日台账＝小八上班后在工作区建的当天文件夹。各节点在里面新建、保存自己的产出文件，也读取其他节点的文件。",
+      "issues": "健康探针：总纲 2.2 不许发探针，HANDOFF 却设计了每日开工探针——待用户裁定\n动态索引方案待用户确认（每天一本台账，需跨天检索）",
+      "refs": "review-ingress/xiaoba_review/workday.py",
+      "status": "dev",
+      "sub": "Agent 每天的工作回执"
+     },
+     "by": "agent",
+     "text": "写入台账与动态索引方案（用户已确认）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793326054964,
+     "before": {
+      "desc": "① 说「上班了小八助理」时创建 工作区/YYYY-MM-DD-小八台账/，内分 回执/、新经验/、复用经验/、产出/（图片、视频、音频），另有给人看的 台账.md。\n② 每日索引：当天台账里的 _索引.jsonl。任何节点写文件就追加一行（路径、节点、任务ID、Agent＋模型、类型、状态、时间、文件哈希），只追加不改旧行；读别人的产出先查索引，不翻文件夹。\n③ 总目录：私人助理/工具/每日台账索引总目录/，记录每天台账的位置、各类条目数和未完成任务；跨天查找（周评分、14 天未用经验）先查总目录再读当天索引，不全量扫描。用户会定时清理工作区，总目录需容忍某天台账已被清理。\n④ 上班时读前一天未完成条目，写进当天台账的「接续清单」，接手的宿主直接接着干。\n⑤ 细节留在台账；评分中心只把汇总分写进 工具/模型综合数据。",
+      "issues": "健康探针：总纲 2.2 不许发探针，HANDOFF 却设计了每日开工探针——待用户裁定\n未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown"
+     },
+     "by": "agent",
+     "text": "用户裁定：上班不发健康探针（方案 A）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793357333832,
+     "before": {
+      "desc": "① 说「上班了小八助理」时创建 工作区/YYYY-MM-DD-小八台账/，内分 回执/、新经验/、复用经验/、产出/（图片、视频、音频），另有给人看的 台账.md。\n② 每日索引：当天台账里的 _索引.jsonl。任何节点写文件就追加一行（路径、节点、任务ID、Agent＋模型、类型、状态、时间、文件哈希），只追加不改旧行；读别人的产出先查索引，不翻文件夹。\n③ 总目录：私人助理/工具/每日台账索引总目录/，记录每天台账的位置、各类条目数和未完成任务；跨天查找（周评分、14 天未用经验）先查总目录再读当天索引，不全量扫描。用户会定时清理工作区，总目录需容忍某天台账已被清理。\n④ 上班时读前一天未完成条目，写进当天台账的「接续清单」，接手的宿主直接接着干。\n⑤ 细节留在台账；评分中心只把汇总分写进 工具/模型综合数据。\n⑥ 上班不发健康探针（用户 2026-10-30 裁定，方案 A）：说「上班了小八助理」后只建当天台账、读接续清单，并做不调用模型的本地检查（节点是否开启、测试资格是否仍有效、配置 / 入口 / 模型有无改动、入口程序是否存在）。节点实际能否工作，交给首次派活的 120 秒无进度判定；掉线问用户换备用，全部不可用由宿主独立完成。用户在运行监看的「运行总览」自行查看节点状态。手动「测试运行」保留。"
+     },
+     "by": "agent",
+     "text": "补充：上班核验运行总览检测报告；被哪些节点使用"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200607,
+     "before": {
+      "desc": "① 说「上班了小八助理」时创建 工作区/YYYY-MM-DD-小八台账/，内分 回执/、新经验/、复用经验/、产出/（图片、视频、音频），另有给人看的 台账.md。\n② 每日索引：当天台账里的 _索引.jsonl。任何节点写文件就追加一行（路径、节点、任务ID、Agent＋模型、类型、状态、时间、文件哈希），只追加不改旧行；读别人的产出先查索引，不翻文件夹。\n③ 总目录：私人助理/工具/每日台账索引总目录/，记录每天台账的位置、各类条目数和未完成任务；跨天查找（周评分、14 天未用经验）先查总目录再读当天索引，不全量扫描。用户会定时清理工作区，总目录需容忍某天台账已被清理。\n④ 上班时读前一天未完成条目，写进当天台账的「接续清单」，接手的宿主直接接着干。\n⑤ 细节留在台账；评分中心只把汇总分写进 工具/模型综合数据。\n⑥ 上班不发健康探针（用户 2026-10-30 裁定，方案 A）：说「上班了小八助理」后只建当天台账、读接续清单，并做不调用模型的本地检查（节点是否开启、测试资格是否仍有效、配置 / 入口 / 模型有无改动、入口程序是否存在）。节点实际能否工作，交给首次派活的 120 秒无进度判定；掉线问用户换备用，全部不可用由宿主独立完成。宿主要核验运行监看「运行总览」里后台 Agent 节点的检测报告，用户也在那里查看节点状态。手动「测试运行」保留。\n被这些节点使用：宿主 Agent、统一回执入口、本次确实应用经验核验、验证材料自动回写原候选、后续相似真实任务检索、交付归档。",
+      "issues": "未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\n现行 v1.6.4 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉"
+     },
+     "by": "agent",
+     "text": "补：懒创建、最近一本、工具写索引、检测报告落文件；标记成品放哪"
+    },
+    {
+     "at": 1793363495719,
+     "by": "user",
+     "text": "全部按建议。（裁决 9，问题：当天台账放不放成品；建议：台账只放回执、索引和指向成品的路径，成品留在项目目录）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495736,
+     "before": {
+      "desc": "① 说「上班了小八助理」时创建 工作区/YYYY-MM-DD-小八台账/，内分 回执/、新经验/、复用经验/、产出/（图片、视频、音频），另有给人看的 台账.md。\n② 每日索引：当天台账里的 _索引.jsonl。任何节点写文件就追加一行（路径、节点、任务ID、Agent＋模型、类型、状态、时间、文件哈希），只追加不改旧行；读别人的产出先查索引，不翻文件夹。\n③ 总目录：私人助理/工具/每日台账索引总目录/，记录每天台账的位置、各类条目数和未完成任务；跨天查找（周评分、14 天未用经验）先查总目录再读当天索引，不全量扫描。用户会定时清理工作区，总目录需容忍某天台账已被清理。\n④ 上班时读前一天未完成条目，写进当天台账的「接续清单」，接手的宿主直接接着干。\n⑤ 细节留在台账；评分中心只把汇总分写进 工具/模型综合数据。\n⑥ 上班不发健康探针（用户 2026-10-30 裁定，方案 A）：说「上班了小八助理」后只建当天台账、读接续清单，并做不调用模型的本地检查（节点是否开启、测试资格是否仍有效、配置 / 入口 / 模型有无改动、入口程序是否存在）。节点实际能否工作，交给首次派活的 120 秒无进度判定；掉线问用户换备用，全部不可用由宿主独立完成。宿主要核验运行监看「运行总览」里后台 Agent 节点的检测报告，用户也在那里查看节点状态。手动「测试运行」保留。\n被这些节点使用：宿主 Agent、统一回执入口、本次确实应用经验核验、验证材料自动回写原候选、后续相似真实任务检索、交付归档。\n⑦ 当天没说“上班”也能用：第一次写入时自动建台账并登记总目录；说“上班”只额外读接续清单和做本地检查。\n⑧ 接续读“最近一本台账”，不是“前一天”；任务跨天时按任务 ID 串起来。\n⑨ 索引由工具写入，不由模型手写，多个宿主同时写要加锁；台账.md 从索引生成。\n⑩ 本地检测报告同时落文件，运行总览没开也能核验。",
+      "issues": "未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\n现行 v1.6.4 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉\n待确认（裁决 9）：台账放成品，和“项目成果留项目目录”冲突，多日项目也会被拆散（建议：台账只放回执、索引和指针）"
+     },
+     "by": "agent",
+     "text": "裁决 3、4、9：掉线口径；台账只放指针"
+    }
+   ],
+   "id": "workday",
+   "intent": "工作日台账＝小八上班后在工作区建的当天文件夹，所有节点共用。动态索引的目的：A 节点写入、B 节点读取 A 的产出时不搞乱，让各节点认得路、找对地方。",
+   "issues": "未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\n现行 v1.6.4 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉",
+   "note": "",
+   "pending": false,
+   "refs": "私人助理/工作区/YYYY-MM-DD-小八台账/\n私人助理/工具/每日台账索引总目录/\nreview-ingress/xiaoba_review/workday.py",
+   "status": "todo",
+   "sub": "每日一本共用台账；每日索引＋总目录，让各节点找对地方",
+   "title": "工作日台账",
+   "uses": [
+    "host",
+    "receipts",
+    "used",
+    "feedback",
+    "retrieve",
+    "archive"
+   ],
+   "x": 1070,
+   "y": 1365
+  },
+  {
+   "desc": "到期条目合并成一批提交，不逐条打扰。最后使用时间存长期库，不靠台账反查。复用改动通过终审后存新版本，旧版本保留。",
+   "expanded": false,
+   "g": "g3",
+   "history": [
+    {
+     "at": 1793332620730,
+     "by": "user",
+     "submission": "s1793332620730",
+     "text": "类似计数器"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793332712354,
+     "before": {
+      "intent": "",
+      "issues": "",
+      "sub": ""
+     },
+     "by": "agent",
+     "submission": "s1793332620730",
+     "text": "写入：正式经验的复用计数器"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。每条正式经验一个计数：用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰；累计 14 天未被用户主动调用、也未被小八索引调用，提交裁决中心。用户觉得用不上就删除；觉得还有保留价值就取消本轮提交，本节点对该经验重新计分。计数和永久总分交评分中心存档（工具/模型综合数据）。",
+      "issues": "待确认：是否把「经验淘汰」并入本节点\n未实现",
+      "sub": "正式经验复用计数器：+1 / −1、晋升 / 淘汰、14 天未用"
+     },
+     "by": "agent",
+     "text": "并入原「经验淘汰」"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793345918763,
+     "before": {
+      "issues": "未实现：+1 / −1 计数、3 次晋升 / 淘汰、14 天未调用计时"
+     },
+     "by": "agent",
+     "submission": "s1793345809572",
+     "text": "写入：晋升＝排名靠前；“没交付 −1”待确认"
+    },
+    {
+     "at": 1793354570628,
+     "by": "user",
+     "submission": "s1793354570628",
+     "text": "那就不淘汰，如果复用经验了，一直处理到任务结束，中间还发生了这条经验不适用或者更改的情况，从而让任务最终交付，那么这条正式经验复用的“淘汰机制”就作废，统一使用晋升机制，交付了就+1，并由审查提交裁决中心终审状态，并注这条正式经验复用改动了哪里提什么了什么摒弃了什么。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793354639950,
+     "before": {
+      "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。每条正式经验一个计数：用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰；累计 14 天未被用户主动调用、也未被小八索引调用，提交裁决中心。用户觉得用不上就删除；觉得还有保留价值就取消本轮提交，本节点对该经验重新计分。计数和永久总分交评分中心存档（工具/模型综合数据）。\n原「经验淘汰」已并入本节点：用了没交付累计 3 次，或 14 天未被调用，都由本节点提交裁决中心。",
+      "issues": "待确认：面向用户的任务没有“没交付”，那“用了没交付 −1、累计 3 次淘汰”何时触发？\n未实现：+1 / −1 计数、3 次晋升 / 淘汰、14 天未调用计时",
+      "sub": "正式经验复用计数器：+1 / −1、晋升 / 淘汰、14 天未用 → 裁决中心"
+     },
+     "by": "agent",
+     "submission": "s1793354570628",
+     "text": "按原话：取消 −1 淘汰，只保留晋升；复用中有改动的提交终审"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793362200589,
+     "before": {
+      "desc": "",
+      "issues": "未实现：+1 计数、14 天未调用计时、复用改动提交终审"
+     },
+     "by": "agent",
+     "text": "写明批量提交和版本；标记 +1、重新计分和 14 天"
+    },
+    {
+     "at": 1793363495712,
+     "by": "user",
+     "text": "全部按建议。（裁决 2，问题：复用经验是不是一交付就 +1；建议：原样好用才 +1；改过或不适用记 0、不扣分，并送用户终审；不恢复淘汰）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363495728,
+     "before": {
+      "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。取消“没交付 −1 / 3 次淘汰”，统一用晋升机制：复用后交付了就 +1，分数越高索引排名越靠前。\n复用过程中发现这条经验不适用或做了修改、最终仍交付的：照样 +1，并由审查提交裁决中心终审，注明这条正式经验这次改了哪里、补充了什么、摒弃了什么。\n累计 14 天未被用户主动调用、也未被小八索引调用：提交裁决中心，用户觉得用不上就删除；还有保留价值就取消本轮提交，本节点重新计分。\n计数和永久总分交评分中心存档（工具/模型综合数据）。",
+      "issues": "未实现：+1 计数、14 天未调用计时、复用改动提交终审\n待确认（裁决 2）：复用 +1 是否无条件——任务最终都会交付，分数只等于使用次数，不适用也会上升（建议：原样有效才 +1；改动或不适用记 0、不扣分，并送终审）\n待确认：“重新计分”是 14 天重新计时，还是总分清零（建议：只重新计时）\n待确认：14 天是否太短（建议：保留后依次延长到 30、90 天）",
+      "sub": "正式经验复用计数器：交付 +1（晋升）· 有改动提交终审 · 14 天未用 → 裁决中心"
+     },
+     "by": "agent",
+     "text": "裁决 2：原样好用才 +1"
+    },
+    {
+     "at": 1793363839008,
+     "by": "user",
+     "text": "全部按建议。（问题：“保留后重新计分”是重新计时还是总分清零；建议：只重新计时）"
+    },
+    {
+     "at": 1793363839009,
+     "by": "user",
+     "text": "全部按建议。（问题：14 天是否太短；建议：保留后依次延长到 30、90 天）"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793363839021,
+     "before": {
+      "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。取消“没交付 −1 / 3 次淘汰”，统一用晋升机制：复用后原样好用、交付了就 +1，分数越高索引排名越靠前。\n复用过程中发现这条经验不适用或做了修改、最终仍交付的：记 0、不扣分，并由审查提交裁决中心终审，注明这条正式经验这次改了哪里、补充了什么、摒弃了什么。\n累计 14 天未被用户主动调用、也未被小八索引调用：提交裁决中心，用户觉得用不上就删除；还有保留价值就取消本轮提交，本节点重新计分。\n计数和永久总分交评分中心存档（工具/模型综合数据）。",
+      "issues": "未实现：+1 计数、14 天未调用计时、复用改动提交终审\n待确认：“重新计分”是 14 天重新计时，还是总分清零（建议：只重新计时）\n待确认：14 天是否太短（建议：保留后依次延长到 30、90 天）"
+     },
+     "by": "agent",
+     "text": "写明只重新计时、保留后延长间隔"
+    }
+   ],
+   "id": "nf2evuw",
+   "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。取消“没交付 −1 / 3 次淘汰”，统一用晋升机制：复用后原样好用、交付了就 +1，分数越高索引排名越靠前。\n复用过程中发现这条经验不适用或做了修改、最终仍交付的：记 0、不扣分，并由审查提交裁决中心终审，注明这条正式经验这次改了哪里、补充了什么、摒弃了什么。\n累计 14 天未被用户主动调用、也未被小八索引调用：提交裁决中心，用户觉得用不上就删除；还有保留价值就取消本轮提交，重新计时（永久总分不清零），下次间隔依次延长到 30 天、90 天。\n计数和永久总分交评分中心存档（工具/模型综合数据）。",
+   "issues": "未实现：+1 计数、14 天未调用计时、复用改动提交终审",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "todo",
+   "sub": "原样好用 +1（晋升）· 改过或不适用记 0 并提交终审 · 14 天未用 → 裁决中心",
+   "title": "复用计分",
+   "x": 2044,
+   "y": 888
+  },
+  {
+   "desc": "",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "at": 1793355870193,
+     "by": "user",
+     "submission": "s1793355870193",
+     "text": "既可以是审查员也可以是协作员，由身份任务卡节点识别派活。"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793355938077,
+     "before": {
+      "intent": "",
+      "issues": "",
+      "sub": ""
+     },
+     "by": "agent",
+     "submission": "s1793355870193",
+     "text": "按原话：既可审查也可协作，由身份任务卡派活"
+    }
+   ],
+   "id": "nfpbqu1",
+   "intent": "既可以是审查员，也可以是协作员，由身份任务卡识别并派活。典型用法：原定审查员上一轮执行过这个任务时，由备用角色顶替审查，和宿主一起写入统一回执入口。",
+   "issues": "未实现",
+   "note": "",
+   "pending": false,
+   "refs": "",
+   "status": "todo",
+   "sub": "替补角色：可当审查员，也可当协作员",
+   "title": "备用角色",
+   "x": 320,
+   "y": 1253
+  },
+  {
+   "desc": "同一个 Agent 在同一任务里不能既协作又审查。",
+   "expanded": false,
+   "g": "g4",
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793362200609,
+     "before": {},
+     "by": "agent",
+     "text": "新增：身份任务卡说要派协作员，图上原来没有协作节点"
+    }
+   ],
+   "id": "collab",
+   "intent": "协作员领身份任务卡派的活，干完把回执写入统一回执入口，产出交宿主核验和集成。协作员可有可无，有就用，没有就不用。",
+   "issues": "角色仍只有 dsh / peer 两个槽位，需改为 审查 / 协作",
+   "note": "",
+   "pending": false,
+   "refs": "review-ingress/NODE_RUNTIME.md",
+   "status": "dev",
+   "sub": "由 Agent 池按需开启；领活、交回执、经宿主核验",
+   "title": "协作节点",
+   "x": 70,
+   "y": 1253
+  }
+ ],
+ "savedAt": 1793369207300,
+ "version": 1
 }
