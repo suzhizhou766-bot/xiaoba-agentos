@@ -12,7 +12,7 @@
 | submissions.json | 用户的提交记录（有提交后才出现）：每轮的大白话原话、期间改动、整理状态 |
 | [topology-page.html](topology-page.html) | 交互页面源码，留作维护 |
 | [render_reader.py](render_reader.py) | 由两个 JSON 重新生成 `AGENT_READER.md` |
-| [DECISIONS.md](DECISIONS.md) | 待用户裁决的 10 项、旧规则覆盖表、哪份文档说了算 |
+| [DECISIONS.md](DECISIONS.md) | 已定的裁决、旧规则覆盖表、哪份文档说了算 |
 | [CONTRACTS.md](CONTRACTS.md) | 图上画不出来的规则：审查调用、状态表、交付结算、谁来跑、数据以谁为准 |
 | [scenarios.json](scenarios.json) | 设计场景，也是页面“模拟运行”的来源 |
 | [module-map.json](module-map.json) | 节点到九模块的归属 |

@@ -78,10 +78,15 @@ def main():
     if reader != render(topo, changes, submissions):
         problems.append("AGENT_READER.md 不是由当前数据生成的，请运行 render_reader.py")
 
+    # The cloud document is limited to 256 KiB; warn while there is still room to act.
+    size = len(json.dumps(topo, ensure_ascii=False, separators=(",", ":")).encode())
+    if size > 230 * 1024:
+        problems.append("拓扑文档 %d 字节，接近云端 256 KiB 上限，要把旧历史移到变更记录" % size)
+
     pending = [s["id"] for s in submissions if s.get("status") != "done"]
     open_items = [(nodes[n["id"]]["title"], line) for n in topo["nodes"] for line in str(n.get("issues") or "").split("\n") if line.startswith("待确认")]
     print(json.dumps({"nodes": len(nodes), "edges": len(edges), "groups": len(groups), "scenarios": len(scenarios),
-                      "pending_submissions": len(pending), "open_questions": len(open_items), "problems": problems},
+                      "pending_submissions": len(pending), "open_questions": len(open_items), "document_bytes": size, "problems": problems},
                      ensure_ascii=False, indent=2))
     return 1 if problems else 0
 
