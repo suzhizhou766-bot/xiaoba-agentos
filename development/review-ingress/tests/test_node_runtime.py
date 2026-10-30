@@ -32,8 +32,10 @@ if v['operation']=='test':
        'model':v['resource_plan']['model'],'provider':'TEST child process, not a model','route_source':'TEST isolated stdio'}
 else:
     c=v['card'];r={'protocol':'xiaoba-resource-v1','card_digest':c['card_digest'],'verdict':'PASS',
-       'findings':'TEST protocol fixture only; no real model review or user acceptance.', 'evidence_refs':['TEST subprocess'],
+       'findings':'TEST protocol fixture only; no real model review or user acceptance.',
+       'evidence_refs':[x['ref'] for x in c.get('evidence_refs',[]) if isinstance(x,dict)] or ['TEST subprocess'],
        'execution_evidence':{'provider':'TEST subprocess','model':c['resource_plan']['model'],'route_source':'TEST isolated stdio'}}
+    if c.get('review_type'):r.update(review_type=c['review_type'],score=8,applicability='TEST 仅夹具适用条件')
 if Path(__file__).with_name('wrong-'''+kind+'''').exists():r['model']='TEST incorrect model'
 if Path(__file__).with_name('fail-'''+kind+'''').exists():raise RuntimeError('TEST execution failed')
 print(json.dumps(r))
@@ -204,7 +206,8 @@ print(json.dumps(r))
     def test_http_ready_pair_dispatches_without_questions_and_retry_is_once(self):
         a=self.add('dsh');b=self.add();self.probe(a);self.probe(b);self.start_http()
         payload={'candidate_id':self.candidate['task_id'],'scope':'TEST automatic review',
-                 'evidence':[{'ref':'TEST process','sha256':'a'*64}],'request_id':'TEST-auto-1'}
+                 'evidence':[{'ref':'TEST process','sha256':'a'*64}],'request_id':'TEST-auto-1',
+                 'review_type':'new_experience'}
         for _ in range(2):
             code,result=fixtures.HttpTest.fetch(self,'/api/agent-pool/dispatch',payload)
             self.assertEqual(code,200,result);self.assertEqual(result['result']['route'],'completed')
@@ -214,7 +217,8 @@ print(json.dumps(r))
 
     def test_http_missing_backends_asks_without_creating_or_executing(self):
         self.start_http();payload={'candidate_id':self.candidate['task_id'],'scope':'TEST',
-                 'evidence':[{'ref':'TEST','sha256':'a'*64}],'request_id':'TEST-no-nodes'}
+                 'evidence':[{'ref':'TEST','sha256':'a'*64}],'request_id':'TEST-no-nodes',
+                 'review_type':'new_experience'}
         code,result=fixtures.HttpTest.fetch(self,'/api/agent-pool/dispatch',payload)
         self.assertEqual(code,200,result);self.assertEqual(result['result']['route'],'ask_user')
         self.assertEqual(self.count('ri_requests'),0);self.assertEqual(self.calls(),[])

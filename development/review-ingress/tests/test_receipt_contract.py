@@ -372,6 +372,42 @@ class Card21AcceptanceTests(fixtures.HttpTest):
             self.assertEqual(a['card']['receipt_contract']['version'], 2)
             self.assertEqual(a['card']['review_type'], 'new_experience')
 
+    def test_http_dispatch_requires_review_type_and_no_interface_accepts_contract_version(self):
+        # 卡 21 遗留：主要派工路径也必须指定审查类型；两个创建接口都不再接受 contract_version。
+        base = {'candidate_id': self.candidate['task_id'], 'scope': '测试范围',
+                'evidence': [{'ref': 'ref-1', 'sha256': 'a' * 64}], 'request_id': 'TEST-dispatch-1'}
+        code, res = self.fetch('/api/agent-pool/dispatch', base)
+        self.assertEqual(code, 400)
+        self.assertIn('review_type', res['error'])
+
+        code, res = self.fetch('/api/agent-pool/dispatch',
+                               dict(base, review_type='new_experience', contract_version=1))
+        self.assertEqual(code, 400)
+        self.assertIn('contract_version', res['error'])
+
+        code, res = self.fetch('/api/open-review/requests', {
+            'candidate_id': self.candidate['task_id'], 'dsh_id': 'fixture-dsh', 'peer_id': 'fixture-peer',
+            'scope': '测试范围', 'evidence': [{'ref': 'ref-1', 'sha256': 'a' * 64}],
+            'review_type': 'new_experience', 'contract_version': 1})
+        self.assertEqual(code, 400)
+        self.assertIn('contract_version', res['error'])
+        # 被拒绝的请求一张卡都不留下，第 1 版只能来自已存在的任务卡。
+        self.assertEqual(self.count('ri_requests'), 0)
+
+    def test_json_stdio_run_forwards_scores_field_to_the_receipt(self):
+        # 卡 21 遗留：run 改成白名单后丢了 scores，backends 仍会透传它。
+        from xiaoba_review.resource_stdio import JsonStdioResource
+        adapter = JsonStdioResource({'kind': 'peer', 'source_ref': 'TEST-scores',
+                                     'node': {'entry': '/TEST/bin/entry'}})
+        adapter.call = lambda payload: {
+            'protocol': 'xiaoba-resource-v1', 'card_digest': 'TEST-DIGEST', 'verdict': 'PASS',
+            'findings': 'TEST 仅测试白名单透传', 'evidence_refs': ['ref-1'],
+            'review_type': 'revalidation', 'score': 8, 'scores': {'dsh': 8, 'peer': 9},
+            'applicability': '仅测试夹具', 'duplicate_of': None}
+        result = adapter.run({'card_digest': 'TEST-DIGEST'})
+        self.assertEqual(result['scores'], {'dsh': 8, 'peer': 9})
+        self.assertEqual(result['score'], 8)
+
     def test_fake_agy_via_agy_cli_writes_full_receipt_valid_and_scores_in_packet(self):
         # 假 agy 经 AgyCliResource.run 写出带全字段的回执：回执 valid，score 进入材料包
         entry = self.root / 'fake-agy-cli'

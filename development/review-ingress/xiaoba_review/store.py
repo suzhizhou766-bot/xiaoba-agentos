@@ -190,8 +190,9 @@ class ReviewStore:
         with self.transaction() as db:
             subject = self.subject(db, candidate_id)
             dsh, peer = self.source(db, dsh_id), self.source(db, peer_id)
-            if dsh['source_ref'] == peer['source_ref']:
-                raise ValueError('两方实际来源相同，别名不能凑独立意见')
+            from .agent_pool import independence
+            if independence(dsh) == independence(peer):
+                raise ValueError('两方实际来源相同（入口程序与模型一致），不能凑独立意见')
             common = {**subject, 'scope': scope, 'evidence_refs': evidence, 'contract_version': contract_version}
             if review_type is not None:
                 common['review_type'] = review_type
@@ -371,7 +372,8 @@ class ReviewStore:
                              'identity_basis': receipt['attestation']})
         if len(assignments) != 2 or {a['role'] for a in assignments} != {'dsh', 'peer'}:
             return
-        if len({self.source(db, a['source_id'])['source_ref'] for a in assignments}) != 2:
+        from .agent_pool import independence
+        if len({independence(self.source(db, a['source_id'])) for a in assignments}) != 2:
             raise ValueError('实际来源不独立')
         prior_failures = [json.loads(r['data']) for r in db.execute(
             "SELECT data FROM ri_receipts WHERE request_id=? AND status='valid' ORDER BY rowid", (request['id'],))
@@ -406,7 +408,8 @@ class ReviewStore:
             if old['running']:
                 raise Conflict('后台仍执行中，不能无痕换人；先等待执行结束')
             dsh = db.execute("SELECT source_id FROM ri_assignments WHERE request_id=? AND role='dsh' AND active=1", (request_id,)).fetchone()
-            if self.source(db, source_id)['source_ref'] == self.source(db, dsh['source_id'])['source_ref']:
+            from .agent_pool import independence
+            if independence(self.source(db, source_id)) == independence(self.source(db, dsh['source_id'])):
                 raise ValueError('实际来源不独立')
             db.execute('UPDATE ri_assignments SET active=0 WHERE id=?', (old['id'],))
             db.execute("UPDATE ri_requests SET revision=revision+1,state='waiting_receipts' WHERE id=?", (request_id,))

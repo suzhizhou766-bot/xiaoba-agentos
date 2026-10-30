@@ -61,7 +61,7 @@ class JsonStdioResource:
             'evidence_refs': value.get('evidence_refs'),
             'execution_evidence': value.get('execution_evidence', {})
         }
-        for key in ('review_type', 'score', 'applicability', 'duplicate_of'):
+        for key in ('review_type', 'score', 'scores', 'applicability', 'duplicate_of'):
             if key in value:
                 result[key] = value[key]
         return result

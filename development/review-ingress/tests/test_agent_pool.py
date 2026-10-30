@@ -68,10 +68,11 @@ class PoolTests(fixtures.FixtureMixin,unittest.TestCase):
         current=next(a['card'] for a in self.store.get(req['id'])['assignments'] if a['role']=='peer')
         self.assertEqual(before,json.dumps(current,sort_keys=True))
 
-    def test_same_entry_alias_or_other_model_is_not_an_independent_second_source(self):
+    def test_same_entry_same_model_alias_is_not_an_independent_second_source(self):
+        # 用户裁决 6：独立性看“入口程序＋模型”。同一入口同一模型，换 Agent 名字仍只算一个。
         dsh=self.toggle(self.add(node_id='TEST-source-dsh',kind='dsh'),True)
-        peer=self.toggle(self.add(node_id='TEST-alias',agent='TEST other label',model='TEST-model-2'),True)
-        with self.assertRaisesRegex(ValueError,'来源相同'):
+        peer=self.toggle(self.add(node_id='TEST-alias',agent='TEST other label'),True)
+        with self.assertRaisesRegex(ValueError,'来源'):
             self.store.create(self.candidate['task_id'],dsh['reviewer_id'],peer['reviewer_id'],'TEST scope',[{'ref':'TEST','sha256':'a'*64}])
 
     def test_remove_and_restore_retain_task_receipts_and_identity(self):
@@ -188,6 +189,10 @@ class PoolHttpTests(fixtures.FixtureMixin,unittest.TestCase):
         self.assertNotIn(b'<iframe',mounted.body)
         self.assertNotIn(b'tabAgents',mounted.body)
         self.assertEqual(mounted.body.count(b'id="apDrawer"'),1)
+        # 派工审查在抽屉里选审查类型：不选不派工，接口也不再接受第 1 版。
+        for marker in (b'id="apReviewType"',b'value="new_experience"',b'value="revalidation"',
+                       b'value="reuse_change"',b'id="apDispatchGo"'):
+            self.assertIn(marker,mounted.body)
 
     def setUp(self):
         super().setUp()

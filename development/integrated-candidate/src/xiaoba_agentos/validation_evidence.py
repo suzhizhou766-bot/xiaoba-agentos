@@ -13,6 +13,21 @@ def checksum(value):
                                      separators=(",", ":")).encode()).hexdigest()
 
 
+def independence_key(source_ref, model=None):
+    """两个审查员是否独立：看“入口程序＋模型”。
+
+    同一入口用 A 模型、B 模型算两个；同一入口同一模型，改名字也只算一个。
+    旧的四字段来源没有模型资料，仍只按 source_ref 判断，行为不变。
+    """
+    if not isinstance(source_ref, str) or not source_ref.strip():
+        raise ValueError("缺少实际来源标识，无法核对独立性")
+    if model is None:
+        return source_ref
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("模型标识格式异常，无法核对独立性")
+    return source_ref.strip() + "|model:" + model.strip()
+
+
 def protect_final_decision(conn, candidate):
     final = conn.execute(
         "SELECT decision FROM memory_reviews WHERE task_id=? AND stage='final' ORDER BY created_at DESC,rowid DESC LIMIT 1",
@@ -171,7 +186,9 @@ def ingress_evidence(conn, candidate, approved, record, execution):
             raise ValueError("回执来源不一致")
         if data.get("started_at", 0) < execution["finished_at"]:
             raise ValueError("审查时间早于执行证据完成")
-        sources.add(source["source_ref"])
+        # 独立性按“入口程序＋模型”；旧四字段来源的任务卡没有 resource_plan，仍只看 source_ref。
+        plan = card.get("resource_plan")
+        sources.add(independence_key(source["source_ref"], plan.get("model") if isinstance(plan, dict) else None))
         ids[assignment["role"]] = receipt["id"]
     if len(sources) != 2 or len(set(ids.values())) != 2:
         raise ValueError("两份回执来源不独立")

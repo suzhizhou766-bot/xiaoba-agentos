@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .store import Conflict, canonical, digest
+from xiaoba_agentos.validation_evidence import independence_key
 
 
 def node_state(source):
@@ -36,6 +37,15 @@ def resource_plan(source):
         return None  # Existing four-field sources retain their old contract.
     return {k:state[k] for k in ('revision','name','agent','interface','entry','model')} | {
         'node_id':source['reviewer_id'],'source_ref':source['source_ref']}
+
+
+def independence(source):
+    """独立性键：入口程序＋模型。旧四字段来源没有模型资料，仍只看 source_ref。
+
+    只读节点资料，不要求节点仍在开启状态：已冻结的任务卡和已交回执仍要核对。
+    """
+    state = node_state(source)
+    return independence_key(source['source_ref'], state.get('model') if state.get('entry') else None)
 
 
 class AgentPool:
@@ -82,7 +92,8 @@ class AgentPool:
             if (url.scheme not in {'https','http'} or not url.netloc or url.username or url.password or url.fragment
                     or any(k.casefold() in credential_fields for k,v in parse_qsl(url.query))):
                 raise ValueError('Web入口需要不含登录材料的HTTP地址')
-            # Different conversation URLs/models of one service are not two identities.
+            # One service and its conversation URLs share one entry program;
+            # independence adds the model on top of it (see independence()).
             identity = url.scheme.lower()+'://'+url.netloc.lower()
         elif clean['interface'] == 'cli':
             path = Path(entry)
