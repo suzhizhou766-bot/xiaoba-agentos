@@ -57,6 +57,8 @@ def main():
             for target in uses:
                 if target not in nodes:
                     problems.append("uses 指向不存在的节点：%s → %s" % (node["id"], target))
+        elif uses is not None and uses != "all":
+            problems.append("uses 只能是节点列表或 \"all\"：%s" % node["id"])
 
     # Scenarios are the architecture's executable examples.
     for scenario in scenarios:
