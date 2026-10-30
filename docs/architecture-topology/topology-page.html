@@ -600,17 +600,40 @@ function undo(){if(!undoS.length||!editable())return;redoS.push(JSON.stringify(G
 function redo(){if(!redoS.length||!editable())return;undoS.push(JSON.stringify(G));G=JSON.parse(redoS.pop());fixSel();render();scheduleSave();writeLog({op:"edit",text:"重做了一步"});}
 function fixSel(){if(!sel)return;if(sel.type==="node"&&!node(sel.id)||sel.type==="edge"&&!G.edges.find(e=>e.id===sel.id)||sel.type==="group"&&!group(sel.id))sel=null;}
 function setSave(cls,text){const el=$("#saveState");el.className="save "+cls;el.querySelector("span").textContent=text;}
-let saveT=null,saving=false,again=false,lastSaved="";
+let saveT=null,saving=false,again=false,lastSaved="",baseSavedAt=0,conflict=false;
 function scheduleSave(){clearTimeout(saveT);setSave("busy","有未保存的修改");saveT=setTimeout(doSave,600);}
 async function doSave(){
   const body=JSON.stringify(G);
   if(mode==="local"){try{localStorage.setItem("xb-topology-v1",body);setSave("warn","只存在本浏览器");}catch(_){setSave("warn","本浏览器也存不下，请导出");}return;}
   if(mode!=="db")return;
+  if(conflict){setSave("warn","云端有新修改，本页修改未保存");return;}
   if(saving){again=true;return;}
   saving=true;setSave("busy","保存中…");
-  try{await docRef.set(Object.assign(JSON.parse(body),{savedAt:Date.now()}));lastSaved=body;setSave("ok","已保存 "+clock(Date.now()));}
+  try{
+    // 页面写入没有版本校验：保存前比对云端的保存时间，别用旧图盖掉 Agent 或其它窗口刚写的内容。
+    const cur=await docRef.get();const remote=cur.exists?cur.data():null;
+    if(remote&&(remote.savedAt||0)!==baseSavedAt){saving=false;again=false;showConflict(remote);return;}
+    const savedAt=Date.now();
+    await docRef.set(Object.assign(JSON.parse(body),{savedAt}));baseSavedAt=savedAt;lastSaved=body;setSave("ok","已保存 "+clock(Date.now()));
+  }
   catch(err){setSave("warn",err&&err.code==="quota_exceeded"?"存储已满，请导出备份后清理":"保存失败："+(err&&err.code||"未知")+"，修改仍在本页");}
   saving=false;if(again){again=false;doSave();}
+}
+function showConflict(remote){
+  conflict=true;setSave("warn","云端有新修改，本页修改未保存");
+  const b=$("#banner");clearTimeout(flash.t);
+  b.innerHTML=`云端在 ${remote.savedAt?clock(remote.savedAt):"刚才"} 有新修改（Agent 或其它窗口）。本页的修改还没保存，也没有覆盖它。<button id="cfLoad">载入云端最新（放弃本页修改）</button> <button id="cfKeep">用本页覆盖云端（云端那次修改会丢失）</button>`;
+  b.hidden=false;
+  $("#cfLoad").onclick=()=>resolveConflict(true);
+  $("#cfKeep").onclick=()=>resolveConflict(false);
+}
+async function resolveConflict(load){
+  const cur=await docRef.get();const d=cur.exists?cur.data():null;
+  conflict=false;$("#banner").hidden=true;
+  if(!d){await doSave();return;}
+  baseSavedAt=d.savedAt||0;
+  if(load){const body=JSON.stringify(normalize(clone({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0})));G=JSON.parse(body);lastSaved=body;fixSel();render();setSave("ok","已载入云端最新");}
+  else await doSave();
 }
 function writeLog(entry){
   const rec={at:Date.now(),day:dayOf(Date.now()),op:entry.op,text:entry.text,target:entry.target||"",before:entry.before?JSON.stringify(entry.before):""};
@@ -778,97 +801,8 @@ document.addEventListener("keydown",e=>{
 });
 
 /* ---------- 模拟运行：虚拟任务沿链路流动（只是演示，不改任何数据） ---------- */
-const E=(f,t)=>[f,t];
-const SCEN=[
- {name:"① 完整任务：执行 → 交付 → 经验首轮通过入库",steps:[
-  {e:[E("user","host")],say:"用户下达一个任务"},
-  {e:[E("host","knowledge"),E("host","entry")],say:"宿主查知识与能力，同时走统一 xiaoba 入口"},
-  {e:[E("entry","routing")],say:"入口校验通过，进入消息路由"},
-  {e:[E("routing","queue")],say:"路由判定：需要排队执行"},
-  {e:[E("queue","worker")],say:"任务出队，交给 Worker 编排"},
-  {e:[E("worker","work")],say:"进入实际执行"},
-  {e:[E("work","qc")],say:"产出交给输出验收与确定性裁判"},
-  {e:[E("qc","result")],say:"写入任务结果与审计回执"},
-  {e:[E("result","delivery")],say:"用户说“交付”"},
-  {e:[E("delivery","archive"),E("delivery","new_exp")],say:"成品归档，同时沉淀本次新经验"},
-  {e:[E("new_exp","candidate")],say:"新经验进入候选"},
-  {e:[E("candidate","initial")],say:"交给用户初审"},
-  {e:[E("initial","initial_pass")],say:"初审通过"},
-  {e:[E("initial_pass","wait1"),E("initial_pass","pending_index")],say:"进入第一轮待验证，同时登记到待验证索引"},
-  {e:[E("card","dsh"),E("card","peer")],say:"身份任务卡发起独立双审"},
-  {e:[E("dsh","receipts"),E("peer","receipts")],say:"两路审查回执汇入统一入口"},
-  {e:[E("receipts","confirmed")],say:"核对实际来源与独立性"},
-  {e:[E("confirmed","review_evidence")],say:"形成当轮独立审查证据"},
-  {e:[E("wait1","run1"),E("review_evidence","run1")],say:"带着审查证据执行第一轮隔离验证"},
-  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
-  {e:[E("v1_result","final_queue")],say:"第一轮通过，自动进入待终审"},
-  {e:[E("final_queue","final_user")],say:"裁决中心：用户人工终审"},
-  {e:[E("final_user","publish_checks")],say:"终审通过，做发布前检查"},
-  {e:[E("publish_checks","formal")],say:"写入正式经验与长期记忆"},
-  {e:[E("formal","retrieve")],say:"下次相似任务即可检索复用"}
- ]},
- {name:"② 经验第一轮失败 → 第二轮重验通过",steps:[
-  {e:[E("initial_pass","wait1")],say:"初审通过的经验进入第一轮待验证"},
-  {e:[E("wait1","run1")],say:"执行第一轮隔离验证"},
-  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
-  {e:[E("v1_result","failed1")],say:"第一轮未通过，保留失败证据"},
-  {e:[E("failed1","wait2")],say:"进入第二轮待验证"},
-  {e:[E("wait2","run2"),E("review_evidence","run2")],say:"带着独立审查证据执行第二轮"},
-  {e:[E("run2","v2_result")],say:"得出第二轮结果"},
-  {e:[E("v2_result","diff")],say:"第二轮通过，核对两轮差异与原因"},
-  {e:[E("diff","final_queue")],say:"进入待终审"},
-  {e:[E("final_queue","final_user")],say:"用户人工终审"},
-  {e:[E("final_user","publish_checks")],say:"终审通过，做发布前检查"},
-  {e:[E("publish_checks","formal")],say:"写入正式经验"}
- ]},
- {name:"③ 两轮都未通过 → 经验退役",steps:[
-  {e:[E("wait1","run1")],say:"执行第一轮隔离验证"},
-  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
-  {e:[E("v1_result","failed1")],say:"第一轮未通过，保留失败证据"},
-  {e:[E("failed1","wait2")],say:"进入第二轮待验证"},
-  {e:[E("wait2","run2")],say:"执行第二轮重新验证"},
-  {e:[E("run2","v2_result")],say:"得出第二轮结果"},
-  {e:[E("v2_result","retired")],say:"第二轮仍未通过，经验直接退役"},
-  {e:[E("retired","retire_view")],say:"在监看中心展示退役记录"},
-  {e:[E("retire_view","delete")],say:"用户确认后手动删除"}
- ]},
- {name:"④ 待验证经验在真实任务中复用并回写",steps:[
-  {e:[E("pending_index","retrieve")],say:"新任务到来，检索待验证经验索引"},
-  {e:[E("retrieve","apply")],say:"命中候选，核对适用条件后实际应用"},
-  {e:[E("apply","evidence"),E("apply","card")],say:"记录执行证据；同时（设计中）请双审介入"},
-  {e:[E("evidence","later_delivery")],say:"任务完成，用户说“交付”"},
-  {e:[E("later_delivery","used")],say:"标记本次确实应用了这条旧候选"},
-  {e:[E("used","feedback")],say:"验证材料自动回写原候选"},
-  {e:[E("feedback","evidence_port")],say:"材料进入核验接入口"},
-  {e:[E("evidence_port","run1")],say:"原卡在第一轮，触发第一轮验证"},
-  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
-  {e:[E("v1_result","final_queue")],say:"通过，进入待终审"},
-  {e:[E("final_queue","final_user")],say:"用户人工终审"}
- ]},
- {name:"⑤ 日常小任务：宿主直接处理",steps:[
-  {e:[E("user","host")],say:"用户提了个日常小事"},
-  {e:[E("host","entry")],say:"经统一 xiaoba 入口"},
-  {e:[E("entry","routing")],say:"进入消息路由"},
-  {e:[E("routing","direct")],say:"路由判定：宿主直接处理，不进队列"},
-  {e:[E("direct","work")],say:"宿主直接执行"},
-  {e:[E("work","qc")],say:"输出验收"},
-  {e:[E("qc","result")],say:"写入结果与审计回执"},
-  {e:[E("result","delivery")],say:"用户说“交付”"},
-  {e:[E("delivery","archive")],say:"成品归档"}
- ]},
- {name:"⑥ 需要追问：澄清后再继续",steps:[
-  {e:[E("user","host")],say:"用户下达一个信息不全的任务"},
-  {e:[E("host","entry")],say:"经统一 xiaoba 入口"},
-  {e:[E("entry","routing")],say:"进入消息路由"},
-  {e:[E("routing","ask")],say:"路由判定：需要人工审核或追问"},
-  {e:[E("ask","host")],say:"用户澄清或裁决后回到宿主"},
-  {e:[E("host","entry")],say:"带着补充信息重新进入"},
-  {e:[E("entry","routing")],say:"再次路由"},
-  {e:[E("routing","queue")],say:"这次判定排队执行"},
-  {e:[E("queue","worker")],say:"交给 Worker 编排"},
-  {e:[E("worker","work")],say:"进入实际执行"}
- ]}
-];
+/* 预设链路的来源是 scenarios.json；改它之后运行 check_topology.py 核对。 */
+const SCEN=[{"name":"① 日常任务：宿主直接处理，没有经验","steps":[{"e":[["user","host"]],"say":"用户下达一个任务"},{"e":[["host","knowledge"],["host","entry"]],"say":"宿主查知识与能力，同时走统一入口"},{"e":[["entry","routing"]],"say":"入口校验通过，由宿主判断走哪条路"},{"e":[["routing","direct"]],"say":"日常任务，宿主直接处理"},{"e":[["direct","work"]],"say":"宿主把活干完"},{"e":[["work","result"]],"say":"写入任务结果与审计回执"},{"e":[["result","delivery"]],"say":"用户说“交付”"},{"e":[["delivery","archive"]],"say":"归档；没有新经验，也没用经验，到此结束"}]},{"name":"② 新经验：审查员打分，评分中心放行进初审","steps":[{"e":[["delivery","new_exp"]],"say":"交付时宿主写出新经验"},{"e":[["new_exp","candidate"]],"say":"写入前过 B19，登记为候选"},{"e":[["candidate","backends"]],"say":"送审查员打分"},{"e":[["backends","card"]],"say":"从 Agent 池取节点，交身份任务卡"},{"e":[["card","dsh"],["card","peer"]],"say":"派给至少两个审查员"},{"e":[["dsh","receipts"],["peer","receipts"]],"say":"回执进统一回执入口"},{"e":[["receipts","review_evidence"]],"say":"核实回执确实出自审查员、字段齐全"},{"e":[["review_evidence","confirmed"]],"say":"核对独立性，汇总各审查员的分数"},{"e":[["confirmed","evidence"]],"say":"分数交评分中心判定"},{"e":[["evidence","initial"]],"say":"分歧大、平均分 ≥ 6 或与已有经验重复，进用户初审；否则丢弃"}]},{"name":"③ 待验证经验：第一轮通过，终审后入库","steps":[{"e":[["initial","initial_pass"]],"say":"用户初审通过"},{"e":[["initial_pass","evidence_port"]],"say":"进入核验"},{"e":[["evidence_port","run1"]],"say":"开始第一轮"},{"e":[["run1","pending_index"]],"say":"经验进入待验证索引"},{"e":[["host","retrieve"],["pending_index","retrieve"]],"say":"新任务进来，宿主查到相似的待验证经验"},{"e":[["retrieve","apply"]],"say":"核对适用条件"},{"e":[["apply","worker"]],"say":"拉取经验和工具清单，交编排器"},{"e":[["worker","backends"]],"say":"按角色派活"},{"e":[["backends","card"]],"say":"身份任务卡区分协作员和审查员"},{"e":[["card","collab"]],"say":"协作员用这条经验干活"},{"e":[["collab","receipts"],["collab","work"]],"say":"交回执，产出交宿主核验"},{"e":[["card","dsh"],["card","peer"]],"say":"用完后派审查员"},{"e":[["dsh","receipts"],["peer","receipts"]],"say":"审查回执进入口"},{"e":[["receipts","review_evidence"]],"say":"核实回执"},{"e":[["review_evidence","confirmed"]],"say":"汇总结论"},{"e":[["confirmed","feedback"]],"say":"审查结论进验证材料，等交付事件"},{"e":[["work","result"]],"say":"任务完成"},{"e":[["result","delivery"]],"say":"用户说“交付”"},{"e":[["delivery","used"],["apply","used"]],"say":"读应用记录，确认本次确实用过"},{"e":[["used","feedback"]],"say":"交付事件也到了"},{"e":[["feedback","v1_result"]],"say":"两样都到，写第一轮结果"},{"e":[["v1_result","final_queue"]],"say":"全部审查员通过，自动进待终审"},{"e":[["final_queue","final_user"]],"say":"用户人工终审"},{"e":[["final_user","publish_checks"]],"say":"终审通过，做发布检查"},{"e":[["publish_checks","formal"]],"say":"写入正式经验"},{"e":[["formal","knowledge"]],"say":"以后按永久总分供检索"}]},{"name":"④ 第一轮失败，第二轮通过","steps":[{"e":[["feedback","v1_result"]],"say":"第一轮有审查员 FAIL"},{"e":[["v1_result","failed1"]],"say":"保留失败证据"},{"e":[["failed1","run2"]],"say":"开始第二轮"},{"e":[["run2","pending_index"]],"say":"再次进入待验证索引"},{"e":[["pending_index","retrieve"]],"say":"等下一个相似任务"},{"e":[["retrieve","apply"]],"say":"核对适用条件并实际应用"},{"e":[["confirmed","feedback"],["used","feedback"]],"say":"审查结论和交付事件都到了"},{"e":[["feedback","v2_result"]],"say":"写第二轮结果"},{"e":[["v2_result","diff"]],"say":"通过，核对两轮差异"},{"e":[["diff","final_queue"]],"say":"带差异进待终审"},{"e":[["final_queue","final_user"]],"say":"用户人工终审"}]},{"name":"⑤ 两轮都没过，经验退役","steps":[{"e":[["feedback","v2_result"]],"say":"第二轮未通过"},{"e":[["v2_result","retired"]],"say":"直接退役，停止检索和复用"},{"e":[["retired","retire_view"]],"say":"在监看中心展示两轮记录和原因"},{"e":[["retire_view","delete"]],"say":"用户确认后才手动删除"}]},{"name":"⑥ 复用正式经验，没有改动","steps":[{"e":[["host","knowledge"]],"say":"宿主检索到正式经验"},{"e":[["knowledge","apply"]],"say":"确实用到时登记"},{"e":[["routing","direct"]],"say":"宿主直接处理"},{"e":[["direct","work"]],"say":"把活干完"},{"e":[["work","result"]],"say":"任务完成"},{"e":[["result","delivery"]],"say":"用户说“交付”"},{"e":[["delivery","used"],["apply","used"]],"say":"读应用记录，确认是复用的正式经验"},{"e":[["used","feedback"]],"say":"写入验证材料"},{"e":[["feedback","nf2evuw"]],"say":"复用计分计数"},{"e":[["nf2evuw","evidence"]],"say":"计数和永久总分存档"}]},{"name":"⑦ 复用时改动了经验，提交终审","steps":[{"e":[["feedback","nf2evuw"]],"say":"这次复用有改动，写明改了哪里"},{"e":[["nf2evuw","final_user"]],"say":"提交裁决中心"},{"e":[["final_user","publish_checks"]],"say":"用户通过，做发布检查"},{"e":[["publish_checks","formal"]],"say":"存成新版本，旧版本保留"}]},{"name":"⑧ 14 天没用过","steps":[{"e":[["formal","nf2evuw"]],"say":"复用计分发现 14 天未被调用"},{"e":[["nf2evuw","final_user"]],"say":"合并成一批提交裁决中心"},{"e":[["final_user","delete"],["final_user","nf2evuw"]],"say":"用不上就删除；有价值就保留，重新计时"}]},{"name":"⑨ 用户试错后放弃","steps":[{"e":[["routing","direct"]],"say":"用户临时想试一下，宿主直接做"},{"e":[["direct","work"]],"say":"试了不行，用户放弃，没有交付"},{"e":[["work","new_exp"]],"say":"过程中有值得留的经验，直接登记"},{"e":[["new_exp","candidate"]],"say":"和普通新经验一样送审"}]},{"name":"⑩ 审查员掉线","steps":[{"e":[["card","dsh"]],"say":"派给审查员"},{"e":[["dsh","receipts"]],"say":"连续无进度，判掉线"},{"e":[["receipts","review_evidence"]],"say":"已完成部分和掉线情况交这里"},{"e":[["review_evidence","ask"]],"say":"暂停，问用户换谁"},{"e":[["ask","host"]],"say":"用户定了，宿主继续"}]},{"name":"⑪ 审查员要补材料（NEEDS_INFO）","steps":[{"e":[["receipts","review_evidence"]],"say":"回执字段齐全，结论是 NEEDS_INFO"},{"e":[["review_evidence","confirmed"]],"say":"汇总结论"},{"e":[["confirmed","ask"]],"say":"暂停补材料，不算失败，不耗轮次"},{"e":[["ask","host"]],"say":"宿主补材料或重新派活"}]},{"name":"⑫ 全部审查员不可用：宿主兜底","steps":[{"e":[["candidate","backends"]],"say":"新经验要审查，但没有可用审查员"},{"e":[["backends","evidence"]],"say":"宿主独立审查，标明不是独立审查"},{"e":[["evidence","initial"]],"say":"带着评分和审查结果进用户初审"}]},{"name":"⑬ 终审后发布检查没过","steps":[{"e":[["final_user","publish_checks"]],"say":"用户终审通过"},{"e":[["publish_checks","final_user"]],"say":"检查未过，不写入，退回并说明原因"}]},{"name":"⑭ 需要追问：澄清后再继续","steps":[{"e":[["routing","ask"]],"say":"宿主拿不准，问用户"},{"e":[["ask","host"]],"say":"用户澄清"},{"e":[["host","entry"]],"say":"重新进入"},{"e":[["entry","routing"]],"say":"这次知道走哪条路了"}]},{"name":"⑮ 协作员领活","steps":[{"e":[["routing","queue"]],"say":"要派给协作员"},{"e":[["queue","worker"]],"say":"排队交给编排器"},{"e":[["worker","backends"]],"say":"按角色从 Agent 池挑节点"},{"e":[["backends","card"]],"say":"身份任务卡派活"},{"e":[["card","collab"]],"say":"协作员领活"},{"e":[["collab","receipts"],["collab","work"]],"say":"交回执，产出交宿主核验和集成"},{"e":[["work","result"]],"say":"任务完成"}]}];
 const SIM={on:false,playing:false,busy:false,sc:0,i:0,speed:1,follow:true,gen:0,timer:0,
   nodes:new Set(),edges:new Set(),lit:new Set(),warn:new Set(),past:new Set(),onE:new Set(),pastE:new Set()};
 const simg=document.getElementById("simg"),simbar=$("#simbar"),simcap=$("#simcap");
@@ -1346,14 +1280,14 @@ function panelLog(){
 function readerText(){
   const gname=id=>id&&group(id)?group(id).title:"未分组";
   let t=`# 小八架构拓扑 · Agent 读本\n生成时间：${stamp(Date.now())}　节点 ${G.nodes.length} · 连线 ${G.edges.length} · 分组 ${G.groups.length}\n\n`;
-  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝v1.6.4 生产已有；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“变更历史”，避免重做用户已删除或已改掉的东西。\n- “用户原话”是用户亲笔写的大白话，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。\n\n`;
+  t+=`## 读前须知\n- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。\n- 状态：已上线＝节点的基础能力 v1.6.4 已有，新意图是否实现看“问题/待办”；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。\n- 动手前先看“问题与待办”和“变更历史”，避免重做用户已删除或已改掉的东西。\n- “用户原话”是用户亲笔写的大白话，按时间列出，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。\n- “待确认”是还没定的事，括号里的建议不算用户决定；“裁决 N”的完整题目见 DECISIONS.md。\n\n`;
   const pend=submissions.filter(s=>s.status!=="done");
   if(pend.length){t+=`## 待 Agent 整理的提交（${pend.length}）\n`;pend.forEach(s=>{t+=`### ${stamp(s.at)}\n`;(s.notes||[]).forEach(x=>t+=`- ${x.title}（${x.node}）原话：${x.text}\n`);(s.changes||[]).forEach(x=>t+=`- 期间改动：${x.text}\n`);});t+="\n";}
   G.groups.concat([{id:"",title:"未分组"}]).forEach(g=>{
     const ms=G.nodes.filter(n=>(n.g||"")===g.id);if(!ms.length&&!g.id)return;
     t+=`## ${g.title}\n`;
     ms.forEach(n=>{t+=`- 【${STATUS[n.status][0]}】${n.title}（${n.id}）${n.sub?"：“"+n.sub+"”":""}${n.pending?"　［待整理］":""}\n`;
-      const said=(n.history||[]).filter(h=>h.by==="user");if(said.length)t+=`  - 用户原话（${stamp(said[said.length-1].at)}）：${said[said.length-1].text}\n`;
+      const said=(n.history||[]).filter(h=>h.by==="user");said.forEach(h=>t+=`  - 用户原话（${stamp(h.at)}）：${h.text}\n`);
       if(n.note&&n.note.trim())t+=`  - 用户草稿（未提交）：${n.note.trim()}\n`;
       if(n.intent)t+=`  - 用户意图：${n.intent}\n`;if(n.desc)t+=`  - 说明：${n.desc}\n`;
       lines(n.refs).forEach(r=>t+=`  - 位置：${r}\n`);lines(n.issues).forEach(r=>t+=`  - 问题/待办：${r}\n`);});
@@ -1391,7 +1325,10 @@ applyView();render();requestAnimationFrame(()=>fit());
   if(!db){
     mode="local";
     try{const s=localStorage.getItem("xb-topology-v1");if(s){const d=JSON.parse(s);if(d&&Array.isArray(d.nodes))G=normalize(d);}const l=localStorage.getItem("xb-topology-log");if(l)logs=JSON.parse(l)||[];const sb=localStorage.getItem("xb-topology-subs");if(sb)submissions=JSON.parse(sb)||[];}catch(_){}
-    setSave("warn","只存在本浏览器");render();fit();return;
+    setSave("warn","只存在本浏览器");
+    let saved=false;try{saved=!!localStorage.getItem("xb-topology-v1");}catch(_){}
+    if(!saved){const b=$("#banner");b.textContent="这是离线打开的副本，显示的是 10-27 设计图基线，不是最新拓扑。最新内容看 topology.json 或云端页面。";b.hidden=false;}
+    render();fit();return;
   }
   docRef=db.doc("topology/main");
   db.doc("topology/pointer").onSnapshot(snap=>talkApply(snap.exists?snap.data():null),()=>{});logCol=db.collection("changes");subCol=db.collection("submissions");
@@ -1404,7 +1341,8 @@ applyView();render();requestAnimationFrame(()=>fit());
     const d=snap.data();if(snap.metadata.hasPendingWrites)return;
     // Snapshot bodies are frozen: normalize a copy, never the delivered data.
     const body=JSON.stringify(normalize(clone({version:d.version||1,groups:d.groups||[],nodes:d.nodes||[],edges:d.edges||[],lastSubmitAt:d.lastSubmitAt||0})));
-    if(!first&&(drag||saving||saveT&&$("#saveState").classList.contains("busy")))return;
+    if(!first&&(drag||saving||conflict||saveT&&$("#saveState").classList.contains("busy")))return;
+    baseSavedAt=d.savedAt||0;
     if(body===lastSaved&&!first)return;
     const typing=document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)&&pbody.contains(document.activeElement);
     G=JSON.parse(body);lastSaved=body;fixSel();mode="db";
