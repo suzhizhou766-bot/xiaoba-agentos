@@ -20,6 +20,8 @@ VERIFY_ONLY = False
 print("dispatch")
 '''
 
+CANDIDATE_CONFIG = Path(__file__).resolve().parents[1] / "config" / "agentos.json"
+
 
 class ConfigConsistencyTest(unittest.TestCase):
     def setUp(self):
@@ -77,6 +79,50 @@ class ConfigConsistencyTest(unittest.TestCase):
         state.write_text(json.dumps({"pid": os.getpid() if pid is None else pid, "config_path": str(config_path)}),
                          encoding="utf-8")
         return state
+
+    def _candidate_schema_two(self) -> tuple:
+        """随包 schema 2 配置，和把 runtime_dir 改指临时目录的那一份。
+
+        随包配置里的 runtime_dir/project_dir 是本机绝对路径，检查函数照着它们
+        会读到真实的 .runtime 和 .agents（测试因此变成依赖本机状态的非隔离测试）。
+        夹具只替换 runtime_dir，schema 2 的其余内容和 project_dir 原样不动。
+        """
+        shipped = AppConfig.load(CANDIDATE_CONFIG)
+        isolated = AppConfig(shipped.path, {**shipped.raw, "runtime_dir": str(self.config.runtime_dir)})
+        return shipped, isolated
+
+    def _release_reference(self, release_dir: Path, config_path: Path) -> Path:
+        scripts = release_dir / "agentos" / ".agents" / "skills" / "xiaoba-agentos" / "scripts"
+        scripts.mkdir(parents=True)
+        reference = scripts / "xiaoba"
+        reference.write_text(ENTRYPOINT.format(config=config_path), encoding="utf-8")
+        return reference
+
+    @staticmethod
+    def _under(path: Path, parent: Path) -> bool:
+        try:
+            path.relative_to(parent)
+        except ValueError:
+            return False
+        return True
+
+    def _assert_reads_only_fixtures(self, status: dict, shipped: AppConfig, reference: Path) -> None:
+        """检查报告里的每个路径都必须落在夹具里，不碰本机运行目录和已安装入口。
+
+        Forbidden 根用配置里的原始字符串比较，不走 runtime_dir/project_dir 属性，
+        免得断言自己对本机路径发起解析。
+        """
+        forbidden = (Path(shipped.raw["runtime_dir"]), Path(shipped.raw["project_dir"]) / ".agents",
+                     Path(shipped.raw["project_dir"]) / ".codex",
+                     Path.home() / ".agents", Path.home() / ".codex",
+                     Path.home() / "Library" / "LaunchAgents")
+        seen = [Path(entry["path"]) for entry in status["consumers"].values()]
+        for entry in status["installed_entrypoints"].values():
+            seen += [Path(entry["installed"]), Path(entry["reference"])]
+        for path in seen:
+            self.assertFalse(any(self._under(path, root) for root in forbidden), (path, seen))
+        self.assertEqual(str(reference), status["installed_entrypoints"][".agents/xiaoba"]["reference"])
+        self.assertEqual(str(CANDIDATE_CONFIG), status["consumers"]["review_backend"]["path"])
 
     def test_running_review_backend_is_a_consumer(self):
         self._install(self.config.path)
@@ -184,14 +230,34 @@ class ConfigConsistencyTest(unittest.TestCase):
         self.assertEqual({}, status["installed_entrypoints"])
 
     def test_schema_two_recovery_contract_consistency(self):
-        candidate_config = Path(__file__).resolve().parents[1] / "config" / "agentos.json"
-        self._install(candidate_config)
-        self._service("com.xiaoba.agentos", candidate_config)
-        self._backend_state(candidate_config)
-        loaded = AppConfig.load(candidate_config)
-        status = config_consistency(loaded, home=self.home)
+        shipped, isolated = self._candidate_schema_two()
+        reference = self._release_reference(self.root / "release", CANDIDATE_CONFIG)
+        self._install(CANDIDATE_CONFIG)
+        self._service("com.xiaoba.agentos", CANDIDATE_CONFIG)
+        self._backend_state(CANDIDATE_CONFIG)
+        status = config_consistency(isolated, {"release_dir": str(self.root / "release")}, home=self.home)
         self.assertTrue(status["ok"], status)
         self.assertEqual([], status["warnings"])
+        self.assertEqual(
+            {"session", "installed_entrypoint:.agents", "worker_service", "review_backend"},
+            set(status["consumers"]),
+        )
+        self._assert_reads_only_fixtures(status, shipped, reference)
+
+    def test_candidate_fixture_still_detects_a_diverged_entrypoint_reference(self):
+        # 反例：夹具里的入口参照被改动后，这项检查必须报错；
+        # 报错就证明比对的是临时参照而不是本机 .agents，隔离没有把校验变成空跑。
+        shipped, isolated = self._candidate_schema_two()
+        reference = self._release_reference(self.root / "release", CANDIDATE_CONFIG)
+        reference.write_text(
+            ENTRYPOINT.format(config=CANDIDATE_CONFIG) + "import os  # diverged reference\n", encoding="utf-8")
+        self._install(CANDIDATE_CONFIG)
+        self._service("com.xiaoba.agentos", CANDIDATE_CONFIG)
+        self._backend_state(CANDIDATE_CONFIG)
+        status = config_consistency(isolated, {"release_dir": str(self.root / "release")}, home=self.home)
+        self.assertFalse(status["ok"])
+        self.assertTrue(any("已安装入口与发布入口不一致" in p for p in status["problems"]), status["problems"])
+        self._assert_reads_only_fixtures(status, shipped, reference)
 
 
 if __name__ == "__main__":
