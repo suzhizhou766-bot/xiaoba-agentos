@@ -20,7 +20,7 @@
 | 原始材料提交 | `b655dff2b4bf9127ca21f847a8e2e3da82d32517` |
 | 开放审查扩展提交 | `1a3d8da334aa91bd85b54247d4ca3af8f1d4b044` |
 | 当前云端开发基线 | `87b547990cedf67c7eb33eeb947bcf6f96facc6b`；含架构升级中心及审查扩展 |
-| 仓库 | <https://github.com/suzhizhou766-bot/xiaoba-agentos>（私有） |
+| 仓库 | <https://github.com/suzhizhou766-bot/xiaoba-agentos>（用户 2026-10-30 确认有意公开） |
 | 原始完整包 | `architecture-package-20261027/`；3,831 文件、50,819,807 字节；云端已复核其原始清单 |
 | 旧 v1.6.1 | 仓库历史材料，仅作参考；不能当成本次生产基线 |
 | 在线 HTML | <https://xiaoba-architecture-20261027.suzhizhou766.chatgpt.site>；只读设计展示，未连接用户 Mac |
