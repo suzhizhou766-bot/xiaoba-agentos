@@ -173,6 +173,88 @@ code{font-family:var(--f-mono);font-size:11.5px}
   .hint{display:none}
 }
 @media (prefers-reduced-motion:reduce){aside{transition:none}}
+/* 模拟运行 */
+:root{--flow:#C8571F}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--flow:#F2945F}}
+:root[data-theme="dark"]{--flow:#F2945F}
+.node{transition:opacity .35s ease,border-color .3s ease}
+.node.sim-dim{opacity:.26}
+.node.sim-past{border-color:color-mix(in srgb,var(--flow) 55%,var(--line))}
+.node.sim-lit{border-color:var(--flow);animation:simPulse 1.4s ease-in-out infinite;box-shadow:0 0 0 3px color-mix(in srgb,var(--flow) 35%,transparent),0 0 22px color-mix(in srgb,var(--flow) 40%,transparent)}
+.node.sim-warn{border-color:var(--issue);animation:simWarn 1s ease-in-out infinite;box-shadow:0 0 0 3px color-mix(in srgb,var(--issue) 35%,transparent),0 0 22px color-mix(in srgb,var(--issue) 40%,transparent)}
+@keyframes simPulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--flow) 14%,transparent),0 0 32px color-mix(in srgb,var(--flow) 28%,transparent)}}
+@keyframes simWarn{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--issue) 14%,transparent),0 0 32px color-mix(in srgb,var(--issue) 28%,transparent)}}
+#edges path.e{transition:opacity .35s ease}
+#edges path.e.sim-dim{opacity:.1}
+#edges path.e.sim-on{stroke:var(--flow);stroke-width:2.8;stroke-dasharray:8 6;animation:simDash .6s linear infinite}
+#edges path.e.sim-past{stroke:color-mix(in srgb,var(--flow) 65%,var(--edge));stroke-width:2.2}
+#edges path.e.k-pending.sim-on,#edges path.e.k-pending.sim-past{stroke:var(--s-todo)}
+@keyframes simDash{to{stroke-dashoffset:-14}}
+#stage.flowing #edges path.e:not(.sim-dim):not(.k-old){stroke-dasharray:6 7;animation:simDash 1.1s linear infinite}
+#edges path.simtrack{fill:none;stroke:none}
+#edges circle.simdot{fill:var(--flow);stroke:var(--surface);stroke-width:2.5}
+#edges circle.simhalo{fill:var(--flow);opacity:.22}
+#edges circle.simdot.pend{fill:var(--s-todo)} #edges circle.simhalo.pend{fill:var(--s-todo)}
+.simbar{position:absolute;left:10px;top:10px;z-index:3;width:min(560px,calc(100% - 20px));box-sizing:border-box;background:color-mix(in srgb,var(--surface) 94%,transparent);border:1px solid var(--line);border-left:3px solid var(--flow);border-radius:8px;padding:8px 10px;display:grid;gap:7px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 12%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.simrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.simrow select{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:5px 6px;font-size:12.5px;min-width:0}
+#simSel{flex:1 1 220px}
+.simrow .mini{margin-left:auto;font-size:15px}
+.simchk{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer}
+.simcap{display:grid;gap:6px;font-size:13px;line-height:1.5}
+.simstep{font-weight:500}
+.simstep .n{font-family:var(--f-mono);font-size:11px;color:var(--flow);margin-right:8px;font-variant-numeric:tabular-nums}
+.simtargets{display:flex;flex-wrap:wrap;gap:6px}
+.simgo{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:4px 9px;text-align:left;cursor:pointer;display:grid;gap:1px;max-width:100%}
+.simgo b{font-size:12.5px} .simgo span{font-size:10.5px;color:var(--muted)}
+.simgo.w{border-color:var(--issue)} .simgo em{font-style:normal;font-size:11.5px;color:var(--issue);line-height:1.45}
+.simnote{font-size:11.5px;color:var(--s-todo)}
+.simend{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}
+
+/* 跟讲：Claude 说到哪里，图上就标到哪里 */
+:root{--talk:#6B45C8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--talk:#B79CF5}}
+:root[data-theme="dark"]{--talk:#B79CF5}
+.node.talk{border-color:var(--talk);border-width:2px;animation:talkPulse 1.3s ease-in-out infinite;box-shadow:0 0 0 4px color-mix(in srgb,var(--talk) 30%,transparent),0 0 26px color-mix(in srgb,var(--talk) 45%,transparent);z-index:2}
+@keyframes talkPulse{50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--talk) 12%,transparent),0 0 36px color-mix(in srgb,var(--talk) 30%,transparent)}}
+#edges path.e.talk{stroke:var(--talk);stroke-width:3.2;stroke-dasharray:9 6;animation:simDash .55s linear infinite;opacity:1}
+.elabel.talk{color:var(--talk);font-weight:700;opacity:1}
+.talkbar{position:absolute;right:10px;top:10px;z-index:3;width:min(420px,calc(100% - 20px));box-sizing:border-box;background:color-mix(in srgb,var(--surface) 95%,transparent);border:1px solid var(--line);border-left:3px solid var(--talk);border-radius:8px;padding:9px 11px;display:grid;gap:7px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 12%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.talkhead{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.06em;color:var(--talk);font-weight:700}
+.talkhead i{width:7px;height:7px;border-radius:50%;background:var(--talk);animation:talkBlink 1.2s ease-in-out infinite}
+@keyframes talkBlink{50%{opacity:.25}}
+.talkhead .when{font-family:var(--f-mono);font-weight:400;color:var(--muted);letter-spacing:0}
+.talkhead label{margin-left:auto;display:flex;align-items:center;gap:4px;font-weight:400;color:var(--muted);letter-spacing:0;font-size:12px;cursor:pointer}
+.talktext{font-size:13.5px;line-height:1.6;white-space:pre-wrap}
+.talkchips{display:flex;flex-wrap:wrap;gap:5px}
+.talkchips button{border:1px solid color-mix(in srgb,var(--talk) 55%,var(--line));background:var(--surface);border-radius:5px;padding:3px 8px;font-size:12px;cursor:pointer}
+@media (max-width:760px){.talkbar{top:auto;bottom:calc(52% + 10px)}}
+@media (prefers-reduced-motion:reduce){.node.talk,#edges path.e.talk,.talkhead i{animation:none}}
+
+
+/* 悬停：上游 / 下游 */
+:root{--h-up:#B8521C;--h-down:#2C5A86}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--h-up:#F2945F;--h-down:#7FB0DE}}
+:root[data-theme="dark"]{--h-up:#F2945F;--h-down:#7FB0DE}
+.hovtip{position:absolute;z-index:4;width:max-content;max-width:300px;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:8px 11px 9px;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 16%,transparent);font-size:12.5px;line-height:1.5;pointer-events:none;display:grid;gap:2px}
+.hovtip .ht-t{font-weight:700;font-size:13px;margin-bottom:2px}
+.hovtip .ht-k{font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:5px;display:flex;align-items:center;gap:6px}
+.hovtip .ht-k::before{content:"";width:12px;height:3px;border-radius:2px;background:var(--hc)}
+.hovtip .ht-k.up{--hc:var(--h-up)} .hovtip .ht-k.down{--hc:var(--h-down)}
+.hovtip ul{margin:0;padding-left:16px;display:grid;gap:1px}
+.hovtip .ht-g{font-size:10px;color:var(--muted);margin-left:6px;border:1px solid var(--line);border-radius:3px;padding:0 4px;white-space:nowrap}
+.hovtip .ht-l{display:block;font-size:11.5px;color:var(--muted)}
+.hovtip .ht-none{font-size:11.5px;color:var(--muted)}
+.node.h-self{box-shadow:0 0 0 2px var(--ink)}
+.node.h-up{border-color:var(--h-up);box-shadow:0 0 0 2px color-mix(in srgb,var(--h-up) 40%,transparent)}
+.node.h-down{border-color:var(--h-down);box-shadow:0 0 0 2px color-mix(in srgb,var(--h-down) 40%,transparent)}
+#edges path.e.h-in{stroke:var(--h-up);stroke-width:2.6;opacity:1;stroke-dasharray:none}
+#edges path.e.h-out{stroke:var(--h-down);stroke-width:2.6;opacity:1;stroke-dasharray:none}
+#edges path.e.h-off{opacity:.13}
+.elabel.h-off{opacity:.2}
+
+@media (prefers-reduced-motion:reduce){.node.sim-lit,.node.sim-warn,#edges path.e.sim-on,#stage.flowing #edges path.e{animation:none}}
+
 </style>
 
 <div class="app">
@@ -190,6 +272,7 @@ code{font-family:var(--f-mono);font-size:11.5px}
       <button class="btn" id="bFit" type="button">适应画面</button>
       <button class="btn" id="bExpandAll" type="button">展开全部详情</button>
       <button class="btn" id="bBoard" type="button">历史看板</button>
+      <button class="btn" id="bSim" type="button" title="让一个虚拟任务沿链路跑一遍">▶ 模拟运行</button>
     </div>
     <span class="sep"></span>
     <input class="search" id="q" type="search" placeholder="搜索节点，回车定位" aria-label="搜索节点">
@@ -205,12 +288,34 @@ code{font-family:var(--f-mono);font-size:11.5px}
           <marker id="ar-old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--s-old)"/></marker>
           <marker id="ar-pending" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--s-todo)"/></marker>
           <marker id="ar-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--sel)"/></marker>
-        </defs><g id="eg"></g><path class="tmp" id="tmp" d="" /></svg>
+        <marker id="ar-hin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--h-up)"/></marker>
+        <marker id="ar-hout" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--h-down)"/></marker>
+        <marker id="ar-talk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--talk)"/></marker>
+        <marker id="ar-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--flow)"/></marker>
+        </defs><g id="eg"></g><g id="simg"></g><path class="tmp" id="tmp" d="" /></svg>
         <div id="labels"></div>
         <div id="nodes"></div>
       </div>
+      <div class="simbar" id="simbar" hidden>
+        <div class="simrow">
+          <select id="simSel" aria-label="选择要演示的链路"></select>
+          <button class="btn primary" id="simPlay" type="button">▶ 播放</button>
+          <button class="btn" id="simNext" type="button">下一步</button>
+          <select id="simSpeed" aria-label="播放速度"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+          <label class="simchk"><input type="checkbox" id="simFollow" checked>镜头跟随</label>
+          <button class="btn" id="simFlow" type="button" title="全图连线持续流动">全图流动</button>
+          <button class="mini" id="simClose" type="button" aria-label="关闭模拟">✕</button>
+        </div>
+        <div class="simcap" id="simcap" aria-live="polite"></div>
+      </div>
+      <div class="talkbar" id="talkbar" hidden aria-live="polite">
+        <div class="talkhead"><i></i>Claude 正在讲<span class="when" id="talkWhen"></span><label><input type="checkbox" id="talkFollow" checked>镜头跟随</label><button class="mini" id="talkClose" type="button" aria-label="收起讲解">✕</button></div>
+        <div class="talktext" id="talkText"></div>
+        <div class="talkchips" id="talkChips"></div>
+      </div>
       <div class="banner" id="banner" hidden></div>
-      <div class="hint" id="hint">拖动节点移动 · 从节点右侧圆点拖到另一节点即连线 · 点连线后可断开 · 拖空白处平移，滚轮缩放</div>
+      <div class="hovtip" id="hovtip" hidden></div>
+      <div class="hint" id="hint">悬停节点看上游 / 下游 · 拖动节点移动 · 从节点右侧圆点拖到另一节点即连线 · 点连线后可断开 · 拖空白处平移，滚轮缩放</div>
       <section id="board" hidden aria-label="历史看板">
         <div class="bhead"><h2>历史看板</h2><span class="note" id="bSum"></span><button class="btn" type="button" id="bCloseBoard">回到拓扑图</button></div>
         <div class="days" id="days"></div>
@@ -361,6 +466,7 @@ function nodeHTML(n){
   if(sel&&sel.type==="node"&&sel.id===n.id)cls.push("selected");
   if(connectFrom===n.id)cls.push("src");
   if(filtering()&&!matches(n))cls.push("dim");
+  simCls(n.id,cls);talkCls(n.id,cls);
   let det="";
   if(n.expanded){
     det='<div class="ndet">'+
@@ -427,10 +533,10 @@ function drawEdges(){
     const [p,q,dir,s]=anchor(rectOf(a),rectOf(b));const P=pathFor(p,q,dir,s);
     const isSel=sel&&sel.type==="edge"&&sel.id===e.id;
     const na=node(e.from),nb=node(e.to);const dim=filtering()&&!(na&&matches(na)||nb&&matches(nb));
-    ph+=`<path class="e k-${e.kind}${isSel?" sel":""}${dim?" dim":""}" d="${P.d}" marker-end="url(#ar-${isSel?"sel":e.kind})"/><path class="hit" data-edge="${esc(e.id)}" d="${P.d}"/>`;
-    if(e.label)lh+=`<div class="elabel${isSel?" sel":""}${dim?" dim":""}" data-elabel="${esc(e.id)}" style="left:${P.mx}px;top:${P.my}px" title="${esc(e.label)}">${esc(e.label)}</div>`;
+    ph+=`<path class="e k-${e.kind}${isSel?" sel":""}${dim?" dim":""}${simEdge(e.id)}${talkEdge(e.id)?" talk":""}" d="${P.d}" data-eid="${esc(e.id)}" data-m="url(#ar-${isSel?"sel":talkEdge(e.id)?"talk":simFlowEdge(e.id)&&e.kind!=="pending"?"flow":e.kind})" marker-end="url(#ar-${isSel?"sel":talkEdge(e.id)?"talk":simFlowEdge(e.id)&&e.kind!=="pending"?"flow":e.kind})"/><path class="hit" data-edge="${esc(e.id)}" d="${P.d}"/>`;
+    if(e.label)lh+=`<div class="elabel${isSel?" sel":""}${talkEdge(e.id)?" talk":""}${dim?" dim":""}" data-elabel="${esc(e.id)}" style="left:${P.mx}px;top:${P.my}px" title="${esc(e.label)}">${esc(e.label)}</div>`;
   });
-  eg.innerHTML=ph;labelsEl.innerHTML=lh;
+  eg.innerHTML=ph;labelsEl.innerHTML=lh;if(typeof HOV!=="undefined"&&HOV)applyHover();
 }
 function refreshGeometry(){drawFrames();drawEdges();}
 
@@ -620,6 +726,324 @@ document.addEventListener("keydown",e=>{
     else if(sel.type==="node"){e.preventDefault();armDelete("node:"+sel.id);}
   }
 });
+
+/* ---------- 模拟运行：虚拟任务沿链路流动（只是演示，不改任何数据） ---------- */
+const E=(f,t)=>[f,t];
+const SCEN=[
+ {name:"① 完整任务：执行 → 交付 → 经验首轮通过入库",steps:[
+  {e:[E("user","host")],say:"用户下达一个任务"},
+  {e:[E("host","knowledge"),E("host","entry")],say:"宿主查知识与能力，同时走统一 xiaoba 入口"},
+  {e:[E("entry","routing")],say:"入口校验通过，进入消息路由"},
+  {e:[E("routing","queue")],say:"路由判定：需要排队执行"},
+  {e:[E("queue","worker")],say:"任务出队，交给 Worker 编排"},
+  {e:[E("worker","work")],say:"进入实际执行"},
+  {e:[E("work","qc")],say:"产出交给输出验收与确定性裁判"},
+  {e:[E("qc","result")],say:"写入任务结果与审计回执"},
+  {e:[E("result","delivery")],say:"用户说“交付”"},
+  {e:[E("delivery","archive"),E("delivery","new_exp")],say:"成品归档，同时沉淀本次新经验"},
+  {e:[E("new_exp","candidate")],say:"新经验进入候选"},
+  {e:[E("candidate","initial")],say:"交给用户初审"},
+  {e:[E("initial","initial_pass")],say:"初审通过"},
+  {e:[E("initial_pass","wait1"),E("initial_pass","pending_index")],say:"进入第一轮待验证，同时登记到待验证索引"},
+  {e:[E("card","dsh"),E("card","peer")],say:"身份任务卡发起独立双审"},
+  {e:[E("dsh","receipts"),E("peer","receipts")],say:"两路审查回执汇入统一入口"},
+  {e:[E("receipts","confirmed")],say:"核对实际来源与独立性"},
+  {e:[E("confirmed","review_evidence")],say:"形成当轮独立审查证据"},
+  {e:[E("wait1","run1"),E("review_evidence","run1")],say:"带着审查证据执行第一轮隔离验证"},
+  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
+  {e:[E("v1_result","final_queue")],say:"第一轮通过，自动进入待终审"},
+  {e:[E("final_queue","final_user")],say:"裁决中心：用户人工终审"},
+  {e:[E("final_user","publish_checks")],say:"终审通过，做发布前检查"},
+  {e:[E("publish_checks","formal")],say:"写入正式经验与长期记忆"},
+  {e:[E("formal","retrieve")],say:"下次相似任务即可检索复用"}
+ ]},
+ {name:"② 经验第一轮失败 → 第二轮重验通过",steps:[
+  {e:[E("initial_pass","wait1")],say:"初审通过的经验进入第一轮待验证"},
+  {e:[E("wait1","run1")],say:"执行第一轮隔离验证"},
+  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
+  {e:[E("v1_result","failed1")],say:"第一轮未通过，保留失败证据"},
+  {e:[E("failed1","wait2")],say:"进入第二轮待验证"},
+  {e:[E("wait2","run2"),E("review_evidence","run2")],say:"带着独立审查证据执行第二轮"},
+  {e:[E("run2","v2_result")],say:"得出第二轮结果"},
+  {e:[E("v2_result","diff")],say:"第二轮通过，核对两轮差异与原因"},
+  {e:[E("diff","final_queue")],say:"进入待终审"},
+  {e:[E("final_queue","final_user")],say:"用户人工终审"},
+  {e:[E("final_user","publish_checks")],say:"终审通过，做发布前检查"},
+  {e:[E("publish_checks","formal")],say:"写入正式经验"}
+ ]},
+ {name:"③ 两轮都未通过 → 经验退役",steps:[
+  {e:[E("wait1","run1")],say:"执行第一轮隔离验证"},
+  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
+  {e:[E("v1_result","failed1")],say:"第一轮未通过，保留失败证据"},
+  {e:[E("failed1","wait2")],say:"进入第二轮待验证"},
+  {e:[E("wait2","run2")],say:"执行第二轮重新验证"},
+  {e:[E("run2","v2_result")],say:"得出第二轮结果"},
+  {e:[E("v2_result","retired")],say:"第二轮仍未通过，经验直接退役"},
+  {e:[E("retired","retire_view")],say:"在监看中心展示退役记录"},
+  {e:[E("retire_view","delete")],say:"用户确认后手动删除"}
+ ]},
+ {name:"④ 待验证经验在真实任务中复用并回写",steps:[
+  {e:[E("pending_index","retrieve")],say:"新任务到来，检索待验证经验索引"},
+  {e:[E("retrieve","apply")],say:"命中候选，核对适用条件后实际应用"},
+  {e:[E("apply","evidence"),E("apply","card")],say:"记录执行证据；同时（设计中）请双审介入"},
+  {e:[E("evidence","later_delivery")],say:"任务完成，用户说“交付”"},
+  {e:[E("later_delivery","used")],say:"标记本次确实应用了这条旧候选"},
+  {e:[E("used","feedback")],say:"验证材料自动回写原候选"},
+  {e:[E("feedback","evidence_port")],say:"材料进入核验接入口"},
+  {e:[E("evidence_port","run1")],say:"原卡在第一轮，触发第一轮验证"},
+  {e:[E("run1","v1_result")],say:"得出第一轮结果"},
+  {e:[E("v1_result","final_queue")],say:"通过，进入待终审"},
+  {e:[E("final_queue","final_user")],say:"用户人工终审"}
+ ]},
+ {name:"⑤ 日常小任务：宿主直接处理",steps:[
+  {e:[E("user","host")],say:"用户提了个日常小事"},
+  {e:[E("host","entry")],say:"经统一 xiaoba 入口"},
+  {e:[E("entry","routing")],say:"进入消息路由"},
+  {e:[E("routing","direct")],say:"路由判定：宿主直接处理，不进队列"},
+  {e:[E("direct","work")],say:"宿主直接执行"},
+  {e:[E("work","qc")],say:"输出验收"},
+  {e:[E("qc","result")],say:"写入结果与审计回执"},
+  {e:[E("result","delivery")],say:"用户说“交付”"},
+  {e:[E("delivery","archive")],say:"成品归档"}
+ ]},
+ {name:"⑥ 需要追问：澄清后再继续",steps:[
+  {e:[E("user","host")],say:"用户下达一个信息不全的任务"},
+  {e:[E("host","entry")],say:"经统一 xiaoba 入口"},
+  {e:[E("entry","routing")],say:"进入消息路由"},
+  {e:[E("routing","ask")],say:"路由判定：需要人工审核或追问"},
+  {e:[E("ask","host")],say:"用户澄清或裁决后回到宿主"},
+  {e:[E("host","entry")],say:"带着补充信息重新进入"},
+  {e:[E("entry","routing")],say:"再次路由"},
+  {e:[E("routing","queue")],say:"这次判定排队执行"},
+  {e:[E("queue","worker")],say:"交给 Worker 编排"},
+  {e:[E("worker","work")],say:"进入实际执行"}
+ ]}
+];
+const SIM={on:false,playing:false,busy:false,sc:0,i:0,speed:1,follow:true,gen:0,timer:0,
+  nodes:new Set(),edges:new Set(),lit:new Set(),warn:new Set(),past:new Set(),onE:new Set(),pastE:new Set()};
+const simg=document.getElementById("simg"),simbar=$("#simbar"),simcap=$("#simcap");
+const findEdge=(f,t)=>G.edges.find(e=>e.from===f&&e.to===t);
+const isWarn=n=>!!n&&(lines(n.issues).length>0||n.status==="decide"||n.status==="todo");
+function simCls(id,cls){
+  if(!SIM.on)return;
+  if(SIM.warn.has(id))cls.push("sim-warn");else if(SIM.lit.has(id))cls.push("sim-lit");
+  else if(SIM.past.has(id))cls.push("sim-past");else if(!SIM.nodes.has(id))cls.push("sim-dim");
+}
+function simEdge(id){
+  if(!SIM.on)return "";
+  if(SIM.onE.has(id))return " sim-on";if(SIM.pastE.has(id))return " sim-past";
+  return SIM.edges.has(id)?"":" sim-dim";
+}
+const simFlowEdge=id=>SIM.on&&(SIM.onE.has(id)||SIM.pastE.has(id));
+function simPaint(){
+  nodesEl.querySelectorAll("[data-node]").forEach(el=>{
+    el.classList.remove("sim-dim","sim-lit","sim-past","sim-warn");
+    const c=[];simCls(el.dataset.node,c);c.forEach(x=>el.classList.add(x));
+  });
+  drawEdges();
+}
+function simReset(sc){
+  SIM.gen++;clearTimeout(SIM.timer);simg.innerHTML="";
+  SIM.sc=sc;SIM.i=0;SIM.busy=false;SIM.on=true;
+  ["nodes","edges","lit","warn","past","onE","pastE"].forEach(k=>SIM[k].clear());
+  SCEN[sc].steps.forEach(st=>st.e.forEach(([f,t])=>{const e=findEdge(f,t);if(e)SIM.edges.add(e.id);SIM.nodes.add(f);SIM.nodes.add(t);}));
+  const first=SCEN[sc].steps[0].e.map(x=>x[0]);first.forEach(id=>SIM.lit.add(id));
+  simPaint();
+  if(SIM.follow)panTo(first,true);
+  simcap.innerHTML=`<div class="simstep"><span class="n">0 / ${SCEN[sc].steps.length}</span>${esc(SCEN[sc].name)}</div>`;
+  simUI();
+}
+function simUI(){
+  const done=SIM.i>=SCEN[SIM.sc].steps.length;
+  $("#simPlay").textContent=SIM.playing?"❚❚ 暂停":done?"↺ 重播":"▶ 播放";
+  $("#simNext").disabled=SIM.busy||done;
+  $("#bSim").classList.toggle("on",!simbar.hidden);
+}
+function tween(to,ms){
+  const from={x:view.x,y:view.y,k:view.k},t0=performance.now(),g=SIM.gen;
+  const step=now=>{if(g!==SIM.gen||drag)return;const t=Math.min(1,(now-t0)/ms),e=1-Math.pow(1-t,3);
+    view.x=from.x+(to.x-from.x)*e;view.y=from.y+(to.y-from.y)*e;view.k=from.k+(to.k-from.k)*e;applyView();if(t<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+function panTo(ids,reset){
+  const rs=[...new Set(ids.map(endOf).filter(Boolean))].map(rectOf);if(!rs.length)return;
+  let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;rs.forEach(r=>{x1=Math.min(x1,r.x);y1=Math.min(y1,r.y);x2=Math.max(x2,r.x+r.w);y2=Math.max(y2,r.y+r.h);});
+  const s=stage.getBoundingClientRect(),fitK=Math.min(.95,Math.max(.3,Math.min((s.width-80)/(x2-x1+120),(s.height-200)/(y2-y1+120))));
+  const k=Math.min(fitK,.85);
+  tween({k,x:s.width/2-(x1+x2)/2*k,y:(s.height+90)/2-(y1+y2)/2*k},520/Math.max(1,SIM.speed*.8));
+}
+function dot(e,dur){
+  return new Promise(res=>{
+    const a=endOf(e.from),b=endOf(e.to);if(!a||!b||a===b){setTimeout(res,dur);return;}
+    const [p,q,dir,s]=anchor(rectOf(a),rectOf(b)),P=pathFor(p,q,dir,s),NS="http://www.w3.org/2000/svg",pk=e.kind==="pending"?" pend":"";
+    const tr=document.createElementNS(NS,"path");tr.setAttribute("d",P.d);tr.setAttribute("class","simtrack");
+    const halo=document.createElementNS(NS,"circle");halo.setAttribute("r","14");halo.setAttribute("class","simhalo"+pk);
+    const c=document.createElementNS(NS,"circle");c.setAttribute("r","6.5");c.setAttribute("class","simdot"+pk);
+    simg.append(tr,halo,c);const L=tr.getTotalLength(),t0=performance.now(),g=SIM.gen;
+    const clean=()=>{tr.remove();halo.remove();c.remove();res();};
+    const step=now=>{if(g!==SIM.gen){clean();return;}
+      const t=Math.min(1,(now-t0)/dur),k=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2,pt=tr.getPointAtLength(L*k);
+      [halo,c].forEach(x=>{x.setAttribute("cx",pt.x);x.setAttribute("cy",pt.y);});
+      if(t<1)requestAnimationFrame(step);else clean();};
+    requestAnimationFrame(step);
+  });
+}
+function caption(st,targets,arrived,pend){
+  const sc=SCEN[SIM.sc];
+  const items=targets.map(id=>{const n=node(id);if(!n)return "";const w=arrived&&isWarn(n),iss=lines(n.issues)[0];
+    const st2=STATUS[n.status]||STATUS.dev;
+    return `<button type="button" class="simgo${w?" w":""}" data-simgo="${esc(id)}"><b>${esc(n.title)}</b><span>${esc(st2[0])}</span>${w?`<em>⚠ ${esc(iss||(n.status==="decide"?"待你裁定":"还没实现"))}</em>`:""}</button>`;}).join("");
+  simcap.innerHTML=`<div class="simstep"><span class="n">${SIM.i+1} / ${sc.steps.length}</span>${esc(st.say)}</div><div class="simtargets">${items}</div>`+
+    (pend?'<div class="simnote">橙色虚线这一段还没接通，现在只是设计。</div>':"");
+}
+function runStep(){
+  const sc=SCEN[SIM.sc],st=sc.steps[SIM.i];if(!st){simFinish();return;}
+  SIM.busy=true;const g=SIM.gen;
+  const es=st.e.map(([f,t])=>({f,t,e:findEdge(f,t)})),targets=[...new Set(es.map(x=>x.t))];
+  const pend=es.some(x=>x.e&&x.e.kind==="pending");
+  SIM.lit.forEach(id=>SIM.past.add(id));SIM.warn.forEach(id=>SIM.past.add(id));SIM.lit.clear();SIM.warn.clear();
+  es.forEach(x=>{if(x.e)SIM.onE.add(x.e.id);SIM.past.add(x.f);});
+  simPaint();simUI();
+  if(SIM.follow)panTo(es.flatMap(x=>[x.f,x.t]));
+  caption(st,targets,false,pend);
+  const dur=1050/SIM.speed;
+  Promise.all(es.map(x=>x.e?dot(x.e,dur):new Promise(r=>setTimeout(r,dur)))).then(()=>{
+    if(g!==SIM.gen)return;
+    es.forEach(x=>{if(x.e){SIM.onE.delete(x.e.id);SIM.pastE.add(x.e.id);}});
+    targets.forEach(id=>{SIM.past.delete(id);(isWarn(node(id))?SIM.warn:SIM.lit).add(id);});
+    simPaint();caption(st,targets,true,pend);
+    SIM.i++;SIM.busy=false;simUI();
+    const hold=(targets.some(id=>SIM.warn.has(id))?1800:500)/SIM.speed;
+    if(SIM.i>=sc.steps.length){SIM.timer=setTimeout(()=>{if(g===SIM.gen)simFinish();},hold);return;}
+    if(SIM.playing)SIM.timer=setTimeout(()=>{if(g===SIM.gen&&SIM.playing&&!SIM.busy)runStep();},hold);
+  });
+}
+function simFinish(){
+  SIM.playing=false;SIM.i=SCEN[SIM.sc].steps.length;
+  const warns=[...SIM.nodes].filter(id=>isWarn(node(id)));
+  simcap.insertAdjacentHTML("beforeend",`<div class="simend">这条链路走完了${warns.length?`，途中 ${warns.length} 个节点有问题或待裁定（红框）`:""}。可以换一条，或点 ↺ 重播。</div>`);
+  simUI();
+}
+function simPlay(){
+  if(SIM.i>=SCEN[SIM.sc].steps.length)simReset(SIM.sc);
+  SIM.playing=true;simUI();if(!SIM.busy)runStep();
+}
+function simOpen(sc){
+  simbar.hidden=false;
+  if(!$("#simSel").options.length)$("#simSel").innerHTML=SCEN.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join("");
+  $("#simSel").value=String(sc);simReset(sc);simPlay();
+}
+function simClose(){
+  SIM.gen++;clearTimeout(SIM.timer);simg.innerHTML="";SIM.on=false;SIM.playing=false;SIM.busy=false;
+  simbar.hidden=true;render(true);simUI();
+}
+$("#bSim").onclick=()=>{simbar.hidden?simOpen(+$("#simSel").value||0):simClose();};
+$("#simClose").onclick=simClose;
+$("#simSel").onchange=e=>{SIM.playing=false;simReset(+e.target.value);simPlay();};
+$("#simPlay").onclick=()=>{if(SIM.playing){SIM.playing=false;clearTimeout(SIM.timer);simUI();}else simPlay();};
+$("#simNext").onclick=()=>{SIM.playing=false;clearTimeout(SIM.timer);if(!SIM.busy&&SIM.i<SCEN[SIM.sc].steps.length)runStep();simUI();};
+$("#simSpeed").onchange=e=>{SIM.speed=+e.target.value||1;};
+$("#simFollow").onchange=e=>{SIM.follow=e.target.checked;};
+$("#simFlow").onclick=()=>{$("#simFlow").classList.toggle("on",stage.classList.toggle("flowing"));};
+simcap.addEventListener("click",e=>{const b=e.target.closest("[data-simgo]");if(!b)return;sel={type:"node",id:b.dataset.simgo};tab="inspect";render();openSheet();});
+
+
+
+/* ---------- 悬停：显示上游（从哪里来）与下游（往哪里去） ---------- */
+var HOV=null;
+const hovtip=$("#hovtip");
+function hovEdgeCls(e){
+  if(!HOV)return "";
+  if(HOV.type==="edge")return e.id===HOV.eid?"h-in":"h-off";
+  const M=HOV.members;
+  const isIn=M?M.has(e.to)&&!M.has(e.from):e.to===HOV.id, isOut=M?M.has(e.from)&&!M.has(e.to):e.from===HOV.id;
+  return isIn?"h-in":isOut?"h-out":"h-off";
+}
+function applyHover(){
+  if(typeof nodesEl==="undefined")return;
+  nodesEl.querySelectorAll("[data-node]").forEach(el=>{
+    el.classList.remove("h-self","h-up","h-down");if(!HOV)return;const id=el.dataset.node;
+    if(HOV.type==="edge"){if(id===HOV.from)el.classList.add("h-up");else if(id===HOV.to)el.classList.add("h-down");return;}
+    if(id===HOV.id)el.classList.add("h-self");else if(HOV.up.has(id))el.classList.add("h-up");else if(HOV.down.has(id))el.classList.add("h-down");
+  });
+  eg.querySelectorAll("path.e[data-eid]").forEach(p=>{
+    p.classList.remove("h-in","h-out","h-off");p.setAttribute("marker-end",p.dataset.m);
+    const e=G.edges.find(x=>x.id===p.dataset.eid);if(!e)return;const c=hovEdgeCls(e);if(!c)return;
+    p.classList.add(c);if(c==="h-in")p.setAttribute("marker-end","url(#ar-hin)");if(c==="h-out")p.setAttribute("marker-end","url(#ar-hout)");
+  });
+  labelsEl.querySelectorAll("[data-elabel]").forEach(l=>{l.classList.remove("h-off");const e=G.edges.find(x=>x.id===l.dataset.elabel);if(e&&hovEdgeCls(e)==="h-off")l.classList.add("h-off");});
+}
+const grpTag=id=>{const n=node(id),g=n&&group(n.g);return g?g.title.split("、")[0]+"组":"";};
+function hovList(title,items,cls,curG){
+  const MAX=8;
+  if(!items.length)return `<div class="ht-k ${cls}">${title}</div><div class="ht-none">无（这里是起点或终点）</div>`;
+  const shown=items.slice(0,MAX).map(([id,label])=>{const n=node(id);
+    return `<li><b>${esc(nameOf(id))}</b>${n&&n.g!==curG?`<span class="ht-g">${esc(grpTag(id))}</span>`:""}${label?`<span class="ht-l">${esc(label)}</span>`:""}</li>`;}).join("");
+  return `<div class="ht-k ${cls}">${title}（${items.length}）</div><ul>${shown}</ul>${items.length>MAX?`<div class="ht-none">另有 ${items.length-MAX} 个</div>`:""}`;
+}
+function hovPlace(x,y,avoidLeft){
+  hovtip.hidden=false;const s=stage.getBoundingClientRect(),w=hovtip.offsetWidth,h=hovtip.offsetHeight;
+  let px=x;if(px+w>s.width-8)px=(avoidLeft!=null?avoidLeft:x)-w-20;if(px<8)px=8;
+  let py=y;if(py+h>s.height-8)py=s.height-h-8;if(py<8)py=8;
+  hovtip.style.left=px+"px";hovtip.style.top=py+"px";
+}
+function hovAt(el,html){hovtip.innerHTML=html;hovtip.hidden=false;const s=stage.getBoundingClientRect(),r=el.getBoundingClientRect();hovPlace(r.right-s.left+12,r.top-s.top,r.left-s.left);}
+function hovClear(){if(!HOV&&hovtip.hidden)return;HOV=null;hovtip.hidden=true;applyHover();}
+stage.addEventListener("mouseover",ev=>{
+  if(drag||connectMode)return;
+  const nd=ev.target.closest("[data-node]"),pl=ev.target.closest("[data-gpill]"),ed=ev.target.closest("[data-edge],[data-elabel]");
+  if(nd){const id=nd.dataset.node;if(HOV&&HOV.type==="node"&&HOV.id===id)return;
+    const ins=G.edges.filter(e=>e.to===id),outs=G.edges.filter(e=>e.from===id),cg=(node(id)||{}).g;
+    HOV={type:"node",id,up:new Set(ins.map(e=>e.from)),down:new Set(outs.map(e=>e.to))};applyHover();
+    hovAt(nd,`<div class="ht-t">${esc(nameOf(id))}</div>`+hovList("上游 · 从哪里来",ins.map(e=>[e.from,e.label]),"up",cg)+hovList("下游 · 往哪里去",outs.map(e=>[e.to,e.label]),"down",cg));return;}
+  if(pl){const gid=pl.dataset.gpill;if(HOV&&HOV.id==="G:"+gid)return;const ms=new Set(G.nodes.filter(n=>n.g===gid).map(n=>n.id));
+    const ins=G.edges.filter(e=>ms.has(e.to)&&!ms.has(e.from)),outs=G.edges.filter(e=>ms.has(e.from)&&!ms.has(e.to));
+    HOV={type:"node",id:"G:"+gid,members:ms,up:new Set(ins.map(e=>e.from)),down:new Set(outs.map(e=>e.to))};applyHover();
+    hovAt(pl,`<div class="ht-t">${esc(group(gid).title)} · 已收起</div>`+hovList("上游 · 从哪里来",ins.map(e=>[e.from,"进入 "+nameOf(e.to)]),"up",gid)+hovList("下游 · 往哪里去",outs.map(e=>[e.to,"来自 "+nameOf(e.from)]),"down",gid));return;}
+  if(ed){const eid=ed.dataset.edge||ed.dataset.elabel;const e=G.edges.find(x=>x.id===eid);if(!e||(HOV&&HOV.eid===eid))return;
+    HOV={type:"edge",eid,from:e.from,to:e.to};applyHover();
+    hovtip.innerHTML=`<div class="ht-k up">从</div><div><b>${esc(nameOf(e.from))}</b><span class="ht-g">${esc(grpTag(e.from))}</span></div><div class="ht-k down">到</div><div><b>${esc(nameOf(e.to))}</b><span class="ht-g">${esc(grpTag(e.to))}</span></div>${e.label?`<div class="ht-l">${esc(e.label)}</div>`:""}${e.kind!=="normal"?`<div class="ht-none">${esc(KINDS[e.kind])}</div>`:""}`;
+    const s=stage.getBoundingClientRect();hovPlace(ev.clientX-s.left+14,ev.clientY-s.top+14);return;}
+});
+stage.addEventListener("mouseout",ev=>{const to=ev.relatedTarget;if(to&&to.closest&&to.closest("[data-node],[data-gpill],[data-edge],[data-elabel]"))return;hovClear();});
+stage.addEventListener("pointerdown",hovClear,true);
+stage.addEventListener("wheel",()=>{if(!hovtip.hidden)hovClear();},{passive:true});
+
+/* ---------- 跟讲：读 topology/pointer，Claude 写哪里就标哪里 ---------- */
+const TALK={nodes:new Set(),edges:new Set(),follow:true,at:0,first:true};
+const talkbar=$("#talkbar");
+function talkCls(id,cls){if(TALK.nodes.has(id))cls.push("talk");}
+const talkEdge=id=>TALK.edges.has(id);
+function resolveEdge(x){
+  if(typeof x!=="string")return null;
+  if(G.edges.find(e=>e.id===x))return x;
+  const m=x.split(/>|->|→/).map(t=>t.trim());
+  if(m.length===2){const e=G.edges.find(e=>e.from===m[0]&&e.to===m[1]);return e?e.id:null;}
+  return null;
+}
+function talkWhen(){if(!TALK.at||talkbar.hidden)return;const s=Math.round((Date.now()-TALK.at)/1000);
+  $("#talkWhen").textContent=s<10?"刚刚":s<60?s+" 秒前":Math.round(s/60)+" 分钟前";}
+setInterval(talkWhen,5000);
+function talkApply(d){
+  const first=TALK.first;TALK.first=false;
+  if(!d||d.clear||!d.at||(first&&Date.now()-d.at>30*60*1000)){
+    TALK.nodes.clear();TALK.edges.clear();talkbar.hidden=true;render(true);return;}
+  if(d.at===TALK.at)return;TALK.at=d.at;
+  TALK.nodes=new Set((d.nodes||[]).filter(id=>node(id)));
+  TALK.edges=new Set((d.edges||[]).map(resolveEdge).filter(Boolean));
+  TALK.edges.forEach(id=>{const e=G.edges.find(x=>x.id===id);if(e&&!d.nodesOnly){/* 连线两端一起标 */}});
+  // 被讲到的节点如果在收起的分组里，临时展开（只影响本页显示）
+  [...TALK.nodes].forEach(id=>{const n=node(id);const g=n&&group(n.g);if(g&&g.collapsed)g.collapsed=false;});
+  $("#talkText").textContent=d.text||"";
+  $("#talkChips").innerHTML=[...TALK.nodes].map(id=>`<button type="button" data-talkgo="${esc(id)}">${esc(nameOf(id))}</button>`).join("");
+  talkbar.hidden=false;talkWhen();
+  render(true);
+  const ids=[...TALK.nodes];TALK.edges.forEach(id=>{const e=G.edges.find(x=>x.id===id);if(e)ids.push(e.from,e.to);});
+  if(TALK.follow&&ids.length)requestAnimationFrame(()=>panTo(ids));
+}
+$("#talkFollow").onchange=e=>{TALK.follow=e.target.checked;};
+$("#talkClose").onclick=()=>{talkbar.hidden=true;TALK.nodes.clear();TALK.edges.clear();render(true);};
+$("#talkChips").addEventListener("click",e=>{const b=e.target.closest("[data-talkgo]");if(!b)return;sel={type:"node",id:b.dataset.talkgo};tab="inspect";render();openSheet();});
 
 /* ---------- 面板 ---------- */
 const aside=$("#aside");
@@ -836,7 +1260,8 @@ applyView();render();requestAnimationFrame(()=>fit());
     try{const s=localStorage.getItem("xb-topology-v1");if(s){const d=JSON.parse(s);if(d&&Array.isArray(d.nodes))G=normalize(d);}const l=localStorage.getItem("xb-topology-log");if(l)logs=JSON.parse(l)||[];const sb=localStorage.getItem("xb-topology-subs");if(sb)submissions=JSON.parse(sb)||[];}catch(_){}
     setSave("warn","只存在本浏览器");render();fit();return;
   }
-  docRef=db.doc("topology/main");logCol=db.collection("changes");subCol=db.collection("submissions");
+  docRef=db.doc("topology/main");
+  db.doc("topology/pointer").onSnapshot(snap=>talkApply(snap.exists?snap.data():null),()=>{});logCol=db.collection("changes");subCol=db.collection("submissions");
   subCol.orderBy("at","desc").limit(200).onSnapshot(qs=>{submissions=qs.docs.map(x=>Object.assign({id:x.id},x.data()));if(tab==="submits"||tab==="reader")renderPanel();},()=>{});
   let first=true;
   docRef.onSnapshot(snap=>{
