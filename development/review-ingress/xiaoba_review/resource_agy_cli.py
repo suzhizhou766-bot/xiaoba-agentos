@@ -26,7 +26,10 @@ from xiaoba_agentos.adapters import (
     _agy_result_payload, _is_transient_cli_error, _redact_error, _sanitize_answer)
 from xiaoba_agentos.gateway import command_environment
 from .agent_workspace import AgentWorkspace, WorkspaceError
-from .resource_agy import InteractiveError, NativeWorkspaceConsent, ReviewReceiptError
+from .resource_agy import (
+    InteractiveError, NativeWorkspaceConsent, ReviewReceiptError,
+    REVIEW_RUN_INSTRUCTION, parse_review_receipt
+)
 from .terminal_preview import TerminalPreview
 from .workday import WorkdayReceipts
 
@@ -475,19 +478,11 @@ class AgyCliResource:
         return evidence
 
     def run(self, card):
-        value, evidence = self._turn('独立审查下面的冻结任务卡及其明确授权材料。'
-            '在当日工作回执中写完整审查正文，并在头部注明审查结论和实际证据引用。'
-            '注明未执行的测试，不伪造评分、执行证据或用户批准。',
+        value, evidence = self._turn(REVIEW_RUN_INSTRUCTION,
             json.dumps(card, ensure_ascii=False), record_id=card.get('assignment_id'),
             task_id=card.get('task_id') or card.get('review_request_id'),
             step_code=card.get('step_code'))
-        verdict = value['metadata'].get('审查结论')
-        if value['status'] != 'completed' or verdict not in {'PASS', 'FAIL', 'NEEDS_INFO'} or not value['evidence_refs']:
-            raise ReviewReceiptError('review_fields_missing',
-                '工作正文已收取并保存在当日文件；审查字段不全，未形成有效审查结论。')
-        text = _sanitize_answer(value['body'])
-        return {'verdict': verdict, 'findings': text, 'evidence_refs': value['evidence_refs'],
-                'execution_evidence': dict(evidence, output_sha256=hashlib.sha256(text.encode()).hexdigest())}
+        return parse_review_receipt(value, card, evidence)
 
     def run_task(self, task_id, step_code, instruction, materials):
         if not isinstance(instruction, str) or not instruction.strip():

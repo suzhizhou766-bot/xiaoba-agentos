@@ -59,6 +59,60 @@ def visible(raw):
     return ANSI.sub('', raw.decode('utf-8', errors='replace')).replace('\r', '')
 
 
+REVIEW_RUN_INSTRUCTION = (
+    '独立审查下面的冻结任务卡及其明确授权材料。'
+    '在当日工作回执中写完整审查正文，并在头部注明审查结论和实际证据引用。'
+    '注明未执行的测试，按模板写明评分、审查类型与适用条件，不伪造评分、执行证据或用户批准。'
+)
+
+
+def parse_review_receipt(value, card, evidence):
+    verdict = value['metadata'].get('审查结论') or value['metadata'].get('verdict')
+    refs = value.get('evidence_refs') or []
+    contract = card.get('receipt_contract', {})
+    is_v2 = contract.get('version', 1) >= 2
+    if value['status'] != 'completed' or verdict not in {'PASS', 'FAIL', 'NEEDS_INFO'} or not refs or any(r is None or (isinstance(r, str) and not r.strip()) for r in refs):
+        raise ReviewReceiptError('review_fields_missing', '工作正文已收取并保存在当日文件；审查字段不全，未形成有效审查结论。')
+    text = _sanitize_answer(value['body'])
+    result = {'verdict': verdict, 'findings': text, 'evidence_refs': refs,
+              'execution_evidence': dict(evidence, output_sha256=hashlib.sha256(text.encode()).hexdigest())}
+    if is_v2:
+        review_type = value['metadata'].get('审查类型') or value['metadata'].get('review_type')
+        score_raw = value['metadata'].get('评分') or value['metadata'].get('score')
+        applicability = value['metadata'].get('适用条件') or value['metadata'].get('适用条件与限制') or value['metadata'].get('applicability')
+        duplicate_of = value['metadata'].get('重复经验') or value['metadata'].get('与已有经验重复') or value['metadata'].get('duplicate_of')
+        score = None
+        if score_raw is not None:
+            try:
+                score = float(score_raw)
+                if score.is_integer():
+                    score = int(score)
+                if not (0 <= score <= 10):
+                    score = None
+            except (ValueError, TypeError):
+                score = None
+        card_evidence = card.get('evidence_refs', [])
+        card_refs = {c.get('ref') for c in card_evidence if isinstance(c, dict)}
+        valid_refs = all(
+            (isinstance(r, str) and r in card_refs) or
+            (isinstance(r, dict) and any(c.get('ref') == r.get('ref') and c.get('sha256') == r.get('sha256') for c in card_evidence if isinstance(c, dict)))
+            for r in refs
+        )
+        if (review_type not in {'new_experience', 'revalidation', 'reuse_change'}
+                or score is None
+                or not isinstance(applicability, str) or not applicability.strip()
+                or not valid_refs):
+            raise ReviewReceiptError('review_fields_missing', '工作正文已收取并保存在当日文件；审查字段不全，未形成有效审查结论。')
+        result['review_type'] = review_type
+        result['score'] = score
+        result['applicability'] = applicability.strip()
+        if duplicate_of and isinstance(duplicate_of, str) and duplicate_of.strip() and duplicate_of.strip() not in {'无', 'none', 'None'}:
+            result['duplicate_of'] = duplicate_of.strip()
+        else:
+            result['duplicate_of'] = None
+    return result
+
+
 class AgyInteractiveResource:
     supports_resource_plan = True
     persistent_resource = True
@@ -336,17 +390,10 @@ class AgyInteractiveResource:
         return evidence
 
     def run(self, card):
-        value, evidence = self._turn('独立审查下面的冻结任务卡及其明确授权材料。'
-            '在当日工作回执中写完整审查正文，并在头部注明审查结论和实际证据引用。'
-            '注明未执行的测试，不伪造评分、执行证据或用户批准。',
-            json.dumps(card,ensure_ascii=False),record_id=card.get('assignment_id'),
-            task_id=card.get('task_id') or card.get('review_request_id'),step_code=card.get('step_code'))
-        verdict=value['metadata'].get('审查结论')
-        if value['status']!='completed' or verdict not in {'PASS','FAIL','NEEDS_INFO'} or not value['evidence_refs']:
-            raise ReviewReceiptError('review_fields_missing','工作正文已收取并保存在当日文件；审查字段不全，未形成有效审查结论。')
-        text=_sanitize_answer(value['body'])
-        return {'verdict':verdict,'findings':text,'evidence_refs':value['evidence_refs'],
-                'execution_evidence':dict(evidence,output_sha256=hashlib.sha256(text.encode()).hexdigest())}
+        value, evidence = self._turn(REVIEW_RUN_INSTRUCTION,
+            json.dumps(card, ensure_ascii=False), record_id=card.get('assignment_id'),
+            task_id=card.get('task_id') or card.get('review_request_id'), step_code=card.get('step_code'))
+        return parse_review_receipt(value, card, evidence)
 
     def run_task(self,task_id,step_code,instruction,materials):
         if not isinstance(instruction,str) or not instruction.strip():raise ValueError('需要明确授权的工作内容和范围')

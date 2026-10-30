@@ -79,7 +79,7 @@ class WorkdayReceipts:
             '\n文件已存在时完整保留原文，只在末尾追加。'+details+
             '\n回执按下面最小格式写入文件，正文用自然语言或Markdown，不要求JSON：\n\n'+marker+
             '\n任务ID: '+task_id+'\n步骤码: '+step_code+'\n状态: completed\n'+
-            ('审查结论: PASS 或 FAIL 或 NEEDS_INFO\n证据引用: 实际检查的证据（可重复此行）\n' if review else '')+
+            ('审查结论: PASS 或 FAIL 或 NEEDS_INFO\n证据引用: 实际检查的证据（可重复此行）\n审查类型: new_experience 或 revalidation 或 reuse_change\n评分: 0–10 的数\n适用条件: 适用条件与限制说明\n重复经验: 可空\n' if review else '')+
             '---\n'+body_template+'\n'+done+
             '\n\n最后的done行必须在正文和文件内容全部写完后才写入；它是本轮文件回执完成信号。'
             '不用在终端复述完整结果，也不用等待终端动画结束。\n')

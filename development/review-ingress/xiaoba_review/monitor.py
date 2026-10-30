@@ -111,19 +111,32 @@ class OpenReviewModule(Module):
                 prepared=self.pool.runtime.prepare(['dsh','peer'],{k:data[k+'_id'] for k in ('dsh','peer') if data.get(k+'_id')},task_type)
                 if prepared['route']!='run':return prepared
                 for kind,node_id in prepared['selections'].items():data[kind+'_id']=node_id
+            review_type = data.get('review_type')
+            if not review_type:
+                raise ValueError('创建审查任务卡必须指定审查类型 (review_type)')
+            if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:
+                raise ValueError('未知审查类型')
+            data.setdefault('contract_version', 2)
             return self.store.create(**data)
         return self.perform(action)
 
     def dispatch(self, req):
         data=req.json()
         def action():
-            if set(data)-{'candidate_id','scope','evidence','request_id','selections','task_type'} or not data.get('request_id'):
+            if set(data)-{'candidate_id','scope','evidence','request_id','selections','task_type','review_type','duplicate_of','contract_version'} or not data.get('request_id'):
                 raise ValueError('直接运行需要稳定任务请求ID、候选、范围和证据')
             prepared=self.pool.runtime.prepare(['dsh','peer'],data.get('selections'),data.get('task_type'))
             if prepared['route']!='run':return prepared
             selected=prepared['selections']
+            review_type = data.get('review_type')
+            contract_version = data.get('contract_version')
+            if review_type is not None:
+                if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:
+                    raise ValueError('未知审查类型')
+                contract_version = contract_version or 2
             request=self.store.create(data['candidate_id'],selected['dsh'],selected['peer'],data['scope'],data['evidence'],
-                request_id=data['request_id'],dsh_channel='backend_adapter',peer_channel='backend_adapter')
+                request_id=data['request_id'],dsh_channel='backend_adapter',peer_channel='backend_adapter',
+                review_type=review_type, duplicate_of=data.get('duplicate_of'), contract_version=contract_version)
             # Existing successful receipts are retained on exact request retries.
             for assignment in request['assignments']:
                 if any(r['assignment_id']==assignment['id'] and r['status']=='valid' for r in request['receipts']):continue
