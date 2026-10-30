@@ -2,7 +2,7 @@
 
 ## 架构拓扑（Agent 先读）
 
-用户维护的架构设计底座快照见 [docs/architecture-topology](docs/architecture-topology/README.md)：从 [AGENT_READER.md](docs/architecture-topology/AGENT_READER.md) 读每个模块的状态、用户意图、问题与待办和按日期的变更历史。
+用户维护的架构设计底座快照见 [docs/architecture-topology](docs/architecture-topology/README.md)：从 [AGENT_READER.md](docs/architecture-topology/AGENT_READER.md) 读每个模块的状态、用户意图、问题与待办和按日期的变更历史；待裁决项和旧规则覆盖见 [DECISIONS.md](docs/architecture-topology/DECISIONS.md)，图上画不出来的规则见 [CONTRACTS.md](docs/architecture-topology/CONTRACTS.md)。
 
 ## 当前云端开发
 
@@ -36,5 +36,5 @@
 
 运行数据库、凭据、配置里的模型线路覆盖文件、第二大脑里的经验与内容笔记、项目素材。发布包本身不含这些。
 
-文件里有本机的目录路径（`/Users/…`），所以这个仓库保持私有。测试文件里形如 `sk-…`、`AKIA…EXAMPLE` 的字符串是测试用的假凭据，不是真的。
+文件里有本机的目录路径（`/Users/…`）和工作记录，这个仓库应保持私有（2026-10-30 核对时它是公开的，是否改回由用户决定）。测试文件里形如 `sk-…`、`AKIA…EXAMPLE` 的字符串是测试用的假凭据，不是真的。
 

@@ -1,0 +1,137 @@
+[
+  {"name": "① 日常任务：宿主直接处理，没有经验", "steps": [
+    {"e": [["user", "host"]], "say": "用户下达一个任务"},
+    {"e": [["host", "knowledge"], ["host", "entry"]], "say": "宿主查知识与能力，同时走统一入口"},
+    {"e": [["entry", "routing"]], "say": "入口校验通过，由宿主判断走哪条路"},
+    {"e": [["routing", "direct"]], "say": "日常任务，宿主直接处理"},
+    {"e": [["direct", "work"]], "say": "宿主把活干完"},
+    {"e": [["work", "result"]], "say": "写入任务结果与审计回执"},
+    {"e": [["result", "delivery"]], "say": "用户说“交付”"},
+    {"e": [["delivery", "archive"]], "say": "归档；没有新经验，也没用经验，到此结束"}
+  ]},
+  {"name": "② 新经验：审查员打分，评分中心放行进初审", "steps": [
+    {"e": [["delivery", "new_exp"]], "say": "交付时宿主写出新经验"},
+    {"e": [["new_exp", "candidate"]], "say": "写入前过 B19，登记为候选"},
+    {"e": [["candidate", "backends"]], "say": "送审查员打分"},
+    {"e": [["backends", "card"]], "say": "从 Agent 池取节点，交身份任务卡"},
+    {"e": [["card", "dsh"], ["card", "peer"]], "say": "派给至少两个审查员"},
+    {"e": [["dsh", "receipts"], ["peer", "receipts"]], "say": "回执进统一回执入口"},
+    {"e": [["receipts", "review_evidence"]], "say": "核实回执确实出自审查员、字段齐全"},
+    {"e": [["review_evidence", "confirmed"]], "say": "核对独立性，汇总各审查员的分数"},
+    {"e": [["confirmed", "evidence"]], "say": "分数交评分中心判定"},
+    {"e": [["evidence", "initial"]], "say": "分歧大、平均分 ≥ 6 或与已有经验重复，进用户初审；否则丢弃"}
+  ]},
+  {"name": "③ 待验证经验：第一轮通过，终审后入库", "steps": [
+    {"e": [["initial", "initial_pass"]], "say": "用户初审通过"},
+    {"e": [["initial_pass", "evidence_port"]], "say": "进入核验"},
+    {"e": [["evidence_port", "run1"]], "say": "开始第一轮"},
+    {"e": [["run1", "pending_index"]], "say": "经验进入待验证索引"},
+    {"e": [["host", "retrieve"], ["pending_index", "retrieve"]], "say": "新任务进来，宿主查到相似的待验证经验"},
+    {"e": [["retrieve", "apply"]], "say": "核对适用条件"},
+    {"e": [["apply", "worker"]], "say": "拉取经验和工具清单，交编排器"},
+    {"e": [["worker", "backends"]], "say": "按角色派活"},
+    {"e": [["backends", "card"]], "say": "身份任务卡区分协作员和审查员"},
+    {"e": [["card", "collab"]], "say": "协作员用这条经验干活"},
+    {"e": [["collab", "receipts"], ["collab", "work"]], "say": "交回执，产出交宿主核验"},
+    {"e": [["card", "dsh"], ["card", "peer"]], "say": "用完后派审查员"},
+    {"e": [["dsh", "receipts"], ["peer", "receipts"]], "say": "审查回执进入口"},
+    {"e": [["receipts", "review_evidence"]], "say": "核实回执"},
+    {"e": [["review_evidence", "confirmed"]], "say": "汇总结论"},
+    {"e": [["confirmed", "feedback"]], "say": "审查结论进验证材料，等交付事件"},
+    {"e": [["work", "result"]], "say": "任务完成"},
+    {"e": [["result", "delivery"]], "say": "用户说“交付”"},
+    {"e": [["delivery", "used"], ["apply", "used"]], "say": "读应用记录，确认本次确实用过"},
+    {"e": [["used", "feedback"]], "say": "交付事件也到了"},
+    {"e": [["feedback", "v1_result"]], "say": "两样都到，写第一轮结果"},
+    {"e": [["v1_result", "final_queue"]], "say": "全部审查员通过，自动进待终审"},
+    {"e": [["final_queue", "final_user"]], "say": "用户人工终审"},
+    {"e": [["final_user", "publish_checks"]], "say": "终审通过，做发布检查"},
+    {"e": [["publish_checks", "formal"]], "say": "写入正式经验"},
+    {"e": [["formal", "knowledge"]], "say": "以后按永久总分供检索"}
+  ]},
+  {"name": "④ 第一轮失败，第二轮通过", "steps": [
+    {"e": [["feedback", "v1_result"]], "say": "第一轮有审查员 FAIL"},
+    {"e": [["v1_result", "failed1"]], "say": "保留失败证据"},
+    {"e": [["failed1", "run2"]], "say": "开始第二轮"},
+    {"e": [["run2", "pending_index"]], "say": "再次进入待验证索引"},
+    {"e": [["pending_index", "retrieve"]], "say": "等下一个相似任务"},
+    {"e": [["retrieve", "apply"]], "say": "核对适用条件并实际应用"},
+    {"e": [["confirmed", "feedback"], ["used", "feedback"]], "say": "审查结论和交付事件都到了"},
+    {"e": [["feedback", "v2_result"]], "say": "写第二轮结果"},
+    {"e": [["v2_result", "diff"]], "say": "通过，核对两轮差异"},
+    {"e": [["diff", "final_queue"]], "say": "带差异进待终审"},
+    {"e": [["final_queue", "final_user"]], "say": "用户人工终审"}
+  ]},
+  {"name": "⑤ 两轮都没过，经验退役", "steps": [
+    {"e": [["feedback", "v2_result"]], "say": "第二轮未通过"},
+    {"e": [["v2_result", "retired"]], "say": "直接退役，停止检索和复用"},
+    {"e": [["retired", "retire_view"]], "say": "在监看中心展示两轮记录和原因"},
+    {"e": [["retire_view", "delete"]], "say": "用户确认后才手动删除"}
+  ]},
+  {"name": "⑥ 复用正式经验，没有改动", "steps": [
+    {"e": [["host", "knowledge"]], "say": "宿主检索到正式经验"},
+    {"e": [["knowledge", "apply"]], "say": "确实用到时登记"},
+    {"e": [["routing", "direct"]], "say": "宿主直接处理"},
+    {"e": [["direct", "work"]], "say": "把活干完"},
+    {"e": [["work", "result"]], "say": "任务完成"},
+    {"e": [["result", "delivery"]], "say": "用户说“交付”"},
+    {"e": [["delivery", "used"], ["apply", "used"]], "say": "读应用记录，确认是复用的正式经验"},
+    {"e": [["used", "feedback"]], "say": "写入验证材料"},
+    {"e": [["feedback", "nf2evuw"]], "say": "复用计分计数"},
+    {"e": [["nf2evuw", "evidence"]], "say": "计数和永久总分存档"}
+  ]},
+  {"name": "⑦ 复用时改动了经验，提交终审", "steps": [
+    {"e": [["feedback", "nf2evuw"]], "say": "这次复用有改动，写明改了哪里"},
+    {"e": [["nf2evuw", "final_user"]], "say": "提交裁决中心"},
+    {"e": [["final_user", "publish_checks"]], "say": "用户通过，做发布检查"},
+    {"e": [["publish_checks", "formal"]], "say": "存成新版本，旧版本保留"}
+  ]},
+  {"name": "⑧ 14 天没用过", "steps": [
+    {"e": [["formal", "nf2evuw"]], "say": "复用计分发现 14 天未被调用"},
+    {"e": [["nf2evuw", "final_user"]], "say": "合并成一批提交裁决中心"},
+    {"e": [["final_user", "delete"], ["final_user", "nf2evuw"]], "say": "用不上就删除；有价值就保留，重新计时"}
+  ]},
+  {"name": "⑨ 用户试错后放弃", "steps": [
+    {"e": [["routing", "direct"]], "say": "用户临时想试一下，宿主直接做"},
+    {"e": [["direct", "work"]], "say": "试了不行，用户放弃，没有交付"},
+    {"e": [["work", "new_exp"]], "say": "过程中有值得留的经验，直接登记"},
+    {"e": [["new_exp", "candidate"]], "say": "和普通新经验一样送审"}
+  ]},
+  {"name": "⑩ 审查员掉线", "steps": [
+    {"e": [["card", "dsh"]], "say": "派给审查员"},
+    {"e": [["dsh", "receipts"]], "say": "连续无进度，判掉线"},
+    {"e": [["receipts", "review_evidence"]], "say": "已完成部分和掉线情况交这里"},
+    {"e": [["review_evidence", "ask"]], "say": "暂停，问用户换谁"},
+    {"e": [["ask", "host"]], "say": "用户定了，宿主继续"}
+  ]},
+  {"name": "⑪ 审查员要补材料（NEEDS_INFO）", "steps": [
+    {"e": [["receipts", "review_evidence"]], "say": "回执字段齐全，结论是 NEEDS_INFO"},
+    {"e": [["review_evidence", "confirmed"]], "say": "汇总结论"},
+    {"e": [["confirmed", "ask"]], "say": "暂停补材料，不算失败，不耗轮次"},
+    {"e": [["ask", "host"]], "say": "宿主补材料或重新派活"}
+  ]},
+  {"name": "⑫ 全部审查员不可用：宿主兜底", "steps": [
+    {"e": [["candidate", "backends"]], "say": "新经验要审查，但没有可用审查员"},
+    {"e": [["backends", "evidence"]], "say": "宿主独立审查，标明不是独立审查"},
+    {"e": [["evidence", "initial"]], "say": "带着评分和审查结果进用户初审"}
+  ]},
+  {"name": "⑬ 终审后发布检查没过", "steps": [
+    {"e": [["final_user", "publish_checks"]], "say": "用户终审通过"},
+    {"e": [["publish_checks", "final_user"]], "say": "检查未过，不写入，退回并说明原因"}
+  ]},
+  {"name": "⑭ 需要追问：澄清后再继续", "steps": [
+    {"e": [["routing", "ask"]], "say": "宿主拿不准，问用户"},
+    {"e": [["ask", "host"]], "say": "用户澄清"},
+    {"e": [["host", "entry"]], "say": "重新进入"},
+    {"e": [["entry", "routing"]], "say": "这次知道走哪条路了"}
+  ]},
+  {"name": "⑮ 协作员领活", "steps": [
+    {"e": [["routing", "queue"]], "say": "要派给协作员"},
+    {"e": [["queue", "worker"]], "say": "排队交给编排器"},
+    {"e": [["worker", "backends"]], "say": "按角色从 Agent 池挑节点"},
+    {"e": [["backends", "card"]], "say": "身份任务卡派活"},
+    {"e": [["card", "collab"]], "say": "协作员领活"},
+    {"e": [["collab", "receipts"], ["collab", "work"]], "say": "交回执，产出交宿主核验和集成"},
+    {"e": [["work", "result"]], "say": "任务完成"}
+  ]}
+]

@@ -27,9 +27,10 @@ def render(topo, changes, submissions=()):
            "快照保存时间：%s（Asia/Shanghai）　节点 %d · 连线 %d · 分组 %d" % (saved, len(nodes), len(edges), len(groups)), "",
            "## 读前须知",
            "- 本页是用户维护的小八架构设计底座。“用户意图”是用户想要的样子，代码与之不符时以用户意图为准并向用户报告差异，不自行改图。",
-           "- 状态：已上线＝v1.6.4 生产已有；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。",
+           "- 状态：已上线＝节点的基础能力 v1.6.4 已有，新意图是否实现看“问题/待办”；候选已开发＝v1.6.5 候选代码有、未上线；待实现＝设计有、代码无；旧执行链＝保留但不是新设计；待用户裁定＝有分歧，未定前不要实现。",
            "- 动手前先看“问题与待办”和“变更历史”，避免重做用户已删除或已改掉的东西。",
-           "- “用户原话”是用户亲笔写的大白话，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。", ""]
+           "- “用户原话”是用户亲笔写的大白话，按时间列出，优先级最高；专业描述是 Agent 整理的，两者冲突时以原话为准。标“待整理”的节点，专业描述还没跟上用户最新原话。",
+           "- “待确认”是还没定的事，括号里的建议不算用户决定；“裁决 N”的完整题目见 DECISIONS.md。", ""]
     pending = [s for s in submissions if s.get("status") != "done"]
     if pending:
         out.append("## 待 Agent 整理的提交（%d）" % len(pending))
@@ -47,9 +48,7 @@ def render(topo, changes, submissions=()):
             sub = "：“%s”" % n["sub"] if n.get("sub") else ""
             mark = "　［待整理］" if n.get("pending") else ""
             out.append("- 【%s】%s（%s）%s%s" % (STATUS.get(n["status"], n["status"]), n["title"], n["id"], sub, mark))
-            said = [h for h in n.get("history", []) if h.get("by") == "user"]
-            if said:
-                out.append("  - 用户原话（%s）：%s" % (stamp(said[-1]["at"]), said[-1]["text"]))
+            out += ["  - 用户原话（%s）：%s" % (stamp(h["at"]), h["text"]) for h in n.get("history", []) if h.get("by") == "user"]
             if (n.get("note") or "").strip():
                 out.append("  - 用户草稿（未提交）：" + n["note"].strip())
             if n.get("intent"):
