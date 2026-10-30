@@ -274,20 +274,6 @@
    "to": "result"
   },
   {
-   "from": "evidence",
-   "id": "e5lpjfx",
-   "kind": "normal",
-   "label": "",
-   "to": "scoring"
-  },
-  {
-   "from": "formal",
-   "id": "e0zxscs",
-   "kind": "normal",
-   "label": "",
-   "to": "scoring"
-  },
-  {
    "from": "formal",
    "id": "ev5sm1m",
    "kind": "normal",
@@ -347,28 +333,21 @@
    "from": "run1",
    "id": "e0gmdi8",
    "kind": "normal",
-   "label": "",
+   "label": "第一轮",
    "to": "pending_index"
   },
   {
    "from": "backends",
    "id": "eyjexw4",
    "kind": "normal",
-   "label": "",
+   "label": "交付＝通过 / 没交付＝失败",
    "to": "v1_result"
-  },
-  {
-   "from": "run2",
-   "id": "eptw7u9",
-   "kind": "normal",
-   "label": "",
-   "to": "backends"
   },
   {
    "from": "backends",
    "id": "e02a7pr",
    "kind": "normal",
-   "label": "",
+   "label": "交付＝通过 / 没交付＝失败",
    "to": "v2_result"
   },
   {
@@ -391,13 +370,6 @@
    "kind": "normal",
    "label": "",
    "to": "confirmed"
-  },
-  {
-   "from": "scoring",
-   "id": "e37770060",
-   "kind": "normal",
-   "label": "提交待退役 / 长期未用经验",
-   "to": "final_user"
   },
   {
    "from": "final_user",
@@ -426,13 +398,6 @@
    "kind": "normal",
    "label": "审查员干活评分",
    "to": "evidence"
-  },
-  {
-   "from": "failed1",
-   "id": "euemsvg",
-   "kind": "normal",
-   "label": "",
-   "to": "retrieve"
   },
   {
    "from": "formal",
@@ -475,6 +440,34 @@
    "kind": "normal",
    "label": "保留：取消本轮提交，重新计分",
    "to": "nf2evuw"
+  },
+  {
+   "from": "formal",
+   "id": "evrk527",
+   "kind": "normal",
+   "label": "",
+   "to": "knowledge"
+  },
+  {
+   "from": "evidence",
+   "id": "ejc6xfr",
+   "kind": "normal",
+   "label": "",
+   "to": "worker"
+  },
+  {
+   "from": "failed1",
+   "id": "e17417668",
+   "kind": "normal",
+   "label": "",
+   "to": "run2"
+  },
+  {
+   "from": "run2",
+   "id": "e17417669",
+   "kind": "normal",
+   "label": "第二轮",
+   "to": "pending_index"
   }
  ],
  "groups": [
@@ -514,7 +507,7 @@
    "y": 1327
   }
  ],
- "lastSubmitAt": 1793332620730,
+ "lastSubmitAt": 1793341105673,
  "nodes": [
   {
    "desc": "",
@@ -551,10 +544,20 @@
    "y": 116
   },
   {
-   "desc": "",
+   "desc": "正式经验库按永久总分从高到低提供给本节点；宿主接任务时在这里检索复用（复用由「复用计分」计数）。",
    "expanded": false,
    "g": "g1",
-   "history": [],
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "desc": ""
+     },
+     "by": "agent",
+     "text": "写入：正式经验按永久总分供宿主检索（用户已接线）"
+    }
+   ],
    "id": "knowledge",
    "intent": "索引只定位，命中后回读原文。",
    "issues": "",
@@ -1295,16 +1298,26 @@
      "by": "agent",
      "submission": "s1793332620730",
      "text": "旧裁判已删，通过与否以当轮独立审查证据为准"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "核验材料接入后开始第一轮隔离验证：经验进入「待验证经验独立索引」，在后续相似真实任务中复用，由 Agent 池审查给出「第一轮结果」。",
+      "sub": "隔离执行、必要检查与独立审查"
+     },
+     "by": "agent",
+     "text": "两轮入口对称；以是否交付判定本轮"
     }
    ],
    "id": "run1",
-   "intent": "核验材料接入后开始第一轮隔离验证：经验进入「待验证经验独立索引」，在后续相似真实任务中复用，由 Agent 池审查给出「第一轮结果」。",
-   "issues": "问题3：外部 FAIL / NEEDS_INFO 会让本轮卡住而不是记为失败（experience_workflow.py:700）——处理方式待用户确认\n代码仍读 judge.decided（validation_evidence.py:100），待改",
+   "intent": "核验材料接入后开始第一轮：经验进入「待验证经验独立索引」，在后续相似真实任务中由协作员使用。同一条经验在两个相似但不完全一样的真实任务里各用一次，各得一轮结论：协作员用这条经验完成工作后，交付了＝本轮通过，没交付＝本轮失败。两轮入口对称。",
+   "issues": "代码仍读 judge.decided（validation_evidence.py:100），待改\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）",
    "note": "",
    "pending": false,
    "refs": "experience_workflow.py advance_validation_round",
    "status": "dev",
-   "sub": "隔离执行、必要检查与独立审查",
+   "sub": "进入待验证索引，在相似真实任务中复用",
    "title": "执行第一轮隔离验证",
    "x": 320,
    "y": 756
@@ -1313,9 +1326,19 @@
    "desc": "",
    "expanded": false,
    "g": "g3",
-   "history": [],
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "写入判定依据"
+    }
+   ],
    "id": "v1_result",
-   "intent": "",
+   "intent": "第一轮结论：协作员用这条经验完成相似真实任务后，交付了＝通过，没交付＝失败。",
    "issues": "",
    "note": "",
    "pending": false,
@@ -1467,10 +1490,19 @@
      "by": "agent",
      "submission": "s1793332620730",
      "text": "按原话：失败后直接回相似任务检索"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "第一轮验证失败后保留失败证据，直接提交「后续相似真实任务检索」，在后续相似真实任务中进行第二轮验证。"
+     },
+     "by": "agent",
+     "text": "改为经「执行第二轮重新验证」进入索引，与第一轮对称"
     }
    ],
    "id": "failed1",
-   "intent": "第一轮验证失败后保留失败证据，直接提交「后续相似真实任务检索」，在后续相似真实任务中进行第二轮验证。",
+   "intent": "第一轮失败后保留失败证据，交「执行第二轮重新验证」，再进入待验证索引，在后续相似真实任务中进行第二轮。",
    "issues": "",
    "note": "",
    "pending": false,
@@ -1497,16 +1529,26 @@
      "by": "agent",
      "submission": "s1793332620730",
      "text": "旧裁判已删，通过与否以当轮独立审查证据为准"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "",
+      "sub": "针对首轮问题采取措施并重新核验"
+     },
+     "by": "agent",
+     "text": "两轮入口对称；以是否交付判定本轮"
     }
    ],
    "id": "run2",
-   "intent": "",
-   "issues": "问题3：外部 FAIL / NEEDS_INFO 会让本轮卡住而不是记为失败（experience_workflow.py:700）——处理方式待用户确认\n代码仍读 judge.decided（validation_evidence.py:100），待改",
+   "intent": "第一轮失败后开始第二轮：经验再次进入「待验证经验独立索引」，在另一个相似但不完全一样的真实任务中由协作员使用。同一条经验在两个相似但不完全一样的真实任务里各用一次，各得一轮结论：协作员用这条经验完成工作后，交付了＝本轮通过，没交付＝本轮失败。两轮入口对称。",
+   "issues": "代码仍读 judge.decided（validation_evidence.py:100），待改\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）",
    "note": "",
    "pending": false,
    "refs": "",
    "status": "dev",
-   "sub": "针对首轮问题采取措施并重新核验",
+   "sub": "第一轮失败后，进入待验证索引再用一次",
    "title": "执行第二轮重新验证",
    "x": 1320,
    "y": 785
@@ -1515,9 +1557,19 @@
    "desc": "",
    "expanded": false,
    "g": "g3",
-   "history": [],
+   "history": [
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": ""
+     },
+     "by": "agent",
+     "text": "写入判定依据"
+    }
+   ],
    "id": "v2_result",
-   "intent": "",
+   "intent": "第二轮结论：协作员用这条经验完成相似真实任务后，交付了＝通过，没交付＝失败。",
    "issues": "",
    "note": "",
    "pending": false,
@@ -1766,10 +1818,19 @@
      "by": "agent",
      "submission": "s1793284765968",
      "text": "写入存放路径与掉线判定"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。派活后某个审查员（协作员）连续 120 秒没有任何工作进度，视为掉线：把它的完成回执或已完成的部分上传「实际来源确认与独立性核对」核实；健康的继续写入本入口。"
+     },
+     "by": "agent",
+     "text": "写入掉线后暂停任务"
     }
    ],
    "id": "receipts",
-   "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。派活后某个审查员（协作员）连续 120 秒没有任何工作进度，视为掉线：把它的完成回执或已完成的部分上传「实际来源确认与独立性核对」核实；健康的继续写入本入口。",
+   "intent": "统一存放任务卡发布记录和完成回执，路径在工作区当天台账文件夹内，与其他文件分开。派活后某个审查员（协作员）连续 120 秒没有任何工作进度，视为掉线：把它的完成回执或已完成部分上传「实际来源确认与独立性核对」核实，任务暂停，等用户决定由哪个 Agent 接续。",
    "issues": "问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡",
    "note": "",
    "pending": false,
@@ -1809,10 +1870,19 @@
      },
      "by": "agent",
      "text": "写明下游：只送评分中心，审查结论经 Agent 池交回"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "根据统一回执入口的回执判定双审是否通过。有审查员掉线时，核实其已完成部分，并通知宿主 Agent 主动问用户换哪个备用 Agent。只暂停经验审查，不拦截宿主的任务交付。"
+     },
+     "by": "agent",
+     "text": "写入审查结论规则与掉线暂停"
     }
    ],
    "id": "confirmed",
-   "intent": "根据统一回执入口的回执判定双审是否通过。有审查员掉线时，核实其已完成部分，并通知宿主 Agent 主动问用户换哪个备用 Agent。只暂停经验审查，不拦截宿主的任务交付。",
+   "intent": "根据统一回执入口的回执判定审查是否通过。审查结论：FAIL＝本轮未通过；NEEDS_INFO＝先暂停、由宿主补材料，不算失败；全部审查员通过才算通过；每位审查员的结论分开记录。\n审查员 / 协作员掉线（派活后 120 秒无任何进度）时：任务流程暂停，宿主 Agent 通知用户——谁挂了、任务干到哪一步、接续任务由哪个 Agent 执行（用户决定）。区别：审查结论不通过只挡经验、不拦交付；审查员掉线则暂停任务。",
    "issues": "问题5：独立性只比对 source_ref 字符串（store.py:164）",
    "note": "",
    "pending": false,
@@ -1993,61 +2063,6 @@
   {
    "desc": "",
    "expanded": false,
-   "g": "g5",
-   "history": [
-    {
-     "agent": "Claude",
-     "at": 1793279932390,
-     "before": {
-      "intent": "接替已退役的策略进化：什么 Agent 配什么模型得什么评分，用于同类任务择优。",
-      "issues": "是否计成本：总纲 2.5 列了成本，HANDOFF 写“不记录资源投入”——待用户裁定\n审查回执尚未进入周评分",
-      "refs": "review-ingress/xiaoba_review/task_scoring.py",
-      "status": "decide",
-      "sub": "7 天一周期（B5）"
-     },
-     "by": "agent",
-     "submission": "s1793279767530",
-     "text": "写入：只给 Agent＋模型打分，按角色择优；成本问题按用户最新口径解决"
-    },
-    {
-     "agent": "Claude",
-     "at": 1793289377700,
-     "before": {
-      "intent": "基于对「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」节点记录的评分信息依据，对「正式经验与长期记忆索引」节点进行核实匹配，累计3次被用户否定的经验，提交裁决中心待退役经验。累计14天未被用户主动调用和小八索引调用的经验，提交裁决中心待保留经验。",
-      "issues": "审查回执尚未进入周评分\n择优仍按 dsh / peer 槽位筛选（node_runtime.py:256 起），需改为按角色",
-      "status": "dev",
-      "sub": "向裁决中心提交退役经验"
-     },
-     "by": "agent",
-     "submission": "s1793284765968",
-     "text": "改为经验淘汰规则；接到裁决中心"
-    },
-    {
-     "agent": "Claude",
-     "at": 1793332712354,
-     "before": {
-      "issues": "未实现：3 次计数、14 天未调用计时"
-     },
-     "by": "agent",
-     "submission": "s1793332620730",
-     "text": "标记：与「复用计分」职责重叠，待确认是否合并"
-    }
-   ],
-   "id": "scoring",
-   "intent": "依据评分中心的记录核对正式经验：① 用了没交付累计 3 次（−1 ×3）的经验，提交裁决中心待退役；② 累计 14 天未被用户主动调用、也未被小八索引调用的经验，提交裁决中心，由用户决定退役，或保留并重新计数。",
-   "issues": "未实现：3 次计数、14 天未调用计时\n待确认：与「复用计分」职责重叠，是否合并",
-   "note": "",
-   "pending": false,
-   "refs": "review-ingress/xiaoba_review/task_scoring.py\nreview-ingress/xiaoba_review/node_runtime.py:256（择优）\nreview-ingress/xiaoba_review/agent-pool.js:76（本周表现）\nreview-ingress/tests/test_workday.py:143",
-   "status": "todo",
-   "sub": "向裁决中心提交待退役 / 长期未用经验",
-   "title": "经验淘汰",
-   "x": 1320,
-   "y": 1365
-  },
-  {
-   "desc": "",
-   "expanded": false,
    "g": "g3",
    "history": [
     {
@@ -2067,21 +2082,32 @@
      "by": "agent",
      "submission": "s1793332620730",
      "text": "写入：正式经验的复用计数器"
+    },
+    {
+     "agent": "Claude",
+     "at": 1793341174176,
+     "before": {
+      "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。每条正式经验一个计数：用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰；累计 14 天未被用户主动调用、也未被小八索引调用，提交裁决中心。用户觉得用不上就删除；觉得还有保留价值就取消本轮提交，本节点对该经验重新计分。计数和永久总分交评分中心存档（工具/模型综合数据）。",
+      "issues": "待确认：是否把「经验淘汰」并入本节点\n未实现",
+      "sub": "正式经验复用计数器：+1 / −1、晋升 / 淘汰、14 天未用"
+     },
+     "by": "agent",
+     "text": "并入原「经验淘汰」"
     }
    ],
    "id": "nf2evuw",
-   "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。每条正式经验一个计数：用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰；累计 14 天未被用户主动调用、也未被小八索引调用，提交裁决中心。用户觉得用不上就删除；觉得还有保留价值就取消本轮提交，本节点对该经验重新计分。计数和永久总分交评分中心存档（工具/模型综合数据）。",
-   "issues": "待确认：是否把「经验淘汰」并入本节点\n未实现",
+   "intent": "只服务正式经验的复用（与新经验的两轮复验无关）。每条正式经验一个计数：用了且交付 +1，累计 3 次晋升；用了没交付 −1，累计 3 次淘汰；累计 14 天未被用户主动调用、也未被小八索引调用，提交裁决中心。用户觉得用不上就删除；觉得还有保留价值就取消本轮提交，本节点对该经验重新计分。计数和永久总分交评分中心存档（工具/模型综合数据）。\n原「经验淘汰」已并入本节点：用了没交付累计 3 次，或 14 天未被调用，都由本节点提交裁决中心。",
+   "issues": "未实现：+1 / −1 计数、3 次晋升 / 淘汰、14 天未调用计时",
    "note": "",
    "pending": false,
    "refs": "",
    "status": "todo",
-   "sub": "正式经验复用计数器：+1 / −1、晋升 / 淘汰、14 天未用",
+   "sub": "正式经验复用计数器：+1 / −1、晋升 / 淘汰、14 天未用 → 裁决中心",
    "title": "复用计分",
    "x": 2044,
    "y": 888
   }
  ],
- "savedAt": 1793332712354,
+ "savedAt": 1793341174176,
  "version": 1
 }
