@@ -16,7 +16,7 @@
 | [CONTRACTS.md](CONTRACTS.md) | 图上画不出来的规则：审查调用、状态表、交付结算、谁来跑、数据以谁为准 |
 | [scenarios.json](scenarios.json) | 设计场景，也是页面“模拟运行”的来源 |
 | [module-map.json](module-map.json) | 节点到九模块的归属 |
-| [check_topology.py](check_topology.py) | 同步后运行：查悬空连线、分叉说明、场景能否走通、读本是否最新 |
+| [check_topology.py](check_topology.py) | 同步后运行：查悬空连线、分叉说明、场景能否走通、读本是否最新。不查页面内置的基线（BASE）、文字语义，也不查和代码是否一致 |
 
 ## 规则
 

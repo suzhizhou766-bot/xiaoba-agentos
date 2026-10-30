@@ -17,7 +17,7 @@
 - development/architecture-center：架构与升级发布工作区及候选模块登记。
 - development/interface：候选入口草稿，未替换已安装入口。
 
-源码及文件模式列在[SOURCE-MANIFEST.json](SOURCE-MANIFEST.json)。本机项目工作区不是云端可用路径；运行时应显式指定仓库核心与监看源码及隔离runtime，不使用本地验收数据库冒充空白部署。
+源码及文件模式列在[SOURCE-MANIFEST.json](SOURCE-MANIFEST.json)。这份清单是 2026-10-28 的时点记录：`development/architecture-center/modules/review-calls/SPEC.md` 之后有意改过（提交 `13f1b68`），逐文件核对时这一项不符是预期的，清单不重算。本机项目工作区不是云端可用路径；运行时应显式指定仓库核心与监看源码及隔离runtime，不使用本地验收数据库冒充空白部署。
 
 ## 保留的回执与评分要求
 
