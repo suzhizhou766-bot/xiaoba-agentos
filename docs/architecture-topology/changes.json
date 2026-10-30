@@ -1,5 +1,1679 @@
 [
  {
+  "at": 1793332712372,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "scoring",
+  "text": "整理「经验淘汰」：标记：与「复用计分」职责重叠，待确认是否合并",
+  "id": "c179333271235418"
+ },
+ {
+  "at": 1793332712371,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "run2",
+  "text": "整理「执行第二轮重新验证」：旧裁判已删，通过与否以当轮独立审查证据为准",
+  "id": "c179333271235417"
+ },
+ {
+  "at": 1793332712370,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "run1",
+  "text": "整理「执行第一轮隔离验证」：旧裁判已删，通过与否以当轮独立审查证据为准",
+  "id": "c179333271235416"
+ },
+ {
+  "at": 1793332712369,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "diff",
+  "text": "整理「核对两轮差异与原因」：写入：各审查员结论分开记录",
+  "id": "c179333271235415"
+ },
+ {
+  "at": 1793332712368,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "peer",
+  "text": "整理「审查节点 B」：写入：A / B 只是示意，最少两个",
+  "id": "c179333271235414"
+ },
+ {
+  "at": 1793332712367,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "dsh",
+  "text": "整理「审查节点 A」：写入：A / B 只是示意，最少两个",
+  "id": "c179333271235413"
+ },
+ {
+  "at": 1793332712366,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "backends",
+  "text": "整理「后台执行适配器 · Agent 池」：写入：审查员最少两个，宿主按评分选用",
+  "id": "c179333271235412"
+ },
+ {
+  "at": 1793332712365,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "card",
+  "text": "整理「身份任务卡」：写入：审查员最少两个，宿主按评分选用",
+  "id": "c179333271235411"
+ },
+ {
+  "at": 1793332712364,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "used",
+  "text": "整理「本次确实应用的旧候选」：补充：分清复验与复用",
+  "id": "c179333271235410"
+ },
+ {
+  "at": 1793332712363,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "failed1",
+  "text": "整理「保留第一轮失败证据」：按原话：失败后直接回相似任务检索",
+  "id": "c179333271235409"
+ },
+ {
+  "at": 1793332712362,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "apply",
+  "text": "整理「核对适用条件并实际应用」：按原话：辅助编排器拉取经验与相关工具",
+  "id": "c179333271235408"
+ },
+ {
+  "at": 1793332712361,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "retrieve",
+  "text": "整理「后续相似真实任务检索」：按原话：只为待验证经验做相似任务匹配",
+  "id": "c179333271235407"
+ },
+ {
+  "at": 1793332712360,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "formal",
+  "text": "整理「正式经验与长期记忆索引」：写入：晋升 / 淘汰只属于正式经验",
+  "id": "c179333271235406"
+ },
+ {
+  "at": 1793332712359,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "evidence",
+  "text": "整理「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」：写入：复用计分只服务正式经验；复验与复用分开",
+  "id": "c179333271235405"
+ },
+ {
+  "at": 1793332712358,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "final_user",
+  "text": "接入：「裁决中心 · 用户人工终审」→「复用计分」（保留：取消本轮提交，重新计分）",
+  "id": "c179333271235404"
+ },
+ {
+  "at": 1793332712357,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "final_user",
+  "text": "接入：「裁决中心 · 用户人工终审」→「用户确认后手动删除」（长期未用：用户决定删除）",
+  "id": "c179333271235403"
+ },
+ {
+  "at": 1793332712356,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "nf2evuw",
+  "text": "接入：「复用计分」→「裁决中心 · 用户人工终审」（提交：长期未用 / 3 次未交付）",
+  "id": "c179333271235402"
+ },
+ {
+  "at": 1793332712355,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "nf2evuw",
+  "text": "整理「复用计分」：写入：正式经验的复用计数器",
+  "id": "c179333271235401"
+ },
+ {
+  "at": 1793332712354,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "nf2evuw",
+  "text": "「复用计分」归入第三组（原误建在第一组）",
+  "id": "c179333271235400"
+ },
+ {
+  "at": 1793332620735,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "submit",
+  "target": "",
+  "text": "提交本轮修改：4 个节点写了想法，期间 32 项增删改，等 Agent 整理",
+  "id": "2mdwbujr6h4ib2v7q948"
+ },
+ {
+  "at": 1793332518079,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「实际执行、宿主集成与技术验证」",
+  "id": "ln0yn61w1v9z0sf7lhs1"
+ },
+ {
+  "at": 1793332515985,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "zn3h71wmok9763femqz4"
+ },
+ {
+  "at": 1793332503480,
+  "before": "{\"from\":\"worker\",\"id\":\"e11\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"work\"}",
+  "day": "2026-10-30",
+  "op": "unlink",
+  "target": "worker",
+  "text": "断开：「Worker 与任务编排器」→「实际执行、宿主集成与技术验证」",
+  "id": "fkwi700zitlbj7e79yyx"
+ },
+ {
+  "at": 1793332487348,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「Worker 与任务编排器」→「实际执行、宿主集成与技术验证」",
+  "id": "hffqyp31x5azincm3kvn"
+ },
+ {
+  "at": 1793332486768,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「实际执行、宿主集成与技术验证」→「Worker 与任务编排器」",
+  "id": "faqt6ty8b3p3tnswnjo8"
+ },
+ {
+  "at": 1793331756119,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "nf2evuw",
+  "text": "接入：「复用计分」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "ojq8jma19x4a2mz68fce"
+ },
+ {
+  "at": 1793331753079,
+  "before": "{\"id\":\"eoyw6u3\",\"from\":\"nf2evuw\",\"to\":\"retrieve\",\"label\":\"复用计分：\",\"kind\":\"normal\"}",
+  "day": "2026-10-30",
+  "op": "unlink",
+  "target": "nf2evuw",
+  "text": "断开：「复用计分」→「后续相似真实任务检索」（复用计分：）",
+  "id": "tkjio7chvp208zsefjis"
+ },
+ {
+  "at": 1793331668238,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "nf2evuw",
+  "text": "重命名节点：「新节点」→「复用计分」",
+  "id": "c3g095uo2735ba327xub"
+ },
+ {
+  "at": 1793331656173,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "连线「新节点」→「后续相似真实任务检索」说明：复用计分 → 复用计分：",
+  "id": "wsyg433swturilt585oh"
+ },
+ {
+  "at": 1793331636422,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "连线「新节点」→「后续相似真实任务检索」说明：（空） → 复用计分",
+  "id": "qsgdys2kigi1pszjl9tl"
+ },
+ {
+  "at": 1793331619666,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "nf2evuw",
+  "text": "接入：「新节点」→「后续相似真实任务检索」",
+  "id": "bf149usfzq6ukxfgm27d"
+ },
+ {
+  "at": 1793331616353,
+  "before": "{\"id\":\"ewls5re\",\"from\":\"formal\",\"to\":\"retrieve\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-30",
+  "op": "unlink",
+  "target": "formal",
+  "text": "断开：「正式经验与长期记忆索引」→「后续相似真实任务检索」",
+  "id": "myzyu8hr1p4ixf8nwuvy"
+ },
+ {
+  "at": 1793331608424,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "formal",
+  "text": "接入：「正式经验与长期记忆索引」→「后续相似真实任务检索」",
+  "id": "v7ew57qqq0jdulejlqw8"
+ },
+ {
+  "at": 1793331567840,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "formal",
+  "text": "接入：「正式经验与长期记忆索引」→「新节点」",
+  "id": "0z21oqkapyqx9nohm92t"
+ },
+ {
+  "at": 1793331561802,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "add",
+  "target": "nf2evuw",
+  "text": "新增节点「新节点」（一、接入、路由与任务执行）",
+  "id": "t4g4pjkrvxch6j4yucwy"
+ },
+ {
+  "at": 1793331560236,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "iuikscusxajmd5zpt9qa"
+ },
+ {
+  "at": 1793331556817,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "add",
+  "target": "nez7rhx",
+  "text": "新增节点「新节点」（一、接入、路由与任务执行）",
+  "id": "hnol0ck2s56aaj1dstjr"
+ },
+ {
+  "at": 1793331166283,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "failed1",
+  "text": "接入：「保留第一轮失败证据」→「后续相似真实任务检索」",
+  "id": "l1jblqbs4i3kmwxqug98"
+ },
+ {
+  "at": 1793331161425,
+  "before": "{\"from\":\"failed1\",\"id\":\"epz4uy3\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"apply\"}",
+  "day": "2026-10-30",
+  "op": "unlink",
+  "target": "failed1",
+  "text": "断开：「保留第一轮失败证据」→「核对适用条件并实际应用」",
+  "id": "f7ea6rrfha0q72m5elt7"
+ },
+ {
+  "at": 1793331145979,
+  "before": "{\"node\":{\"desc\":\"\",\"expanded\":false,\"g\":\"g3\",\"history\":[],\"id\":\"wait2\",\"intent\":\"\",\"issues\":\"\",\"note\":\"\",\"pending\":false,\"refs\":\"\",\"status\":\"dev\",\"sub\":\"\",\"title\":\"待重新验证 · 第二轮\",\"x\":1070,\"y\":813},\"edges\":[{\"from\":\"wait2\",\"id\":\"e37\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"run2\"},{\"from\":\"failed1\",\"id\":\"ewhb6dl\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"wait2\"}]}",
+  "day": "2026-10-30",
+  "op": "del",
+  "target": "",
+  "text": "删除节点「待重新验证 · 第二轮」，连带断开 2 条连线",
+  "id": "o7wjnlbmuaob3sp0mzsw"
+ },
+ {
+  "at": 1793327100208,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "monitor",
+  "text": "整理「运行监看」：写入：运行总览可手动管理 Agent 池节点",
+  "id": "c179332710020701"
+ },
+ {
+  "at": 1793327100207,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "backends",
+  "text": "整理「后台执行适配器 · Agent 池」：写入：运行总览手动添加 / 开启 / 关闭 / 选用",
+  "id": "c179332710020700"
+ },
+ {
+  "at": 1793326054965,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "monitor",
+  "text": "整理「运行监看」：写入：运行总览展示 Agent 池节点状态",
+  "id": "c179332605496401"
+ },
+ {
+  "at": 1793326054964,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "workday",
+  "text": "整理「工作日台账」：用户裁定：上班不发健康探针（方案 A）",
+  "id": "c179332605496400"
+ },
+ {
+  "at": 1793325394561,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "edit",
+  "target": "",
+  "text": "整理布局：各分组内按整体流程从左到右重新排列节点（只改位置，不改节点、连线和内容）；新增悬停显示上游 / 下游",
+  "id": "clayout1793330000"
+ },
+ {
+  "at": 1793324894827,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "formal",
+  "text": "整理「正式经验与长期记忆索引」：写入：永久总分与准入",
+  "id": "c179332489482205"
+ },
+ {
+  "at": 1793324894826,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "evidence",
+  "text": "整理「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」：写入永久总分",
+  "id": "c179332489482204"
+ },
+ {
+  "at": 1793324894825,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "workday",
+  "text": "整理「工作日台账」：写入台账与动态索引方案（用户已确认）",
+  "id": "c179332489482203"
+ },
+ {
+  "at": 1793324894824,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "agent",
+  "target": "confirmed",
+  "text": "整理「实际来源确认与独立性核对」：写明下游：只送评分中心，审查结论经 Agent 池交回",
+  "id": "c179332489482202"
+ },
+ {
+  "at": 1793324894823,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "confirmed",
+  "text": "接入：「实际来源确认与独立性核对」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」（审查员干活评分）",
+  "id": "c179332489482201"
+ },
+ {
+  "at": 1793324894822,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "unlink",
+  "target": "confirmed",
+  "text": "断开：「实际来源确认与独立性核对」→「正式经验与长期记忆索引」（按用户决定：只有终审通过的经验才进正式库）",
+  "id": "c179332489482200"
+ },
+ {
+  "at": 1793324131011,
+  "before": "",
+  "day": "2026-10-30",
+  "op": "link",
+  "target": "confirmed",
+  "text": "接入：「实际来源确认与独立性核对」→「正式经验与长期记忆索引」",
+  "id": "5zf5hw4cuxb1v5q8a0k5"
+ },
+ {
+  "at": 1793323918694,
+  "before": "{\"from\":\"confirmed\",\"id\":\"e7ykxed\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"delivery\"}",
+  "day": "2026-10-30",
+  "op": "unlink",
+  "target": "confirmed",
+  "text": "断开：「实际来源确认与独立性核对」→「用户说“交付”」",
+  "id": "h7o5gifjj4f4z2m2zg65"
+ },
+ {
+  "at": 1793289377722,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "workday",
+  "text": "整理「工作日台账」：标记：台账动态索引方案待用户确认",
+  "id": "c179328937770022"
+ },
+ {
+  "at": 1793289377721,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "worker",
+  "text": "连线「Worker 与任务编排器」→「后台执行适配器 · Agent 池」改为：按角色派活",
+  "id": "c179328937770021"
+ },
+ {
+  "at": 1793289377720,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「用户初审」（兜底：携带评分与独立审查结果）",
+  "id": "c179328937770020"
+ },
+ {
+  "at": 1793289377719,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "backends",
+  "text": "接入：「后台执行适配器 · Agent 池」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」（兜底：全部审查员不可用，宿主独立审查）",
+  "id": "c179328937770019"
+ },
+ {
+  "at": 1793289377718,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "backends",
+  "text": "整理「后台执行适配器 · Agent 池」：补充兜底：全部审查员不可用时宿主独立审查",
+  "id": "c179328937770018"
+ },
+ {
+  "at": 1793289377717,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "confirmed",
+  "text": "整理「实际来源确认与独立性核对」：写入掉线处理",
+  "id": "c179328937770017"
+ },
+ {
+  "at": 1793289377716,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "receipts",
+  "text": "整理「统一回执入口」：写入存放路径与掉线判定",
+  "id": "c179328937770016"
+ },
+ {
+  "at": 1793289377715,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "peer",
+  "text": "整理「审查节点 B」：改为审查节点 B，不固定 Agent",
+  "id": "c179328937770015"
+ },
+ {
+  "at": 1793289377714,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "dsh",
+  "text": "整理「审查节点 A」：改为审查节点 A，不固定 Agent",
+  "id": "c179328937770014"
+ },
+ {
+  "at": 1793289377713,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "card",
+  "text": "整理「身份任务卡」：写入分发职责",
+  "id": "c179328937770013"
+ },
+ {
+  "at": 1793289377712,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "failed1",
+  "text": "整理「保留第一轮失败证据」：写入：失败后回到真实任务等待第二轮",
+  "id": "c179328937770012"
+ },
+ {
+  "at": 1793289377711,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "run1",
+  "text": "整理「执行第一轮隔离验证」：写入：进入待验证索引，在真实任务中验证",
+  "id": "c179328937770011"
+ },
+ {
+  "at": 1793289377710,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "evidence_port",
+  "text": "连线「核验材料接入」→「执行第一轮隔离验证」改为：初审通过、未终审",
+  "id": "c179328937770010"
+ },
+ {
+  "at": 1793289377709,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "evidence_port",
+  "text": "整理「核验材料接入」：写入准入条件",
+  "id": "c179328937770009"
+ },
+ {
+  "at": 1793289377708,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "pending_index",
+  "text": "整理「待验证经验独立索引」：写入：初审通过后进入",
+  "id": "c179328937770008"
+ },
+ {
+  "at": 1793289377707,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "used",
+  "text": "整理「本次确实应用的旧候选」：写入：复用情况交评分中心计分",
+  "id": "c179328937770007"
+ },
+ {
+  "at": 1793289377706,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "retrieve",
+  "text": "整理「后续相似真实任务检索」：写入每日新经验 / 复用经验记录",
+  "id": "c179328937770006"
+ },
+ {
+  "at": 1793289377705,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "formal",
+  "text": "整理「正式经验与长期记忆索引」：写入按评分排序检索",
+  "id": "c179328937770005"
+ },
+ {
+  "at": 1793289377704,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "final_user",
+  "text": "接入：「裁决中心 · 用户人工终审」→「经验直接退役」（用户裁定退役）",
+  "id": "c179328937770004"
+ },
+ {
+  "at": 1793289377703,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "scoring",
+  "text": "接入：「经验淘汰」→「裁决中心 · 用户人工终审」（提交待退役 / 长期未用经验）",
+  "id": "c179328937770003"
+ },
+ {
+  "at": 1793289377702,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "workday",
+  "text": "断开：「工作日台账」→「经验淘汰」（每日回执，改名前遗留；台账索引方案定后再接）",
+  "id": "c179328937770002"
+ },
+ {
+  "at": 1793289377701,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "scoring",
+  "text": "整理「经验淘汰」：改为经验淘汰规则；接到裁决中心",
+  "id": "c179328937770001"
+ },
+ {
+  "at": 1793289377700,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "evidence",
+  "text": "整理「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」：定为评分中心：基础模型评分库＋两类计分",
+  "id": "c179328937770000"
+ },
+ {
+  "at": 1793289176456,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "submit",
+  "target": "",
+  "text": "提交本轮修改：1 个节点写了想法，期间 52 项增删改，等 Agent 整理",
+  "id": "gtwivgunpsrgcei652pk"
+ },
+ {
+  "at": 1793288940349,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "review_evidence",
+  "text": "接入：「当轮独立审查证据」→「实际来源确认与独立性核对」",
+  "id": "953jm37vbgrbj9gmwvin"
+ },
+ {
+  "at": 1793288934298,
+  "before": "{\"id\":\"e3c4om5\",\"from\":\"review_evidence\",\"to\":\"delivery\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "review_evidence",
+  "text": "断开：「当轮独立审查证据」→「用户说“交付”」",
+  "id": "p2qzjyglvhri2dpau28e"
+ },
+ {
+  "at": 1793288920398,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "review_evidence",
+  "text": "接入：「当轮独立审查证据」→「用户说“交付”」",
+  "id": "ighya6b6ozinsyga6e6p"
+ },
+ {
+  "at": 1793288901496,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "receipts",
+  "text": "接入：「统一回执入口」→「当轮独立审查证据」",
+  "id": "aqc66s12rlpodzpotc7f"
+ },
+ {
+  "at": 1793288863948,
+  "before": "{\"id\":\"ecet1q3\",\"from\":\"confirmed\",\"to\":\"review_evidence\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "confirmed",
+  "text": "断开：「实际来源确认与独立性核对」→「当轮独立审查证据」",
+  "id": "az7u2rlc7kpct1y57pz1"
+ },
+ {
+  "at": 1793288768788,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "47z0vo0wb3zaz9nrau8g"
+ },
+ {
+  "at": 1793288760267,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "review_evidence",
+  "text": "接入：「当轮独立审查证据」→「后续相似真实任务检索」",
+  "id": "86gak66fhpiyu0tuebyj"
+ },
+ {
+  "at": 1793288735297,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「后续相似真实任务检索」",
+  "id": "582z0tc5z0vrx6u1a2bm"
+ },
+ {
+  "at": 1793288732167,
+  "before": "{\"id\":\"ehtvhr8\",\"from\":\"evidence\",\"to\":\"apply\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "evidence",
+  "text": "断开：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「核对适用条件并实际应用」",
+  "id": "dwfck88ktw61c9gwi429"
+ },
+ {
+  "at": 1793288719942,
+  "before": "{\"from\":\"formal\",\"id\":\"e45\",\"kind\":\"normal\",\"label\":\"正式经验后续复用\",\"to\":\"retrieve\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "formal",
+  "text": "断开：「正式经验与长期记忆索引」→「后续相似真实任务检索」（正式经验后续复用）",
+  "id": "cw8dkm40qgieba6vfc55"
+ },
+ {
+  "at": 1793288710783,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「正式经验与长期记忆索引」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "arwmxxt925jpe7vdeqpw"
+ },
+ {
+  "at": 1793288685368,
+  "before": "{\"from\":\"review_evidence\",\"id\":\"e55\",\"kind\":\"normal\",\"label\":\"支持第二轮核验\",\"to\":\"run2\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "review_evidence",
+  "text": "断开：「当轮独立审查证据」→「执行第二轮重新验证」（支持第二轮核验）",
+  "id": "3g4hztg6deqxtiyyft8h"
+ },
+ {
+  "at": 1793288664817,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "confirmed",
+  "text": "接入：「实际来源确认与独立性核对」→「当轮独立审查证据」",
+  "id": "o6qt4ch54zsg7bm0a8om"
+ },
+ {
+  "at": 1793288592843,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "backends",
+  "text": "接入：「后台执行适配器 · Agent 池」→「第二轮结果」",
+  "id": "cmx69z80qtfas95w9cti"
+ },
+ {
+  "at": 1793288587974,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "run2",
+  "text": "接入：「执行第二轮重新验证」→「后台执行适配器 · Agent 池」",
+  "id": "v2q1m5x9xymff85ia80y"
+ },
+ {
+  "at": 1793288584101,
+  "before": "{\"from\":\"run2\",\"id\":\"e38\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"v2_result\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "run2",
+  "text": "断开：「执行第二轮重新验证」→「第二轮结果」",
+  "id": "bxj89o2syp4l64xeufn3"
+ },
+ {
+  "at": 1793288506688,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "failed1",
+  "text": "接入：「保留第一轮失败证据」→「待重新验证 · 第二轮」",
+  "id": "qt3kz78ebuk682h2qzd2"
+ },
+ {
+  "at": 1793288497689,
+  "before": "{\"from\":\"failed1\",\"id\":\"e36\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"wait2\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "failed1",
+  "text": "断开：「保留第一轮失败证据」→「待重新验证 · 第二轮」",
+  "id": "d0k5as0oio5b0ri53xjo"
+ },
+ {
+  "at": 1793288451572,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "backends",
+  "text": "接入：「后台执行适配器 · Agent 池」→「第一轮结果」",
+  "id": "u1l548qx9h536xn0hdhu"
+ },
+ {
+  "at": 1793288427771,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "run1",
+  "text": "接入：「执行第一轮隔离验证」→「待验证经验独立索引」",
+  "id": "hi6ki3uyjitan1ohcjm2"
+ },
+ {
+  "at": 1793288381258,
+  "before": "{\"from\":\"run1\",\"id\":\"e33\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"v1_result\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "run1",
+  "text": "断开：「执行第一轮隔离验证」→「第一轮结果」",
+  "id": "d2vtcqacl6ys2brrg1ql"
+ },
+ {
+  "at": 1793288345298,
+  "before": "{\"from\":\"initial_pass\",\"id\":\"e21\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"pending_index\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "initial_pass",
+  "text": "断开：「初审通过」→「待验证经验独立索引」",
+  "id": "ay76j18rt5891pdhzs2d"
+ },
+ {
+  "at": 1793288232095,
+  "before": "{\"node\":{\"desc\":\"\",\"expanded\":false,\"g\":\"g2\",\"history\":[],\"id\":\"later_delivery\",\"intent\":\"\",\"issues\":\"\",\"note\":\"\",\"pending\":false,\"refs\":\"\",\"status\":\"dev\",\"sub\":\"确认该次成品验收\",\"title\":\"后续任务用户说“交付”\",\"x\":1765,\"y\":757},\"edges\":[]}",
+  "day": "2026-10-29",
+  "op": "del",
+  "target": "",
+  "text": "删除节点「后续任务用户说“交付”」，连带断开 0 条连线",
+  "id": "0z0evoqqno1a1nsc7eg0"
+ },
+ {
+  "at": 1793288226892,
+  "before": "{\"from\":\"evidence\",\"id\":\"e26\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"later_delivery\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "evidence",
+  "text": "断开：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「后续任务用户说“交付”」",
+  "id": "itacbfh1we7v8lj3xsbg"
+ },
+ {
+  "at": 1793288213915,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "archive",
+  "text": "接入：「交付归档」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "jt0a8m56vgazcrkkgbet"
+ },
+ {
+  "at": 1793288193516,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "confirmed",
+  "text": "接入：「实际来源确认与独立性核对」→「用户说“交付”」",
+  "id": "u1mtdc1niszc3tdn13d9"
+ },
+ {
+  "at": 1793288179480,
+  "before": "{\"id\":\"enrb81o\",\"from\":\"confirmed\",\"to\":\"evidence\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "confirmed",
+  "text": "断开：「实际来源确认与独立性核对」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "0dugk8w1nvk58x0buff8"
+ },
+ {
+  "at": 1793287995801,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "failed1",
+  "text": "接入：「保留第一轮失败证据」→「核对适用条件并实际应用」",
+  "id": "yk3umcbci7a8dypdf52q"
+ },
+ {
+  "at": 1793287976229,
+  "before": "{\"id\":\"efuwab3\",\"from\":\"failed1\",\"to\":\"evidence\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "failed1",
+  "text": "断开：「保留第一轮失败证据」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "696mv9oi24hirx9emoga"
+ },
+ {
+  "at": 1793287948757,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "failed1",
+  "text": "接入：「保留第一轮失败证据」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "24qy8xxzx6va1fd2vwl4"
+ },
+ {
+  "at": 1793287945031,
+  "before": "{\"id\":\"egb8nu8\",\"from\":\"failed1\",\"to\":\"apply\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "failed1",
+  "text": "断开：「保留第一轮失败证据」→「核对适用条件并实际应用」",
+  "id": "1kx2tmuxsnsvxczpkho0"
+ },
+ {
+  "at": 1793287898098,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "failed1",
+  "text": "接入：「保留第一轮失败证据」→「核对适用条件并实际应用」",
+  "id": "ul1uwwdpft4t8gjf1wdf"
+ },
+ {
+  "at": 1793287773874,
+  "before": "{\"from\":\"evidence_port\",\"id\":\"e31\",\"kind\":\"normal\",\"label\":\"仅当原卡为第二轮\",\"to\":\"run2\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "evidence_port",
+  "text": "断开：「核验材料接入」→「执行第二轮重新验证」（仅当原卡为第二轮）",
+  "id": "zt90xuj5mwq0j0c5d23g"
+ },
+ {
+  "at": 1793287764925,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「核验材料接入」→「执行第二轮重新验证」",
+  "id": "d9dgfmavm6v29gj2rdlf"
+ },
+ {
+  "at": 1793287764150,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「执行第二轮重新验证」→「核验材料接入」",
+  "id": "3coedii1xbqb9jzop2ia"
+ },
+ {
+  "at": 1793287716801,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "initial_pass",
+  "text": "接入：「初审通过」→「核验材料接入」",
+  "id": "qnrfkgpgcx47egcqt1oc"
+ },
+ {
+  "at": 1793287710491,
+  "before": "{\"id\":\"etb0dka\",\"from\":\"initial_pass\",\"to\":\"run1\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "initial_pass",
+  "text": "断开：「初审通过」→「执行第一轮隔离验证」",
+  "id": "ptu3s4l0x76p0tiul8az"
+ },
+ {
+  "at": 1793287686182,
+  "before": "{\"from\":\"feedback\",\"id\":\"e29\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"evidence_port\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "feedback",
+  "text": "断开：「验证材料自动回写原候选」→「核验材料接入」",
+  "id": "pqbojs52o3edorkn0pdr"
+ },
+ {
+  "at": 1793287682165,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "5137tl52hyug4j3xflf0"
+ },
+ {
+  "at": 1793287681585,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "u6n99jqacdtajfh71u3w"
+ },
+ {
+  "at": 1793287680915,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "jlbdj1190txoxadroogi"
+ },
+ {
+  "at": 1793287667299,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「验证材料自动回写原候选」→「核验材料接入」",
+  "id": "vdepl37x3j5fc6xg5tnt"
+ },
+ {
+  "at": 1793287666700,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「核验材料接入」→「验证材料自动回写原候选」",
+  "id": "xkrv0m91n8e6i3gpx652"
+ },
+ {
+  "at": 1793287658174,
+  "before": "{\"id\":\"ejsre50\",\"from\":\"feedback\",\"to\":\"evidence\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "feedback",
+  "text": "断开：「验证材料自动回写原候选」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "jxfxt3vem0mk642kcxxz"
+ },
+ {
+  "at": 1793287612324,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "feedback",
+  "text": "接入：「验证材料自动回写原候选」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "mf4tj2tdvt3uye6qymtx"
+ },
+ {
+  "at": 1793287558941,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「核对适用条件并实际应用」",
+  "id": "ubcfnk7ezz7o5ehg32o3"
+ },
+ {
+  "at": 1793287554375,
+  "before": "{\"from\":\"evidence\",\"id\":\"e93239060\",\"kind\":\"pending\",\"label\":\"旧经验本次评分\",\"to\":\"used\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "evidence",
+  "text": "断开：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「本次确实应用的旧候选」（旧经验本次评分）",
+  "id": "u6tkvnksac2oxbigt2q1"
+ },
+ {
+  "at": 1793287461582,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "initial_pass",
+  "text": "接入：「初审通过」→「执行第一轮隔离验证」",
+  "id": "r0uce2fiahi01a2fvs4p"
+ },
+ {
+  "at": 1793287455426,
+  "before": "{\"node\":{\"desc\":\"\",\"expanded\":false,\"g\":\"g3\",\"history\":[],\"id\":\"wait1\",\"intent\":\"\",\"issues\":\"\",\"note\":\"\",\"pending\":false,\"refs\":\"\",\"status\":\"dev\",\"sub\":\"\",\"title\":\"待隔离验证 · 第一轮\",\"x\":320,\"y\":1040},\"edges\":[{\"from\":\"initial_pass\",\"id\":\"e22\",\"kind\":\"normal\",\"label\":\"初审通过后开始第一轮\",\"to\":\"wait1\"},{\"from\":\"wait1\",\"id\":\"e32\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"run1\"}]}",
+  "day": "2026-10-29",
+  "op": "del",
+  "target": "",
+  "text": "删除节点「待隔离验证 · 第一轮」，连带断开 2 条连线",
+  "id": "37arq0ow9c403ecj46r2"
+ },
+ {
+  "at": 1793287407627,
+  "before": "{\"id\":\"eefeuio\",\"from\":\"initial_pass\",\"to\":\"run1\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "initial_pass",
+  "text": "断开：「初审通过」→「执行第一轮隔离验证」",
+  "id": "w2g785lyix8apexpept5"
+ },
+ {
+  "at": 1793287381002,
+  "before": "{\"from\":\"review_evidence\",\"id\":\"e54\",\"kind\":\"normal\",\"label\":\"支持第一轮核验\",\"to\":\"run1\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "review_evidence",
+  "text": "断开：「当轮独立审查证据」→「执行第一轮隔离验证」（支持第一轮核验）",
+  "id": "l16xuc7lchlqx0gpnrih"
+ },
+ {
+  "at": 1793287363485,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "initial_pass",
+  "text": "接入：「初审通过」→「执行第一轮隔离验证」",
+  "id": "m22rbfgeiuvl2g7hcp7a"
+ },
+ {
+  "at": 1793284765973,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "submit",
+  "target": "",
+  "text": "提交本轮修改：11 个节点写了想法，期间 41 项增删改，等 Agent 整理",
+  "id": "eait771md6jpc5rfsmel"
+ },
+ {
+  "at": 1793284398775,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「当轮独立审查证据」",
+  "id": "x03i323lw3oq1p8g8zu1"
+ },
+ {
+  "at": 1793284371235,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "confirmed",
+  "text": "接入：「实际来源确认与独立性核对」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "gnrjvgxocg9hexeww732"
+ },
+ {
+  "at": 1793284350000,
+  "before": "{\"from\":\"receipts\",\"id\":\"e58\",\"kind\":\"pending\",\"label\":\"审查回执未接入\",\"to\":\"scoring\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "receipts",
+  "text": "断开：「统一回执入口」→「经验淘汰」（审查回执未接入）",
+  "id": "pc31o7jji35yfe8wtvwy"
+ },
+ {
+  "at": 1793284317825,
+  "before": "{\"from\":\"confirmed\",\"id\":\"e53\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"review_evidence\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "confirmed",
+  "text": "断开：「实际来源确认与独立性核对」→「当轮独立审查证据」",
+  "id": "2p4k23a76tgqra5r0sff"
+ },
+ {
+  "at": 1793283497104,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「后台执行适配器 · Agent 池」→「身份任务卡」",
+  "id": "u6wnu506afcw85wd17zv"
+ },
+ {
+  "at": 1793283493978,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「身份任务卡」→「后台执行适配器 · Agent 池」",
+  "id": "zr9v5wqaqvw45euppxkb"
+ },
+ {
+  "at": 1793283486982,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "backends",
+  "text": "接入：「后台执行适配器 · Agent 池」→「身份任务卡」",
+  "id": "hypky6i19gs5y1v4mnu1"
+ },
+ {
+  "at": 1793283447565,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "apply",
+  "text": "接入：「核对适用条件并实际应用」→「Worker 与任务编排器」",
+  "id": "yvw280yb6tg6gtwhun0y"
+ },
+ {
+  "at": 1793283431077,
+  "before": "{\"from\":\"apply\",\"id\":\"e56\",\"kind\":\"pending\",\"label\":\"复用中双审介入\",\"to\":\"card\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "apply",
+  "text": "断开：「核对适用条件并实际应用」→「身份任务卡」（复用中双审介入）",
+  "id": "jzwe7ah2jad1h0q8qfv4"
+ },
+ {
+  "at": 1793283311435,
+  "before": "{\"id\":\"ekl3rmz\",\"from\":\"apply\",\"to\":\"worker\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "apply",
+  "text": "断开：「核对适用条件并实际应用」→「Worker 与任务编排器」",
+  "id": "ttsyk2bdb92fzjdlh453"
+ },
+ {
+  "at": 1793283262303,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "apply",
+  "text": "接入：「核对适用条件并实际应用」→「Worker 与任务编排器」",
+  "id": "cgxb66igohekwbkgedy5"
+ },
+ {
+  "at": 1793283248760,
+  "before": "{\"from\":\"apply\",\"id\":\"e25\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"evidence\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "apply",
+  "text": "断开：「核对适用条件并实际应用」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "w5t0cyho0ysne1ua2tn7"
+ },
+ {
+  "at": 1793283210779,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "pending_index",
+  "text": "接入：「待验证经验独立索引」→「后续相似真实任务检索」",
+  "id": "xvdwu4cb2gc01h5wcfs3"
+ },
+ {
+  "at": 1793283207841,
+  "before": "{\"id\":\"eg76mnt\",\"from\":\"pending_index\",\"to\":\"worker\",\"label\":\"\",\"kind\":\"normal\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "pending_index",
+  "text": "断开：「待验证经验独立索引」→「Worker 与任务编排器」",
+  "id": "qfl4me4mxd4w9gb53y15"
+ },
+ {
+  "at": 1793283006139,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "pending_index",
+  "text": "接入：「待验证经验独立索引」→「Worker 与任务编排器」",
+  "id": "tz0jldefh8w8gnq1h1kr"
+ },
+ {
+  "at": 1793283001754,
+  "before": "{\"from\":\"pending_index\",\"id\":\"e23\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"retrieve\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "pending_index",
+  "text": "断开：「待验证经验独立索引」→「后续相似真实任务检索」",
+  "id": "ncb05bdl6c5j1k5l38oo"
+ },
+ {
+  "at": 1793282740287,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "连线反向：现为「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「本次确实应用的旧候选」",
+  "id": "ms62t134zmg9tz1w1wmx"
+ },
+ {
+  "at": 1793282737559,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "wkw28iiqlg7i32o6my0x"
+ },
+ {
+  "at": 1793282736529,
+  "before": "{\"from\":\"used\",\"id\":\"e93239060\",\"kind\":\"pending\",\"label\":\"旧经验本次评分\",\"to\":\"evidence\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "used",
+  "text": "断开：「本次确实应用的旧候选」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」（旧经验本次评分）",
+  "id": "viyvv6w1zjra8n82zvy4"
+ },
+ {
+  "at": 1793282497057,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「正式经验与长期记忆索引」",
+  "id": "x5djhvva7i0cpciap26d"
+ },
+ {
+  "at": 1793282444084,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「经验淘汰」用户意图：基于对「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」节点记… → 基于对「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」节点记…",
+  "id": "k4r9mv3oizf5t97p1s72"
+ },
+ {
+  "at": 1793282370099,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "formal",
+  "text": "接入：「正式经验与长期记忆索引」→「经验淘汰」",
+  "id": "6a8asb1ajghnn2e5tdrt"
+ },
+ {
+  "at": 1793282346959,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「经验淘汰」用户意图：基于对 → 基于对「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」节点记…",
+  "id": "iobzmr3x7z5h0kfs7s6f"
+ },
+ {
+  "at": 1793282153388,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「经验淘汰」用户意图：本节点固定数据留存在/Users/suzhizhou/Documents/私人助… → 基于对",
+  "id": "krslta32ey0qrf1lrpw0"
+ },
+ {
+  "at": 1793282140259,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「经验淘汰」说明：向 → 向裁决中心提交退役经验",
+  "id": "ukd8r4zj9e5qu4b0jkyg"
+ },
+ {
+  "at": 1793282114818,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「经验淘汰」说明：每任务好 +1、不好 0；按 Agent＋配置模型＋自然周汇总 → 向",
+  "id": "6sp6tbtwvju1yz44eoes"
+ },
+ {
+  "at": 1793282090867,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "重命名节点：「Agent＋模型周评分与择优」→「经验淘汰」",
+  "id": "szvt0q9aq6de1mrwwvmh"
+ },
+ {
+  "at": 1793282025539,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "evidence",
+  "text": "接入：「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」→「Agent＋模型周评分与择优」",
+  "id": "nypxpwdgsu23uhcr9nhg"
+ },
+ {
+  "at": 1793282003934,
+  "before": "{\"from\":\"later_delivery\",\"id\":\"e27\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"used\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "later_delivery",
+  "text": "断开：「后续任务用户说“交付”」→「本次确实应用的旧候选」",
+  "id": "02xp6dn1h0e2kh8hzar0"
+ },
+ {
+  "at": 1793281998331,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "g7rt08n3nqdcfb3f1ash"
+ },
+ {
+  "at": 1793281994875,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "",
+  "text": "撤销了上一步",
+  "id": "y0ifz5x5yzmb46w307rm"
+ },
+ {
+  "at": 1793281978434,
+  "before": "{\"from\":\"later_delivery\",\"id\":\"e27\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"used\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "later_delivery",
+  "text": "断开：「后续任务用户说“交付”」→「本次确实应用的旧候选」",
+  "id": "ihm6bnya3ep83z4dlbox"
+ },
+ {
+  "at": 1793281948077,
+  "before": "{\"from\":\"used\",\"id\":\"e93239059\",\"kind\":\"pending\",\"label\":\"协作节点任务评分\",\"to\":\"scoring\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "used",
+  "text": "断开：「本次确实应用的旧候选」→「Agent＋模型周评分与择优」（协作节点任务评分）",
+  "id": "yluguv7vpr250scqtrvo"
+ },
+ {
+  "at": 1793281923813,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "evidence",
+  "text": "重命名节点：「记录执行证据与独立评分」→「记录执行证据与Agent 池节点（Agent＋配置模型）独立评分」",
+  "id": "6q3j7ql3rys992334zdh"
+ },
+ {
+  "at": 1793280807039,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「Agent＋模型周评分与择优」用户意图：本节点固定数据留存在/Users/suzhizhou/Documents/私人助… → 本节点固定数据留存在/Users/suzhizhou/Documents/私人助…",
+  "id": "v1vqosdcckl6ibq6c2dm"
+ },
+ {
+  "at": 1793280454184,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「Agent＋模型周评分与择优」用户意图：本节存有模型点只给 Agent 池节点（Agent＋配置模型）打分，不给经验打分… → 本节点固定数据留存在/Users/suzhizhou/Documents/私人助…",
+  "id": "tyq516fvru0h2ng75kbi"
+ },
+ {
+  "at": 1793280133128,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "edit",
+  "target": "scoring",
+  "text": "「Agent＋模型周评分与择优」用户意图：本节点只给 Agent 池节点（Agent＋配置模型）打分，不给经验打分。宿主核… → 本节存有模型点只给 Agent 池节点（Agent＋配置模型）打分，不给经验打分…",
+  "id": "7tmruya0afdh86ta6u5n"
+ },
+ {
+  "at": 1793279932404,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "evidence",
+  "text": "整理「记录执行证据与独立评分」：补充：这里承接旧经验本身的评分",
+  "id": "c179327993239014"
+ },
+ {
+  "at": 1793279932403,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "scoring",
+  "text": "整理「Agent＋模型周评分与择优」：写入：只给 Agent＋模型打分，按角色择优；成本问题按用户最新口径解决",
+  "id": "c179327993239013"
+ },
+ {
+  "at": 1793279932402,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "data",
+  "text": "整理「数据与运行底座」：写入工作区每日文件夹规则",
+  "id": "c179327993239012"
+ },
+ {
+  "at": 1793279932401,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "used",
+  "text": "接入：「本次确实应用的旧候选」→「记录执行证据与独立评分」（旧经验本次评分）",
+  "id": "c179327993239011"
+ },
+ {
+  "at": 1793279932400,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "used",
+  "text": "接入：「本次确实应用的旧候选」→「Agent＋模型周评分与择优」（协作节点任务评分）",
+  "id": "c179327993239010"
+ },
+ {
+  "at": 1793279932399,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "used",
+  "text": "整理「本次确实应用的旧候选」：写入原材料记录要求；新增两条评分去向",
+  "id": "c179327993239009"
+ },
+ {
+  "at": 1793279932398,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "archive",
+  "text": "整理「交付归档」：写入 Playbook 与经验的分工",
+  "id": "c179327993239008"
+ },
+ {
+  "at": 1793279932397,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "candidate",
+  "text": "整理「新经验候选」：写入：先经 Agent 池审查员核验再进初审（连线已由用户改好）",
+  "id": "c179327993239007"
+ },
+ {
+  "at": 1793279932396,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "work",
+  "text": "整理「实际执行、宿主集成与技术验证」：写入按是否产生经验分流的决定",
+  "id": "c179327993239006"
+ },
+ {
+  "at": 1793279932395,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "work",
+  "text": "接入：「实际执行、宿主集成与技术验证」→「任务结果与审计回执」（未产生经验：直接结束）",
+  "id": "c179327993239005"
+ },
+ {
+  "at": 1793279932394,
+  "before": "{\"node\": {\"desc\": \"裁判给的是回答排名分（挑胜出者），不是审查结论。\", \"expanded\": false, \"g\": \"g1\", \"history\": [{\"at\": 1793279767530, \"by\": \"user\", \"submission\": \"s1793279767530\", \"text\": \"**用户决定：删除此节点。宿主执行完直接进\\\"任务结果与审计回执\\\"。双审只是辅助，只负责判断宿主产出的经验能不能进初审；双审认为有问题时，只挡那条经验，不拦截宿主的任务回执和交付。**\"}], \"id\": \"qc\", \"intent\": \"\", \"issues\": \"总纲 2.5 与规则 MF-011：回答排名分不等于审查通过，不能作为经验核验依据\", \"note\": \"\", \"pending\": true, \"refs\": \"orchestrator.py:1138 judge.decided\", \"status\": \"done\", \"sub\": \"\", \"title\": \"输出验收与确定性裁判\", \"x\": 1333, \"y\": 99}, \"edges\": [{\"from\": \"work\", \"id\": \"e12\", \"kind\": \"normal\", \"label\": \"\", \"to\": \"qc\"}, {\"from\": \"qc\", \"id\": \"e13\", \"kind\": \"normal\", \"label\": \"\", \"to\": \"result\"}]}",
+  "day": "2026-10-29",
+  "op": "del",
+  "target": "qc",
+  "text": "删除节点「输出验收与确定性裁判」，连带断开 2 条连线（按用户决定）",
+  "id": "c179327993239004"
+ },
+ {
+  "at": 1793279932393,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "backends",
+  "text": "整理「后台执行适配器 · Agent 池」：改为插件化 Agent 池；角色改为 审查 / 协作",
+  "id": "c179327993239003"
+ },
+ {
+  "at": 1793279932392,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "worker",
+  "text": "整理「Worker 与任务编排器」：状态由旧执行链改为待实现；按角色从 Agent 池派活",
+  "id": "c179327993239002"
+ },
+ {
+  "at": 1793279932391,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "queue",
+  "text": "整理「任务队列」：意图改为：保留，给协作角色 Agent 排队派活",
+  "id": "c179327993239001"
+ },
+ {
+  "at": 1793279932390,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "agent",
+  "target": "entry",
+  "text": "整理「统一 xiaoba 入口」：按 v1.6.5 入口决定改写意图（提交里贴入的是 Agent 池原话，内容已转到「后台执行适配器」）",
+  "id": "c179327993239000"
+ },
+ {
+  "at": 1793279767540,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "submit",
+  "target": "",
+  "text": "提交本轮修改：9 个节点写了想法，期间 4 项增删改，等 Agent 整理",
+  "id": "t6e9m1rnpgvfrf7mojlw"
+ },
+ {
+  "at": 1793276931009,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "backends",
+  "text": "接入：「后台执行适配器」→「用户初审」",
+  "id": "9bi6la3nox1wrby7jtmi"
+ },
+ {
+  "at": 1793276920678,
+  "before": "",
+  "day": "2026-10-29",
+  "op": "link",
+  "target": "candidate",
+  "text": "接入：「新经验候选」→「后台执行适配器」",
+  "id": "7ey01n5n184dzbv37gkw"
+ },
+ {
+  "at": 1793276915293,
+  "before": "{\"from\":\"candidate\",\"id\":\"e19\",\"kind\":\"normal\",\"label\":\"\",\"to\":\"initial\"}",
+  "day": "2026-10-29",
+  "op": "unlink",
+  "target": "candidate",
+  "text": "断开：「新经验候选」→「用户初审」",
+  "id": "5a0wdky2bn0li2v8vkhe"
+ },
+ {
   "at": 1793260600000,
   "before": "",
   "day": "2026-10-29",
