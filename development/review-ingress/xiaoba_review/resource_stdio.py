@@ -58,9 +58,16 @@ class JsonStdioResource:
         return value
 
 
-def json_stdio_factory(source, workspace_root=None):
+def json_stdio_factory(source, workspace_root=None, agy_mode='cli'):
+    # agy_mode is for tests and a future explicit setting only; it is never
+    # accepted from the page or an HTTP body.  The default is one CLI call per
+    # step, which keeps the receipt card; 'interactive' keeps the PTY adapter.
     node=source.get('node',{})
     if node.get('interface')=='cli' and Path(node.get('entry','')).name in {'agy','antigravity'}:
-        from .resource_agy import AgyInteractiveResource
-        return AgyInteractiveResource(source, workspace_root)
+        if agy_mode=='interactive':
+            from .resource_agy import AgyInteractiveResource
+            return AgyInteractiveResource(source, workspace_root)
+        if agy_mode!='cli':raise ValueError('agy_mode只接受cli或interactive')
+        from .resource_agy_cli import AgyCliResource
+        return AgyCliResource(source, workspace_root)
     return JsonStdioResource(source) if node.get('interface')=='cli' and node.get('entry') else None

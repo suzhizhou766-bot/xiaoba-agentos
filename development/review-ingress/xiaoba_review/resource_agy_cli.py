@@ -1,0 +1,498 @@
+"""One fresh AGY CLI process per step; the receipt card stays the only result.
+
+2026-10-29 the user chose one CLI invocation per step again after the
+persistent PTY session drifted off the task card.  Each call writes the card to
+the node's fixed workspace, starts `agy` once with accept-edits, and accepts
+the outcome only from the daily work log the child writes.  The node's model is
+a user configuration value, not upstream attestation.  Raw stdout and stderr
+never become a business result, a stored transcript or evidence text.
+"""
+import hashlib
+import json
+import os
+from pathlib import Path
+import queue
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from types import SimpleNamespace
+import uuid
+
+from xiaoba_agentos.adapters import (
+    _agy_result_payload, _is_transient_cli_error, _redact_error, _sanitize_answer)
+from xiaoba_agentos.gateway import command_environment
+from .agent_workspace import AgentWorkspace, WorkspaceError
+from .resource_agy import InteractiveError, NativeWorkspaceConsent, ReviewReceiptError
+from .terminal_preview import TerminalPreview
+from .workday import WorkdayReceipts
+
+
+TRUST_PROMPT = 'Do you trust the contents of this project'
+ANTI_DRIFT = '只执行这张卡；不要检索旧任务记录、其它日期的工作日志或小八源码。'
+HEALTH_DISPATCH = ('这是文件写回探针，请读取这张卡并直接写入它指定的回执文件。'
+    '不要自行做系统健康诊断，不要新建当日台账。')
+WORK_DISPATCH = '读取并执行这张任务卡，在卡内指定的当日Markdown工作文件中追加过程和完整回执。'
+STDERR_LIMIT = 64 * 1024
+PREVIEW_LINES = 40
+PREVIEW_BYTES = 64 * 1024
+
+
+class AgyCliResource:
+    """Per-step CLI invocations with the same outward interface as the PTY one."""
+
+    supports_resource_plan = True
+    persistent_resource = True
+    supports_workday_receipts = True
+    execution_mode = 'native_cli_per_step'
+    test_budget_seconds = 120
+    # Production defaults.  Tests may lower them on an instance; the shipped
+    # values stay 300 s of no progress and a 30 s receipt grace window.
+    no_progress_seconds = 300
+    receipt_grace_seconds = 30
+    output_limit = 1024 * 1024
+
+    def __init__(self, source, workspace_root=None):
+        self.kind, self.source_ref = source['kind'], source['source_ref']
+        self.entry, self.model = source['node']['entry'], source['node']['model']
+        self._serial = threading.Lock()
+        self._process = None
+        self._workspace_lock = None
+        self.workspace = AgentWorkspace(workspace_root, source)
+        self.workday = WorkdayReceipts(self.workspace)
+        self._preview = TerminalPreview()
+        self._state = 'not_started'
+        self._instance = uuid.uuid4().hex
+        self._retired = False
+        self._turns = 0
+        self._call_id = None
+        self._launch_checksum = None
+        self._queue = None
+        self._stdout = bytearray()
+        self._partial = b''
+        self._events = 0
+        self._stderr = None
+        self._stderr_kept = 0
+        self._eof = False
+        # Never implement confirm_workspace: a native trust prompt blocks.
+        self.pending_action = None
+
+    # -- identity and read-only projection -----------------------------------
+
+    def resource_identity(self):
+        path = Path(self.entry).resolve(strict=True)
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise InteractiveError('entry_unavailable', 'AGY入口不是可执行文件。')
+        with path.open('rb') as stream:
+            checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+        if self._launch_checksum is not None and checksum != self._launch_checksum:
+            raise InteractiveError('entry_changed', 'AGY入口已变化，请关闭再开启节点并显式测试。')
+        implementation = hashlib.sha256(b''.join(Path(__file__).with_name(name).read_bytes()
+            for name in ('resource_agy_cli.py', 'agent_workspace.py', 'workday.py'))).hexdigest()
+        # The instance id lives for the life of this adapter, so repeated calls
+        # never invalidate the node's test; a new adapter (service restart) does.
+        return {'protocol': 'agy-cli-worklog-v1', 'entry': str(path), 'sha256': checksum,
+                'implementation_sha256': implementation, 'instance': self._instance,
+                'workspace': str(self.workspace.path)}
+
+    def terminal_snapshot(self):
+        return {**self._preview.snapshot(), 'supported': True, 'state': self._state,
+                'session_id': self._call_id, 'turn': self._turns}
+
+    # -- lifecycle -----------------------------------------------------------
+
+    def retire(self):
+        # Keep an already running receipt, per AgentPool's existing contract.
+        self._retired = True
+        if self._serial.acquire(blocking=False):
+            try: self.close()
+            finally: self._serial.release()
+
+    def close(self):
+        self._release()
+        self._state = 'closed'
+
+    def _release(self):
+        """End this call's process group and release the workspace lock."""
+        process = self._process
+        try: self._kill_group()
+        except PermissionError:
+            self._retired = True
+            raise InteractiveError('session_cleanup_blocked',
+                '系统拒绝结束本次AGY进程，请人工核对；本节点停止派活，未绕过系统限制。') from None
+        finally:
+            self._process = None
+            for stream in (getattr(process, 'stdin', None), getattr(process, 'stdout', None)):
+                try:
+                    if stream is not None: stream.close()
+                except OSError: pass
+            if self._stderr is not None:
+                try: self._stderr.close()
+                except OSError: pass
+                self._stderr = None
+            if self._workspace_lock is not None:
+                self._workspace_lock.close()
+                self._workspace_lock = None
+
+    # -- one CLI invocation --------------------------------------------------
+
+    def _environment(self):
+        config = SimpleNamespace(integrations={'agy_command': self.entry,
+            'node_command': shutil.which('node') or sys.executable})
+        # Same host environment as the PTY adapter, without TERM: this is not a
+        # terminal session and must not depend on terminal capabilities.
+        return dict(command_environment(config, 'agy'), NO_COLOR='1')
+
+    def _command(self, entry, timeout):
+        # The user's model value verbatim; never query models or read defaults.
+        # Only the flags below: no print mode, no prompt argument, no permission
+        # skipping, no extra directories, and nothing that would make agy ignore
+        # the mode.  The task itself stays in the card file, never in argv.
+        seconds = 90 if timeout else 0
+        return [entry, '--input-format', 'stream-json', '--output-format', 'stream-json',
+                '--model', self.model, '--mode', 'accept-edits', '--sandbox',
+                '--print-timeout', '%ds' % seconds]
+
+    def _dispatch(self, ticket, health_only):
+        # The task itself stays in the card file; argv carries no task text.
+        return ((HEALTH_DISPATCH if health_only else WORK_DISPATCH) + ANTI_DRIFT +
+                '只执行卡内授权范围；保留先前记录；不用在终端复述结果。\n' +
+                'XIAOBA_TASK_CARD=' + json.dumps(str(ticket['card']), ensure_ascii=False))
+
+    def _start(self, directory, ticket, timeout, health_only):
+        identity = self.resource_identity()
+        argv = self._command(identity['entry'], timeout)
+        self._preview = TerminalPreview()
+        self._stdout = bytearray()
+        self._partial = b''
+        self._events = 0
+        self._eof = False
+        self._stderr = tempfile.TemporaryFile()
+        self._stderr_kept = 0
+        process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, cwd=str(directory), env=self._environment(),
+            start_new_session=True, close_fds=True)
+        self._process = process
+        if self._launch_checksum is None: self._launch_checksum = identity['sha256']
+        message = {'event': 'user', 'message': {'content': self._dispatch(ticket, health_only)}}
+        try:
+            process.stdin.write((json.dumps(message, ensure_ascii=False) + '\n').encode())
+            process.stdin.flush()
+        finally:
+            try: process.stdin.close()
+            except OSError: pass
+        self._queue = queue.Queue()
+        threading.Thread(target=self._pump, args=(process.stdout, self._queue.put),
+                         daemon=True).start()
+        threading.Thread(target=self._pump_stderr, args=(process.stderr,), daemon=True).start()
+        self._refresh_preview(ticket, self._log_size(ticket))
+
+    @staticmethod
+    def _pump(stream, sink):
+        try:
+            while True:
+                chunk = stream.read(8192)
+                if not chunk: break
+                sink(chunk)
+        except (OSError, ValueError): pass
+        finally: sink(None)
+
+    def _pump_stderr(self, stream):
+        # Bounded temp file: the raw text is scanned once and never returned.
+        try:
+            while True:
+                chunk = stream.read(4096)
+                if not chunk: break
+                if self._stderr_kept >= STDERR_LIMIT: continue
+                data = chunk[:STDERR_LIMIT - self._stderr_kept]
+                self._stderr_kept += len(data)
+                self._stderr.write(data)
+        except (OSError, ValueError): pass
+
+    def _stderr_text(self):
+        if self._stderr is None: return ''
+        try:
+            self._stderr.flush()
+            self._stderr.seek(0)
+            return self._stderr.read(STDERR_LIMIT).decode('utf-8', errors='replace')
+        except (OSError, ValueError): return ''
+
+    def _log_size(self, ticket):
+        try: return ticket['log'].stat().st_size
+        except OSError: return 0
+
+    def _refresh_preview(self, ticket, size):
+        lines = []
+        try:
+            with ticket['log'].open('rb') as stream:
+                start = max(ticket['prefix_size'], size - PREVIEW_BYTES)
+                stream.seek(start)
+                lines = stream.read(PREVIEW_BYTES).decode('utf-8', errors='replace').splitlines()
+        except (OSError, ValueError): lines = []
+        head = '第%d次调用 · 已收到%d条流事件 · 回执%d字节' % (self._turns + 1, self._events, size)
+        self._preview.set_screen('\n'.join([head, *lines[-PREVIEW_LINES:]]))
+
+    def _consume(self, chunk):
+        """Count complete, parseable JSON lines as verifiable progress."""
+        self._partial += chunk
+        found = 0
+        while b'\n' in self._partial:
+            line, self._partial = self._partial.split(b'\n', 1)
+            if not line.strip(): continue
+            try:
+                if isinstance(json.loads(line.decode('utf-8', 'replace')), dict): found += 1
+            except (ValueError, UnicodeError): continue
+        return found
+
+    def _drain(self):
+        """Pick up whatever the child already wrote before we settle."""
+        while True:
+            try: chunk = self._queue.get_nowait()
+            except queue.Empty: return
+            if chunk is None: self._eof = True; return
+            self._events += self._consume(chunk)
+
+    def _wait(self, ticket, timeout):
+        process = self._process
+        deadline = None if timeout is None else time.monotonic() + timeout
+        last_progress = time.monotonic()
+        size = self._log_size(ticket)
+        received = 0
+        exited_at = None
+        while True:
+            now = time.monotonic()
+            if deadline is not None and now >= deadline:
+                self._kill_group()
+                raise InteractiveError('cli_timeout', 'AGY调用未在本次测试期限内完成；不会自动重测。')
+            if now - last_progress >= self.no_progress_seconds:
+                self._kill_group()
+                raise InteractiveError('cli_no_progress',
+                    'AGY调用连续%d秒无可验证结果进展，已停止本次调用。' % self.no_progress_seconds)
+            try: chunk = self._queue.get(timeout=0.05)
+            except queue.Empty: chunk = b''
+            if chunk is None: self._eof = True
+            elif chunk:
+                received += len(chunk)
+                if received > self.output_limit:
+                    self._kill_group()
+                    raise InteractiveError('cli_output_limit',
+                        'AGY输出超过安全上限，已停止；不保存原始输出。')
+                self._stdout.extend(chunk)
+                found = self._consume(chunk)
+                if found:
+                    self._events += found; last_progress = time.monotonic()
+            # stdout never supplies a business result; only the file does.
+            receipt = self.workday.read(ticket)
+            if receipt is not None:
+                self._drain()
+                self._refresh_preview(ticket, self._log_size(ticket))
+                return self._settle(receipt, process)
+            current = self._log_size(ticket)
+            if current != size:
+                size = current; last_progress = time.monotonic()
+                self._refresh_preview(ticket, current)
+            if process.poll() is not None:
+                # A helper agy left behind may hold stdout open; once the leader
+                # has exited, wait at most 2 s for the stream to close.
+                exited_at = exited_at or time.monotonic()
+                if self._eof or time.monotonic() - exited_at >= 2: break
+        # The last write may land between the read above and the exit check.
+        receipt = self.workday.read(ticket)
+        if receipt is not None:
+            self._drain()
+            self._refresh_preview(ticket, self._log_size(ticket))
+            return receipt, False
+        return self._settle_exit()
+
+    def _settle(self, receipt, process):
+        if process.poll() is not None: return receipt, False
+        grace = time.monotonic() + self.receipt_grace_seconds
+        while time.monotonic() < grace:
+            if process.poll() is not None: return receipt, False
+            time.sleep(0.02)
+        self._kill_group()
+        return receipt, True
+
+    def _result_status(self):
+        try:
+            payload = _agy_result_payload(bytes(self._stdout).decode('utf-8', 'replace'))
+        except Exception: return None
+        return str(payload.get('status', '')).upper() or None
+
+    def _settle_exit(self):
+        self._drain()
+        process = self._process
+        returncode = process.returncode if process is not None else None
+        stdout = bytes(self._stdout).decode('utf-8', 'replace')
+        stderr = self._stderr_text()
+        if returncode == 0 and self._result_status() == 'SUCCESS':
+            raise InteractiveError('receipt_missing',
+                'AGY本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
+        if TRUST_PROMPT in stdout or TRUST_PROMPT in stderr:
+            raise NativeWorkspaceConsent()
+        # Only a short class survives; the raw text is never returned or stored.
+        detail = _redact_error(stderr or stdout or 'agy cli failed')
+        failure = InteractiveError('cli_failed',
+            'AGY调用未完成本次任务；不自动重试、不换模型、不换后台。')
+        failure.failure_class = 'transient' if _is_transient_cli_error(detail) else 'permanent'
+        raise failure
+
+    def _kill_group(self):
+        """End the call's whole process group, including helpers agy left behind.
+
+        Each step starts a fresh group, so an exited agy leader does not mean the
+        step is over: anything still in the group would otherwise pile up step
+        after step.  SIGTERM first, SIGKILL for whatever remains after 2 s.
+        """
+        process = self._process
+        if process is None: return
+        # macOS answers a group holding only unreaped zombies with EPERM.  Reap
+        # our own leader first; after that EPERM means nothing is left alive,
+        # and only a live leader that still refuses is a blocked cleanup.
+        def signal_group(number):
+            try: os.killpg(process.pid, number)
+            except ProcessLookupError: return False
+            except PermissionError:
+                if process.poll() is None: raise
+                return False
+            return True
+        process.poll()
+        if not signal_group(signal.SIGTERM): return
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try: process.wait(timeout=0.05)
+            except subprocess.TimeoutExpired: pass
+            if not signal_group(0): return
+        signal_group(signal.SIGKILL)
+        try: process.wait(timeout=2)
+        except subprocess.TimeoutExpired: pass
+
+    # -- evidence and the shared turn shape ----------------------------------
+
+    def _evidence(self, call_id=None):
+        return {'provider': 'antigravity_cli', 'model': self.model,
+                'route_source': 'native_cli_per_step', 'model_source': 'node_configuration',
+                'model_verification': 'not_performed', 'call_id': call_id or self._call_id,
+                'execution_mode': self.execution_mode}
+
+    def _failure_evidence(self, exc, call_id):
+        evidence = self._evidence(call_id)
+        failure_class = getattr(exc, 'failure_class', None)
+        if failure_class: evidence['failure_class'] = failure_class
+        return evidence
+
+    def _turn(self, instruction, context, timeout=None, kind='review', record_id=None,
+              step_code=None, task_id=None, health_only=False):
+        with self._serial:
+            if self._retired:
+                raise InteractiveError('session_closed', 'AGY节点已停用，本会话不再接收任务。')
+            task_id = task_id or record_id or uuid.uuid4().hex
+            step_code = step_code or ('HEALTH-01' if kind == 'test' else 'REVIEW-01')
+            materials = json.loads(context)
+            payload = {'task_id': task_id, 'step_code': step_code, 'model': self.model,
+                       'instruction': instruction, 'context': materials}
+            if kind == 'work':
+                prior = self.workspace.previous_work(record_id or task_id, payload)
+                if prior:
+                    value, evidence = prior
+                    if value is None:
+                        raise InteractiveError('work_step_failed', '原任务步骤已失败并留有记录，不自动重跑。')
+                    return value, dict(evidence, replayed=True)
+            before = self.resource_identity()
+            record = None
+            call_id = uuid.uuid4().hex
+            try:
+                if self.pending_action: raise NativeWorkspaceConsent()
+                self._workspace_lock = self.workspace.lock_session()
+                directory = self.workspace.ensure()
+                self.workspace.verify()
+                record = self.workspace.begin(kind, record_id or task_id, payload)
+                ticket = self.workday.prepare(record, task_id, step_code, instruction, materials,
+                    review=kind == 'review', health_only=health_only)
+                self._call_id = call_id
+                self._state = 'running'
+                self._start(directory, ticket, timeout, health_only)
+                value, terminated = self._wait(ticket, timeout)
+                if before != self.resource_identity():
+                    raise InteractiveError('entry_changed', 'AGY入口在调用期间发生变化。')
+                self._turns += 1
+                evidence = dict(self._evidence(call_id), reply_source='daily_worklog',
+                                worklog=value['worklog'])
+                if terminated: evidence['process_terminated_after_receipt'] = True
+                self.workspace.finish(record,
+                    'execution_completed' if value['status'] == 'completed' else value['status'],
+                    value, evidence)
+                self._release()
+                self._state = 'receipt_received'
+                return value, evidence
+            except NativeWorkspaceConsent:
+                self.close()
+                self._state = 'failed'
+                raise
+            except BaseException as exc:
+                try:
+                    if record and (not isinstance(exc, WorkspaceError) or exc.code in {
+                            'worklog_receipt_invalid', 'worklog_task_mismatch', 'worklog_non_answer',
+                            'worklog_path_invalid', 'worklog_limit', 'worklog_receipt_conflict'}):
+                        self.workspace.finish(record, 'failed',
+                            evidence=self._failure_evidence(exc, call_id),
+                            reason=getattr(exc, 'code', type(exc).__name__))
+                finally:
+                    self.close()
+                    self._state = 'failed'
+                raise
+            finally:
+                if self._retired: self.close()
+
+    # -- the interface the callers already use -------------------------------
+
+    def test_resource(self, plan, challenge):
+        value, evidence = self._turn('本任务只验证文件写回通道，不要求你执行系统健康检查或诊断。'
+            '主入口负责根据写回结果判断健康，你只需用文件读写工具将给定内容写入本卡指定的回执文件。'
+            '步骤码只是关联编号，不需要查找其实现，不查历史任务或小八源码。'
+            '既有治理要求保持；不为本卡运行命令、不联网、不做额外诊断，只写指定回执文件，不新建当日台账。'
+            '回执正文只写材料中的challenge原文，不要JSON或代码围栏。',
+            json.dumps({'challenge': challenge}, ensure_ascii=False), timeout=90, kind='test',
+            record_id=challenge, health_only=True)
+        if value['status'] != 'completed' or value['body'] != challenge:
+            self.close()
+            raise InteractiveError('challenge_mismatch', '文件回执未完成本次健康挑战；没有标记可用。')
+        return dict(evidence, output=value['body'])
+
+    def initialize_workday(self, health_evidence, task_id):
+        value, evidence = self._turn('主入口已核验前一步健康检测通过。由你新建或沿用当日工作Markdown，'
+            '只追加本次开工记录，保留原记录。回执正文只写材料中的challenge原文，不用JSON。',
+            json.dumps({'challenge': 'WORKDAY_READY', 'health_check': health_evidence},
+                       ensure_ascii=False), timeout=90, kind='test', record_id=task_id,
+            step_code='WORKDAY-INIT')
+        if value['status'] != 'completed' or value['body'] != 'WORKDAY_READY':
+            self.close()
+            raise InteractiveError('workday_initialization_failed',
+                '健康检测通过，但当日工作台账初始化未完成。')
+        return evidence
+
+    def run(self, card):
+        value, evidence = self._turn('独立审查下面的冻结任务卡及其明确授权材料。'
+            '在当日工作回执中写完整审查正文，并在头部注明审查结论和实际证据引用。'
+            '注明未执行的测试，不伪造评分、执行证据或用户批准。',
+            json.dumps(card, ensure_ascii=False), record_id=card.get('assignment_id'),
+            task_id=card.get('task_id') or card.get('review_request_id'),
+            step_code=card.get('step_code'))
+        verdict = value['metadata'].get('审查结论')
+        if value['status'] != 'completed' or verdict not in {'PASS', 'FAIL', 'NEEDS_INFO'} or not value['evidence_refs']:
+            raise ReviewReceiptError('review_fields_missing',
+                '工作正文已收取并保存在当日文件；审查字段不全，未形成有效审查结论。')
+        text = _sanitize_answer(value['body'])
+        return {'verdict': verdict, 'findings': text, 'evidence_refs': value['evidence_refs'],
+                'execution_evidence': dict(evidence, output_sha256=hashlib.sha256(text.encode()).hexdigest())}
+
+    def run_task(self, task_id, step_code, instruction, materials):
+        if not isinstance(instruction, str) or not instruction.strip():
+            raise ValueError('需要明确授权的工作内容和范围')
+        value, evidence = self._turn(instruction, json.dumps(materials, ensure_ascii=False),
+            kind='work', task_id=task_id, step_code=step_code, record_id=task_id + '-' + step_code)
+        return {'task_id': task_id, 'step_code': step_code, 'status': value['status'],
+                'body': value['body'], 'execution_evidence': evidence, 'score_assigned': False}

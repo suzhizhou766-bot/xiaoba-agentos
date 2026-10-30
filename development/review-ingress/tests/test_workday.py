@@ -7,7 +7,7 @@ import unittest
 import threading
 from zoneinfo import ZoneInfo
 
-from test_agy_interactive import InteractiveFixture
+from test_agy_cli import CliFixture as InteractiveFixture
 from xiaoba_review.agent_workspace import WorkspaceError
 from xiaoba_review.resource_agy import InteractiveError,ReviewReceiptError
 from xiaoba_review.store import Conflict
@@ -107,7 +107,7 @@ class WorkdayFlowTests(InteractiveFixture,unittest.TestCase):
         events=self.count('events')
         self.assertEqual(runtime.start_workday('上班了小八助理','START',['peer'],{'peer':node}),one)
         self.assertEqual(self.count('events'),events)
-        self.assertEqual([v['event'] for v in self.calls()],['start','turn','turn'])
+        self.assertEqual([v['event'] for v in self.calls()],['start','start'])  # One process per step.
         facts=runtime.workday_inputs(node,today())['tasks']
         self.assertEqual(len(facts),2);self.assertTrue(all(v['health_check'] for v in facts))
 
@@ -116,14 +116,16 @@ class WorkdayFlowTests(InteractiveFixture,unittest.TestCase):
         result=self.pool.runtime.start_workday('上班了小八助理','START',['dsh'])
         self.assertEqual(result['model_tasks_sent'],0);self.assertEqual(self.calls(),[])
 
-    def test_long_file_reply_is_complete_even_when_terminal_never_contains_it(self):
+    def test_long_file_reply_is_complete_even_when_the_preview_is_bounded(self):
         node=self.add();self.probe(node);(self.root/'long-reply').touch()
         result=self.business(node)
         self.assertEqual(result['findings'].count('TEST long file reply'),300)
         preview=self.pool.runtime.preview(node)
-        self.assertNotIn('TEST long file reply',preview['text'])
+        # The per-step CLI preview projects only the last 40 receipt lines, so a
+        # long reply can never be read back from it as if it were the result.
+        self.assertLessEqual(len(preview['text'].splitlines()),41)
         self.assertEqual(result['execution_evidence']['reply_source'],'daily_worklog')
-        self.assertEqual(len({v['pid'] for v in self.calls()}),1)
+        self.assertEqual(len({v['pid'] for v in self.calls()}),2)  # Probe + review, one process each.
 
     def test_partial_file_is_not_accepted_before_final_marker(self):
         node=self.add();(self.root/'partial-file').touch();started=time.monotonic()
@@ -238,7 +240,7 @@ class WorkdayFlowTests(InteractiveFixture,unittest.TestCase):
         second=runtime.execute_work(**payload)
         self.assertEqual(first['body'],second['body']);self.assertEqual(len(self.calls()),calls)
         self.assertTrue(second['execution_evidence']['replayed']);self.assertFalse(first['score_assigned'])
-        self.assertEqual(len({v['pid'] for v in self.calls()}),1)
+        self.assertEqual(len({v['pid'] for v in self.calls()}),2)  # Probe + one work call; the replay adds none.
         with self.assertRaises(WorkspaceError):runtime.execute_work(**dict(payload,instruction='TEST conflicting work'))
 
     def test_general_work_without_health_does_not_dispatch(self):
@@ -288,7 +290,7 @@ class WorkdayHttpTests(InteractiveFixture,unittest.TestCase):
         self.assertEqual(code,200,value);self.assertEqual(value['result']['points'],1)
         code,value=self.fetch('/api/agent-pool/weekly-scores',{'day':today(),'task_type':'code-review'})
         self.assertEqual(code,200,value);self.assertEqual(value['result']['ranking'][0]['tasks'],1)
-        self.assertEqual(len({v['pid'] for v in self.calls()}),1)
+        self.assertEqual(len({v['pid'] for v in self.calls()}),3)  # Probe + workday init + review, one process each.
         self.assertEqual(self.count('memory_reviews'),1)  # Only authored fixture setup.
 
     def test_normal_backend_execution_reads_file_and_receives_bound_review(self):
