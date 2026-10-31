@@ -17,6 +17,9 @@ def independence_key(source_ref, model=None):
     """两个审查员是否独立：看“入口程序＋模型”。
 
     同一入口用 A 模型、B 模型算两个；同一入口同一模型，改名字也只算一个。
+    模型名由用户手填，比较前统一大小写并把连续空白压成一个空格，
+    避免“Gemini Flash”和“gemini  flash”被当成两个来源凑独立。
+    真实模型名的别名（不同写法指同一模型）无法判断，不在本函数处理。
     旧的四字段来源没有模型资料，仍只按 source_ref 判断，行为不变。
     """
     if not isinstance(source_ref, str) or not source_ref.strip():
@@ -25,7 +28,8 @@ def independence_key(source_ref, model=None):
         return source_ref
     if not isinstance(model, str) or not model.strip():
         raise ValueError("模型标识格式异常，无法核对独立性")
-    return source_ref.strip() + "|model:" + model.strip()
+    normalized_model = " ".join(model.split()).casefold()
+    return source_ref.strip() + "|model:" + normalized_model
 
 
 def protect_final_decision(conn, candidate):

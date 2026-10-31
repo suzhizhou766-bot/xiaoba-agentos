@@ -47,7 +47,7 @@ def main():
     runtime.mkdir(parents=True, exist_ok=True)
     native = EventStore(native_config.database_path if native_config else runtime / 'agentos.sqlite3')
     native.initialize()
-    store = ReviewStore(native, runtime / 'memory-outbox')
+    store = ReviewStore(native, runtime / 'memory-outbox', args.agent_workspace_root)
     from xiaoba_review.resource_stdio import json_stdio_factory
     backends = BackendRegistry(store,resource_factory=lambda source:json_stdio_factory(source,args.agent_workspace_root))
     if args.dsh_reviewer or args.dsh_agent:
