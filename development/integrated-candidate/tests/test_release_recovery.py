@@ -196,6 +196,185 @@ class SwitchRecoveryTests(unittest.TestCase):
             result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
         self.assertTrue(result['ok'], result)
 
+    def crash_inside(self, phase, temporary=False):
+        if phase == 'install_entries':
+            for name in ('xiaoba', 'verify-release'):
+                path = self.fx.layout.package / 'interface/scripts' / name
+                path.write_text(path.read_text() + '# new entry bytes\n')
+            release_fixture.seal(self.fx.layout.package)
+        ticket = switch.preflight(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertTrue(ticket['ok'], ticket)
+        real = os.replace
+        def action():
+            def replace(source, target):
+                journal = switch.load(switch.recovery_path(self.fx.layout)) if switch.recovery_path(self.fx.layout).exists() else {}
+                hit = '.switch-' in Path(source).name and journal.get('active_phase') == phase
+                if hit and temporary:
+                    os.kill(os.getpid(), signal.SIGKILL)
+                real(source, target)
+                if hit:
+                    os.kill(os.getpid(), signal.SIGKILL)
+            with patch.object(switch.os, 'replace', replace):
+                switch.apply(self.fx.layout, ticket, self.fx.system, now=lambda: 1000)
+        killed_child(action)
+        self.assertEqual(phase, switch.recovery_status(self.fx.layout)['active_phase'])
+        if phase != 'stage_package': self.fx.system.live.clear()
+
+    def test_sigkill_inside_source_and_entries_resumes(self):
+        for phase in ('replace_source', 'install_entries', 'bind_config', 'vault_merge', 'rebuild_graph', 'publish_index'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                self.fx = release_fixture.Fixture(Path(directory))
+                self.crash_inside(phase)
+                result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+                self.assertTrue(result['ok'], result)
+                self.assertEqual('v9.0.1', switch.load(self.fx.layout.config)['release']['expected_version'])
+                self.assertEqual('v9.0.1', switch.load(self.fx.layout.index)['current_release'])
+                self.assertTrue(switch.readback(self.fx.layout, self.fx.system)['ok'])
+
+    def test_sigkill_then_third_content_refuses_without_any_write(self):
+        self.crash_inside('replace_source')
+        target = self.fx.layout.runtime / 'README.md'
+        target.write_bytes(b'third content')
+        before = switch.files(self.fx.root)
+        result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertFalse(result['ok'], result)
+        self.assertIn(str(target), result['error'])
+        self.assertEqual(0, result['writes_performed'])
+        self.assertEqual(before, switch.files(self.fx.root))
+
+    def test_sigkill_copy_temporary_is_preserved_in_leftovers(self):
+        for phase in ('stage_package', 'replace_source', 'install_entries'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                self.fx = release_fixture.Fixture(Path(directory))
+                self.crash_inside(phase, temporary=True)
+                temps = list(self.fx.root.rglob('.*.switch-*'))
+                self.assertEqual(1, len(temps))
+                payload = temps[0].read_bytes()
+                result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+                self.assertTrue(result['ok'], result)
+                self.assertFalse(temps[0].exists())
+                leftovers = self.fx.layout.runtime / '.runtime/switch-leftovers'
+                kept = [p for p in leftovers.rglob('*') if p.is_file()]
+                self.assertEqual([payload], [p.read_bytes() for p in kept])
+
+    def test_sigkill_abandon_only_changes_record_and_unblocks_apply(self):
+        self.crash_inside('replace_source')
+        blocked = switch.apply(self.fx.layout, {}, self.fx.system)
+        self.assertIn('interrupted switch pending', blocked['error'])
+        before = switch.files(self.fx.root)
+        result = switch.abandon(self.fx.layout, self.fx.system)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual('replace_source', result['active_phase'])
+        self.assertFalse(result['worker_running'])
+        self.assertTrue(result['new_content_paths'])
+        after = switch.files(self.fx.root)
+        journal = switch.recovery_path(self.fx.layout).relative_to(self.fx.root).as_posix()
+        self.assertEqual({journal}, {p for p in before.keys() | after.keys() if before.get(p) != after.get(p)})
+        self.assertEqual('abandoned', switch.recovery_status(self.fx.layout)['status'])
+        unblocked = switch.apply(self.fx.layout, {}, self.fx.system)
+        self.assertIn('successful preflight required', unblocked['error'])
+
+    def test_sigkill_active_phase_does_not_relax_other_phases(self):
+        self.crash_inside('install_entries', temporary=True)
+        target = self.fx.layout.runtime / 'README.md'
+        target.write_bytes(b'foreign previous-phase change')
+        before = switch.files(self.fx.root)
+        result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertFalse(result['ok'], result)
+        self.assertIn('checkpoint', result['error'])
+        self.assertEqual(before, switch.files(self.fx.root))
+
+    def test_sigkill_entry_third_mode_refuses_without_moving_temporary(self):
+        self.crash_inside('install_entries', temporary=True)
+        target = self.fx.layout.entries[-1] / 'SKILL.md'
+        target.chmod(0o700)
+        before = switch.files(self.fx.root)
+        result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertFalse(result['ok'], result)
+        self.assertIn(str(target), result['error'])
+        self.assertEqual(before, switch.files(self.fx.root))
+
+    def test_sigkill_release_steps_and_appended_note_resume(self):
+        declaration = switch.load(self.fx.layout.package / 'agentos' / switch.SPEC)
+        declaration['steps'] = [{'id': '0001-disable-automatic-actions',
+            'check': {'kind': 'config_value_equals', 'path': 'recovery.automatic_actions', 'value': None},
+            'execute': {'kind': 'config_set', 'path': 'recovery.automatic_actions', 'value': []},
+            'undo': {'kind': 'restore_in_memory'}}]
+        release_fixture.write(self.fx.layout.package / 'agentos' / switch.SPEC, switch.encoded(declaration))
+        release_fixture.seal(self.fx.layout.package)
+        self.crash_inside('release_steps')
+        result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual([], switch.load(self.fx.layout.config)['recovery']['automatic_actions'])
+        with tempfile.TemporaryDirectory() as directory:
+            self.fx = release_fixture.Fixture(Path(directory))
+            note = self.fx.layout.vault / 'root.md'
+            note.write_bytes(note.read_bytes() + b'user appendix\n')
+            for rel, value in switch.build_graph(self.fx.layout).items():
+                (self.fx.layout.graph / rel).write_bytes(switch.graph_bytes(value))
+            self.crash_inside('vault_merge')
+            result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(b'v9.0.1\nuser appendix\n', note.read_bytes())
+
+    def test_sigkill_abandon_says_what_blocks_the_next_preflight(self):
+        # 只传空预检单测不到：真实预检会被上次留下的目标目录挡住。
+        self.crash_inside('stage_package', temporary=True)
+        result = switch.abandon(self.fx.layout, self.fx.system)
+        target = Path(switch.load(switch.recovery_path(self.fx.layout))['target'])
+        self.assertTrue(any(str(target) in step for step in result['next_steps']), result['next_steps'])
+        blocked = switch.preflight(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertFalse(blocked['ok'])
+        self.assertIn(str(target), blocked['error'])
+        os.rename(target, target.with_name('.abandoned-' + target.name))
+        self.assertTrue(switch.preflight(self.fx.layout, self.fx.system, now=lambda: 1000)['ok'])
+
+    def test_sigkill_abandon_after_replacing_source_reports_stopped_worker_and_new_files(self):
+        self.crash_inside('replace_source')
+        steps = switch.abandon(self.fx.layout, self.fx.system)['next_steps']
+        self.assertTrue(any('Worker 已停' in step for step in steps), steps)
+        self.assertTrue(any('已是新内容' in step for step in steps), steps)
+
+    def test_sigkill_abandon_reports_live_worker_and_shares_switch_lock(self):
+        import fcntl
+        self.crash_inside('stage_package', temporary=True)
+        before = switch.files(self.fx.root)
+        fd = os.open(self.fx.layout.runtime / '.runtime', os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = switch.abandon(self.fx.layout, self.fx.system)
+            self.assertFalse(result['ok'], result)
+            self.assertEqual(before, switch.files(self.fx.root))
+        finally:
+            os.close(fd)
+        result = switch.abandon(self.fx.layout, self.fx.system)
+        self.assertTrue(result['ok'], result)
+        self.assertTrue(result['worker_running'])
+        self.assertTrue(list(self.fx.root.rglob('.*.switch-*')))
+
+    def test_sigkill_during_resume_preserves_original_phase_plan(self):
+        self.crash_inside('replace_source')
+        initial = switch.load(switch.recovery_path(self.fx.layout))['phase_files']
+        real = switch.Writer.write
+        def action():
+            def write(writer, path, *args, **kwargs):
+                real(writer, path, *args, **kwargs)
+                os.kill(os.getpid(), signal.SIGKILL)
+            with patch.object(switch.Writer, 'write', write):
+                switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        killed_child(action)
+        self.assertEqual(initial, switch.load(switch.recovery_path(self.fx.layout))['phase_files'])
+        result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertTrue(result['ok'], result)
+
+    def test_sigkill_partial_temporary_bytes_are_preserved(self):
+        self.crash_inside('replace_source', temporary=True)
+        temp = next(self.fx.root.rglob('.*.switch-*'))
+        temp.write_bytes(b'partial new bytes')
+        result = switch.resume(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual([b'partial new bytes'], [Path(p).read_bytes() for p in result['preserved_leftovers']])
+
     def test_undo_short_write_leaves_installed_file_complete(self):
         path = self.fx.root / 'undo.txt'; path.write_bytes(b'ORIGINAL')
         writer = switch.Writer(); writer.write(path, b'COMPLETE NEW FILE', switch.state(path))

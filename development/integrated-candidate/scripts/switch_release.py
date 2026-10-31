@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import copy
 import fcntl
 import hashlib
 import importlib.util
@@ -656,20 +655,163 @@ def vault_actions(layout: Layout, previous: Path) -> list:
     return actions
 
 
-def snapshot(layout: Layout, spec: dict) -> dict:
-    result = {}
-    for name, root in [('runtime', layout.runtime), ('vault', layout.vault), ('graph', layout.graph)]:
-        values = source_files(root) if name == 'runtime' else files(root)
-        result[name] = digest(encoded(values))
-    for name, p in [('index', layout.index), ('config', layout.config), ('plist', layout.plist), ('history', layout.history)]:
-        result[name] = state(p)
-    for i, home in enumerate(layout.entries):
-        result['entry-' + str(i)] = digest(encoded(files(home)))
-    for step in spec['steps']:
-        result['step-' + step['id']] = state(step_destination(layout, step))
-    result['runtime-manifest'] = state(layout.runtime / 'SOURCE_MANIFEST.json')
-    result['package'] = digest(encoded(files(layout.package)))
+def snapshot(layout: Layout, spec: dict, overrides=None, ignored=()) -> dict:
+    # Virtual pre-phase view: only explicitly planned paths may be normalized.
+    overrides = overrides or {}
+    def file_state(path):
+        return overrides.get(str(path), state(path))
+    def tree(root, source=False):
+        values = source_files(root) if source else files(root)
+        for path in ignored:
+            if path.is_relative_to(root): values.pop(path.relative_to(root).as_posix(), None)
+        for name, value in overrides.items():
+            path = Path(name)
+            if not path.is_relative_to(root): continue
+            rel = path.relative_to(root)
+            if source and not (rel.parts[0] in SOURCE_DIRS or rel.as_posix() in SOURCE_FILES): continue
+            if value['sha256'] is None: values.pop(rel.as_posix(), None)
+            else: values[rel.as_posix()] = value['sha256']
+        return digest(encoded(values))
+    result = {name: tree(root, name == 'runtime') for name, root in
+              [('runtime', layout.runtime), ('vault', layout.vault), ('graph', layout.graph)]}
+    for name, path in [('index', layout.index), ('config', layout.config), ('plist', layout.plist), ('history', layout.history)]:
+        result[name] = file_state(path)
+    for i, home in enumerate(layout.entries): result['entry-' + str(i)] = tree(home)
+    for step in spec['steps']: result['step-' + step['id']] = file_state(step_destination(layout, step))
+    result['runtime-manifest'] = file_state(layout.runtime / 'SOURCE_MANIFEST.json')
+    result['package'] = tree(layout.package)
     return result
+
+
+def phase_actions(layout, data, name, intent=None):
+    """Reconstruct NEW bytes only; the journal never stores config or old bytes."""
+    actions = {}
+    intent = intent or {}
+    def add(path, payload, mode=None):
+        before = intent.get(str(path), {}).get('before', state(path))
+        actions[str(path)] = (path, payload, before, mode)
+    if name == 'stage_package':
+        for rel, sha in files(layout.package).items():
+            source = layout.package / rel
+            payload = source.read_bytes()
+            require(digest(payload) == sha, 'package changed during staging')
+            target = data['target'] / rel
+            if not intent: require(not target.exists(), f'unexpected staged file: {target}')
+            add(target, payload, source.stat().st_mode & 0o777)
+    elif name == 'replace_source':
+        source = data['target'] / 'agentos'
+        incoming = verify_source(source)
+        for rel in sorted(set(data['runtime_files']) | set(incoming)):
+            path = layout.runtime / rel
+            changed = data['runtime_files'].get(rel) != incoming.get(rel)
+            mode = (source / rel).stat().st_mode & 0o777 if changed and rel in incoming else None
+            add(path, (source / rel).read_bytes() if rel in incoming else None, mode)
+        add(layout.runtime / 'SOURCE_MANIFEST.json', (source / 'SOURCE_MANIFEST.json').read_bytes())
+    elif name == 'install_entries':
+        for home in layout.entries:
+            for entry in ('xiaoba', 'verify-release'):
+                template = (data['target'] / 'interface/scripts' / entry).read_text()
+                require(len(DEFAULT_LINE.findall(template)) == 1, 'entrypoint template config binding is ambiguous')
+                payload = DEFAULT_LINE.sub(lambda _: f'DEFAULT_CONFIG = Path({json.dumps(str(layout.config), ensure_ascii=False)})', template).encode()
+                add(home / 'scripts' / entry, payload, 0o755)
+            add(home / 'SKILL.md', (data['target'] / 'interface/SKILL.md').read_bytes())
+    elif name == 'bind_config':
+        config = load(layout.config)
+        config['release']['expected_version'] = data['new']['version']
+        add(layout.config, encoded(config), 0o600)
+    elif name == 'release_steps':
+        history = load(layout.history) if layout.history.exists() else {'steps': {}}
+        config = load(layout.config)
+        for step in data['spec']['steps']:
+            if step['id'] in history['steps']: continue
+            target = step_destination(layout, step)
+            if step['execute']['kind'] == 'config_set':
+                path, before_value, after_value = config_step(layout, step)
+                require(config_get(config, path) in (before_value, after_value), 'config step input changed')
+                section, _, key = path.partition('.')
+                config.setdefault(section, {})[key] = after_value
+                add(target, encoded(config), 0o600)
+            else:
+                payload = step_payload(layout, step)
+                require(state(target)['sha256'] in (None, digest(payload)), f'step would overwrite user content: {target}')
+                if state(target)['sha256'] is None: add(target, payload)
+            history['steps'][step['id']] = {'sha256': digest(encoded(step)), 'release': data['new']['version']}
+        if data['spec']['steps']: add(layout.history, encoded(history), 0o600)
+    elif name == 'vault_merge':
+        # Already-replaced notes can include a human appendix. Exclude them from
+        # merge planning, then reuse their verified new bytes below.
+        pending = {key: value for key, value in intent.items() if state(Path(key)) != value['after']}
+        if intent:
+            for key in pending:
+                # Plan one note against the previous generated prefix.
+                path = Path(key); rel = path.relative_to(layout.vault)
+                payload = (layout.package / 'second-brain' / rel).read_bytes()
+                original = data['previous'] / 'second-brain' / rel
+                if path.exists() and original.exists():
+                    old = original.read_bytes(); current = path.read_bytes()
+                    require(current.startswith(old), f'generated note was edited: {path}')
+                    payload += current[len(old):]
+                add(path, payload)
+        else:
+            for path, payload, before, mode in vault_actions(layout, data['previous']): add(path, payload, mode)
+    elif name == 'rebuild_graph':
+        for rel, value in build_graph(layout).items(): add(layout.graph / relative(rel), graph_bytes(value), 0o600)
+    elif name == 'publish_index':
+        index = load(layout.index)
+        index['current_release'] = data['new']['version']
+        if not any(r['version'] == data['new']['version'] for r in index['releases']):
+            index['releases'].insert(0, {'version': data['new']['version'], 'path': data['new']['version'],
+                                       'status': 'verified_immutable', 'files_manifest_sha256': state(data['target'] / 'FILES.sha256')['sha256']})
+        add(layout.index, encoded(index))
+    for key, value in intent.items():
+        if key not in actions and state(Path(key)) == value['after']:
+            path = Path(key)
+            add(path, path.read_bytes() if path.exists() else None, value['after']['mode'])
+    return list(actions.values())
+
+
+def action_intent(actions):
+    return {str(path): {'before': before, 'after':
+            {'sha256': digest(payload) if payload is not None else None,
+             'mode': (mode or before['mode'] or 0o600) if payload is not None else None}}
+            for path, payload, before, mode in actions}
+
+
+def recovery_scene(layout, record):
+    intent = record.get('phase_files', {}) if record.get('active_phase') else {}
+    leftovers = []
+    for key, value in intent.items():
+        path = Path(key)
+        require(state(path) in (value['before'], value['after']), f'phase file differs from old/new content: {path}')
+        for pid in record.get('writer_pids', []):
+            temp = path.with_name('.' + path.name + f'.switch-{pid}')
+            safe(temp)
+            if temp.exists():
+                require(temp.is_file(), f'not a regular switch temporary: {temp}')
+                leftovers.append(temp)
+    require(snapshot(layout, record['spec'], {key: value['before'] for key, value in intent.items()}, leftovers)
+            == record['checkpoint'], 'scene differs from last durable checkpoint; manual reconciliation required')
+    if record.get('active_phase') == 'stage_package':
+        target = Path(record['target'])
+        if target.exists():
+            actual = set(files(target)) - {p.relative_to(target).as_posix() for p in leftovers}
+            allowed = {Path(p).relative_to(target).as_posix() for p in intent}
+            require(actual <= allowed, 'unexpected files in staged recovery package: ' + str(sorted(actual - allowed)))
+    return leftovers
+
+
+def preserve_leftovers(layout, paths):
+    moved = []
+    for path in paths:
+        root = layout.runtime / '.runtime/switch-leftovers'
+        safe(root)
+        root.mkdir(mode=0o700, exist_ok=True)
+        # Unique directory also makes a kill between moves safely repeatable.
+        directory = Path(tempfile.mkdtemp(prefix='switch-', dir=root))
+        target = directory / path.name
+        os.rename(path, target)
+        moved.append(str(target))
+    return moved
 
 
 def inspect(layout: Layout, system: System) -> dict:
@@ -692,7 +834,7 @@ def inspect(layout: Layout, system: System) -> dict:
     require(new['version'] != old['version'], 'target is already active')
     require(not any(r['version'] == new['version'] for r in index['releases']), 'target version is already indexed')
     target = layout.index.parent / relative(new['version'])
-    require(not target.exists(), 'target immutable release directory already exists')
+    require(not target.exists(), f'target immutable release directory already exists: {target}; if an abandoned switch left it, check it and move it away before a new preflight')
     runtime_files = verify_source(layout.runtime)
     require(state(layout.runtime / 'SOURCE_MANIFEST.json')['sha256'] == old['agentos_source_manifest_sha256'], 'runtime is not bound to previous release')
     config = load(layout.config)
@@ -818,6 +960,41 @@ def recovery_status(layout: Layout) -> dict:
             'note': '仅记录阶段和哈希；resume 核对现场后继续，不自动执行或批准'}
 
 
+def abandon(layout: Layout, system: Optional[System] = None) -> dict:
+    system = system or System()
+    fd = os.open(layout.runtime / '.runtime', os.O_RDONLY)
+    try:
+        try: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {'ok': False, 'mode': 'abandon', 'error': 'another switch is running', 'writes_performed': 0}
+        path = recovery_path(layout)
+        before = state(path)
+        record = load(path)
+        require(record.get('status') == 'pending', 'no interrupted switch to abandon')
+        result = recovery_status(layout)
+        pids = system.worker_pids(layout)
+        result.update(mode='abandon', worker_running=bool(pids), worker_pids=pids,
+                      worker_service_registered=system.registered(layout))
+        known = {**record.get('written_files', {}), **record.get('phase_files', {})}
+        result['new_content_paths'] = [key for key, value in known.items()
+                                       if value['after']['sha256'] is not None and state(Path(key)) == value['after']]
+        record['status'] = 'abandoned'
+        atomic_bytes(path, encoded(record), expected=before)
+        target = Path(record['target'])
+        steps = []
+        if not result['worker_running']:
+            steps.append('Worker 已停，且不会自动启动；先确认运行目录和入口是哪个版本的内容，再决定启动。')
+        if result['new_content_paths'] and record.get('completed_steps') != ['stage_package'] and record.get('active_phase') != 'stage_package':
+            steps.append('上面这些文件已是新内容，没有回滚；预检通过前要把它们恢复一致，旧内容可从上一版发布包核对：' + record['previous'])
+        if target.exists():
+            steps.append('预检不接受已存在的目标目录，确认后把它移走：' + str(target))
+        result.update(status='abandoned', pending=False, writes_performed=1, next_steps=steps,
+                      note='仅放弃恢复记录；现场未回滚，新的 apply 仍须通过预检。')
+        return result
+    finally:
+        os.close(fd)
+
+
 def apply(layout: Layout, ticket: dict, system: Optional[System] = None,
           now: Callable = time.time, fault: Optional[Callable] = None) -> dict:
     return _locked_apply(layout, ticket, system, now, fault, False)
@@ -869,8 +1046,20 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
         return name in completed
 
     def begin(name):
+        saved = journal.get('phase_files', {}) if journal.get('active_phase') == name else {}
+        actions = phase_actions(layout, data, name, saved)
+        intent = action_intent(actions)
+        if saved: require(intent == saved, 'reconstructed phase plan differs')
         journal['active_phase'] = name
+        journal['phase_files'] = intent
+        journal['writer_pids'] = sorted(set(journal.get('writer_pids', []) + [os.getpid()]))
         atomic_bytes(recovery_path(layout), encoded(journal))
+        for path, payload, before, mode in actions:
+            current = state(path)
+            require(current in (before, intent[str(path)]['after']), f'phase file changed: {path}')
+            if current != intent[str(path)]['after']:
+                writer.write(path, payload, before, mode)
+
 
     def phase(name: str) -> None:
         result['completed_steps'].append(name)
@@ -879,6 +1068,8 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             return
         if name not in completed: completed.append(name)
         journal['completed_steps'] = list(completed)
+        journal.setdefault('written_files', {}).update(journal.get('phase_files', {}))
+        journal['phase_files'] = {}
         journal['active_phase'] = None
         journal['checkpoint'] = snapshot(layout, data['spec'])
         atomic_bytes(recovery_path(layout), encoded(journal))
@@ -896,8 +1087,7 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             if done('stage_package'):
                 verify_package(data['target'])
                 require((data['target'] / 'FILES.sha256').read_bytes() == (layout.package / 'FILES.sha256').read_bytes(), 'staged recovery package differs')
-            require(snapshot(layout, data['spec']) == recovery['checkpoint'],
-                    'scene differs from last durable checkpoint; manual reconciliation required')
+            leftovers = recovery_scene(layout, recovery)
             original_snapshot = recovery['original_snapshot']
             old_pid = data['worker']['pid']
             stopped = done('stop_worker')
@@ -908,6 +1098,7 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             queue(layout)
             result['old_pid'] = old_pid
             result['completed_steps'] = list(completed)
+            result['preserved_leftovers'] = preserve_leftovers(layout, leftovers)
         else:
             require(ticket.get('mode') == 'preflight' and ticket.get('ok') is True, 'successful preflight required')
             signed = dict(ticket)
@@ -931,18 +1122,6 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
 
         if not done('stage_package'):
             begin('stage_package')
-            # New immutable package; every byte is rechecked and journalled. No old release is touched.
-            for directory in sorted(layout.package.rglob('*')):
-                safe(directory)
-                if directory.is_dir() and '__pycache__' not in directory.parts:
-                    writer._parents(data['target'] / directory.relative_to(layout.package))
-            for rel, sha in files(layout.package).items():
-                source = layout.package / relative(rel)
-                payload = source.read_bytes()
-                require(digest(payload) == sha, 'package changed during staging')
-                if resumed and state(data['target'] / relative(rel))['sha256'] == sha:
-                    continue
-                writer.write(data['target'] / relative(rel), payload, {'sha256': None, 'mode': None}, source.stat().st_mode & 0o777)
             verify_package(data['target'])
             phase('stage_package')
         if not done('stop_worker'):
@@ -957,92 +1136,18 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             require(not system.alive(old_pid), 'old worker remained after stop')
             queue(layout)
             phase('stop_worker')
-        if not done('replace_source'):
-            begin('replace_source')
-            source = data['target'] / 'agentos'
-            incoming = verify_source(source)
-            for rel in sorted(set(data['runtime_files']) | set(incoming)):
-                target = layout.runtime / relative(rel)
-                before = state(target)
-                require(before['sha256'] == data['runtime_files'].get(rel), 'source changed during switch')
-                if before['sha256'] != incoming.get(rel):
-                    writer.write(target, (source / rel).read_bytes() if rel in incoming else None, before,
-                                 (source / rel).stat().st_mode & 0o777 if rel in incoming else None)
-            writer.write(layout.runtime / 'SOURCE_MANIFEST.json', (source / 'SOURCE_MANIFEST.json').read_bytes(), state(layout.runtime / 'SOURCE_MANIFEST.json'))
-            phase('replace_source')
-        if not done('install_entries'):
-            begin('install_entries')
-            for i, home in enumerate(layout.entries):
-                require(digest(encoded(files(home))) == original_snapshot['entry-' + str(i)], 'entrypoint changed after preflight')
-            for home in layout.entries:
-                for name in ('xiaoba', 'verify-release'):
-                    template = (data['target'] / 'interface/scripts' / name).read_text()
-                    require(len(DEFAULT_LINE.findall(template)) == 1, 'entrypoint template config binding is ambiguous')
-                    payload = DEFAULT_LINE.sub(lambda _: f'DEFAULT_CONFIG = Path({json.dumps(str(layout.config), ensure_ascii=False)})', template).encode()
-                    target = home / 'scripts' / name
-                    writer.write(target, payload, state(target), 0o755)
-                writer.write(home / 'SKILL.md', (data['target'] / 'interface/SKILL.md').read_bytes(), state(home / 'SKILL.md'))
-            phase('install_entries')
-        if not done('bind_config'):
-            begin('bind_config')
-            require(state(layout.config) == original_snapshot['config'], 'config changed after preflight')
-            raw = load(layout.config)
-            config = copy.deepcopy(raw)
-            config['release']['expected_version'] = data['new']['version']
-            require({**config['release'], 'expected_version': raw['release']['expected_version']} == raw['release'], 'config changes exceed release binding')
-            writer.write(layout.config, encoded(config), state(layout.config), 0o600)
-            phase('bind_config')
-        if not done('release_steps'):
-            begin('release_steps')
-            history = load(layout.history) if layout.history.exists() else {'steps': {}}
-            for step in data['spec']['steps']:
-                if step['id'] in history['steps']:
-                    continue
-                target = step_destination(layout, step)
-                before = state(target)
-                if step['execute']['kind'] == 'config_set':
-                    raw = load(layout.config)
-                    path, before_value, after_value = config_step(layout, step)
-                    require(config_get(raw, path) == before_value, 'config step input changed')
-                    updated = copy.deepcopy(raw)
-                    section, _, key = path.partition('.')
-                    updated.setdefault(section, {})[key] = after_value
-                    writer.write(target, encoded(updated), before, 0o600)
-                else:
-                    payload = step_payload(layout, step)
-                    require(before['sha256'] in (None, digest(payload)), 'step would overwrite user content')
-                    if before['sha256'] is None:
-                        writer.write(target, payload, before)
-                history['steps'][step['id']] = {'sha256': digest(encoded(step)), 'release': data['new']['version']}
-                phase('step:' + step['id'])
-            if data['spec']['steps']:
-                require(state(layout.history) == original_snapshot['history'], 'step history changed')
-                writer.write(layout.history, encoded(history), state(layout.history), 0o600)
-            phase('release_steps')
-        if not done('vault_merge'):
-            begin('vault_merge')
-            require(digest(encoded(files(layout.vault))) == original_snapshot['vault'], 'vault changed after preflight')
-            for target, payload, before, mode in vault_actions(layout, data['previous']):
-                writer.write(target, payload, before, mode)
-            phase('vault_merge')
-        if not done('rebuild_graph'):
-            begin('rebuild_graph')
-            require(digest(encoded(files(layout.graph))) == original_snapshot['graph'], 'graph changed after preflight')
-            graph = build_graph(layout)
-            for rel, value in graph.items():
-                target = layout.graph / relative(rel)
-                writer.write(target, graph_bytes(value), state(target), 0o600)
-            verify_graph(layout)
-            phase('rebuild_graph')
-        if not done('publish_index'):
-            begin('publish_index')
-            require(state(layout.index) == original_snapshot['index'], 'release index changed after preflight')
-            index = load(layout.index)
-            index['current_release'] = data['new']['version']
-            index['releases'].insert(0, {'version': data['new']['version'], 'path': data['new']['version'],
-                                       'status': 'verified_immutable', 'files_manifest_sha256': state(data['target'] / 'FILES.sha256')['sha256']})
-            writer.write(layout.index, encoded(index), state(layout.index))
-            phase('publish_index')
+        for name in ('replace_source', 'install_entries', 'bind_config', 'release_steps',
+                     'vault_merge', 'rebuild_graph', 'publish_index'):
+            if done(name): continue
+            # Before starting a fresh phase, all previous checkpoint data remains strict.
+            if journal.get('active_phase') != name:
+                require(snapshot(layout, data['spec']) == journal['checkpoint'],
+                        'scene changed after checkpoint before ' + name)
+            begin(name)
+            if name == 'release_steps':
+                for step in data['spec']['steps']: phase('step:' + step['id'])
+            if name == 'rebuild_graph': verify_graph(layout)
+            phase(name)
         if not done('start_worker'):
             begin('start_worker')
             require(state(layout.plist) == original_snapshot['plist'], 'worker service template changed after preflight')
@@ -1131,7 +1236,7 @@ def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             except OSError as journal_error:
                 result['recovery_journal_error'] = str(journal_error)
                 result['requires_manual_readback'] = True
-        result['recovery_limit'] = '阶段与哈希持久化；原内容只在内存，未创建备份。偏离检查点时拒绝自动续跑。'
+        result['recovery_limit'] = '阶段与哈希持久化；原内容只在内存，未创建备份。仅活动阶段允许计划内旧/新文件混合，其它偏离拒绝续跑。'
         # Never retain old bytes beyond this invocation.
         writer.changes.clear()
     return result
@@ -1188,7 +1293,7 @@ def rollback_worker_ready(layout: Layout, system: System) -> bool:
 
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', nargs='?', default='plan', choices=('plan', 'preflight', 'apply', 'readback', 'recover', 'resume'))
+    parser.add_argument('mode', nargs='?', default='plan', choices=('plan', 'preflight', 'apply', 'readback', 'recover', 'resume', 'abandon'))
     parser.add_argument('--package', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--preflight', type=Path, help='用户保存的只读预检 JSON，仅 apply 必需')
     parser.add_argument('--old-pid', type=int, help='readback 核验停启时提供切换前 PID')
@@ -1201,6 +1306,8 @@ def main(argv: Optional[list] = None) -> int:
             verify_package(args.package)
             require(state(Path(__file__))['sha256'] == state(args.package / 'agentos/scripts/switch_release.py')['sha256'], 'running command differs from accepted package')
             result = apply(layout, load(args.preflight))
+        elif args.mode == 'abandon':
+            result = abandon(layout)
         elif args.mode == 'recover':
             result = recovery_status(layout)
         elif args.mode == 'resume':
