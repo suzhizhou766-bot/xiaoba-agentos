@@ -33,6 +33,7 @@ class OpenReviewModule(Module):
                 Route('POST', '/api/agent-pool/prepare', lambda req: self.perform(lambda: self.pool.runtime.prepare(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/test', lambda req: self.perform(lambda: self.pool.runtime.test_run(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/workday-start', lambda req: self.perform(lambda: self.pool.runtime.start_workday(**req.json())), 'write'),
+                Route('POST', '/api/agent-pool/tmux-cancel', lambda req: self.perform(lambda: self.pool.tmux.cancel(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/work', lambda req: self.perform(lambda: self.pool.runtime.execute_work(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/workday-inputs', lambda req: self.perform(lambda: self.pool.runtime.workday_inputs(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/task-assess', lambda req: self.perform(lambda: self.pool.runtime.scoring.assess(**req.json())), 'write'),
@@ -199,6 +200,10 @@ class OpenReviewModule(Module):
     def start(self):
         def loop():
             while not self.stopping.wait(2):
+                try:
+                    self.pool.tmux.collect()
+                except Exception:
+                    self.ctx.log(self.id, '用户在场回执收取待重试', level='warning')
                 try:
                     # Revalidate against the original card before every delivery.
                     self.store.state()

@@ -92,9 +92,15 @@ class NodeRuntime:
                 raise Conflict('事件链校验失败，停止派工')
             source=self.store.source(db,node_id);node=require_enabled(source)
             if type(expected_revision) is not int or node['revision']!=expected_revision:raise Conflict('节点已变化，请核对当前计划')
-            if not self.readiness(db,source)['ready']:raise ValueError('节点尚未通过当前配置健康检测，未派发工作')
-            adapter=self.backends.adapter_for(source)
-            if not callable(getattr(adapter,'run_task',None)):raise ValueError('该节点尚未接入工作文件回执')
+            if node.get('interface') == 'tmux':
+                # Attended work bypasses automated health probes, never review gates.
+                attended = source
+            else:attended = None
+            if attended is None and not self.readiness(db,source)['ready']:raise ValueError('节点尚未通过当前配置健康检测，未派发工作')
+            adapter=None if attended is not None else self.backends.adapter_for(source)
+            if attended is None and not callable(getattr(adapter,'run_task',None)):raise ValueError('该节点尚未接入工作文件回执')
+        if attended is not None:
+            return self.pool.tmux.submit(attended,task_id,step_code,instruction,materials)
         return adapter.run_task(task_id,step_code,instruction,materials)
 
     def preview(self, node_id):
@@ -131,6 +137,7 @@ class NodeRuntime:
         if node.get('removed'):return {'ready':False,'reason':'removed'}
         if not node.get('enabled'):return {'ready':False,'reason':'disabled'}
         if any(not node.get(k) for k in FIELDS):return {'ready':False,'reason':'missing_configuration'}
+        if node.get('interface') == 'tmux':return {'ready':False,'reason':'tmux_collaborator_only'}
         if node.get('test_running'):return {'ready':False,'reason':'testing'}
         adapter=self.backends.adapter_for(source)
         if not adapter or not getattr(adapter,'supports_resource_plan',False):
@@ -149,6 +156,9 @@ class NodeRuntime:
         return {'ready':True,'reason':'tested','test_id':test['test_id'],'spec_digest':test['spec_digest']}
 
     def test_run(self, node_id, expected_revision, test_id):
+        with self.store.native.read_only() as db:
+            if node_state(self.store.source(db,node_id)).get('interface') == 'tmux':
+                raise ValueError('用户在场节点不运行自动探针；请显式派发协作任务卡')
         if not isinstance(test_id,str) or not test_id or len(test_id)>128 or type(expected_revision) is not int:
             raise ValueError('测试需要稳定请求ID和当前节点修订号')
         with self.store.transaction() as db:
