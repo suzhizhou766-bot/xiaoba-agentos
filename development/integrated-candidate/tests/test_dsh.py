@@ -74,12 +74,22 @@ class DshIntegrationTest(unittest.TestCase):
         self.assertIn("仅有这份冻结证据", run.call_args.kwargs["input"])
 
     def test_text_stream_fallback_when_final_missing(self):
+        # 卡 16: the text fallback survives, but only for a turn that ended.
         events = [
             {"type": "text", "text": "第一段文本；"},
             {"type": "text", "text": "第二段结论。"},
+            {"type": "status", "phase": "turn_end", "turn": 1, "reason": {"kind": "completed"}},
         ]
         answer, _ = self.run_ndjson(events)
         self.assertEqual("第一段文本；第二段结论。", answer.output)
+
+    def test_text_stream_without_a_terminal_event_is_not_an_answer(self):
+        # 卡 16 反例一（卡 7 第 8 项）：没有结束事件的流不能当答案。
+        events = [{"type": "text", "text": "第一段文本；"}, {"type": "text", "text": "第二段结论。"}]
+        with self.assertRaises(TransientAdapterError) as caught:
+            self.run_ndjson(events)
+        self.assertIn("没有结束事件", str(caught.exception))
+        self.assertNotIn("第一段文本；第二段结论。", str(caught.exception))
 
     def test_timeout_does_not_switch_model_or_generate_override(self):
         before = self.desktop.read_bytes()
@@ -172,13 +182,20 @@ class DshIntegrationTest(unittest.TestCase):
         self.assertNotIn("fixture-dummy-secret", json.dumps(metadata))
 
     def test_reader_failure_stops_before_backend_call_without_leaking_errors(self):
+        # 卡 16: the reader's own diagnostic is kept now, so this locks the
+        # narrower contract: the sentinel survives, credentials do not.
+        stderr = "DSH Desktop routing configuration is unavailable\napi_key=fixture-dummy-secret"
         with patch("xiaoba_agentos.gateway.subprocess.run", return_value=
-                subprocess.CompletedProcess([], 1, "", "fixture-dummy-secret")), \
+                subprocess.CompletedProcess([], 1, "", stderr)), \
                 patch("xiaoba_agentos.adapters.run_cli") as caller:
             with self.assertRaises(PermanentAdapterError) as caught:
                 DshAdapter(self.agent).run("review", "")
         caller.assert_not_called()
-        self.assertNotIn("fixture-dummy-secret", str(caught.exception))
+        message = str(caught.exception)
+        self.assertIn("DSH Desktop 路由读取失败，停止调用", message)
+        self.assertIn("routing configuration is unavailable", message)
+        self.assertNotIn("fixture-dummy-secret", message)
+        self.assertIn("[REDACTED]", message)
 
     def test_explicit_output_contract_suppresses_generic_review_wrapper(self):
         prompt = "计算 37 × 41。只输出最终的阿拉伯数字，不要输出任何其他文字。"
