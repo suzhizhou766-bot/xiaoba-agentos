@@ -18,7 +18,7 @@
     returnFocus=document.activeElement;mode=next;selected=node?.node_id||null;removeConfirm=false;drawerSignature=null;
     drawer.hidden=false;byId('apScrim').hidden=false;byId('apForm').hidden=next!=='add';byId('apDetail').hidden=next!=='detail';byId('apManage').hidden=next!=='manage';byId('apDispatch').hidden=next!=='dispatch';
     byId('apTitle').textContent=next==='add'?'添加 Agent 节点':next==='manage'?'管理后台节点':next==='dispatch'?'派工审查':node.name;note('');
-    if(next==='add'){byId('apForm').reset();byId('apForm').elements.name.focus();}
+    if(next==='add'){byId('apForm').reset();tmuxForm();byId('apForm').elements.name.focus();}
     else {renderDrawer();if(next==='dispatch')byId('apDispatchGo').disabled=!writable();byId('apClose').focus();}
   }
   function writable(){return Boolean(token&&token!=='__TOKEN__'&&state?.event_chain.ok);}
@@ -55,6 +55,20 @@
   function detail(node){
     const root=byId('apDetail'),old=root.querySelector('.ap-terminal-output'),saved=old?.dataset.nodeId===node.node_id?{text:old.textContent,scroll:old.scrollTop}:null;stopPreview();root.replaceChildren();root.className='ap-detail';byId('apTitle').textContent=node.name;
     if(node.execution_mode==='native_interactive_serial'){const view=terminal(root,node),out=view.querySelector('pre');if(saved){out.textContent=saved.text;out.scrollTop=saved.scroll;}}
+    if(node.interface==='tmux'){
+      el('p','用户在场 · 上下文不隔离 · 仅限协作员',root).className='ap-note';
+      el('p','会话：'+node.tmux_session+' · 工作目录：'+node.working_directory,root).className='ap-note';
+      for(const job of node.tmux_jobs||[]){
+        const box=el('section',undefined,root);
+        const labels={waiting_user_agent:'等待用户/Agent',sending:'发送结果待核对，不自动重发',send_uncertain:'发送未确认，不自动重发',completed:'回执已收取',failed:'回执报告失败',blocked:'回执报告受阻',cancelled:'已取消等待'};
+        el('p',job.job_id.slice(0,8)+' · '+(labels[job.status]||job.status),box);
+        if(job.receipt_error)el('p','回执暂不能收取：'+job.receipt_error+' 改好回执文件后会自动再收。',box);el('p','派工卡：'+job.task_card,box);el('p','回执：'+job.receipt_file,box);
+        if(['sending','waiting_user_agent'].includes(job.status))button(box,'取消这次等待',async()=>{await api('tmux-cancel',{node_id:node.node_id,job_id:job.job_id});await refresh();note('已取消等待；终端内已开始的工作由你处理。');}).disabled=!writable();
+      }
+      button(root,node.enabled?'关闭节点':'开启节点',()=>change(node,'toggle',!node.enabled)).disabled=!writable();
+      button(root,'移除节点',()=>change(node,'remove')).disabled=!writable();
+      return;
+    }
     const dl=el('dl',undefined,root);
     for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',node.model||'未登记'],['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
     el('p',node.backend_available?(node.execution_mode==='native_interactive_serial'?'已接入本机交互调用器，按节点填写的入口与模型配置派发任务。':'已接入本机调用器；调用仍须返回本任务模型的执行证据。'):'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
@@ -105,9 +119,20 @@
   }
   byId('apClose').addEventListener('click',close);byId('apScrim').addEventListener('click',close);
   document.addEventListener('visibilitychange',()=>{stopPreview();if(!document.hidden)drawer.querySelector('.ap-terminal[open]')?._poll();});
+  function tmuxForm(){
+    const form=byId('apForm'),attended=form.elements.interface.value==='tmux';
+    byId('apTmuxFields').hidden=!attended;
+    for(const name of ['tmux_session','working_directory']){form.elements[name].disabled=!attended;form.elements[name].required=attended;}
+    const kind=form.elements.kind;
+    let option=kind.querySelector('[value="collaborator"]');
+    if(attended&&!option){option=el('option','协作员（上下文不隔离）',kind);option.value='collaborator';}
+    if(attended)kind.value='collaborator';else if(option){option.remove();kind.value='peer';}
+    kind.disabled=attended;
+  }
+  byId('apForm').elements.interface.addEventListener('change',tmuxForm);
   byId('apForm').addEventListener('submit',async event=>{
     event.preventDefault();const submit=event.submitter;submit.disabled=true;
-    try{const value=Object.fromEntries(new FormData(event.target)),signature=JSON.stringify(value);if(!pendingAdd||pendingAdd.signature!==signature)pendingAdd={signature,id:crypto.randomUUID()};const added=await api('nodes',{node_id:pendingAdd.id,...value,agent:value.name});const id=added.result.reviewer_id;pendingAdd=null;await refresh();open('detail',state.nodes.find(n=>n.node_id===id));note('节点已添加，保持关闭；请开启并测试运行。');}catch(error){note(error);}finally{submit.disabled=false;}
+    try{const value=Object.fromEntries(new FormData(event.target));if(value.interface==='tmux')value.kind='collaborator';const signature=JSON.stringify(value);if(!pendingAdd||pendingAdd.signature!==signature)pendingAdd={signature,id:crypto.randomUUID()};const added=await api('nodes',{node_id:pendingAdd.id,...value,agent:value.name});const id=added.result.reviewer_id;pendingAdd=null;await refresh();open('detail',state.nodes.find(n=>n.node_id===id));note('节点已添加，保持关闭；请开启并测试运行。');}catch(error){note(error);}finally{submit.disabled=false;}
   });
   byId('apDispatchGo').addEventListener('click',async()=>{
     const go=byId('apDispatchGo');go.disabled=true;

@@ -33,6 +33,8 @@ def require_enabled(source):
 
 def resource_plan(source):
     state = require_enabled(source)
+    if state.get('interface') == 'tmux':
+        raise ValueError('tmux上下文不隔离，只能作为协作员，不能独立审查')
     if not state.get('entry'):
         return None  # Existing four-field sources retain their old contract.
     return {k:state[k] for k in ('revision','name','agent','interface','entry','model')} | {
@@ -45,12 +47,16 @@ def independence(source):
     只读节点资料，不要求节点仍在开启状态：已冻结的任务卡和已交回执仍要核对。
     """
     state = node_state(source)
+    if state.get('interface') == 'tmux':
+        raise ValueError('tmux上下文不隔离，不计入独立审查')
     return independence_key(source['source_ref'], state.get('model') if state.get('entry') else None)
 
 
 class AgentPool:
     def __init__(self, store, backends):
         self.store, self.backends = store, backends
+        from .resource_tmux import TmuxChannel
+        self.tmux = TmuxChannel(store)
         from .node_runtime import NodeRuntime
         self.runtime = NodeRuntime(self)
 
@@ -60,7 +66,7 @@ class AgentPool:
             for row in db.execute('SELECT data FROM ri_sources ORDER BY rowid'):
                 source = json.loads(row['data'])
                 state = node_state(source)
-                adapter = self.backends.adapter_for(source)
+                adapter = None if state.get('interface') == 'tmux' else self.backends.adapter_for(source)
                 direct = bool(adapter and (not state.get('entry') or getattr(adapter,'supports_resource_plan',False)))
                 running = db.execute('SELECT count(*) FROM ri_assignments WHERE source_id=? AND running IS NOT NULL', (source['reviewer_id'],)).fetchone()[0]
                 nodes.append(dict(state, node_id=source['reviewer_id'],kind=source['kind'],
@@ -68,24 +74,39 @@ class AgentPool:
                     execution_mode=getattr(adapter,'execution_mode',None),
                     pending_action=getattr(adapter,'pending_action',None),
                     readiness=self.runtime.readiness(db,source)))
+            jobs = self.tmux.jobs(db)
+            for node in nodes:
+                if node.get('interface') == 'tmux':
+                    node.update(execution_mode='tmux_attended', context_isolated=False, role='collaborator',
+                        tmux_jobs=[self.tmux.public(j) for j in jobs.values() if j['node_id']==node['node_id']])
             chain = self.store.native.verify_event_chain_tx(db)
         return {'ok':True,'source':'local_database','nodes':nodes,'event_chain':chain,
                 'selection_scope':'open_review_tasks','client_settings_modified':False}
 
     def add(self, value):
-        if set(value) != {'node_id','name','agent','kind','interface','entry','model'}:
+        tmux = value.get('interface') == 'tmux'
+        fields = {'node_id','name','agent','kind','interface','entry','model'}
+        if tmux:fields |= {'tmux_session','working_directory'}
+        if set(value) != fields:
             raise ValueError('请填写节点名称、Agent、角色、调用方式、入口及模型')
         for key in ('node_id','name','agent','entry','model'):
             if not isinstance(value[key],str) or not value[key].strip() or len(value[key]) > 2048 or any(c in value[key] for c in '\r\n\0'):
                 raise ValueError('节点字段不完整或格式异常：'+key)
-        if len(value['node_id']) > 128 or value['kind'] not in {'dsh','peer'} or value['interface'] not in {'cli','desktop','web'}:
+        if len(value['node_id']) > 128 or value['kind'] not in ({'collaborator'} if tmux else {'dsh','peer'}) or value['interface'] not in {'cli','desktop','web','tmux'}:
             raise ValueError('未知节点角色或调用方式')
         from xiaoba_agentos.memory import MemoryBridge
         if MemoryBridge._sensitive_reason(canonical(value)):
             raise ValueError('Agent池只登记调用资料，请勿填写密钥、令牌或登录材料')
         clean = {k:v.strip() if isinstance(v,str) else v for k,v in value.items()}
         entry = clean['entry']
-        if clean['interface'] == 'web':
+        if tmux:
+            from .resource_tmux import validate_session, validate_directory
+            clean['tmux_session'] = validate_session(value['tmux_session'])
+            clean['working_directory'] = validate_directory(value['working_directory'])
+            clean['context_isolated'] = False
+            identity = clean['entry']
+            if not Path(identity).is_absolute():raise ValueError('CLI入口需要绝对路径')
+        elif clean['interface'] == 'web':
             url = urlsplit(entry)
             from urllib.parse import parse_qsl
             credential_fields={'token','key','api_key','password','authorization','cookie','session'}
@@ -107,12 +128,14 @@ class AgentPool:
             'provenance':'用户在Agent池登记的调用资源；未探测或核实客户端设置',
             'node':{'version':1,'revision':1,'enabled':False,'removed':False,
                     **{k:clean[k] for k in ('name','agent','interface','entry','model')}}}
+        if tmux:
+            source['node'].update({k:clean[k] for k in ('tmux_session','working_directory','context_isolated')})
         with self.store.transaction() as db:
             old = db.execute('SELECT data FROM ri_sources WHERE id=?', (clean['node_id'],)).fetchone()
             if old:
                 existing = json.loads(old[0])
                 # Retry cannot reset a node's switches or removal state.
-                fields = ('name','agent','interface','entry','model')
+                fields = ('name','agent','interface','entry','model') + (('tmux_session','working_directory') if tmux else ())
                 if existing['kind'] != source['kind'] or any(node_state(existing).get(k) != source['node'][k] for k in fields):
                     raise Conflict('同一节点ID已用于不同资源')
                 return existing

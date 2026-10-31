@@ -16,7 +16,7 @@ const selection=new URLSearchParams(location.search);
 function selectSources(id, sources) {const select=$(id),previous=select.value||selection.get(id==='dshSelect'?'dsh':'peer');select.replaceChildren();for(const source of sources.filter(s=>!s.node||s.node.enabled&&!s.node.removed)){const option=el('option',source.node?source.node.name+' · '+(source.node.model||'模型未登记'):source.reviewer_id,select);option.value=source.reviewer_id;}if([...select.options].some(o=>o.value===previous))select.value=previous;}
 function render(state) {
   snapshot=state;$('connection').textContent='已连接 · 裁决材料收件箱'+(state.inbox_online?'在线':'离线，等待重试');
-  selectSources('dshSelect',state.sources.filter(s=>s.kind==='dsh'));selectSources('peerSelect',state.sources);
+  selectSources('dshSelect',state.sources.filter(s=>s.kind==='dsh'));selectSources('peerSelect',state.sources.filter(s=>s.kind!=='collaborator'));
   $('requests').replaceChildren();
   for(const request of state.requests){const box=el('section',undefined,$('requests'));el('h3',labels[request.state]||request.state,box);el('small',request.id+' · 计划版本 '+request.revision,box);el('p','原经验卡 '+request.candidate_id,box);
     const a=el('a','打开原卡人工裁决',box);a.href='/?candidate='+encodeURIComponent(request.candidate_id)+'#review';

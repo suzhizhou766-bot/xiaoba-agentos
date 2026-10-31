@@ -6,8 +6,9 @@
   <form id="apForm" hidden>
     <label>Agent 名称 · 自定义<input name="name" placeholder="填写你给这个 Agent 起的名字" required maxlength="80"></label>
     <label>任务槽位<select name="kind"><option value="peer">审查槽位 B</option><option value="dsh">审查槽位 A（兼容旧 DSH 槽位）</option></select></label>
-    <label>调用方式<select name="interface"><option value="cli">CLI</option><option value="desktop">桌面端</option><option value="web">Web</option></select></label>
+    <label>调用方式<select name="interface"><option value="cli">CLI</option><option value="desktop">桌面端</option><option value="web">Web</option><option value="tmux">CLI · 用户在场（tmux）</option></select></label>
     <label>调用入口<input name="entry" placeholder="程序绝对路径、应用入口或网页地址" required maxlength="2048"></label>
+    <div id="apTmuxFields" hidden><label>tmux 会话名<input name="tmux_session" maxlength="64" disabled></label><label>节点工作目录<input name="working_directory" placeholder="已存在的绝对目录" maxlength="2048" disabled></label><p class="ap-note">上下文不隔离，仅限协作。请你先在该会话打开 Agent；权限由你在终端批准。不会自动重发。</p></div>
     <label>模型<input name="model" placeholder="填写你已选定的模型" required maxlength="200"></label>
     <p class="ap-note">名称、调用方式、入口和模型均由你指定，也可通过与小八对话补齐。新节点先关闭；开启并测试通过后，小八直接使用适用节点，不重复问这些资料。AGY CLI 使用脚本＋持续交互 PTY，可在节点内查看只读终端；其他 CLI、桌面或 Web 需要对应受信调用器。</p><button type="submit" class="ap-primary ap-wide">添加节点</button>
   </form>

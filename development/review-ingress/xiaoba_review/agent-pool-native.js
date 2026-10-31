@@ -39,7 +39,7 @@
     for(const node of nodes){
       const card=element('div',undefined,column);card.className='ap-card'+(node.enabled?' ap-enabled':'');card.dataset.nodeId=node.node_id;
       const main=action(card,'',()=>pool.open(node),'ap-node-main');main.dataset.nodeId=node.node_id;main.setAttribute('aria-label','设置 '+node.name);main.title=node.name+' · '+node.agent+' · '+(node.model||'模型未登记');element('strong',node.name,main);element('span',node.model||'模型未登记',main);
-      element('span',node.readiness?.ready?'已测试 · 可直接运行':node.enabled?'待测试 / 需接线':'已关闭',main);
+      element('span',node.interface==='tmux'?(node.tmux_jobs?.some(j=>j.status==='waiting_user_agent')?'等待用户/Agent':node.enabled?'用户在场 · 仅协作':'已关闭'):node.readiness?.ready?'已测试 · 可直接运行':node.enabled?'待测试 / 需接线':'已关闭',main);
       const toggle=action(card,'',()=>pool.toggle(node),'ap-toggle');toggle.dataset.nodeId=node.node_id;toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','启用 '+node.name);toggle.setAttribute('aria-checked',String(node.enabled));toggle.title=node.enabled?'关闭节点':'开启节点';toggle.disabled=!writable;
     }
     action(column,'＋ 添加节点',()=>pool.add(),'ap-add').disabled=!writable;
