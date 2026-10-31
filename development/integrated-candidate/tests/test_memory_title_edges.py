@@ -262,6 +262,8 @@ class PublishedNoteBoundaryTest(unittest.TestCase):
                 "```python\n# 假的一级标题\nprint(1)\n```\n\n真结果正文",
                 [],
             )
+            from test_memory import approve_staged_fixture
+            approve_staged_fixture(config, task_id)
             published = bridge.publish_candidate(task_id)
             note = Path(published["path"])
             self.assertEqual("检索重复文件-aaaaaaaa.md", note.name)
@@ -285,6 +287,8 @@ class PublishedNoteBoundaryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config, catalog, bridge = self.fixture(Path(directory))
             bridge.stage_experience(task_id, "波浪线围栏候选（待审核）", result, [])
+            from test_memory import approve_staged_fixture
+            approve_staged_fixture(config, task_id)
             published = bridge.publish_candidate(task_id)
             note = Path(published["path"])
             self.assertEqual("波浪线围栏候选-bbbbbbbb.md", note.name)

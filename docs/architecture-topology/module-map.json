@@ -1,14 +1,75 @@
 {
   "note": "拓扑 52 个节点到九模块的归属。development/architecture-center/MODULES.json 的 nodes 还是 10-27 设计图的旧节点 ID，这份表先把新拓扑对上；架构中心改造时再合并。",
   "modules": {
-    "task-planning": ["user", "host", "entry"],
-    "execution": ["routing", "direct", "queue", "ask", "work", "worker", "result"],
-    "delivery-learning": ["delivery", "archive", "new_exp", "candidate", "initial", "initial_pass", "pending_index", "retrieve", "apply", "used", "feedback", "evidence_port"],
-    "experience-validation": ["run1", "v1_result", "failed1", "run2", "v2_result", "diff", "final_queue", "final_user", "publish_checks", "formal", "retired", "retire_view", "delete"],
-    "review-calls": ["backends", "card", "dsh", "peer", "nfpbqu1", "collab", "receipts", "review_evidence", "confirmed"],
-    "task-scoring": ["evidence", "nf2evuw"],
-    "business-tools": ["capabilities", "knowledge"],
-    "data-governance": ["data", "governance", "monitor", "workday"],
+    "task-planning": [
+      "user",
+      "host",
+      "entry"
+    ],
+    "execution": [
+      "routing",
+      "direct",
+      "queue",
+      "ask",
+      "work",
+      "worker",
+      "result"
+    ],
+    "delivery-learning": [
+      "delivery",
+      "archive",
+      "new_exp",
+      "candidate",
+      "initial",
+      "initial_pass",
+      "pending_index",
+      "retrieve",
+      "apply",
+      "used",
+      "feedback",
+      "evidence_port"
+    ],
+    "experience-validation": [
+      "run1",
+      "v1_result",
+      "failed1",
+      "run2",
+      "v2_result",
+      "diff",
+      "final_queue",
+      "final_user",
+      "publish_checks",
+      "formal",
+      "retired",
+      "retire_view",
+      "delete"
+    ],
+    "review-calls": [
+      "backends",
+      "card",
+      "dsh",
+      "peer",
+      "nfpbqu1",
+      "collab",
+      "attended",
+      "receipts",
+      "review_evidence",
+      "confirmed"
+    ],
+    "task-scoring": [
+      "evidence",
+      "nf2evuw"
+    ],
+    "business-tools": [
+      "capabilities",
+      "knowledge"
+    ],
+    "data-governance": [
+      "data",
+      "governance",
+      "monitor",
+      "workday"
+    ],
     "architecture-center": []
   }
 }

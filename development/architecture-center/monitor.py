@@ -47,7 +47,11 @@ class ArchitectureCenterModule(Module):
     def validate(self,req):return self.action(lambda:self.center.validate(**req.json()))
     def preflight(self,req):return self.action(lambda:self.center.prepare_release(**req.json()))
     def publish(self,req):return self.action(lambda:self.center.publish(**req.json()))
-    def acknowledge(self,req):return self.action(lambda:self.center.acknowledge_release_unknown(**req.json()))
+    def acknowledge(self,req):
+        def record():
+            payload=dict(req.json());payload.pop('actor',None)
+            return self.center.acknowledge_release_unknown(**payload,actor='monitor-user')
+        return self.action(record)
 
     def health(self):
         return {'status':'ok','detail':'模块编辑与待发布工作区可用；原生发版执行器'+('已接入' if self.center.driver else '未配置')}

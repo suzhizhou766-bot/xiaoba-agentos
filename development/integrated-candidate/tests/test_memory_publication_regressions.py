@@ -79,6 +79,8 @@ class PublicationRegressionsTest(unittest.TestCase):
             before = {str(p.relative_to(existing.parent)): p.read_bytes()
                       for p in existing.parent.rglob('*') if p.is_file()}
             result = store.create_authored_candidate('标题', '正文', bridge.outbox, author='test')
+            for stage in ('delivery', 'final'):
+                store.review_memory(result['task_id'], stage, 'approve', 'isolated fixture', result['evidence_sha256'])
             bridge.publish_candidate(result['task_id'], result['evidence_sha256'])
             after = {str(p.relative_to(existing.parent)): p.read_bytes()
                      for p in existing.parent.rglob('*') if p.is_file()}
@@ -88,6 +90,8 @@ class PublicationRegressionsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config, store, bridge, catalog = self.fixture(Path(directory))
             result = store.create_authored_candidate('标题', '正文', bridge.outbox, author='test')
+            for stage in ('delivery', 'final'):
+                store.review_memory(result['task_id'], stage, 'approve', 'isolated fixture', result['evidence_sha256'])
             original = catalog.read_bytes()
             with patch.object(bridge, '_rebuild_and_verify_index', side_effect=RuntimeError('index failed')):
                 with self.assertRaisesRegex(

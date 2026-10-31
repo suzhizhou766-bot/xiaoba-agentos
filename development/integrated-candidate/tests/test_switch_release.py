@@ -108,8 +108,13 @@ class Fixture:
 
     def whole_tree(self):
         # Service owns worker-state; all remaining bytes/modes must be restored exactly.
+        # Card 18 also retains a metadata-only recovery journal. Check its
+        # terminal state separately instead of treating it as published content.
+        journal = switch.recovery_path(self.layout)
+        if journal.exists():
+            assert switch.load(journal)['status'] in {'complete', 'rolled_back'}
         return {str(p.relative_to(self.root)): (p.read_bytes(), p.stat().st_mode & 0o777)
-                for p in self.root.rglob('*') if p.is_file() and p != self.layout.worker}
+                for p in self.root.rglob('*') if p.is_file() and p not in (self.layout.worker, journal)}
 
     def add_step(self):
         spec = switch.load(self.layout.package / 'agentos' / switch.SPEC)

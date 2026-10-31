@@ -4,6 +4,8 @@ Every driver here is an isolated fixture; no native script, real release or
 production file is touched.
 """
 import json
+import os
+import signal
 from pathlib import Path
 import unittest
 
@@ -78,6 +80,52 @@ class ReleaseUnknownTests(unittest.TestCase):
         self.assertIn('release_unknown',[event['type'] for event in c['history']])
         self.assertEqual(self.driver.calls,0)
         with self.assertRaises(core.Conflict):self.center.prepare_release(cid,c['revision'])
+
+    def test_second_center_does_not_recover_a_live_publisher(self):
+        self.start('ok');a=self.ready();cid=a['change']['id']
+        real_apply=self.driver.apply
+        def apply(package,ticket):
+            other=core.Center(self.repo,self.root/'work',self.catalog,UnknownDriver())
+            self.assertEqual(other.get(cid)['state'],'publishing')
+            self.assertNotIn('release_unknown',[e['type'] for e in other.get(cid)['history']])
+            return real_apply(package,ticket)
+        self.driver.apply=apply
+        self.assertTrue(self.publish(a)['ok'])
+        self.assertEqual(self.state(cid),'published')
+
+    def test_sigkilled_lock_holder_is_recovered_by_a_new_process(self):
+        self.start('ok');a=self.ready();cid=a['change']['id']
+        def die(*args):os.kill(os.getpid(),signal.SIGKILL)
+        self.driver.apply=die
+        pid=os.fork()
+        if pid==0:
+            try:self.publish(a)
+            except BaseException:os._exit(91)
+            os._exit(92)
+        _,status=os.waitpid(pid,0)
+        self.assertTrue(os.WIFSIGNALED(status));self.assertEqual(os.WTERMSIG(status),signal.SIGKILL)
+        self.assertEqual(self.state(cid),'publishing')
+        self.start()
+        self.assertEqual(self.state(cid),'release_unknown')
+
+    def test_http_acknowledge_ignores_forged_actor(self):
+        import test_monitor as http_fixture
+        fixture=http_fixture.MonitorTests();fixture.setUp()
+        try:
+            fixture.center.driver=UnknownDriver('manual')
+            a=fixture.fixture.ready();cid=a['change']['id']
+            fixture.fixture.publish(a)
+            revision=fixture.center.get(cid)['revision']
+            status,body=fixture.request('/api/release-center/acknowledge',{
+                'cid':cid,'expected_revision':revision,'conclusion':'not_applied',
+                'evidence':'isolated readback','actor':'forged-admin'},
+                {'X-Xiaoba-Token':fixture.ctx.page_token,'Origin':fixture.base})
+            self.assertEqual(status,200,body)
+            c=fixture.center.get(cid)
+            self.assertEqual(c['release_recovery']['actor'],'monitor-user')
+            event=next(e for e in c['history'] if e['type']=='release_unknown_acknowledged')
+            self.assertEqual(event['actor'],'monitor-user')
+        finally:fixture.tearDown()
 
     # --- 4. 恢复入口 ---
     def test_acknowledge_not_applied_allows_new_preflight_and_never_applies(self):
