@@ -252,6 +252,7 @@ class RealCandidateBuildTest(unittest.TestCase):
         root = Path(temp.name).resolve()
         cls.source = root / 'candidate'
         build_release.copy_tree(ROOT, cls.source)  # 复制本身就证明这棵树没有软链
+        build_release.copy_review(ROOT, cls.source)
         cls.interface = write(root / 'interface' / 'SKILL.md', '# 接口卡夹具\n')
         cls.stable = root / 'stable'
         for name in ('xiaoba', 'verify-release'):
@@ -444,3 +445,43 @@ class ManifestSymlinkTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class ReviewPackageBoundaryTest(unittest.TestCase):
+    def test_dangling_review_package_symlink_is_not_treated_as_old_release(self):
+        from create_manifest import collect_entries, SymlinkError
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fx = Fixture(root)
+            (root / 'review-ingress').mkdir()
+            (root / 'review-ingress/xiaoba_review').symlink_to(root / 'missing')
+            with self.assertRaises(SymlinkError):collect_entries(fx.source)
+
+    def test_review_runtime_and_assets_project_into_manifest_and_package(self):
+        from create_manifest import collect_entries
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fx = Fixture(root)
+            review = root / 'review-ingress/xiaoba_review'
+            write(review / '__init__.py', '# runtime\n')
+            write(review / 'agent-pool.html', '<div>pool</div>')
+            write(root / 'review-ingress/fixtures/private.json', 'not a runtime asset')
+            entries = collect_entries(fx.source)
+            self.assertIn('src/xiaoba_review/__init__.py', entries)
+            self.assertIn('src/xiaoba_review/agent-pool.html', entries)
+            self.assertFalse(any('private.json' in name for name in entries))
+            with patch.object(build_release, 'run_verify'):
+                build_release.build(fx.args())
+            packaged = fx.target / 'agentos'
+            self.assertEqual(entries, collect_entries(packaged))
+            self.assertFalse((packaged / 'fixtures/private.json').exists())
+
+    def test_review_symlink_is_rejected_before_packaging(self):
+        from create_manifest import collect_entries, SymlinkError
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fx = Fixture(root)
+            review = root / 'review-ingress/xiaoba_review'
+            review.mkdir(parents=True)
+            (review / 'leak').symlink_to(fx.outside, target_is_directory=True)
+            with self.assertRaises(SymlinkError):collect_entries(fx.source)
+            with self.assertRaises(SymlinkError):build_release.copy_review(fx.source, fx.target)

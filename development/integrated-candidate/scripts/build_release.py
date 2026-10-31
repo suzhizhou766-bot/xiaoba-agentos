@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from xiaoba_agentos.standby_health import EXTERNAL_FAILURES, coverable_health
 
+from create_manifest import review_source
 from agentos_version import software_version
 from release_tier import TierError, compute_tier
 
@@ -137,6 +138,12 @@ def present_source_directories(source_root: Path) -> list[str]:
     """
     optional = ("skills", "knowledge", "artifacts")
     return [name for name in SOURCE_DIRECTORIES if name not in optional or (source_root / name).exists()]
+
+
+def copy_review(source_root: Path, target: Path) -> None:
+    source = review_source(source_root)
+    if source is not None:
+        copy_tree(source, target / 'src/xiaoba_review')
 
 
 def code_fingerprint(source_root: Path) -> str:
@@ -479,6 +486,7 @@ def release_tier_record(previous_release: Optional[Path], source_root: Path) -> 
         staged.mkdir()
         for name in present_source_directories(source_root):
             copy_tree(source_root / name, staged / name)
+        copy_review(source_root, staged)
         for name in SOURCE_ROOT_FILES:
             shutil.copy2(source_root / name, staged / name)
         try:
@@ -523,6 +531,7 @@ def _assemble_package(
             raise RuntimeError(f"release source file unavailable: {source}")
         shutil.copy2(source, agentos_target / name)
 
+    copy_review(source_root, agentos_target)
     declared_version = software_version(agentos_target)
     if args.version != declared_version and not args.version.startswith(declared_version + "-"):
         raise RuntimeError(
