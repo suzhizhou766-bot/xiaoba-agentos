@@ -27,6 +27,23 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def review_source(root: Path):
+    """Only the runtime package is projected; development fixtures never enter a release."""
+    packaged = root / 'src/xiaoba_review'
+    sibling = root.parent / 'review-ingress/xiaoba_review'
+    for path in (packaged, sibling.parent, sibling):
+        if path.is_symlink():
+            raise SymlinkError(path)
+    if packaged.exists():
+        return None
+    if sibling.exists():
+        for path in (sibling.parent, sibling, *sibling.rglob('*')):
+            if path.is_symlink():
+                raise SymlinkError(path)
+        return sibling
+    return None
+
+
 def collect_entries(root: Path = ROOT) -> dict:
     entries = {}
     for directory in INCLUDED:
@@ -40,6 +57,11 @@ def collect_entries(root: Path = ROOT) -> dict:
                 raise SymlinkError(path)
             if path.is_file() and "__pycache__" not in path.parts and path.name != ".DS_Store":
                 entries[str(path.relative_to(root))] = _sha256(path)
+    review = review_source(root)
+    if review is not None:
+        for path in sorted(review.rglob('*')):
+            if path.is_file() and '__pycache__' not in path.parts and path.name != '.DS_Store' and path.suffix != '.pyc':
+                entries['src/xiaoba_review/' + path.relative_to(review).as_posix()] = _sha256(path)
     for name in ROOT_FILES:
         entries[name] = _sha256(root / name)
     return entries

@@ -344,6 +344,20 @@ def _build_source_side(root: Path, rules: Dict[str, Any], label: str) -> SideTre
         manifest_cfg.get("excluded_names"), label)
     files = {rel: {"sha256": digest, "physical": rel, "presence": "manifest_scope"}
              for rel, digest in scanned.items()}
+    # The source checkout keeps review ingress beside the core; releases place it
+    # under src so selection, execution, HTTP and UI share one manifest.
+    sibling = root.parent / 'review-ingress/xiaoba_review'
+    for path in (root / 'src/xiaoba_review', sibling.parent, sibling):
+        if path.is_symlink():
+            raise PolicyError(f"{label}_symlink: {path}")
+    if not (root / 'src/xiaoba_review').exists() and sibling.exists():
+        for path in (sibling.parent, sibling, *sibling.rglob('*')):
+            if path.is_symlink():
+                raise PolicyError(f"{label}_symlink: {path}")
+        for rel, digest in _walk_regular_files(sibling, ['__pycache__', '.DS_Store'], label).items():
+            if not rel.endswith('.pyc'):
+                files['src/xiaoba_review/' + rel] = {
+                    'sha256': digest, 'physical': str(sibling / rel), 'presence': 'manifest_scope'}
     side = SideTree(root, layout, files, out_of_scope, label)
     _verify_source_manifest(side, manifest_cfg, label)
     return side
