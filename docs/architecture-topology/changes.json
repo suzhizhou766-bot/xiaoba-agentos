@@ -1,5 +1,14 @@
 [
   {
+    "id": "c1793451461970backends",
+    "at": 1793451461970,
+    "day": "2026-10-31",
+    "op": "agent",
+    "target": "backends",
+    "before": "{\"issues\": \"代码现状：C1 和卡 1～22 的修复已提交到分支 architecture-repair-20261031，未合入 main、未发版；未做真实调用\\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\"}",
+    "text": "整理「后台执行适配器 · Agent 池」：更正：修复已随 PR 合入 main，上一条写成未合入是看了过期的本地 main"
+  },
+  {
     "id": "c1793451351873run2",
     "at": 1793451351873,
     "day": "2026-10-31",

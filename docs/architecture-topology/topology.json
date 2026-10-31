@@ -1142,11 +1142,20 @@
           },
           "by": "agent",
           "text": "C1 和修复已提交到分支；记录新增的用户在场通道"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793451461970,
+          "before": {
+            "issues": "代码现状：C1 和卡 1～22 的修复已提交到分支 architecture-repair-20261031，未合入 main、未发版；未做真实调用\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH"
+          },
+          "by": "agent",
+          "text": "更正：修复已随 PR 合入 main，上一条写成未合入是看了过期的本地 main"
         }
       ],
       "id": "backends",
       "intent": "后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可随时添加、删除、开启、关闭；每个节点单独设角色：审查、分工协作，或两样都做。旧的 AGY＋DSH 固定名单退役。",
-      "issues": "代码现状：C1 和卡 1～22 的修复已提交到分支 architecture-repair-20261031，未合入 main、未发版；未做真实调用\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH",
+      "issues": "代码现状：C1 和卡 1～22 的修复随分支 architecture-repair-20261031 合入 main，未发版；未做真实调用\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH",
       "note": "",
       "pending": false,
       "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py\nreview-ingress/xiaoba_review/agent_pool.py\nreview-ingress/AGENT_POOL.md\nreview-ingress/xiaoba_review/resource_tmux.py",
@@ -4030,6 +4039,6 @@
       ]
     }
   ],
-  "savedAt": 1793451351873,
+  "savedAt": 1793451461970,
   "version": 1
 }
