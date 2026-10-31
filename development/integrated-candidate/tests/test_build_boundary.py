@@ -1,11 +1,17 @@
 """构包边界：不带入软链指向的包外内容、中断不留半包、schema 版本如实。
 
-夹具全在临时目录里，run_verify 由替身接管：不做真实构包，不调用模型，不碰发布目录。
+反例全在临时目录里跑，run_verify 由替身接管；真实候选树那一项不打替身，包内校验真跑。
+不调用模型，不碰发布目录和正式第二大脑。
 """
 import argparse
+import hashlib
 import importlib.util
 import json
+import os
 import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -211,6 +217,116 @@ class BuildBoundaryTest(unittest.TestCase):
         self.assertEqual(['keep.json'], sorted(path.name for path in self.fx.target.iterdir()))
         self.assertEqual([], self.fx.staging_leftovers())
 
+    def test_source_tree_without_the_generated_artifacts_directory_still_builds(self):
+        shutil.rmtree(self.fx.source / 'artifacts')
+        result = self.build()
+        self.assertTrue(result['ok'], result)
+        self.assertFalse((self.fx.target / 'agentos' / 'artifacts').exists())
+
+    def test_missing_required_source_directory_is_still_refused(self):
+        shutil.rmtree(self.fx.source / 'config')
+        with self.assertRaisesRegex(RuntimeError, 'release source directory unavailable'):
+            self.build()
+        self.assertFalse(self.fx.target.exists())
+
+    def test_interface_default_points_at_a_real_card_beside_the_source_tree(self):
+        default = build_release.build_parser().get_default('interface')
+        self.assertEqual(ROOT.parent / 'interface' / 'SKILL.md', default)
+        self.assertTrue(default.is_file() and not default.is_symlink(),
+                        f'默认接口卡不存在：{default}')
+
+    def test_missing_interface_card_names_the_expected_path(self):
+        missing = self.fx.root / 'nowhere' / 'SKILL.md'
+        with self.assertRaisesRegex(RuntimeError, re.escape(str(missing))):
+            self.build(interface=missing)
+        self.assertFalse(self.fx.target.exists())
+
+
+class RealCandidateBuildTest(unittest.TestCase):
+    """真实候选树复制到临时目录后走完整构包：run_verify 不打替身，包内校验必须真过。"""
+
+    @classmethod
+    def setUpClass(cls):
+        temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temp.cleanup)
+        root = Path(temp.name).resolve()
+        cls.source = root / 'candidate'
+        build_release.copy_tree(ROOT, cls.source)  # 复制本身就证明这棵树没有软链
+        cls.interface = write(root / 'interface' / 'SKILL.md', '# 接口卡夹具\n')
+        cls.stable = root / 'stable'
+        for name in ('xiaoba', 'verify-release'):
+            write(cls.stable / name, '#!/bin/sh\n')
+        cls.published = root / 'published'
+        cls.published.mkdir()
+        cls.brain = root / 'second-brain'
+        cls.version = build_release.software_version(cls.source)
+        cls.target = root / 'releases' / cls.version
+        generated = cls.execute([sys.executable, str(cls.source / 'scripts' / 'build_second_brain.py'),
+                             '--agentos-root', str(cls.source),
+                             '--published-agentos-root', str(cls.published),
+                             '--target', str(cls.brain)], cls.source)
+        assert generated.returncode == 0, generated.stdout + generated.stderr
+
+    @staticmethod
+    def execute(command: list[str], cwd: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(command, cwd=str(cwd), text=True, capture_output=True, check=False,
+                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))
+
+    def args(self) -> argparse.Namespace:
+        return argparse.Namespace(
+            agentos_root=self.source, interface=self.interface, stable_scripts=self.stable,
+            second_brain=self.brain, published_agentos_root=self.published, target=self.target,
+            version=self.version, verified_date='2026-10-31', test_count=1,
+            test_result='not_run', acceptance_complete=False, acceptance_evidence=None,
+            acceptance_database=None, acceptance_task_id=None, previous_release=None,
+            known_external_issue=[],
+        )
+
+    def test_real_candidate_tree_builds_a_package_that_passes_its_own_verification(self):
+        with patch.dict(os.environ, {'PYTHONDONTWRITEBYTECODE': '1'}):
+            result = build_release.build(self.args())
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(str(self.target), result['target'])
+
+        release = json.loads((self.target / 'RELEASE.json').read_text(encoding='utf-8'))
+        self.assertEqual(self.version, release['version'])
+        self.assertEqual('release_candidate', release['status'])
+        self.assertEqual(build_release.packaged_database_schema_version(self.source),
+                         release['database_schema_version'])
+        recorded = json.loads((self.source / 'SOURCE_MANIFEST.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(recorded['files']), release['source_files'])
+        self.assertEqual(build_release.sha256(self.target / 'agentos' / 'SOURCE_MANIFEST.json'),
+                         release['agentos_source_manifest_sha256'])
+
+        self.assertEqual(
+            ['FILES.sha256', 'INTERFACE_MANIFEST.sha256', 'RELEASE.json',
+             'SECOND_BRAIN_MANIFEST.sha256', 'SKILL.md', 'agentos', 'interface', 'second-brain'],
+            sorted(path.name for path in self.target.iterdir()))
+        self.assertFalse((self.target / 'agentos' / 'artifacts').exists(),
+                         '现算现写的 artifacts/ 不该进包')
+        self.assertEqual([], [str(path) for path in self.target.rglob('__pycache__')])
+
+        # 包内校验：拿最终包再跑一遍两个校验器，只读，不打替身。
+        packaged = self.target / 'agentos'
+        for command in (
+            [build_release.CORE_PYTHON, 'scripts/create_manifest.py', '--verify'],
+            [build_release.CORE_PYTHON, 'scripts/build_second_brain.py',
+             '--agentos-root', str(packaged),
+             '--published-agentos-root', str(self.published),
+             '--target', str(self.target / 'second-brain'), '--verify'],
+        ):
+            completed = self.execute(command, packaged)
+            self.assertEqual(0, completed.returncode,
+                             f'{command} 在最终包上失败：{completed.stdout}{completed.stderr}')
+
+        listed = (self.target / 'FILES.sha256').read_text(encoding='utf-8')
+        for path in ('./RELEASE.json', './agentos/SOURCE_MANIFEST.json', './second-brain'):
+            self.assertIn(path, listed)
+        self.assertNotIn('./FILES.sha256', listed)
+        self.assertEqual(result['release_files'], len(listed.splitlines()) + 1, '清单只少它自己那一条')
+        self.assertEqual([], [path.name for path in self.target.parent.iterdir()
+                              if STAGING_MARK in path.name])
+
 
 class SchemaVersionTest(unittest.TestCase):
     def setUp(self):
@@ -255,6 +371,75 @@ class SchemaVersionTest(unittest.TestCase):
                 build_release.build(self.fx.args())
         self.assertFalse(self.fx.target.exists())
         self.assertEqual([], self.fx.staging_leftovers())
+
+
+class ManifestSymlinkTest(unittest.TestCase):
+    """create_manifest.py 遇软链要拒绝并报路径：以前 is_file()/read_bytes() 会跟着软链走。"""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name).resolve()
+        self.outside = root / 'outside'
+        write(self.outside / 'secret.md', 'content that must never enter the manifest\n')
+        (self.outside / 'tree').mkdir(parents=True)
+        write(self.outside / 'tree' / 'inner.md', 'outside content\n')
+        self.tree = root / 'tree'
+        self.script = self.tree / 'scripts' / 'create_manifest.py'
+        self.script.parent.mkdir(parents=True)
+        shutil.copy2(ROOT / 'scripts' / 'create_manifest.py', self.script)
+        for name in ('README.md', 'pyproject.toml', '.gitignore', 'CAPABILITY.json'):
+            write(self.tree / name, name + '\n')
+        write(self.tree / 'docs' / 'guide.md', '# guide\n')
+        self.leaked = hashlib.sha256(
+            (self.outside / 'secret.md').read_bytes()).hexdigest()
+
+    def run_script(self, *extra: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(self.script), *extra], cwd=str(self.tree),
+                              text=True, capture_output=True, check=False,
+                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))
+
+    def assertRefusedAndNamed(self, link: Path) -> None:
+        for extra in ((), ('--verify',)):
+            with self.subTest(mode=extra):
+                completed = self.run_script(*extra)
+                self.assertNotEqual(0, completed.returncode, completed.stdout)
+                self.assertIn(str(link), completed.stdout + completed.stderr)
+                self.assertNotIn(self.leaked, completed.stdout + completed.stderr)
+                manifest = self.tree / 'SOURCE_MANIFEST.json'
+                if manifest.is_file() and not manifest.is_symlink():
+                    self.assertNotIn(self.leaked, manifest.read_text(encoding='utf-8'))
+
+    def test_clean_tree_writes_and_verifies(self):
+        self.assertEqual(0, self.run_script().returncode)
+        manifest = json.loads((self.tree / 'SOURCE_MANIFEST.json').read_text(encoding='utf-8'))
+        self.assertEqual({'.gitignore', 'CAPABILITY.json', 'README.md', 'docs/guide.md',
+                          'pyproject.toml', 'scripts/create_manifest.py'}, set(manifest['files']))
+        completed = self.run_script('--verify')
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+
+    def test_symlinked_file_inside_an_included_directory_is_refused(self):
+        link = self.tree / 'docs' / 'link.md'
+        link.symlink_to(self.outside / 'secret.md')
+        self.assertRefusedAndNamed(link)
+
+    def test_symlinked_included_directory_is_refused(self):
+        link = self.tree / 'knowledge'
+        link.symlink_to(self.outside / 'tree')
+        self.assertRefusedAndNamed(link)
+
+    def test_symlinked_root_file_is_refused(self):
+        (self.tree / 'README.md').unlink()
+        link = self.tree / 'README.md'
+        link.symlink_to(self.outside / 'secret.md')
+        self.assertRefusedAndNamed(link)
+
+    def test_symlinked_manifest_is_refused_without_writing_through(self):
+        link = self.tree / 'SOURCE_MANIFEST.json'
+        link.symlink_to(self.outside / 'manifest.json')
+        self.assertRefusedAndNamed(link)
+        self.assertFalse((self.outside / 'manifest.json').exists(),
+                         '重算结果不得顺着软链写到树外')
 
 
 if __name__ == '__main__':

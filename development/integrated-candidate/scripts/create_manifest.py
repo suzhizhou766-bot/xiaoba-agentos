@@ -9,21 +9,59 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INCLUDED = (".agents", "bin", "config", "docs", "knowledge", "launchd", "macos", "scripts", "skills", "src", "tests")
+ROOT_FILES = ("README.md", "pyproject.toml", ".gitignore", "CAPABILITY.json")
+MANIFEST_NAME = "SOURCE_MANIFEST.json"
+
+
+class SymlinkError(RuntimeError):
+    """清单只认普通文件：软链会把树外的内容当成源码指纹，也会把重算结果写到树外。"""
+
+    def __init__(self, path: Path):
+        super().__init__(str(path))
+        self.path = path
+
+
+def _sha256(path: Path) -> str:
+    if path.is_symlink():
+        raise SymlinkError(path)
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def collect_entries(root: Path = ROOT) -> dict:
+    entries = {}
+    for directory in INCLUDED:
+        base = root / directory
+        if not base.exists():
+            continue
+        if base.is_symlink():
+            raise SymlinkError(base)
+        for path in sorted(base.rglob("*")):
+            if path.is_symlink():
+                raise SymlinkError(path)
+            if path.is_file() and "__pycache__" not in path.parts and path.name != ".DS_Store":
+                entries[str(path.relative_to(root))] = _sha256(path)
+    for name in ROOT_FILES:
+        entries[name] = _sha256(root / name)
+    return entries
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
-    entries = {}
-    for directory in INCLUDED:
-        for path in sorted((ROOT / directory).rglob("*")):
-            if path.is_file() and "__pycache__" not in path.parts and path.name != ".DS_Store":
-                entries[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for name in ("README.md", "pyproject.toml", ".gitignore", "CAPABILITY.json"):
-        path = ROOT / name
-        entries[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    target = ROOT / "SOURCE_MANIFEST.json"
+    target = ROOT / MANIFEST_NAME
+    if target.is_symlink():
+        print(json.dumps({"ok": False, "symlink": str(target)}, ensure_ascii=False))
+        return 1
+    try:
+        entries = collect_entries()
+    except SymlinkError as exc:
+        print(json.dumps({"ok": False, "symlink": str(exc.path),
+                          "error": "managed source contains a symlink"}, ensure_ascii=False))
+        return 1
+    except OSError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
     payload = {"algorithm": "sha256", "files": entries}
     if args.verify:
         try:
