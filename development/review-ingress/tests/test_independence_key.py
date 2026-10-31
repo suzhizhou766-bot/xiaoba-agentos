@@ -222,7 +222,8 @@ class IngressEvidenceTests(unittest.TestCase):
 
     def test_same_entry_two_models_pass_ingress_evidence(self):
         conn, candidate, approved, record, execution = self.fixture('TEST-model-A', 'TEST-model-B')
-        self.assertIsNone(ingress_evidence(conn, candidate, approved, record, execution))
+        result = ingress_evidence(conn, candidate, approved, record, execution)
+        self.assertTrue(result['bound']); self.assertIs(result['all_pass'], True); self.assertFalse(result['disagreement'])
 
     def test_same_entry_same_model_is_rejected(self):
         conn, candidate, approved, record, execution = self.fixture('TEST-model-A', 'TEST-model-A')
@@ -231,7 +232,8 @@ class IngressEvidenceTests(unittest.TestCase):
 
     def test_legacy_cards_keep_source_ref_only(self):
         conn, candidate, approved, record, execution = self.fixture(None, None, shared_entry=False, legacy=True)
-        self.assertIsNone(ingress_evidence(conn, candidate, approved, record, execution))
+        result = ingress_evidence(conn, candidate, approved, record, execution)
+        self.assertTrue(result['bound']); self.assertIs(result['all_pass'], True); self.assertFalse(result['disagreement'])
         conn, candidate, approved, record, execution = self.fixture(None, None, shared_entry=True, legacy=True)
         with self.assertRaisesRegex(ValueError, '来源不独立'):
             ingress_evidence(conn, candidate, approved, record, execution)
