@@ -105,9 +105,23 @@ def manifest(root: Path) -> str:
     )
 
 
+def symlinks_under(root: Path) -> list[str]:
+    """包内出现软链就等于把包外内容带进不可变发布，所以任何层级都要报出来。"""
+    linked: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        for name in (*dirnames, *filenames):
+            candidate = Path(dirpath) / name
+            if candidate.is_symlink():
+                linked.append(str(candidate))
+    return sorted(linked)
+
+
 def copy_tree(source: Path, target: Path) -> None:
     if source.is_symlink() or not source.is_dir():
         raise RuntimeError(f"release source directory unavailable: {source}")
+    linked = symlinks_under(source)
+    if linked:
+        raise RuntimeError("release input contains symlink: " + ", ".join(linked))
     shutil.copytree(
         source,
         target,
@@ -129,6 +143,30 @@ def code_fingerprint(source_root: Path) -> str:
     return hashlib.sha256(
         json.dumps(records, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def packaged_database_schema_version(agentos_root: Path) -> int:
+    """数据库结构版本只从这棵树自己声明的常量读，不写死；读不到可用整数就拒绝构包。"""
+    import ast
+    source = agentos_root / "src" / "xiaoba_agentos" / "store.py"
+    if source.is_symlink() or not source.is_file():
+        raise RuntimeError(f"database schema source is unavailable: {source}")
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"database schema source cannot be parsed: {source}: {exc}") from exc
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "DATABASE_SCHEMA_VERSION"):
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (SyntaxError, TypeError, ValueError):
+            value = None
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    raise RuntimeError(f"source does not declare a usable database schema version: {source}")
 
 
 def run_verify(command: list[str], cwd: Path) -> None:
@@ -461,30 +499,16 @@ def run_full_tests(source_root: Path) -> int:
     return int(ran.group(1))
 
 
-def build(args: argparse.Namespace) -> dict:
-    source_root = args.agentos_root.resolve()
-    acceptance_evidence = None
-    tier_record = release_tier_record(getattr(args, "previous_release", None), source_root)
-    patch_tier = tier_record is not None and tier_record["tier"] == "patch"
-    if args.acceptance_complete and patch_tier:
-        if args.test_result != "passed" or run_full_tests(source_root) != args.test_count:
-            raise RuntimeError("patch-tier build: declared test count/result differs from the actual full run")
-    elif args.acceptance_complete:
-        if args.acceptance_database is None or not args.acceptance_task_id:
-            raise RuntimeError(
-                "--acceptance-complete requires --acceptance-database and --acceptance-task-id"
-            )
-        acceptance_evidence = validate_acceptance_database(
-            args.acceptance_database, args.acceptance_task_id, source_root
-        )
-        if tier_record is None:
-            raise RuntimeError("--acceptance-complete requires --previous-release")
-    target = args.target.resolve()
-    if target.exists() and any(target.iterdir()):
-        raise RuntimeError(f"target must be absent or empty: {target}")
-    target.mkdir(parents=True, exist_ok=True)
-
-    agentos_target = target / "agentos"
+def _assemble_package(
+    args: argparse.Namespace,
+    source_root: Path,
+    staging: Path,
+    tier_record: Optional[dict[str, Any]],
+    patch_tier: bool,
+    acceptance_evidence: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """把整包写进 staging，返回将要落盘的 RELEASE.json 内容。不碰目标位置。"""
+    agentos_target = staging / "agentos"
     agentos_target.mkdir()
     for name in present_source_directories(source_root):
         copy_tree(source_root / name, agentos_target / name)
@@ -506,10 +530,13 @@ def build(args: argparse.Namespace) -> dict:
             f"{declared_version} may be marked verified_immutable_release, got {args.version}"
         )
 
-    interface_target = target / "interface"
+    interface_card = args.interface
+    if interface_card.is_symlink() or not interface_card.is_file():
+        raise RuntimeError(f"release interface card unavailable: {interface_card}")
+    interface_target = staging / "interface"
     (interface_target / "scripts").mkdir(parents=True)
-    shutil.copy2(args.interface.resolve(), interface_target / "SKILL.md")
-    shutil.copy2(args.interface.resolve(), target / "SKILL.md")
+    shutil.copy2(interface_card.resolve(), interface_target / "SKILL.md")
+    shutil.copy2(interface_card.resolve(), staging / "SKILL.md")
     stable_scripts = args.stable_scripts.resolve()
     for name in ("xiaoba", "verify-release"):
         source = stable_scripts / name
@@ -519,7 +546,7 @@ def build(args: argparse.Namespace) -> dict:
         shutil.copy2(source, destination)
         os.chmod(destination, 0o755)
 
-    brain_target = target / "second-brain"
+    brain_target = staging / "second-brain"
     copy_tree(args.second_brain.resolve(), brain_target)
 
     run_verify([CORE_PYTHON, "scripts/create_manifest.py", "--verify"], agentos_target)
@@ -538,9 +565,18 @@ def build(args: argparse.Namespace) -> dict:
         agentos_target,
     )
 
-    interface_manifest = target / "INTERFACE_MANIFEST.sha256"
+    # 结构版本要在清单校验通过之后，从真正进包的那棵树读；两边不一致说明进包的和源不是一棵树。
+    schema_version = packaged_database_schema_version(agentos_target)
+    source_schema_version = packaged_database_schema_version(source_root)
+    if source_schema_version != schema_version:
+        raise RuntimeError(
+            f"packaged database schema version {schema_version} differs from the source "
+            f"declaration {source_schema_version}"
+        )
+
+    interface_manifest = staging / "INTERFACE_MANIFEST.sha256"
     interface_manifest.write_text(manifest(interface_target), encoding="utf-8")
-    brain_manifest = target / "SECOND_BRAIN_MANIFEST.sha256"
+    brain_manifest = staging / "SECOND_BRAIN_MANIFEST.sha256"
     brain_manifest.write_text(manifest(brain_target), encoding="utf-8")
 
     source_manifest = json.loads(
@@ -556,7 +592,7 @@ def build(args: argparse.Namespace) -> dict:
         "second_brain_manifest_sha256": sha256(brain_manifest),
         "interface_manifest_sha256": sha256(interface_manifest),
         "code_fingerprint": code_fingerprint(agentos_target),
-        "database_schema_version": 7,
+        "database_schema_version": schema_version,
         "source_files": len(source_manifest["files"]),
         "second_brain_markdown_files": sum(1 for path in files(brain_target) if path.suffix == ".md"),
         "contents": {
@@ -594,10 +630,49 @@ def build(args: argparse.Namespace) -> dict:
     }
     if tier_record is not None:
         release["release_tier"] = tier_record
-    (target / "RELEASE.json").write_text(
+    (staging / "RELEASE.json").write_text(
         json.dumps(release, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    (target / "FILES.sha256").write_text(manifest(target), encoding="utf-8")
+    (staging / "FILES.sha256").write_text(manifest(staging), encoding="utf-8")
+    return release
+
+
+def build(args: argparse.Namespace) -> dict:
+    source_root = args.agentos_root.resolve()
+    acceptance_evidence = None
+    tier_record = release_tier_record(getattr(args, "previous_release", None), source_root)
+    patch_tier = tier_record is not None and tier_record["tier"] == "patch"
+    if args.acceptance_complete and patch_tier:
+        if args.test_result != "passed" or run_full_tests(source_root) != args.test_count:
+            raise RuntimeError("patch-tier build: declared test count/result differs from the actual full run")
+    elif args.acceptance_complete:
+        if args.acceptance_database is None or not args.acceptance_task_id:
+            raise RuntimeError(
+                "--acceptance-complete requires --acceptance-database and --acceptance-task-id"
+            )
+        acceptance_evidence = validate_acceptance_database(
+            args.acceptance_database, args.acceptance_task_id, source_root
+        )
+        if tier_record is None:
+            raise RuntimeError("--acceptance-complete requires --previous-release")
+    target = args.target.resolve()
+    if target.exists() and any(target.iterdir()):
+        raise RuntimeError(f"target must be absent or empty: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    # 中断不留半包：整包先写同级临时目录，全部校验通过后才一次改名到目标位置。
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
+    published = False
+    try:
+        release = _assemble_package(
+            args, source_root, staging, tier_record, patch_tier, acceptance_evidence
+        )
+        os.chmod(staging, 0o755)
+        os.replace(staging, target)
+        published = True
+    finally:
+        if not published:
+            shutil.rmtree(staging, ignore_errors=True)
     return {
         "ok": True,
         "target": str(target),
