@@ -20,14 +20,14 @@
       "base": "assistant",
       "relative": "工具/小八监看/xiaoba-monitor.html",
       "before_sha256": "ee73a96be7cc0cf2c796fd550bab83e1dec895ecc91c82a075dff4f7a0f65648",
-      "after_sha256": "226faa645f84f2c90d81cc22c5e91e6e52cf5030031cb5b2d2125b6162d7f5b1"
+      "after_sha256": "eab64b26fca9300cff20af24ba08666abf096879531b0bcd0a69c903d730d21f"
     },
     {
       "asset": "server.py",
       "base": "project",
       "relative": "integrations/review-center/server.py",
-      "before_sha256": "d1774ce58c53a432051b084ae7d72b0f7134a62f4346fcdc13e85b897a325d5b",
-      "after_sha256": "133579416cb11b79f8cbcca53de04c91955ec877c9f89f038fbe53e8874be20f"
+      "before_sha256": "3bdab32519c4c6a1b2ec84522757ab70c5ce038c0987cb090e58d9c6669a9c03",
+      "after_sha256": "92341f3af3f72c4ad497ecadf37c43aa0e1f631a39db64ad7447f121214bc4a4"
     }
   ]
 }

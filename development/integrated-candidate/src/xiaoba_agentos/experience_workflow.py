@@ -985,6 +985,25 @@ def migrate_legacy_validation_records(conn) -> dict:
     return {"migrated":migrated,"flagged_for_human_check":flagged,"preserved_terminal":preserved}
 
 
+def _trial_display(conn, task_id):
+    """裁决页要给用户看的任务卡、执行回执和审查员原文；只读展示，取不到就留空，不影响判定。"""
+    row = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone() if task_id else None
+    if not row:
+        return {"card": None, "execution": None, "reviews": []}
+    task = dict(row)
+    try:
+        snap = verified_snapshot(task)
+    except (ValueError, KeyError, TypeError):
+        return {"card": None, "execution": None, "reviews": []}
+    trial = snap.get("experience_trial", {})
+    names = {a["name"] for a in snap.get("agents", []) if a.get("enabled")}
+    latest = {r["agent_name"]: dict(r) for r in conn.execute(
+        "SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at", (task_id,))}
+    return {"card": trial.get("card"), "execution": trial.get("execution"),
+            "reviews": [{"agent": n, "status": latest[n]["status"], "output": latest[n].get("output") or ""}
+                        for n in sorted(names) if n in latest]}
+
+
 def trial_summary(conn, candidate):
     """汇总经验核验状态。优先读取两轮持久化谱系与门禁判定。"""
     if isinstance(candidate, (str, bytes)):
@@ -1026,6 +1045,7 @@ def trial_summary(conn, candidate):
             "diff_explanation": r.get("diff_explanation"),
             "pause_reason": r.get("pause_reason"),
             "needs_human_check": bool(r.get("needs_human_check")),
+            **_trial_display(conn, r["task_id"]),
         })
     # 若无新表记录，加载原生 events 历史 trials 供展示
     if not summary["trials"]:

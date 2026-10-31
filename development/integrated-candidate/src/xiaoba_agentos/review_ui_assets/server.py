@@ -94,6 +94,7 @@ class Center:
         decisions=['approve','revise','reject'] if x['status'] in PENDING else []
         if stage=='final' and x['status'] in PENDING and validation.get('required'):
             label={'awaiting_trial':'待隔离验证','trial_running':'隔离验证中','trial_failed':'验证未通过','application_delivery_required':'待应用或用户交付验收证据','ready_for_final':'待终审 · 验证已通过'}.get(state,'待隔离验证')
+            if validation.get('disagreement'): label='待终审 · 第二轮有分歧'
             if not validation.get('ready'): decisions=['revise','reject']
         return {k:x[k] for k in ('task_id','status','evidence_sha256','updated_at','created_at')} | {
             'title':self.title(x['prompt']) or x['task_id'], 'prompt':x['prompt'],
