@@ -13,9 +13,50 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 from zoneinfo import ZoneInfo
 
+from .output_hygiene import detect_non_answer_markers, detect_reasoning_leak
+
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+# Snapshot fields derived at submission time from memory, skills, config and
+# the installed release.  They legitimately change between a lost response and
+# its retry, so they are not what the caller "submitted" and do not count as
+# different content when an idempotency key is replayed.
+_DERIVED_SNAPSHOT_KEYS = frozenset({
+    "knowlp_context", "knowlp_context_hash", "memory_hits", "retrieval_receipt",
+    "agent_memory_contexts", "skills", "skill_context", "skill_context_hash",
+    "agents", "worker", "provenance", "release_expected_version",
+    "source_manifest_sha256", "trial_suggestions",
+})
+
+
+def _submitted_content(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    content = {key: value for key, value in snapshot.items() if key not in _DERIVED_SNAPSHOT_KEYS}
+    # freeze_context stamps the capture time on every call, retries included.
+    if isinstance(content.get("task_context"), dict):
+        content["task_context"] = {k: v for k, v in content["task_context"].items() if k != "captured_at"}
+    return content
+
+
+def b19_write_boundary_reason(text: str) -> Optional[str]:
+    """Why `text` may not be written into memory, or None when it is clean.
+
+    Memory is the one place contaminated output must never reach, so the same
+    two existing detectors guard both write paths: a candidate is refused when
+    it is created, and the staged note is checked again right before
+    publication even when it bypassed the first layer.  Only the literal
+    signatures in output_hygiene count, so normal prose that merely discusses
+    reasoning markers or tool calls passes both layers (MB-019).
+    """
+    leaked = detect_reasoning_leak(text)
+    if leaked:
+        return "B19 写入边界：疑似泄露思考过程，命中 " + ", ".join(leaked[:5])
+    markers = detect_non_answer_markers(text)
+    if markers:
+        return "B19 写入边界：疑似未执行的工具调用标记，命中 " + ", ".join(markers[:5])
+    return None
 
 
 # --- Memory candidate lifecycle (provisional -> active promotion) -----------
@@ -672,8 +713,24 @@ class EventStore:
         snapshot_hash = hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
         with self.connect() as conn:
             if idempotency_key:
-                existing = conn.execute("SELECT id FROM tasks WHERE idempotency_key=?", (idempotency_key,)).fetchone()
+                existing = conn.execute(
+                    "SELECT id,prompt,execution_snapshot_json FROM tasks WHERE idempotency_key=?",
+                    (idempotency_key,),
+                ).fetchone()
                 if existing:
+                    # MD2-09: a retry of the same submission gets the first task
+                    # back.  A key reused for different content is a caller bug,
+                    # not a retry, and must never be answered with a task that
+                    # froze different input.
+                    if (
+                        existing["prompt"] != prompt
+                        or _submitted_content(json.loads(existing["execution_snapshot_json"] or "{}"))
+                        != _submitted_content(snapshot)
+                    ):
+                        raise ValueError(
+                            f"idempotency key {idempotency_key!r} is already used by a task "
+                            "with different content; use a new key"
+                        )
                     return str(existing["id"])
             task_id = str(uuid.uuid4())
             # `strategy_version` is kept on the row as history only. Strategy
@@ -974,17 +1031,39 @@ class EventStore:
         title, body, author = title.strip(), body.strip(), author.strip()
         if not title or not body or not author:
             raise ValueError("title, body and author are required")
+        # B19 (write boundary): neither the title nor the body may carry leaked
+        # reasoning or unexecuted tool markup.  The refusal happens before the
+        # transaction opens, so it leaves no task, no staged file, no sidecar
+        # and no event behind.
+        for field, value in (("title", title), ("body", body)):
+            reason = b19_write_boundary_reason(value)
+            if reason:
+                raise ValueError(f"candidate {field} refused: {reason}")
         sources = sorted(set(source_task_ids or []))
+        # The snapshot is built up front so the idempotency replay below can
+        # compare exactly what a first submission would have stored.
+        snapshot = {
+            "kind": "host_authored_candidate", "author": author,
+            "source_task_ids": sources, "external_agents_called": False,
+        }
+        if experience_kind is not None:
+            if experience_kind not in {"method", "rule"}:
+                raise ValueError("authored candidate kind must be method or rule")
+            snapshot["experience_policy"] = {"version": 1, "kind": experience_kind, "problem_key": problem_key}
+        snapshot_json = _canonical(snapshot)
         now = time.time()
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             if idempotency_key:
                 existing = conn.execute(
-                    "SELECT id FROM tasks WHERE idempotency_key=?", (idempotency_key,)
+                    "SELECT id,prompt,result,execution_snapshot_json FROM tasks WHERE idempotency_key=?",
+                    (idempotency_key,),
                 ).fetchone()
                 if existing:
                     # A retry after a lost response gets the same record back,
-                    # not an error it cannot tell apart from bad input.
+                    # not an error it cannot tell apart from bad input.  The
+                    # same key with different content (MD2-09) is never
+                    # silently answered with the first candidate.
                     candidate = conn.execute(
                         "SELECT status,staged_path,evidence_sha256 FROM memory_candidates WHERE task_id=?",
                         (existing["id"],),
@@ -994,6 +1073,18 @@ class EventStore:
                     ).fetchone()
                     if not candidate or task["execution_mode"] != "host_authored":
                         raise ValueError("idempotency key belongs to a different kind of task")
+                    changed = []
+                    if existing["prompt"] != title:
+                        changed.append("title")
+                    if existing["result"] != body:
+                        changed.append("body")
+                    if existing["execution_snapshot_json"] != snapshot_json:
+                        changed.append("metadata")
+                    if changed:
+                        raise ValueError(
+                            f"idempotency key {idempotency_key!r} is already used by a candidate "
+                            "with different content (" + ", ".join(changed) + "); use a new key"
+                        )
                     return {
                         "task_id": str(existing["id"]), "status": candidate["status"],
                         "staged_path": candidate["staged_path"],
@@ -1028,15 +1119,6 @@ class EventStore:
             try:
                 evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
                 result_sha256 = hashlib.sha256(body.encode("utf-8")).hexdigest()
-                snapshot = {
-                    "kind": "host_authored_candidate", "author": author,
-                    "source_task_ids": sources, "external_agents_called": False,
-                }
-                if experience_kind is not None:
-                    if experience_kind not in {"method", "rule"}:
-                        raise ValueError("authored candidate kind must be method or rule")
-                    snapshot["experience_policy"] = {"version": 1, "kind": experience_kind, "problem_key": problem_key}
-                snapshot_json = _canonical(snapshot)
                 conn.execute(
                     "INSERT INTO tasks(id,prompt,status,priority,max_attempts,run_after,strategy_version,"
                     "execution_snapshot_json,execution_snapshot_hash,execution_mode,idempotency_key,session_id,"

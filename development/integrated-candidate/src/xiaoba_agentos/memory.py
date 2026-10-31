@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from .config import AppConfig
 from . import retained as retained_objects
-from .store import MEMORY_ACTIVE_RETRIEVAL_STATES
+from .store import MEMORY_ACTIVE_RETRIEVAL_STATES, b19_write_boundary_reason
 
 
 class MemoryRecoveryError(RuntimeError):
@@ -1265,6 +1265,14 @@ class MemoryBridge:
         sensitive = self._sensitive_reason(staged_text)
         if sensitive:
             raise RuntimeError(f"sensitive content gate failed: {sensitive}")
+        # B19 (write boundary), second layer: a staged note is re-checked right
+        # before any Vault write.  This is the backstop for content that
+        # bypassed the creation gate -- a staged file dropped in by hand or by
+        # an older code path -- and it runs before the note, the catalog line
+        # or the index is touched, so a refusal leaves the Vault byte-identical.
+        boundary = b19_write_boundary_reason(staged_text)
+        if boundary:
+            raise RuntimeError(boundary)
 
         vault = Path(self.config.memory["obsidian_vault"]).expanduser().resolve()
         destination_dir = vault / self.config.memory["obsidian_subdir"]

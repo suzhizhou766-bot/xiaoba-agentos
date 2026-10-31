@@ -984,11 +984,19 @@ class MockAdapter(BaseAdapter):
 def build_adapter(config: AgentConfig) -> BaseAdapter:
     if config.type == "local_cli":
         driver = getattr(config, "driver", str(config.raw.get("driver", "")))
+        if driver == "agy":
+            return AgyAdapter(config)
         if driver == "dsh":
             return DshAdapter(config)
         if driver == "qoder":
             return QoderAdapter(config)
-        return AgyAdapter(config)
+        # No fallback to AGY: an empty or unknown driver used to be silently
+        # handed to the Antigravity CLI, which ran a different agent than the
+        # one the config named.  Report it instead of guessing.
+        raise PermanentAdapterError(
+            f"未知本地 CLI 驱动：{driver!r}（{config.name}）；已知驱动为 agy、dsh、qoder，"
+            "空 driver 或未知 driver 不得回落到 AGY"
+        )
     kinds = {"mock": MockAdapter}
     try:
         return kinds[config.type](config)
