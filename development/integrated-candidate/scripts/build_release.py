@@ -130,8 +130,13 @@ def copy_tree(source: Path, target: Path) -> None:
 
 
 def present_source_directories(source_root: Path) -> list[str]:
-    """受管目录清单是上限：技能和价值文件索引已出包，对应目录不再存在。其余目录缺失仍是错误。"""
-    return [name for name in SOURCE_DIRECTORIES if name not in ("skills", "knowledge") or (source_root / name).exists()]
+    """受管目录清单是上限：技能和价值文件索引已出包，对应目录不再存在。其余目录缺失仍是错误。
+
+    artifacts/ 是 install-service 现算现写的输出目录（launchd 模板渲染结果），被 .gitignore
+    忽略，源码树里没有；运行时校验 release.py 的受管集合本来也不含它。所以同样按"存在才复制"。
+    """
+    optional = ("skills", "knowledge", "artifacts")
+    return [name for name in SOURCE_DIRECTORIES if name not in optional or (source_root / name).exists()]
 
 
 def code_fingerprint(source_root: Path) -> str:
@@ -531,8 +536,13 @@ def _assemble_package(
         )
 
     interface_card = args.interface
-    if interface_card.is_symlink() or not interface_card.is_file():
-        raise RuntimeError(f"release interface card unavailable: {interface_card}")
+    if interface_card.is_symlink():
+        raise RuntimeError(f"release interface card unavailable: {interface_card} is a symlink")
+    if not interface_card.is_file():
+        raise RuntimeError(
+            f"release interface card unavailable: expected a regular file at {interface_card}; "
+            "pass --interface to point at the real interface card"
+        )
     interface_target = staging / "interface"
     (interface_target / "scripts").mkdir(parents=True)
     shutil.copy2(interface_card.resolve(), interface_target / "SKILL.md")
@@ -686,7 +696,12 @@ def build_parser() -> argparse.ArgumentParser:
     """构包参数。技能与价值文件是内容，不进包，构包不再核验它们。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--agentos-root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--interface", type=Path, default=Path(__file__).resolve().parents[1] / "interface" / "SKILL.md")
+    parser.add_argument(
+        "--interface",
+        type=Path,
+        default=Path(__file__).resolve().parents[2] / "interface" / "SKILL.md",
+        help="Interface card packed as SKILL.md; defaults to the interface directory beside the source tree.",
+    )
     parser.add_argument(
         "--stable-scripts",
         type=Path,

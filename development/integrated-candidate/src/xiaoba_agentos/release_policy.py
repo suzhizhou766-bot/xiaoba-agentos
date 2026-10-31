@@ -852,8 +852,8 @@ def _coverage_statement(side: SideTree, label: str) -> Dict[str, Any]:
         "compared_files": len(side.files),
         "top_level": side.top_level,
         "out_of_scope_paths": sorted(side.out_of_scope),
-        "scope_note": ("源码布局：比较 build_release 受控复制集合（含 artifacts/ 与 "
-                       "SOURCE_MANIFEST.json），SOURCE_MANIFEST.json 已按真实文件重算验证"),
+        "scope_note": ("源码布局：比较 build_release 受控复制集合（artifacts/、skills/、knowledge/ "
+                       "按存在才复制，SOURCE_MANIFEST.json 必在），SOURCE_MANIFEST.json 已按真实文件重算验证"),
     }
 
 
