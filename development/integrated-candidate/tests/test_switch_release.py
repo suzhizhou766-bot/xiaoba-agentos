@@ -651,7 +651,7 @@ class SwitchReleaseTest(unittest.TestCase):
                 write(target, b'concurrent card edit\n')
         result = self.run_switch(fault=drift)
         self.assertFalse(result['activated'])
-        self.assertIn('entrypoint changed after preflight', result['error'])
+        self.assertIn('scene changed after checkpoint before install_entries', result['error'])
         self.assertEqual(b'concurrent card edit\n', target.read_bytes())
         self.assertEqual('退回失败，需要人工处理', result['rollback']['status'])
 
