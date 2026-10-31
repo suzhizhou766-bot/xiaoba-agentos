@@ -338,7 +338,7 @@ class Orchestrator:
         self.circuit_breaker = CircuitBreaker(threshold=2)
 
     def _run_agent(self, task_id: str, agent_config: Any, prompt: str, context: str,
-                   lease_attempt: Optional[int] = None) -> AgentResult:
+                   lease_attempt: Optional[int] = None, is_workflow_work: bool = False) -> AgentResult:
         run_id = self.store.start_agent_run(
             task_id,
             agent_config.name,
@@ -349,9 +349,15 @@ class Orchestrator:
             },
         )
         receipt = ExecutionReceiptStore(self.config.runtime_dir / "receipts" / task_id / (str(run_id) + ".json"))
+        agent_model = str(agent_config.raw.get("model") or "")
+        if is_workflow_work:
+            cmd_text = prompt + "\n" + context
+        else:
+            cmd_text = f"agent:{agent_config.name}\nmodel:{agent_model}\n{prompt}\n{context}"
+        cmd_hash = receipt.command_hash(cmd_text)
         receipt.record_call({"task_id": task_id, "step_id": "agent_run:" + agent_config.name,
-                             "agent": agent_config.name, "tool": "agent_adapter",
-                             "tool_call_id": str(run_id), "command_hash": receipt.command_hash(prompt + "\n" + context)})
+                             "agent": agent_config.name, "model": agent_model, "tool": "agent_adapter",
+                             "tool_call_id": str(run_id), "command_hash": cmd_hash})
         started = time.monotonic()
         lease_seconds = float(self.config.worker["lease_seconds"])
         # What the last `agent.progress` event said, so the next one only goes out
@@ -439,12 +445,18 @@ class Orchestrator:
             raise
         for attempt in getattr(result, "route_attempts", []):
             self.store.append_event(task_id, "agent.provider_attempt", {"agent":agent_config.name, "run_id":run_id, **attempt})
-        receipt.associate_result(str(run_id), "adapter-result:" + str(run_id), exit_code=0)
+        resolved_model = getattr(result, "model", "") or agent_model
+        associated = receipt.associate_result(str(run_id), "adapter-result:" + str(run_id), exit_code=0, model=resolved_model)
         self.circuit_breaker.record_step(
             task_id, "agent_run:" + agent_config.name,
             tool_calls=1, tool_results=1, exit_code=0,
         )
-        self.store.finish_agent_run(run_id, "completed", result.output, None, result.latency_ms)
+        run_status = "completed" if associated else "receipt_association_failed"
+        self.store.finish_agent_run(run_id, run_status, result.output, None, result.latency_ms)
+        result.run_id = run_id
+        result.associated = associated
+        result.command_hash = cmd_hash
+        result.is_new_run = True
         if result.provider or result.model:
             previous_route = self.store.latest_route_resolved(result.agent)
             route_payload = {
@@ -857,7 +869,10 @@ class Orchestrator:
         for agent in enabled:
             previous = latest.get(agent.name)
             if _reusable_run(previous):
-                results.append(AgentResult(agent.name, previous["output"], int(previous.get("latency_ms") or 0)))
+                reused = AgentResult(agent.name, previous["output"], int(previous.get("latency_ms") or 0))
+                reused.run_id = previous["id"]
+                reused.is_new_run = False
+                results.append(reused)
             elif previous and previous["status"] == "permanent_error" and not (
                 resumed_after_freeze and agent.name in resume_failed_agents
             ):
@@ -946,9 +961,10 @@ class Orchestrator:
                     value for value in (task_context, snapshot_skill_context, memory_context) if value
                 ) or fallback_context
                 effective = replace(agent, raw={**agent.raw, "task_required_capabilities": list(set(_req_caps + (["native_web_search"] if _needs_web else [])))})
+                is_work = bool(workflow and workflow.get("phase") == "work")
                 prompt = agent_prompt(task["prompt"], workflow, agent.name)
                 futures[pool.submit(self._run_agent, task["id"], effective, prompt, context,
-                                    task["attempts"])] = agent.name
+                                    task["attempts"], is_work)] = agent.name
             for future in as_completed(futures):
                 name = futures[future]
                 try:
@@ -987,6 +1003,7 @@ class Orchestrator:
                 ) or fallback_context
                 effective = replace(standby, raw={**standby.raw, "task_required_capabilities": list(set(_req_caps + (["native_web_search"] if _needs_web else [])))})
                 standby_result: Optional[AgentResult] = None
+                is_work = bool(workflow and workflow.get("phase") == "work")
                 try:
                     standby_result = self._run_agent(
                         task["id"],
@@ -994,6 +1011,7 @@ class Orchestrator:
                         agent_prompt(task["prompt"], workflow, standby.name),
                         context,
                         task["attempts"],
+                        is_work,
                     )
                 except Exception as exc:
                     safe_error = sanitize_diagnostic_text(exc)
@@ -1104,6 +1122,16 @@ class Orchestrator:
             self.store.complete(task["id"], payload,
                                 provenance_kind="agentos_collaboration_work")
             return task_result({**bundle, "status": "completed", "task_id": task["id"], "next_stage": "integration"})
+
+        receipt_gate_error = self._verify_settlement_receipts(task, results)
+        if receipt_gate_error:
+            self.store.fail(task["id"], receipt_gate_error)
+            return task_result({
+                "status": "failed",
+                "task_id": task["id"],
+                "errors": [receipt_gate_error],
+                "standby_substitution": substitution or prior_substitution,
+            })
 
         winner, scores = DeterministicJudge.choose(task["prompt"], results)
         breakdown = DeterministicJudge.explain(task["prompt"], results)
@@ -1334,3 +1362,88 @@ class Orchestrator:
                     }
                 )
         return receipts
+
+    def _verify_settlement_receipts(
+        self,
+        task: Dict[str, Any],
+        results: List[AgentResult],
+    ) -> Optional[str]:
+        if not results:
+            return "receipt gate: no agent results present to verify receipts"
+        task_id = str(task["id"])
+        receipt_dir = self.config.runtime_dir / "receipts" / task_id
+        latest_runs = self.store.latest_agent_runs(task_id)
+
+        records: List[Dict[str, Any]] = []
+        for res in results:
+            agent_name = res.agent
+            is_new_run = getattr(res, "is_new_run", True)
+            run_id = getattr(res, "run_id", None)
+            if run_id is None:
+                run = latest_runs.get(agent_name)
+                if run:
+                    run_id = run.get("id")
+            if run_id is None:
+                if not is_new_run:
+                    continue
+                return f"receipt gate: missing run_id for agent {agent_name}"
+
+            receipt_path = receipt_dir / f"{run_id}.json"
+            if not receipt_path.is_file():
+                if not is_new_run:
+                    # 没有收据的旧任务和旧数据不追溯，只管新结算
+                    continue
+                return f"receipt gate: receipt file missing for agent {agent_name} run {run_id}"
+
+            try:
+                receipt_store = ExecutionReceiptStore(receipt_path)
+            except Exception as exc:
+                return f"receipt gate: corrupt receipt file for agent {agent_name}: {exc}"
+
+            try:
+                success = receipt_store.is_success(str(run_id))
+            except Exception as exc:
+                return f"receipt gate: is_success check error for agent {agent_name}: {exc}"
+
+            if not success:
+                return f"receipt gate: execution receipt not successful (is_success=False) for agent {agent_name} run {run_id}"
+
+            if not getattr(res, "associated", True):
+                return f"receipt gate: associate_result failed for agent {agent_name}"
+
+            record = receipt_store.get(str(run_id))
+            if not record:
+                return f"receipt gate: receipt record missing for tool_call_id {run_id}"
+
+            if str(record.get("task_id")) != task_id:
+                return f"receipt gate: task_id mismatch in receipt: {record.get('task_id')} != {task_id}"
+            if str(record.get("agent")) != agent_name:
+                return f"receipt gate: agent mismatch in receipt: {record.get('agent')} != {agent_name}"
+            if str(record.get("tool_call_id")) != str(run_id):
+                return f"receipt gate: tool_call_id mismatch in receipt: {record.get('tool_call_id')} != {run_id}"
+            if not record.get("tool_result_id"):
+                return f"receipt gate: missing tool_result_id in receipt for run {run_id}"
+            if record.get("status") != "succeeded" or record.get("exit_code") != 0:
+                return f"receipt gate: receipt status/exit_code invalid: status={record.get('status')}, exit_code={record.get('exit_code')}"
+
+            expected_model = getattr(res, "model", "") or ""
+            receipt_model = record.get("model", "")
+            if expected_model and receipt_model and expected_model != receipt_model:
+                return f"receipt gate: model mismatch in receipt: {receipt_model} != {expected_model}"
+
+            expected_cmd_hash = getattr(res, "command_hash", None)
+            if expected_cmd_hash and record.get("command_hash") != expected_cmd_hash:
+                return f"receipt gate: command_hash mismatch in receipt for agent {agent_name}"
+
+            # 旧收据的 command_hash 没带 Agent 和模型，同题同上下文时本来就相同；
+            # 重用的旧数据不追溯，只比这次新跑的。
+            if is_new_run:
+                records.append(record)
+
+        unique_agents = {r.get("agent") for r in records}
+        if len(unique_agents) > 1:
+            unique_hashes = {r.get("command_hash") for r in records}
+            if len(unique_hashes) < len(unique_agents):
+                return "receipt gate: receipts must be distinguishable across different agents"
+
+        return None

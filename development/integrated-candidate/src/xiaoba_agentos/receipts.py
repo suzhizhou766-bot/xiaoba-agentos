@@ -13,6 +13,7 @@ RECEIPT_FIELDS = (
     "task_id",
     "step_id",
     "agent",
+    "model",
     "tool",
     "tool_call_id",
     "tool_result_id",
@@ -26,8 +27,13 @@ RECEIPT_FIELDS = (
 )
 
 
-class ReceiptError(RuntimeError):
-    """Raised when a receipt cannot be recorded or verified."""
+class ReceiptError(RuntimeError, ValueError):
+    """Raised when a receipt cannot be recorded or verified.
+
+    Also a ValueError: evidence checks such as workflow's collaboration
+    contributions report bad evidence that way, and a corrupt receipt must fail
+    the same clean path, not escape as a worker error on every poll.
+    """
 
 
 class ExecutionReceiptStore:
@@ -46,12 +52,26 @@ class ExecutionReceiptStore:
     def _load(self) -> None:
         if self.path.exists():
             try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                data = {}
-            self._receipts = data.get("receipts", {}) if isinstance(data, dict) else {}
+                raw = self.path.read_text(encoding="utf-8")
+                data = json.loads(raw)
+            except Exception as exc:
+                raise ReceiptError(f"receipt file corrupt or unreadable: {self.path}") from exc
+            if not isinstance(data, dict) or not isinstance(data.get("receipts"), dict):
+                raise ReceiptError(f"receipt structure invalid: {self.path}")
+            self._receipts = data["receipts"]
 
     def _persist(self) -> None:
+        if self.path.exists():
+            try:
+                raw = self.path.read_text(encoding="utf-8")
+                data = json.loads(raw)
+                if not isinstance(data, dict) or not isinstance(data.get("receipts"), dict):
+                    raise ReceiptError(f"receipt structure invalid on disk: {self.path}")
+            except Exception as exc:
+                if isinstance(exc, ReceiptError):
+                    raise
+                raise ReceiptError(f"receipt file corrupt on disk: {self.path}") from exc
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, pending = tempfile.mkstemp(prefix=".receipt-", dir=str(self.path.parent))
         try:
@@ -72,6 +92,7 @@ class ExecutionReceiptStore:
             if not receipt.get(field):
                 raise ReceiptError(f"receipt missing required field: {field}")
         receipt.setdefault("agent", "")
+        receipt.setdefault("model", "")
         receipt.setdefault("status", "called")
         receipt.setdefault("exit_code", None)
         receipt.setdefault("started_at", time.time())
@@ -84,7 +105,13 @@ class ExecutionReceiptStore:
         self._persist()
         return call_id
 
-    def associate_result(self, tool_call_id: str, tool_result_id: str, exit_code: Optional[int] = 0) -> bool:
+    def associate_result(
+        self,
+        tool_call_id: str,
+        tool_result_id: str,
+        exit_code: Optional[int] = 0,
+        model: Optional[str] = None,
+    ) -> bool:
         """Link a real tool_result to a previously recorded call.
 
         Returns True if the association succeeded.
@@ -98,6 +125,8 @@ class ExecutionReceiptStore:
         receipt["status"] = "succeeded" if exit_code == 0 else "failed"
         receipt["exit_code"] = exit_code
         receipt["finished_at"] = time.time()
+        if model is not None:
+            receipt["model"] = str(model)
         self._persist()
         return True
 
@@ -124,7 +153,7 @@ class ExecutionReceiptStore:
         receipt = self._receipts.get(str(tool_call_id))
         if receipt is None:
             return False
-        return bool(receipt.get("tool_result_id")) and receipt.get("status") == "succeeded"
+        return bool(receipt.get("tool_result_id")) and receipt.get("status") == "succeeded" and receipt.get("exit_code") == 0
 
     def get(self, tool_call_id: str) -> Optional[Dict[str, Any]]:
         return self._receipts.get(str(tool_call_id))
