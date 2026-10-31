@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 import fcntl
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -1085,9 +1085,21 @@ class MemoryBridge:
 
     @staticmethod
     def _atomic_write_text(path: Path, text: str) -> None:
-        temporary = path.parent / f".{path.name}.{os.getpid()}.tmp"
-        temporary.write_text(text, encoding="utf-8")
+        fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix='.tmp', dir=path.parent)
+        temporary = Path(name)
+        with os.fdopen(fd, 'w', encoding='utf-8') as output:
+            if output.write(text) != len(text):
+                raise OSError('short publication journal write')
+            output.flush()
+            os.fsync(output.fileno())
+        # mkstemp is private; published notes and the catalog keep their mode.
+        os.chmod(temporary, path.stat().st_mode & 0o777 if path.exists() else 0o644)
         os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
     def _index_output_snapshot(self, graph_dir: Path) -> Dict[str, tuple]:
         """Bytes of the index outputs a publication may overwrite.
@@ -1249,6 +1261,14 @@ class MemoryBridge:
     def _publish_candidate_unlocked(self, task_id: str, expected_sha256: Optional[str] = None) -> Dict[str, Any]:
         if not self.config.memory.get("publish_enabled"):
             raise RuntimeError("memory.publish_enabled=false")
+        # File-only calls are not an approval bypass. Use the same gate as the
+        # public transaction, on a read-only connection (the public caller may
+        # already hold the SQLite write transaction).
+        from .store import EventStore
+        with closing(sqlite3.connect(self.config.database_path.as_uri() + "?mode=ro", uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            approved = EventStore(self.config.database_path)._publication_gate_candidate(conn, task_id, expected_sha256)
+            approved_sha256 = approved['evidence_sha256']
         # Objects retained by this call's rollback are recorded against the task
         # whose write is being undone, so the self-check can name it later.
         self._retention_context = {"task_id": task_id}
@@ -1259,6 +1279,8 @@ class MemoryBridge:
             raise RuntimeError("memory candidate file is missing")
         source_bytes = source.read_bytes()
         source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+        if source_sha256 != approved_sha256:
+            raise RuntimeError("memory candidate changed after final review")
         if expected_sha256 and source_sha256 != expected_sha256:
             raise RuntimeError("memory candidate changed after user review")
         staged_text = source_bytes.decode("utf-8")
@@ -1287,6 +1309,15 @@ class MemoryBridge:
         if catalog.is_symlink() or destination_dir.is_symlink():
             raise RuntimeError("memory publication paths must not be symlinks")
         published_text = self._render_published(task_id, staged_text)
+        journal_path = self.outbox / f"{task_id}.publication.json"
+        journal = json.loads(journal_path.read_text()) if journal_path.is_file() else None
+        if journal:
+            if journal.get('source_sha256') != source_sha256 or journal.get('vault') != str(vault):
+                raise MemoryRecoveryError('publication recovery identity changed')
+            # Rendering has a date field: retries on a later day use the date
+            # from the original intent, not freshly rendered bytes.
+            published_text = re.sub(r'last_verified: "[^"]+"',
+                                    'last_verified: "' + journal['date'] + '"', published_text, count=1)
         target = self.find_note(vault, task_id) or destination_dir / self.note_filename(published_text, task_id)
         try:
             relative_target = target.relative_to(vault).with_suffix("")
@@ -1300,6 +1331,17 @@ class MemoryBridge:
             original_catalog_mode = None
         if target.exists():
             existing = target.read_text(encoding="utf-8")
+            if journal and (journal.get('target') != str(target)
+                            or hashlib.sha256(existing.encode()).hexdigest() != journal.get('note_sha256')):
+                raise MemoryRecoveryError('publication recovery conflicts with changed note')
+            if link not in original_catalog and journal:
+                if (journal.get('target') != str(target) or existing != published_text
+                        or hashlib.sha256(original_catalog.encode()).hexdigest() != journal.get('catalog_before')):
+                    raise MemoryRecoveryError('publication recovery conflicts with changed note or catalog')
+                self._atomic_write_text(catalog, original_catalog.rstrip() + f"\n- {link}\n")
+                original_catalog = catalog.read_text(encoding='utf-8')
+                journal['phase'] = 'catalog_installed'
+                self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
             if f'source_task_id: "{task_id}"' not in existing or link not in original_catalog:
                 raise RuntimeError("conflicting published memory already exists")
             # Re-verification rebuilds the index too, so it carries the same
@@ -1319,6 +1361,9 @@ class MemoryBridge:
                 raise
             if pending_source.is_file():
                 os.replace(pending_source, published_marker)
+            if journal:
+                journal['phase'] = 'complete'
+                self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
             return {
                 "published": 1,
                 "task_id": task_id,
@@ -1335,13 +1380,23 @@ class MemoryBridge:
         snapshot = self._index_output_snapshot(graph_dir)
         self._index_installs = {}
         catalog_text = original_catalog.rstrip() + f"\n- {link}\n"
+        journal = {'task_id': task_id, 'source_sha256': source_sha256, 'vault': str(vault),
+                   'target': str(target), 'note_sha256': evidence_sha256,
+                   'catalog_before': hashlib.sha256(original_catalog.encode()).hexdigest(),
+                   'date': re.search(r'last_verified: "([^"]+)"', published_text).group(1),
+                   'phase': 'prepared'}
+        self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
         target_tmp = destination_dir / f".{task_id}.{os.getpid()}.tmp"
         catalog_tmp = catalog.parent / f".{catalog.name}.{os.getpid()}.tmp"
         try:
             target_tmp.write_text(published_text, encoding="utf-8")
             catalog_tmp.write_text(catalog_text, encoding="utf-8")
             os.replace(target_tmp, target)
+            journal['phase'] = 'note_installed'
+            self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
             os.replace(catalog_tmp, catalog)
+            journal['phase'] = 'catalog_installed'
+            self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
             index_evidence = self._rebuild_and_verify_index(vault)
         except Exception as exc:
             # Undo only what this call can prove it wrote: the note and the
@@ -1363,6 +1418,8 @@ class MemoryBridge:
             raise
         if pending_source.is_file():
             os.replace(pending_source, published_marker)
+        journal['phase'] = 'complete'
+        self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
         return {
             "published": 1,
             "task_id": task_id,

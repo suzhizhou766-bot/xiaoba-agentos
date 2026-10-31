@@ -13,6 +13,20 @@ from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.store import EventStore
 
 
+def approve_staged_fixture(config, task_id):
+    """Synthetic approval in an isolated test DB; never an application shortcut."""
+    store = EventStore(config.database_path)
+    store.initialize()
+    if store.get_task(task_id) is None:
+        with patch('xiaoba_agentos.store.uuid.uuid4', return_value=task_id):
+            store.submit('isolated publication fixture', 1)
+    path = MemoryBridge(config).staged_path(task_id)
+    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    store.stage_memory_candidate(task_id, str(path), sha256)
+    for stage in ('delivery', 'final'):
+        store.review_memory(task_id, stage, 'approve', 'isolated fixture', sha256)
+
+
 class MemoryBridgeTest(unittest.TestCase):
     def config(self, root: Path) -> AppConfig:
         raw = {
@@ -246,8 +260,9 @@ class MemoryBridgeTest(unittest.TestCase):
             bridge = MemoryBridge(config)
             candidate = bridge.stage_experience("task", "prompt", "result", [])
             approved_hash = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            approve_staged_fixture(config, 'task')
             candidate.write_text(candidate.read_text(encoding="utf-8") + "changed\n", encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "changed after user review"):
+            with self.assertRaisesRegex((RuntimeError, ValueError), "changed|hash"):
                 bridge.publish_candidate("task", approved_hash)
 
     def test_final_publication_updates_tree_and_verified_index(self):
@@ -281,6 +296,7 @@ class MemoryBridgeTest(unittest.TestCase):
             )
             bridge = MemoryBridge(config)
             bridge.stage_experience("11111111-1111-1111-1111-111111111111", "task", "result", [])
+            approve_staged_fixture(config, "11111111-1111-1111-1111-111111111111")
             published = bridge.publish_candidate("11111111-1111-1111-1111-111111111111")
             self.assertEqual(1, published["published"])
             self.assertTrue(Path(published["path"]).is_file())

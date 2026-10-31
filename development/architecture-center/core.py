@@ -7,6 +7,7 @@ No operation here writes to active module sources or approves experience.
 from contextlib import contextmanager
 import ast
 import difflib
+import fcntl
 import hashlib
 import json
 import os
@@ -76,7 +77,27 @@ class Center:
         self._recover_interrupted()
 
     def _recover_interrupted(self):
-        """A publish that was still 'running' at startup has an unknown outcome; never retry it."""
+        """Only the kernel releasing the publisher's lock proves it has exited.
+
+        A second Center (even in the same process) must not disturb a live
+        publisher. Legacy records without a lock are conservatively unknown.
+        """
+        with self._publisher_lock() as acquired:
+            if acquired:self._recover_unowned_publish()
+
+    @contextmanager
+    def _publisher_lock(self):
+        fd=os.open(self.workspace/'publish.lock',os.O_CREAT|os.O_RDWR,0o600)
+        acquired=False
+        try:
+            try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);acquired=True
+            except BlockingIOError:pass
+            yield acquired
+        finally:
+            if acquired:fcntl.flock(fd,fcntl.LOCK_UN)
+            os.close(fd)
+
+    def _recover_unowned_publish(self):
         try:
             with self.tx() as db:
                 for row in db.execute('SELECT id,data FROM changes ORDER BY rowid').fetchall():
@@ -330,6 +351,11 @@ class Center:
         return {'change':self.get(cid),'revision':revision,'confirmation':confirmation,'preflight':report}
 
     def publish(self,cid,expected_revision,confirmation,request_id):
+        with self._publisher_lock() as acquired:
+            if not acquired:raise Conflict('已有正式发布正在执行')
+            return self._publish_locked(cid,expected_revision,confirmation,request_id)
+
+    def _publish_locked(self,cid,expected_revision,confirmation,request_id):
         if not isinstance(request_id,str) or not request_id:raise ValueError('需要稳定发布请求 ID')
         request_hash=sha(encoded([cid,expected_revision,confirmation]))
         with self.tx() as db:

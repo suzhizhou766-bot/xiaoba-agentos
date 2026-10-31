@@ -2,13 +2,14 @@
 """固定发布切换入口。版本和专属步骤来自被哈希验证的发布包。
 
 plan/preflight/readback 只读；apply 仅由用户在个人终端执行。
-恢复材料仅在本进程内存中；异常退出、强杀或掉电不承诺自动恢复。
+恢复日志只保存阶段和哈希；硬退出后 recover 查询，resume 从已核验阶段继续。
 """
 from __future__ import annotations
 
 import argparse
 import ast
 import copy
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -19,6 +20,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import tempfile
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +50,27 @@ def digest(data: bytes) -> str:
 
 def encoded(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + '\n').encode()
+
+
+def atomic_bytes(path: Path, data: bytes, mode: int = 0o600, expected: Optional[dict] = None) -> None:
+    """A failed/short write can only damage a private new-byte temporary."""
+    safe(path)
+    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, 'wb') as output:
+            require(output.write(data) == len(data), 'short recovery write')
+            output.flush(); os.fsync(output.fileno())
+        os.chmod(temp, mode)
+        require(temp.read_bytes() == data, 'recovery temporary readback mismatch')
+        if expected is not None:
+            require(state(path) == expected, f'concurrent recovery change: {path}')
+        os.replace(temp, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+    finally:
+        if temp.exists(): temp.unlink()
 
 
 def relative(value: str) -> Path:
@@ -363,14 +386,7 @@ class Writer:
                     if change.path.exists():
                         change.path.unlink()
                 else:
-                    # Restored bytes replace our own bytes directly; no old-content copy.
-                    # What we wrote may carry the package's read-only mode (a sealed
-                    # or frozen package is 0444), so make it writable first; the
-                    # original mode is put back right after (round-49 rehearsal).
-                    if change.path.exists():   # a file the switch removed is simply recreated
-                        os.chmod(change.path, 0o600)
-                    change.path.write_bytes(change.original)
-                    os.chmod(change.path, change.mode)
+                    atomic_bytes(change.path, change.original, change.mode, change.after)
                 require(state(change.path) == {'sha256': digest(change.original) if change.original is not None else None,
                                                'mode': change.mode}, f'undo readback mismatch: {change.path}')
             except BaseException as exc:
@@ -760,9 +776,13 @@ def readback(layout: Layout, system: Optional[System] = None, old_pid: Optional[
 def build_graph(layout: Layout) -> dict:
     p = layout.runtime / 'scripts/build_knowlp_index.py'
     safe(p)
-    # Execute the verified source bytes, never an unbound cached .pyc.
+    # Read once, compare those bytes with the verified manifest, execute the
+    # same in-memory object. Replacing the path after verification cannot run it.
+    manifest = verify_source(layout.runtime)
+    payload = p.read_bytes()
+    require(digest(payload) == manifest['scripts/build_knowlp_index.py'], 'index builder changed after verification')
     namespace = {'__file__': str(p), '__name__': 'switch_knowlp'}
-    exec(compile(p.read_bytes(), str(p), 'exec'), namespace)
+    exec(compile(payload, str(p), 'exec'), namespace)
     require(namespace['diagnose'](layout.vault)['ok'], 'vault tree validation failed')
     result = namespace['build'](layout.vault)
     require(result == namespace['build'](layout.vault), 'index builder is nondeterministic')
@@ -782,8 +802,54 @@ def verify_graph(layout: Layout) -> None:
         require(path.read_bytes() == graph_bytes(value), f'KnowLP index differs: {rel}')
 
 
+def recovery_path(layout: Layout) -> Path:
+    return layout.runtime / '.runtime/switch-recovery.json'
+
+
+def recovery_status(layout: Layout) -> dict:
+    path = recovery_path(layout)
+    if not path.exists():
+        return {'ok': True, 'mode': 'recover', 'pending': False}
+    record = load(path)
+    return {'ok': True, 'mode': 'recover', 'pending': record.get('status') == 'pending',
+            'status': record.get('status'), 'active_phase': record.get('active_phase'),
+            'completed_steps': record['completed_steps'], 'version': record['new']['version'],
+            'last_completed_phase': record['completed_steps'][-1] if record['completed_steps'] else 'prepared',
+            'note': '仅记录阶段和哈希；resume 核对现场后继续，不自动执行或批准'}
+
+
 def apply(layout: Layout, ticket: dict, system: Optional[System] = None,
           now: Callable = time.time, fault: Optional[Callable] = None) -> dict:
+    return _locked_apply(layout, ticket, system, now, fault, False)
+
+
+def resume(layout: Layout, system: Optional[System] = None,
+           now: Callable = time.time, fault: Optional[Callable] = None) -> dict:
+    return _locked_apply(layout, {}, system, now, fault, True)
+
+
+def _locked_apply(layout, ticket, system, now, fault, recovering):
+    # The lock is an existing runtime directory, so no extra lock file and no
+    # backup is created. Both fresh apply and resume share this exclusion.
+    fd = os.open(layout.runtime / '.runtime', os.O_RDONLY)
+    try:
+        try: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {'ok': False, 'error': 'another switch is running', 'writes_performed': 0}
+        if recovering:
+            record = load(recovery_path(layout))
+            require(record.get('status') == 'pending', 'no interrupted switch to resume')
+        else:
+            if recovery_path(layout).exists() and load(recovery_path(layout)).get('status') == 'pending':
+                return {'ok': False, 'error': 'interrupted switch pending; use recover / resume', 'writes_performed': 0}
+            record = None
+        return _apply(layout, ticket, system, now, fault, record)
+    finally:
+        os.close(fd)
+
+
+def _apply(layout: Layout, ticket: dict, system: Optional[System] = None,
+           now: Callable = time.time, fault: Optional[Callable] = None, recovery=None) -> dict:
     """Only the user invokes this against production; tests inject isolated Layout/System."""
     system = system or System()
     result = {'mode': 'apply', 'ok': False, 'activated': False, 'writes_performed': 0,
@@ -795,133 +861,207 @@ def apply(layout: Layout, ticket: dict, system: Optional[System] = None,
     old_pid = None
     boundary = None
     original_snapshot = None
+    journal = recovery
+    resumed = recovery is not None
+    completed = list(recovery['completed_steps']) if resumed else []
+
+    def done(name):
+        return name in completed
+
+    def begin(name):
+        journal['active_phase'] = name
+        atomic_bytes(recovery_path(layout), encoded(journal))
 
     def phase(name: str) -> None:
         result['completed_steps'].append(name)
+        if name.startswith('step:'):
+            if fault: fault(name)
+            return
+        if name not in completed: completed.append(name)
+        journal['completed_steps'] = list(completed)
+        journal['active_phase'] = None
+        journal['checkpoint'] = snapshot(layout, data['spec'])
+        atomic_bytes(recovery_path(layout), encoded(journal))
         if fault:
             fault(name)
 
     try:
-        require(ticket.get('mode') == 'preflight' and ticket.get('ok') is True, 'successful preflight required')
-        signed = dict(ticket)
-        sha = signed.pop('preflight_sha256', None)
-        require(digest(encoded(signed)) == sha, 'preflight record was modified')
-        require(0 <= now() - ticket['issued_at'] <= TTL and ticket['expires_at'] == ticket['issued_at'] + TTL, 'preflight expired or timestamp invalid')
-        data = inspect(layout, system)
-        require(ticket['fingerprint'] == snapshot(layout, data['spec']), 'scene changed after preflight')
-        require(ticket['worker'] == data['worker'], 'worker changed after preflight')
-        require(ticket['version'] == data['new']['version'], 'preflight target mismatch')
-        require(now() <= ticket['expires_at'], 'preflight expired during final inspection')
-        original_snapshot = snapshot(layout, data['spec'])
-        old_pid = data['worker']['pid']
-        result['old_pid'] = old_pid
+        if resumed:
+            require(recovery['package'] == str(layout.package), 'recovery package path differs')
+            require(recovery['layout'] == [str(p) for p in (layout.config, layout.vault, layout.graph, layout.plist, *layout.entries)], 'recovery layout differs')
+            verify_package(layout.package)
+            data = {k: recovery[k] for k in ('old', 'new', 'spec', 'runtime_files', 'worker')}
+            data.update(previous=Path(recovery['previous']), target=Path(recovery['target']))
+            verify_package(data['previous'])
+            if done('stage_package'):
+                verify_package(data['target'])
+                require((data['target'] / 'FILES.sha256').read_bytes() == (layout.package / 'FILES.sha256').read_bytes(), 'staged recovery package differs')
+            require(snapshot(layout, data['spec']) == recovery['checkpoint'],
+                    'scene differs from last durable checkpoint; manual reconciliation required')
+            original_snapshot = recovery['original_snapshot']
+            old_pid = data['worker']['pid']
+            stopped = done('stop_worker')
+            attempted_start = done('start_worker')
+            if stopped and not attempted_start:
+                require(not system.registered(layout) and not system.worker_pids(layout),
+                        'worker restarted during interrupted switch; manual reconciliation required')
+            queue(layout)
+            result['old_pid'] = old_pid
+            result['completed_steps'] = list(completed)
+        else:
+            require(ticket.get('mode') == 'preflight' and ticket.get('ok') is True, 'successful preflight required')
+            signed = dict(ticket)
+            sha = signed.pop('preflight_sha256', None)
+            require(digest(encoded(signed)) == sha, 'preflight record was modified')
+            require(0 <= now() - ticket['issued_at'] <= TTL and ticket['expires_at'] == ticket['issued_at'] + TTL, 'preflight expired or timestamp invalid')
+            data = inspect(layout, system)
+            require(ticket['fingerprint'] == snapshot(layout, data['spec']), 'scene changed after preflight')
+            require(ticket['worker'] == data['worker'], 'worker changed after preflight')
+            require(ticket['version'] == data['new']['version'], 'preflight target mismatch')
+            require(now() <= ticket['expires_at'], 'preflight expired during final inspection')
+            original_snapshot = snapshot(layout, data['spec'])
+            old_pid = data['worker']['pid']
+            result['old_pid'] = old_pid
 
-        # New immutable package; every byte is rechecked and journalled. No old release is touched.
-        for directory in sorted(layout.package.rglob('*')):
-            safe(directory)
-            if directory.is_dir() and '__pycache__' not in directory.parts:
-                writer._parents(data['target'] / directory.relative_to(layout.package))
-        for rel, sha in files(layout.package).items():
-            source = layout.package / relative(rel)
-            payload = source.read_bytes()
-            require(digest(payload) == sha, 'package changed during staging')
-            writer.write(data['target'] / relative(rel), payload, {'sha256': None, 'mode': None}, source.stat().st_mode & 0o777)
-        verify_package(data['target'])
-        phase('stage_package')
-        require(snapshot(layout, data['spec']) == original_snapshot, 'scene changed before stopping worker')
-        queue(layout)
-        stopped = True  # Set before stop: a successful bootout followed by timeout needs restoration.
-        system.stop(layout, old_pid)
-        require(not system.alive(old_pid), 'old worker remained after stop')
-        queue(layout)
-        phase('stop_worker')
-        source = data['target'] / 'agentos'
-        incoming = verify_source(source)
-        for rel in sorted(set(data['runtime_files']) | set(incoming)):
-            target = layout.runtime / relative(rel)
-            before = state(target)
-            require(before['sha256'] == data['runtime_files'].get(rel), 'source changed during switch')
-            if before['sha256'] != incoming.get(rel):
-                writer.write(target, (source / rel).read_bytes() if rel in incoming else None, before,
-                             (source / rel).stat().st_mode & 0o777 if rel in incoming else None)
-        writer.write(layout.runtime / 'SOURCE_MANIFEST.json', (source / 'SOURCE_MANIFEST.json').read_bytes(), state(layout.runtime / 'SOURCE_MANIFEST.json'))
-        phase('replace_source')
-        for i, home in enumerate(layout.entries):
-            require(digest(encoded(files(home))) == original_snapshot['entry-' + str(i)], 'entrypoint changed after preflight')
-        for home in layout.entries:
-            for name in ('xiaoba', 'verify-release'):
-                template = (data['target'] / 'interface/scripts' / name).read_text()
-                require(len(DEFAULT_LINE.findall(template)) == 1, 'entrypoint template config binding is ambiguous')
-                payload = DEFAULT_LINE.sub(lambda _: f'DEFAULT_CONFIG = Path({json.dumps(str(layout.config), ensure_ascii=False)})', template).encode()
-                target = home / 'scripts' / name
-                writer.write(target, payload, state(target), 0o755)
-            writer.write(home / 'SKILL.md', (data['target'] / 'interface/SKILL.md').read_bytes(), state(home / 'SKILL.md'))
-        phase('install_entries')
-        require(state(layout.config) == original_snapshot['config'], 'config changed after preflight')
-        raw = load(layout.config)
-        config = copy.deepcopy(raw)
-        config['release']['expected_version'] = data['new']['version']
-        require({**config['release'], 'expected_version': raw['release']['expected_version']} == raw['release'], 'config changes exceed release binding')
-        writer.write(layout.config, encoded(config), state(layout.config), 0o600)
-        phase('bind_config')
-        history = load(layout.history) if layout.history.exists() else {'steps': {}}
-        for step in data['spec']['steps']:
-            if step['id'] in history['steps']:
-                continue
-            target = step_destination(layout, step)
-            before = state(target)
-            if step['execute']['kind'] == 'config_set':
-                raw = load(layout.config)
-                path, before_value, after_value = config_step(layout, step)
-                require(config_get(raw, path) == before_value, 'config step input changed')
-                updated = copy.deepcopy(raw)
-                section, _, key = path.partition('.')
-                updated.setdefault(section, {})[key] = after_value
-                writer.write(target, encoded(updated), before, 0o600)
-            else:
-                payload = step_payload(layout, step)
-                require(before['sha256'] in (None, digest(payload)), 'step would overwrite user content')
-                if before['sha256'] is None:
-                    writer.write(target, payload, before)
-            history['steps'][step['id']] = {'sha256': digest(encoded(step)), 'release': data['new']['version']}
-            phase('step:' + step['id'])
-        if data['spec']['steps']:
-            require(state(layout.history) == original_snapshot['history'], 'step history changed')
-            writer.write(layout.history, encoded(history), state(layout.history), 0o600)
-        phase('release_steps')
-        require(digest(encoded(files(layout.vault))) == original_snapshot['vault'], 'vault changed after preflight')
-        for target, payload, before, mode in vault_actions(layout, data['previous']):
-            writer.write(target, payload, before, mode)
-        phase('vault_merge')
-        require(digest(encoded(files(layout.graph))) == original_snapshot['graph'], 'graph changed after preflight')
-        graph = build_graph(layout)
-        for rel, value in graph.items():
-            target = layout.graph / relative(rel)
-            writer.write(target, graph_bytes(value), state(target), 0o600)
-        verify_graph(layout)
-        phase('rebuild_graph')
-        require(state(layout.index) == original_snapshot['index'], 'release index changed after preflight')
-        index = load(layout.index)
-        index['current_release'] = data['new']['version']
-        index['releases'].insert(0, {'version': data['new']['version'], 'path': data['new']['version'],
-                                   'status': 'verified_immutable', 'files_manifest_sha256': state(data['target'] / 'FILES.sha256')['sha256']})
-        writer.write(layout.index, encoded(index), state(layout.index))
-        phase('publish_index')
-        require(state(layout.plist) == original_snapshot['plist'], 'worker service template changed after preflight')
-        queue(layout)
-        attempted_start = True
-        boundary = now()
-        system.start(layout)
+            journal = {k: data[k] for k in ('old', 'new', 'spec', 'runtime_files', 'worker')}
+            journal.update(package=str(layout.package), previous=str(data['previous']), target=str(data['target']),
+                           layout=[str(p) for p in (layout.config, layout.vault, layout.graph, layout.plist, *layout.entries)],
+                           original_snapshot=original_snapshot, checkpoint=original_snapshot, completed_steps=[], status='pending')
+            atomic_bytes(recovery_path(layout), encoded(journal))
 
-        def ready() -> bool:
-            try:
-                value = worker(layout, system, old_pid)
-                return value['started_at'] >= boundary
-            except (SwitchError, OSError, ValueError, KeyError):
-                return False
+        if not done('stage_package'):
+            begin('stage_package')
+            # New immutable package; every byte is rechecked and journalled. No old release is touched.
+            for directory in sorted(layout.package.rglob('*')):
+                safe(directory)
+                if directory.is_dir() and '__pycache__' not in directory.parts:
+                    writer._parents(data['target'] / directory.relative_to(layout.package))
+            for rel, sha in files(layout.package).items():
+                source = layout.package / relative(rel)
+                payload = source.read_bytes()
+                require(digest(payload) == sha, 'package changed during staging')
+                if resumed and state(data['target'] / relative(rel))['sha256'] == sha:
+                    continue
+                writer.write(data['target'] / relative(rel), payload, {'sha256': None, 'mode': None}, source.stat().st_mode & 0o777)
+            verify_package(data['target'])
+            phase('stage_package')
+        if not done('stop_worker'):
+            begin('stop_worker')
+            require(snapshot(layout, data['spec']) == original_snapshot, 'scene changed before stopping worker')
+            queue(layout)
+            stopped = True  # Set before stop: a successful bootout followed by timeout needs restoration.
+            # A kill can land between bootout and its checkpoint; a second bootout
+            # of an unloaded service fails, so resume only stops what is still up.
+            if not resumed or system.registered(layout) or system.worker_pids(layout):
+                system.stop(layout, old_pid)
+            require(not system.alive(old_pid), 'old worker remained after stop')
+            queue(layout)
+            phase('stop_worker')
+        if not done('replace_source'):
+            begin('replace_source')
+            source = data['target'] / 'agentos'
+            incoming = verify_source(source)
+            for rel in sorted(set(data['runtime_files']) | set(incoming)):
+                target = layout.runtime / relative(rel)
+                before = state(target)
+                require(before['sha256'] == data['runtime_files'].get(rel), 'source changed during switch')
+                if before['sha256'] != incoming.get(rel):
+                    writer.write(target, (source / rel).read_bytes() if rel in incoming else None, before,
+                                 (source / rel).stat().st_mode & 0o777 if rel in incoming else None)
+            writer.write(layout.runtime / 'SOURCE_MANIFEST.json', (source / 'SOURCE_MANIFEST.json').read_bytes(), state(layout.runtime / 'SOURCE_MANIFEST.json'))
+            phase('replace_source')
+        if not done('install_entries'):
+            begin('install_entries')
+            for i, home in enumerate(layout.entries):
+                require(digest(encoded(files(home))) == original_snapshot['entry-' + str(i)], 'entrypoint changed after preflight')
+            for home in layout.entries:
+                for name in ('xiaoba', 'verify-release'):
+                    template = (data['target'] / 'interface/scripts' / name).read_text()
+                    require(len(DEFAULT_LINE.findall(template)) == 1, 'entrypoint template config binding is ambiguous')
+                    payload = DEFAULT_LINE.sub(lambda _: f'DEFAULT_CONFIG = Path({json.dumps(str(layout.config), ensure_ascii=False)})', template).encode()
+                    target = home / 'scripts' / name
+                    writer.write(target, payload, state(target), 0o755)
+                writer.write(home / 'SKILL.md', (data['target'] / 'interface/SKILL.md').read_bytes(), state(home / 'SKILL.md'))
+            phase('install_entries')
+        if not done('bind_config'):
+            begin('bind_config')
+            require(state(layout.config) == original_snapshot['config'], 'config changed after preflight')
+            raw = load(layout.config)
+            config = copy.deepcopy(raw)
+            config['release']['expected_version'] = data['new']['version']
+            require({**config['release'], 'expected_version': raw['release']['expected_version']} == raw['release'], 'config changes exceed release binding')
+            writer.write(layout.config, encoded(config), state(layout.config), 0o600)
+            phase('bind_config')
+        if not done('release_steps'):
+            begin('release_steps')
+            history = load(layout.history) if layout.history.exists() else {'steps': {}}
+            for step in data['spec']['steps']:
+                if step['id'] in history['steps']:
+                    continue
+                target = step_destination(layout, step)
+                before = state(target)
+                if step['execute']['kind'] == 'config_set':
+                    raw = load(layout.config)
+                    path, before_value, after_value = config_step(layout, step)
+                    require(config_get(raw, path) == before_value, 'config step input changed')
+                    updated = copy.deepcopy(raw)
+                    section, _, key = path.partition('.')
+                    updated.setdefault(section, {})[key] = after_value
+                    writer.write(target, encoded(updated), before, 0o600)
+                else:
+                    payload = step_payload(layout, step)
+                    require(before['sha256'] in (None, digest(payload)), 'step would overwrite user content')
+                    if before['sha256'] is None:
+                        writer.write(target, payload, before)
+                history['steps'][step['id']] = {'sha256': digest(encoded(step)), 'release': data['new']['version']}
+                phase('step:' + step['id'])
+            if data['spec']['steps']:
+                require(state(layout.history) == original_snapshot['history'], 'step history changed')
+                writer.write(layout.history, encoded(history), state(layout.history), 0o600)
+            phase('release_steps')
+        if not done('vault_merge'):
+            begin('vault_merge')
+            require(digest(encoded(files(layout.vault))) == original_snapshot['vault'], 'vault changed after preflight')
+            for target, payload, before, mode in vault_actions(layout, data['previous']):
+                writer.write(target, payload, before, mode)
+            phase('vault_merge')
+        if not done('rebuild_graph'):
+            begin('rebuild_graph')
+            require(digest(encoded(files(layout.graph))) == original_snapshot['graph'], 'graph changed after preflight')
+            graph = build_graph(layout)
+            for rel, value in graph.items():
+                target = layout.graph / relative(rel)
+                writer.write(target, graph_bytes(value), state(target), 0o600)
+            verify_graph(layout)
+            phase('rebuild_graph')
+        if not done('publish_index'):
+            begin('publish_index')
+            require(state(layout.index) == original_snapshot['index'], 'release index changed after preflight')
+            index = load(layout.index)
+            index['current_release'] = data['new']['version']
+            index['releases'].insert(0, {'version': data['new']['version'], 'path': data['new']['version'],
+                                       'status': 'verified_immutable', 'files_manifest_sha256': state(data['target'] / 'FILES.sha256')['sha256']})
+            writer.write(layout.index, encoded(index), state(layout.index))
+            phase('publish_index')
+        if not done('start_worker'):
+            begin('start_worker')
+            require(state(layout.plist) == original_snapshot['plist'], 'worker service template changed after preflight')
+            queue(layout)
+            attempted_start = True
+            boundary = now()
+            system.start(layout)
 
-        system.wait(ready, 'new worker did not become ready')
-        phase('start_worker')
+            def ready() -> bool:
+                try:
+                    value = worker(layout, system, old_pid)
+                    return value['started_at'] >= boundary
+                except (SwitchError, OSError, ValueError, KeyError):
+                    return False
+
+            system.wait(ready, 'new worker did not become ready')
+            phase('start_worker')
+        # Always verify the running release, including a resumed readback.
+        begin('readback')
         result['read_back'] = readback(layout, system, old_pid)
         require(result['read_back']['ok'], 'post-switch readback failed: ' + str(result['read_back'].get('error')))
         require(result['read_back']['version'] == data['new']['version'], 'readback is healthy but not the requested target version')
@@ -943,7 +1083,9 @@ def apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             result['release_sealed'] = {'ok': False, 'entries': 0, 'errors': [f'{type(exc).__name__}: {exc}']}
     except BaseException as exc:
         result['error'] = f'{type(exc).__name__}: {exc}'
-        if writer.changes or stopped:
+        if resumed:
+            result['rollback'] = {'ok': False, 'status': '恢复未完成，需要人工核对或重新 resume', 'errors': [str(exc)]}
+        elif writer.changes or stopped:
             errors = []
             # Stop new code before restoring files. Do not launch mixed code after undo failure.
             if attempted_start:
@@ -982,7 +1124,14 @@ def apply(layout: Layout, ticket: dict, system: Optional[System] = None,
             result['rollback'] = {'ok': True, 'status': '未开始写入，无需退回', 'errors': []}
     finally:
         result['writes_performed'] = writer.write_count
-        result['recovery_limit'] = '原内容只保存在本进程内存；强杀或掉电后需要人工检查，未创建备份'
+        if journal is not None and (result['ok'] or (not resumed and result.get('rollback', {}).get('ok'))):
+            journal['status'] = 'complete' if result['ok'] else 'rolled_back'
+            try:
+                atomic_bytes(recovery_path(layout), encoded(journal))
+            except OSError as journal_error:
+                result['recovery_journal_error'] = str(journal_error)
+                result['requires_manual_readback'] = True
+        result['recovery_limit'] = '阶段与哈希持久化；原内容只在内存，未创建备份。偏离检查点时拒绝自动续跑。'
         # Never retain old bytes beyond this invocation.
         writer.changes.clear()
     return result
@@ -1039,7 +1188,7 @@ def rollback_worker_ready(layout: Layout, system: System) -> bool:
 
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', nargs='?', default='plan', choices=('plan', 'preflight', 'apply', 'readback'))
+    parser.add_argument('mode', nargs='?', default='plan', choices=('plan', 'preflight', 'apply', 'readback', 'recover', 'resume'))
     parser.add_argument('--package', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--preflight', type=Path, help='用户保存的只读预检 JSON，仅 apply 必需')
     parser.add_argument('--old-pid', type=int, help='readback 核验停启时提供切换前 PID')
@@ -1052,6 +1201,12 @@ def main(argv: Optional[list] = None) -> int:
             verify_package(args.package)
             require(state(Path(__file__))['sha256'] == state(args.package / 'agentos/scripts/switch_release.py')['sha256'], 'running command differs from accepted package')
             result = apply(layout, load(args.preflight))
+        elif args.mode == 'recover':
+            result = recovery_status(layout)
+        elif args.mode == 'resume':
+            verify_package(args.package)
+            require(state(Path(__file__))['sha256'] == state(args.package / 'agentos/scripts/switch_release.py')['sha256'], 'running command differs from accepted package')
+            result = resume(layout)
         elif args.mode == 'preflight':
             result = preflight(layout)
         elif args.mode == 'readback':
