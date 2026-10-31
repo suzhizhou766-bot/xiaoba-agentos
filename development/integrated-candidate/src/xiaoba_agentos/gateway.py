@@ -17,6 +17,35 @@ class GatewayUnavailable(RuntimeError):
 
 _AGY_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,79}")
 
+_ROUTE_DIAGNOSTIC_LIMIT = 400
+
+
+def redact_credentials(value: str) -> str:
+    """Mask credentials in CLI diagnostics, including JSON-shaped lines."""
+    # Bearer first: otherwise the key rule below eats "Bearer" and leaves the
+    # token itself behind ("Authorization: [REDACTED] <token>").
+    text = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", value)
+    text = re.sub(
+        r"(?i)(authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|"
+        r"client[_-]?secret|password|token|cookie)([\"']?\s*[:=]\s*)"
+        r"(?![\"']?Bearer\b)(?:(?:basic|digest)\s+)?[^\s,;]+",
+        r"\1\2[REDACTED]",
+        text,
+    )
+    text = re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/@\s]+:[^/@\s]+@", r"\1[REDACTED]@", text)
+    return re.sub(r"\b(?:sk|ghp|gho|xox[abp])[-_][A-Za-z0-9_-]{12,}\b", "[REDACTED]", text)
+
+
+def _redact_diagnostic(value: object, limit: int = _ROUTE_DIAGNOSTIC_LIMIT) -> str:
+    """Keep a bounded, credential-free excerpt of a CLI diagnostic.
+
+    卡 7 / 卡 16: the Desktop route reader threw its stderr away, so a broken
+    Desktop profile only produced a generic "读取失败" and the reader's own
+    sentinel line was lost. The sentinel is kept; anything credential-shaped,
+    and everything beyond the last ``limit`` characters, is not.
+    """
+    return redact_credentials(" ".join(str(value or "").split()))[-limit:]
+
 
 def read_agy_cli_selection(settings_path: Any) -> Dict[str, Any]:
     """The model the user last chose in the agy CLI, from its own settings.
@@ -113,19 +142,25 @@ def local_cli_route(config: AppConfig, route_name: str, agent_name: str) -> Dict
                 str(config.integrations["dsh_command"]), str(route["desktop_config"]),
             ], capture_output=True, text=True, timeout=10, check=False)
             if result.returncode:
-                raise ValueError("invalid Desktop route")
+                # 卡 16: keep the reader's own diagnostic, minus credentials.
+                raise ValueError(
+                    f"Desktop 路由脚本退出码 {result.returncode}；"
+                    f"stderr：{_redact_diagnostic(result.stderr) or '（空）'}"
+                )
             metadata = json.loads(result.stdout)
             if (not isinstance(metadata, dict)
                     or metadata.get("model_source") != "dsh_desktop"
                     or any(not isinstance(metadata.get(key), str) or not metadata[key].strip()
                            for key in ("provider", "provider_id", "model"))):
-                raise ValueError("invalid Desktop metadata")
+                raise ValueError("Desktop 路由元数据无效：provider/provider_id/model 不完整或来源不符")
             public_metadata = {key: metadata[key] for key in ("provider", "provider_id", "model", "model_source")}
             return {**public_metadata, "route": route_name, "driver": driver,
                     "selection": selection, "credential": credential_desc,
                     "global_switch_required": False, "desktop_config": str(route["desktop_config"])}
         except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
-            raise GatewayUnavailable("DSH Desktop 路由读取失败，停止调用") from exc
+            detail = _redact_diagnostic(exc)
+            message = "DSH Desktop 路由读取失败，停止调用"
+            raise GatewayUnavailable(f"{message}：{detail}" if detail else message) from exc
 
     if driver == "qoder":
         # User 2026-10-20: Qoder uses the model the user last chose in qodercli

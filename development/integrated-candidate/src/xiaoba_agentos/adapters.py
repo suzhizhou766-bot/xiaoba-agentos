@@ -21,6 +21,7 @@ from .output_hygiene import (
 )
 from .user_rules import USER_RULES_TEXT
 from .gateway import (
+    redact_credentials,
     GatewayUnavailable,
     command_environment,
     local_cli_route,
@@ -234,12 +235,7 @@ class AgentResult:
 
 
 def _redact_error(value: str) -> str:
-    value = re.sub(
-        r"(?i)(authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|password|token)(\s*[:=]\s*)[^\s,;]+",
-        r"\1\2[REDACTED]",
-        value,
-    )
-    value = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", value)
+    value = redact_credentials(value)
     return value[-2000:]
 
 
@@ -258,13 +254,43 @@ def _sanitize_answer(text: str) -> str:
     return cleaned
 
 
+# Marker for a ``--json`` run whose stream is damaged or never ended. Such a
+# run is a protocol fault of the CLI, not an answer and not a candidate fault.
+_DSH_STREAM_ERROR_PREFIX = "dsh --json 输出流"
+
+
+def _stream_snippet(value: str, limit: int = 200) -> str:
+    """A bounded, credential-free fragment of a damaged CLI output stream."""
+    text = " ".join(str(value or "").split())
+    return _redact_error(text[:2000])[:limit]
+
+
+def _dsh_stream_failure(text: str) -> TransientAdapterError:
+    """Retry a damaged stream once, exactly like any other protocol fault."""
+    failure = TransientAdapterError(text)
+    failure.external_upstream = True
+    return failure
+
+
 def _parse_dsh_ndjson(value: str) -> tuple[str, str]:
-    """Return (answer, error) from DeepSeek Harness ndjson stream."""
+    """Return (answer, error) from DeepSeek Harness ndjson stream.
+
+    Only a completed turn can be an answer: the stream must carry a terminal
+    event (``{"type": "final"}`` or ``status{phase: turn_end}``). 卡 7 / 卡 16:
+    a run that exited 0 after printing only diagnostics, or whose tail was cut
+    off, used to be returned as the answer. Diagnostics stay in the error text.
+
+    Banner lines (not JSON, and not shaped like a JSON object) are allowed and
+    ignored. A line that starts like a JSON object but does not parse is a
+    damaged protocol line: it is recorded and the run is not a success.
+    """
     final_text = ""
     accumulated_text = []
     error = ""
     parsed_any = False
     output_limit_hit = False
+    terminal_seen = False
+    damaged_lines: list[str] = []
     for line in value.splitlines():
         line = line.strip()
         if not line:
@@ -272,6 +298,8 @@ def _parse_dsh_ndjson(value: str) -> tuple[str, str]:
         try:
             item = json.loads(line)
         except json.JSONDecodeError:
+            if line.startswith("{"):
+                damaged_lines.append(line)
             continue
         if not isinstance(item, dict):
             continue
@@ -281,24 +309,41 @@ def _parse_dsh_ndjson(value: str) -> tuple[str, str]:
             error = str(item.get("message") or item.get("error") or "dsh error")
         elif item_type == "final":
             final_text = str(item.get("text", ""))
+            terminal_seen = True
         elif item_type == "text":
             accumulated_text.append(str(item.get("text", "")))
         elif item_type == "status":
             reason = item.get("reason")
-            if (
-                str(item.get("phase", "")) == "turn_end"
-                and isinstance(reason, dict)
-                and str(reason.get("kind", "")) == "max-tokens"
-            ):
-                output_limit_hit = True
+            if str(item.get("phase", "")) == "turn_end":
+                terminal_seen = True
+                if isinstance(reason, dict) and str(reason.get("kind", "")) == "max-tokens":
+                    output_limit_hit = True
     if error:
         return "", _redact_error(error)
     answer = final_text.strip() or "".join(accumulated_text).strip()
-    if answer:
+    if damaged_lines:
+        return "", (
+            f"{_DSH_STREAM_ERROR_PREFIX}损坏：{len(damaged_lines)} 行协议数据无法解析，"
+            f"不判成功；首行片段：{_stream_snippet(damaged_lines[0])}"
+        )
+    if answer and terminal_seen:
         return answer, ""
+    if answer:
+        return "", (
+            f"{_DSH_STREAM_ERROR_PREFIX}不完整：没有结束事件（final 或 turn_end），"
+            f"不判成功；尾部片段：{_stream_snippet(value[-400:])}"
+        )
     if output_limit_hit:
         return "", _OUTPUT_LIMIT_ERROR
-    return ("", "") if parsed_any else (value.strip(), "")
+    if parsed_any:
+        return "", ""
+    if not value.strip():
+        # An empty stream keeps its own diagnosis ("成功但没有有效文本").
+        return "", ""
+    return "", (
+        f"{_DSH_STREAM_ERROR_PREFIX}没有可解析的事件：stdout 不是 JSON 事件流，"
+        f"不能当成答案；首段片段：{_stream_snippet(value)}"
+    )
 
 
 def run_cli(argv, *, input=None, text=True, capture_output=True, timeout=None, check=False,
@@ -551,15 +596,30 @@ class AgyAdapter(BaseAdapter):
         )
 
 
+def _is_json_document(value: str) -> bool:
+    try:
+        json.loads(value)
+    except json.JSONDecodeError:
+        return False
+    return True
+
+
 def _agy_result_payload(raw_output: str) -> Dict[str, Any]:
     """Return the final result object from agy's stream-json output.
 
     The stream is one JSON object per line; the turn outcome is the last
     {"event": "result", "result": {...}} line. A single bare result object is
     accepted as well.
+
+    卡 7 / 卡 16: banner lines stay allowed, a damaged protocol line does not.
+    A line shaped like a JSON object that does not parse is recorded, and the
+    run is never a success even when a valid result line was seen earlier
+    ("坏行 + SUCCESS result + 截断尾行" used to be returned as SUCCESS).
     """
     result: Optional[Dict[str, Any]] = None
     parsed_any = False
+    banners = 0
+    damaged_lines: list[str] = []
     for line in raw_output.splitlines():
         line = line.strip()
         if not line:
@@ -567,10 +627,22 @@ def _agy_result_payload(raw_output: str) -> Dict[str, Any]:
         try:
             item = json.loads(line)
         except json.JSONDecodeError:
+            # A plain banner line is tolerated; a half-written JSON object is a
+            # damaged protocol line and must not be skipped silently.
+            if line.startswith("{"):
+                damaged_lines.append(line)
+            else:
+                banners += 1
             continue
         parsed_any = True
         if isinstance(item, dict) and item.get("event") == "result" and isinstance(item.get("result"), dict):
             result = item["result"]
+    if damaged_lines and not _is_json_document(raw_output):
+        tolerated = f"（另允许 {banners} 行横幅）" if banners else ""
+        raise TransientAdapterError(
+            f"agy 输出流损坏：{len(damaged_lines)} 行协议数据无法解析，不判成功{tolerated}；"
+            f"首行片段：{_stream_snippet(damaged_lines[0])}"
+        )
     if result is not None:
         return result
     try:
@@ -660,6 +732,10 @@ class DshAdapter(BaseAdapter):
         if completed.returncode != 0:
             if dsh_error == _OUTPUT_LIMIT_ERROR:
                 raise _output_limit_failure(dsh_error)
+            # A failed process keeps its own diagnosis: stderr decides between
+            # retry and stop, not the state of whatever reached stdout.
+            if dsh_error.startswith(_DSH_STREAM_ERROR_PREFIX):
+                dsh_error = ""
             err = dsh_error or completed.stderr or raw_output or "dsh CLI failed"
             error = _redact_error(err)
             if _is_transient_cli_error(error):
@@ -672,6 +748,8 @@ class DshAdapter(BaseAdapter):
             if dsh_error == _OUTPUT_LIMIT_ERROR:
                 raise _output_limit_failure(dsh_error)
             error = _redact_error(dsh_error)
+            if dsh_error.startswith(_DSH_STREAM_ERROR_PREFIX):
+                raise _dsh_stream_failure(error)
             if _is_transient_cli_error(error):
                 failure = TransientAdapterError(error)
                 failure.external_upstream = True
