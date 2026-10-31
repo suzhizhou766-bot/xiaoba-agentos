@@ -154,8 +154,11 @@ class AuthoredCandidateTest(unittest.TestCase):
             code, payload = execute_review(config, store, created["task_id"], "delivery", "approve", "")
             self.assertEqual((0, "delivery_approved"), (code, payload["memory_status"]))
             # A retry with the same key gets the same record back, and nothing is duplicated.
-            again = store.create_authored_candidate("规则标题", "正文", config.runtime_dir / "memory-outbox",
-                                                    author="host_assistant", idempotency_key="rule-1")
+            # The replay has to carry the same content; a key reused for different
+            # content is refused (see test_write_boundary.py).
+            again = store.create_authored_candidate("规则标题", "# 规则\n\n正文。", config.runtime_dir / "memory-outbox",
+                                                    author="host_assistant", source_task_ids=[source],
+                                                    idempotency_key="rule-1")
             self.assertEqual((created["task_id"], True), (again["task_id"], again["idempotent"]))
             self.assertEqual("delivery_approved", again["status"])
             self.assertEqual(1, len(list((config.runtime_dir / "memory-outbox").glob("*.md"))))

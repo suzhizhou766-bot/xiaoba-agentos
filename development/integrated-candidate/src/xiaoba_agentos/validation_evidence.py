@@ -13,6 +13,74 @@ def checksum(value):
                                      separators=(",", ":")).encode()).hexdigest()
 
 
+# 审查结论只有三种：通过、未通过、需补材料。FAIL 比 NEEDS_INFO 更不利。
+_VERDICT_SEVERITY = {"PASS": 0, "NEEDS_INFO": 1, "FAIL": 2}
+
+
+def _normalize_verdict(verdict):
+    """未知写法一律按 FAIL 处理，保持原来的严格口径。"""
+    return verdict if verdict in _VERDICT_SEVERITY else "FAIL"
+
+
+def _worst_verdict(values, fallback=None):
+    ranked = [_normalize_verdict(v) for v in values if v is not None]
+    if not ranked:
+        return fallback
+    return max(ranked, key=lambda v: _VERDICT_SEVERITY[v])
+
+
+def role_verdicts(verdicts):
+    """把本轮审查结论拆成 dsh / peer 两列，各记各的结论，不互相覆盖。
+
+    沿用既有命名约定：名字含 dsh 的算 DSH 侧，其余算 AGY(peer) 侧。
+    同一侧有多名审查员时取最不利结论——合并只会更严，不会把未通过的洗成通过。
+    计划里没有按两侧命名的审查员时退回单一结论，保持“两列都 PASS 当且仅当全部通过”。
+    """
+    items = (verdicts or {}).items()
+    dsh = [v for n, v in items if "dsh" in str(n).lower()]
+    peer = [v for n, v in items if "dsh" not in str(n).lower()]
+    combined = _worst_verdict(list((verdicts or {}).values()))
+    return {"dsh": _worst_verdict(dsh, combined), "peer": _worst_verdict(peer, combined)}
+
+
+def decide_round(number, execution_passed, verdicts, external=None):
+    """按 CONTRACTS 第 2 节的两轮判定边界给出一轮结论（纯函数，结算与终审共用）。
+
+    verdicts 是本轮原生审查员 name->结论；external 是外部回执 role->结论。
+    外部回执只许更严：按角色取最不利合并，原生未通过不会因为回执通过就变通过。
+    返回 (outcome, columns)：outcome 取 passed / failed / paused / disagreement，
+    columns 是写库用的 dsh、peer 两列结论。
+    """
+    columns = role_verdicts(verdicts)
+    for role, value in (external or {}).items():
+        if role in columns and value is not None:
+            columns[role] = _worst_verdict([columns[role], value])
+    signals = [_normalize_verdict(v) for v in
+               list((verdicts or {}).values()) + list((external or {}).values())]
+    needs_info = "NEEDS_INFO" in signals
+    any_fail = "FAIL" in signals
+    column_values = [v for v in columns.values() if v]
+    all_pass = bool(column_values) and _worst_verdict(column_values) == "PASS"
+    # 看每位审查员本人的结论：同一列多人时列值取最不利，不能把列里的 PASS 洗掉。
+    any_pass = "PASS" in signals
+    if int(number or 1) < 2:
+        # 第一轮：有 FAIL 就是本轮未通过，进第二轮重审。
+        if any_fail or not execution_passed:
+            return "failed", columns
+        if needs_info:
+            return "paused", columns
+        return ("passed" if all_pass else "failed"), columns
+    # 第二轮只放宽审查结论，不放宽真实执行：执行未通过按未通过处理，不算分歧。
+    if not execution_passed:
+        return "failed", columns
+    if needs_info:
+        # 还有人要补材料，就暂停补完再判；全部 FAIL 才退役。
+        return "paused", columns
+    if any_fail:
+        return ("disagreement" if any_pass else "failed"), columns
+    return ("passed" if all_pass else "failed"), columns
+
+
 def independence_key(source_ref, model=None):
     """两个审查员是否独立：看“入口程序＋模型”。
 
@@ -134,13 +202,22 @@ def binding(record):
 
 
 def ingress_evidence(conn, candidate, approved, record, execution):
-    """Optional external reviews add requirements; they never replace execution."""
+    """Optional external reviews add requirements; they never replace execution.
+
+    返回本轮外部回执的核对结果：
+    {bound, receipts, verdicts(role->结论), all_pass, disagreement}。
+    未绑定回执时 bound=False，其余字段为空。
+    回执与材料包仍然必须自证一致；全数 PASS 才算通过，第二轮一 PASS 一 FAIL
+    属于“有分歧”，交用户终审，其余未全数通过的情况一律拒绝。
+    """
+    unbound = {"bound": False, "receipts": {}, "verdicts": {}, "all_pass": None,
+               "disagreement": False}
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     explicit = [record.get("dsh_receipt_id"), record.get("peer_receipt_id")]
     if "ri_requests" not in tables:
         if any(explicit):
             raise ValueError("回执实体不存在")
-        return
+        return unbound
     expected = binding(record)
     requests = []
     for row in conn.execute("SELECT * FROM ri_requests WHERE candidate_id=? ORDER BY rowid DESC", (candidate["task_id"],)):
@@ -150,7 +227,7 @@ def ingress_evidence(conn, candidate, approved, record, execution):
     if not requests:
         if any(explicit):
             raise ValueError("回执未绑定当前轮次/任务/计划与执行")
-        return
+        return unbound
     request, common = requests[0]
     if common.get("candidate_sha256") != candidate["evidence_sha256"] or common.get("delivery_review", {}).get("id") != approved["id"]:
         raise ValueError("审查请求的初审/候选已失效")
@@ -162,12 +239,17 @@ def ingress_evidence(conn, candidate, approved, record, execution):
     if not packet:
         raise ValueError("当前审查材料包已被撤销或未投递")
     payload = json.loads(packet["data"])
-    if checksum(payload) != packet["digest"] or payload.get("all_pass") is not True or payload.get("plan_revision") != request["revision"]:
+    published = [_normalize_verdict((r.get("receipt") or {}).get("verdict"))
+                 for r in payload.get("reviews") or [] if isinstance(r, dict)]
+    packet_all_pass = bool(published) and _worst_verdict(published) == "PASS" and not payload.get("prior_failures")
+    # 材料包自称的 all_pass 必须与内容一致；不一致说明包被改动或版本变了。
+    if (checksum(payload) != packet["digest"] or bool(payload.get("all_pass")) != packet_all_pass
+            or payload.get("plan_revision") != request["revision"]):
         raise ValueError("当前材料包未全数通过或版本不一致")
     assignments = [dict(a) for a in conn.execute("SELECT * FROM ri_assignments WHERE request_id=? AND active=1", (request["id"],))]
     if len(assignments) != 2 or {a["role"] for a in assignments} != {"dsh", "peer"}:
         raise ValueError("缺少当前独立双审任务卡")
-    ids, sources = {}, set()
+    ids, verdicts, sources = {}, {}, set()
     for assignment in assignments:
         receipt = conn.execute("SELECT * FROM ri_receipts WHERE assignment_id=? ORDER BY rowid DESC LIMIT 1", (assignment["id"],)).fetchone()
         if not receipt or receipt["status"] != "valid" or not receipt["attestation"]:
@@ -177,7 +259,8 @@ def ingress_evidence(conn, candidate, approved, record, execution):
         frozen_digest = frozen_card.pop("card_digest", None)
         if checksum(frozen_card) != frozen_digest or card.get("input_digest") != checksum(common):
             raise ValueError("审查任务卡或证据输入已变动")
-        if checksum(data) != receipt["digest"] or data.get("verdict") != "PASS":
+        receipt_verdict = data.get("verdict")
+        if checksum(data) != receipt["digest"] or receipt_verdict not in ("PASS", "FAIL"):
             raise ValueError("当前回执未通过或摘要不一致")
         source = conn.execute("SELECT data FROM ri_sources WHERE id=?", (assignment["source_id"],)).fetchone()
         if not source:
@@ -194,6 +277,7 @@ def ingress_evidence(conn, candidate, approved, record, execution):
         plan = card.get("resource_plan")
         sources.add(independence_key(source["source_ref"], plan.get("model") if isinstance(plan, dict) else None))
         ids[assignment["role"]] = receipt["id"]
+        verdicts[assignment["role"]] = receipt_verdict
     if len(sources) != 2 or len(set(ids.values())) != 2:
         raise ValueError("两份回执来源不独立")
     if any(explicit) and explicit != [ids["dsh"], ids["peer"]]:
@@ -201,3 +285,13 @@ def ingress_evidence(conn, candidate, approved, record, execution):
     packet_ids = {r["receipt"]["receipt_id"] for r in payload.get("reviews", [])}
     if packet_ids != set(ids.values()):
         raise ValueError("材料包不对应最新回执")
+    result = {"bound": True, "receipts": ids, "verdicts": verdicts,
+              "all_pass": packet_all_pass, "disagreement": False}
+    if packet_all_pass:
+        return result
+    if int(record.get("round") or 0) == 2 and set(verdicts.values()) == {"PASS", "FAIL"}:
+        # 第二轮两份回执一 PASS 一 FAIL 属于“有分歧”，不按拒绝处理，交用户终审。
+        # 第一轮、以及 FAIL 之外还夹着待补材料的情况仍然拒绝。
+        result["disagreement"] = True
+        return result
+    raise ValueError("当前回执未通过或摘要不一致")

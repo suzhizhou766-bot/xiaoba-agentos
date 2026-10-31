@@ -273,14 +273,34 @@ def refresh_delivery_tx(store, conn, candidate_id):
             attach_delivery_tx(store, conn, candidate_id, delivery["event_id"], apps)
 
 
+def _application_for_trial(conn, applications, task_id):
+    """本轮绑定的那次应用：按发起审查的试验卡解析，不按“最新一条”。
+
+    同一条经验在同一轮里被多个任务应用时，本轮只绑定最先发起审查的那次应用；
+    后来登记的应用保留记录，不影响本轮。试验卡没写绑定或绑定已失效时返回 None，
+    由调用方决定是拒绝还是退回旧行为。
+    """
+    from .workflow import verified_snapshot
+    task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone() if task_id else None
+    trial = verified_snapshot(dict(task)).get("experience_trial") if task else None
+    card = trial.get("card") if isinstance(trial, dict) else None
+    binding_value = card.get("experience_application") if isinstance(card, dict) else None
+    if binding_value is None:
+        return None
+    return next((a for a in applications if trial_binding(a) == binding_value), None)
+
+
 def require_application_delivery(conn, candidate, verdict):
     """Extra conditions only for candidates opting into actual-task use."""
     packet = application_packet(conn, candidate)
     applications = packet["applications"]
     if not applications:
         return verdict  # Published, legacy, and existing trial behavior stay intact.
-    app = applications[-1]
     try:
+        # 终审按本轮发起审查的那次应用检查，不按最新一条。
+        app = _application_for_trial(conn, applications, verdict.get("task_id"))
+        if app is None:
+            raise ValueError("current isolated validation is not bound to this real-task application")
         if (app["candidate_sha256"], app["delivery_review_id"]) != (candidate["evidence_sha256"], latest_delivery(conn, candidate)["id"]):
             raise ValueError("application refers to a superseded candidate or initial review")
         _application_files(app)
@@ -289,11 +309,6 @@ def require_application_delivery(conn, candidate, verdict):
         if latest.get("decision") != "accept" or latest.get("artifact") != app["artifact"] or app["application_id"] not in latest.get("application_ids", []):
             raise ValueError("current product version needs explicit user delivery acceptance")
         _file(latest["delivery_record"], Path(app["real_task"]["workspace"]))
-        task = conn.execute("SELECT * FROM tasks WHERE id=?", (verdict.get("task_id"),)).fetchone()
-        from .workflow import verified_snapshot
-        trial = verified_snapshot(dict(task)).get("experience_trial", {}) if task else {}
-        if trial.get("card", {}).get("experience_application") != trial_binding(app):
-            raise ValueError("current isolated validation is not bound to this real-task application")
     except (ValueError, OSError, KeyError, TypeError) as exc:
         return dict(verdict, qualified=False, ready=False, state="application_delivery_required", reasons=[str(exc)])
     return verdict
@@ -304,11 +319,18 @@ def final_binding(conn, candidate):
     packet = application_packet(conn, candidate)
     if not packet["applications"]:
         return None
-    app = packet["applications"][-1]
-    deliveries = [d for d in packet["deliveries"] if d["real_task_id"] == app["real_task"]["id"]]
-    delivery = deliveries[-1] if deliveries else {}
     links = _events(conn, "memory.trial_linked", candidate["task_id"])
     task_id = links[-1]["task_id"] if links else None
+    # 与终审同一口径：优先用本轮绑定的那次应用；解析不到时退回最新一条，不阻断发布。
+    # 任务快照漂移等原因解析失败也不能抛：终审与发布两条路径都直接调它。
+    try:
+        app = _application_for_trial(conn, packet["applications"], task_id)
+    except (ValueError, OSError, KeyError, TypeError):
+        app = None
+    if app is None:
+        app = packet["applications"][-1]
+    deliveries = [d for d in packet["deliveries"] if d["real_task_id"] == app["real_task"]["id"]]
+    delivery = deliveries[-1] if deliveries else {}
     reviews = [dict(r) for r in conn.execute("SELECT id,agent_name,status,output FROM agent_runs WHERE task_id=? ORDER BY created_at,rowid", (task_id,))] if task_id else []
     return digest({"application_id": app["application_id"], "delivery_event_id": delivery.get("event_id"),
                    "candidate_sha256": app["candidate_sha256"], "delivery_review_id": app["delivery_review_id"],
