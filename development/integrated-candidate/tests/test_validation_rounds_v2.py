@@ -29,6 +29,7 @@ from xiaoba_agentos.experience_loop import (
 from xiaoba_agentos.experience_workflow import (
     advance_validation_round, complete_audit, extract_trial_verdict, prepare_trial,
     reserve_validation_attempt, resume_paused_validation, save_execution_receipt,
+    trial_summary,
     verify_final_qualification,
 )
 from xiaoba_agentos.store import EventStore
@@ -313,6 +314,15 @@ class ValidationRoundsV2Tests(unittest.TestCase):
         # 交齐材料后候选才进待终审：用户仍可拒绝，不是退役。
         self.assertEqual(self.status(c), "pending_final_review")
         self.assertEqual(self.events(c, "memory.retired"), 0)
+        # 裁决页说“各审查员原文见下”，所以每轮都要带上任务卡、执行回执和审查员原文。
+        with self.store.read_only() as db:
+            trials = trial_summary(db, c["task_id"])["trials"]
+        second = trials[1]
+        self.assertTrue(second["disagreement"])
+        self.assertIsInstance(second["card"], dict)
+        self.assertIsInstance(second["execution"], dict)
+        self.assertEqual({r["agent"] for r in second["reviews"]}, {"dsh_review", "agy_review"})
+        self.assertTrue(all("TRIAL_VALIDATION" in r["output"] for r in second["reviews"]))
 
     # ---------- 验收 6：第 2 轮 PASS/FAIL 但真实执行没过 → 退役，不算分歧 ----------
     def test_round2_split_with_failed_execution_retires_without_disagreement(self):

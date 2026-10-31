@@ -1044,6 +1044,8 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     <button class="tab" type="button" role="tab" id="tabKeypool" data-view="keypool" aria-selected="false" aria-controls="viewKeypool">Key 池</button>
   </nav>
 
+  <p class="rc-notice crit" id="pageWarn" role="alert" hidden></p>
+
   <div class="view" id="viewOverview" role="tabpanel" aria-labelledby="tabOverview">
   <section class="kpis" id="kpis" aria-label="核心指标"></section>
 
@@ -1298,6 +1300,11 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     <section class="panel kp-sec" id="kpSec" aria-label="安全检测"></section>
     <div class="kp-back" id="kpBack" hidden></div>
     <aside class="kp-drawer" id="kpDrawer" hidden aria-label="节点设置"></aside>
+    <section class="panel kps" id="kpBackends" aria-label="后台并发">
+      <div class="panel-head"><h2>后台并发</h2><span class="foot" id="kbUpdated"></span></div>
+      <p class="kp-hint" style="margin:0 22px">正在运行的非交互后台进程数 / 发版审查脚本给每个后台设的上限（work/review_concurrency.json），以及近 1 小时各后台运行记录和 Key 池里的 429、404、500 次数。只读，不显示命令和内容。</p>
+      <div class="kps-grid" id="kbGrid"><div class="kps-empty">读取中…</div></div>
+    </section>
     <section class="panel kps" id="kpStats" aria-label="用量统计">
       <div class="panel-head"><h2>用量统计</h2><span class="foot" id="kpsUpdated"></span><div class="spacer"></div>
         <button class="btn" type="button" id="kpsRefresh">刷新</button>
@@ -1781,7 +1788,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
   const HUB = {w:196, h:150}, CLIENT = {w:148, h:76};
   const STATUS = {ok:["ok","正常"], idle:["ok","空闲"], busy:["busy","转发中"], cooling:["warn","冷却"],
                   down:["down","故障"], disabled:["disabled","停用"], unknown:["idle","未连接"],
-                  quarantined:["quar","已隔离"]};
+                  quarantined:["quar","已隔离"], reauth:["warn","等待重新授权"]};
   const reduce = matchMedia("(prefers-reduced-motion: reduce)");
   const el = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1816,6 +1823,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
   function nodeSub(n){
     const s = nodeStatus(n), L = n.live || {};
     if(s === "disabled") return "已停用";
+    if(s === "reauth") return "地址换了站点 · 旧 Key 已停用 · 重新填 Key 恢复";
     if(s === "quarantined") return `安全拦截 · ${L.quarantineReason || "危险操作"}`;
     if(s === "unknown") return "代理未连接";
     if(s === "cooling") return `${errCode(L.lastError)} · 冷却 ${left(L.cooldownLeft)}`;
@@ -2109,6 +2117,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
         </div>
       </div>
       <div class="kp-quar" id="kpQuar" hidden></div>
+      <div class="kp-quar" id="kpReauth" hidden></div>
       <ul class="kp-seclist" id="kpSecList"></ul>`;
     el("kpGuard").addEventListener("change", async e => {
       try{ await api("api/keypool/settings", {guardEnabled:e.target.checked}); flash(e.target.checked?"已开启安全检测":"已关闭安全检测（回复不再检查）", !e.target.checked); refresh(); }
@@ -2141,6 +2150,8 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
       const bits = [];
       if(tools.length) bits.push("工具：" + tools.slice(0,4).join("、") + (tools.length > 4 ? " 等 " + tools.length + " 个" : ""));
       if(e.path) bits.push("接口：" + String(e.path).split("?")[0]);
+      const snip = (e.findings||[]).map(f => f.snippet).find(Boolean);
+      if(snip) bits.push("命中：" + snip);
       return bits.length ? ` <span class="muted">（${esc(bits.join("；"))}）</span>` : "";
     };
     const quar = data.nodes.filter(n => nodeStatus(n) === "quarantined");
@@ -2148,6 +2159,14 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
     qbox.hidden = !quar.length;
     if(quar.length) qbox.innerHTML = quar.map(n =>
       `<span>⚠️ <b>${esc(n.name)}</b> 因 ${esc((n.live&&n.live.quarantineReason)||"危险操作")} 被隔离，已停止分流。确认无害后可放行。</span><button class="btn" type="button" data-id="${esc(n.id)}">放行</button>`).join("");
+    // 地址换到别的站点、Key 还没重填：旧 Key 停用，不发请求（只影响这一个节点）
+    const hold = data.nodes.filter(n => nodeStatus(n) === "reauth");
+    const hbox = el("kpReauth");
+    if(hbox){
+      hbox.hidden = !hold.length;
+      if(hold.length) hbox.innerHTML = hold.map(n =>
+        `<span>🔒 <b>${esc(n.name)}</b> ${esc((n.live&&n.live.reauthReason)||"地址换了站点")}；重新填写 Key 才会恢复发请求。</span>`).join("");
+    }
     const list = secRecent.slice(-12).reverse();
     el("kpSecList").innerHTML = list.length ? list.map(e => { const [cls] = SEC_TAG[e.kind] || ["",""];
       return `<li><span class="t">${clock(e.t)}</span><span class="tag ${e.kind}">${(SEC_TAG[e.kind]||["","事件"])[1]}</span>
@@ -2521,7 +2540,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
         ? `<span style="color:var(--warn)">${L.buffered}/${L.streams} 次整段返回</span>` : `正常（${L.streams} 次）`}</dd>
       ${n.hasBalance ? `<dt>账户余额</dt><dd>${balanceText(n.balance)}</dd>` : ""}
       <dt>最近错误</dt><dd>${L.lastError ? esc((L.lastErrorAt ? clock(L.lastErrorAt) + " · " : "") + clip(L.lastError, 60)) : "无"}</dd>
-    </dl>${s === "quarantined" ? `<div class="kp-quar" style="margin-top:10px"><span>⚠️ 因 ${esc(L.quarantineReason||"危险操作")} 被安全检测隔离，已停止分流。</span><button class="btn" type="button" id="kpRelease">放行</button></div>` : ""}
+    </dl>${s === "quarantined" ? `<div class="kp-quar" style="margin-top:10px"><span>⚠️ 因 ${esc(L.quarantineReason||"危险操作")} 被安全检测隔离，已停止分流。</span><button class="btn" type="button" id="kpRelease">放行</button></div>` : ""}${s === "reauth" ? `<div class="kp-quar" style="margin-top:10px"><span>🔒 ${esc(L.reauthReason||"地址换了站点")}；重新填写 Key 才会恢复发请求。</span></div>` : ""}
     <p class="kp-hint" style="margin-top:8px">计数从代理本次启动开始。“整段返回”指流式请求的首字几乎等于总耗时：中转站等全部生成完才一次性发回，首字会很慢。</p>`;
     const rel = el("kpRelease");
     if(rel) rel.addEventListener("click", async () => {
@@ -2563,10 +2582,11 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
       cell("dot").className = "dot " + STATUS[s][0];
       const note = testNote[n.id] && testNote[n.id].until > now ? testNote[n.id] : null, sub = cell("sub");
       const text = note ? note.text : STATUS[s][1] + (L.cooldownLeft ? ` · 还要冷却 ${left(L.cooldownLeft)}` : "")
+        + (s === "reauth" && L.reauthReason ? " · " + clip(L.reauthReason, 44) : "")
         + (["cooling","down","quarantined"].includes(s) && L.lastError ? " · " + clip(L.lastError, 48) : "");
       if(sub.textContent !== text) sub.textContent = text;
-      sub.className = "kpn-sub " + (note ? note.cls : ["cooling","quarantined"].includes(s) ? "warn" : s === "down" ? "err" : "");
-      sub.title = L.lastError || "";
+      sub.className = "kpn-sub " + (note ? note.cls : ["cooling","quarantined","reauth"].includes(s) ? "warn" : s === "down" ? "err" : "");
+      sub.title = (s === "reauth" ? L.reauthReason : L.lastError) || "";
       const cur = routeNow(n);
       const routes = [n.hasKey && ["plan", n.hasPayKey ? "套餐" : "单 Key"], n.hasPayKey && ["pay", "余额"]].filter(Boolean)
         .map(([id, name]) => `<span class="kpn-badge${cur === id ? " now" : ""}"${cur === id ? ` title="现在走这一路"` : ""}>${name}</span>`).join("");
@@ -3098,11 +3118,10 @@ const ReviewCenter = (() => {
       if(trial.required&&!trial.ready&&x.status==="delivery_approved") $("rcStage").textContent="隔离验证";
       $("rcTrialPanel").hidden=!trial.kind;
       const stateLabels={application_delivery_required:"实际应用或当前成品验收证据待补齐",awaiting_delivery:"待用户初审",awaiting_trial:"等待新试验",trial_running:"独立验证进行中",trial_failed:"验证未通过",ready_for_final:"验证通过，等待用户终审",legacy_manual:"旧流程候选，保留原人工裁决；未宣称已做新试验",not_required:"规则或偏好，两次人工裁决，不强制试验"};
-      $("rcTrialEvidence").textContent=({method:"分类：方法／参数／修复经验",rule:"分类：用户偏好／明确规则",legacy:"分类：历史未分类候选"}[trial.kind]||"分类未确认")+"\n"+(stateLabels[trial.state]||"尚无验证信息")+"\n"+(trial.trials||[]).map(t=>
-        "验证任务："+t.task_id+" · "+(t.passed?"通过":"未通过或尚未完成")+"\n任务卡："+JSON.stringify(t.card,null,2)+"\n真实执行回执："+JSON.stringify(t.execution,null,2)+"\n"+(t.reviews||[]).map(r=>r.agent+" · "+r.status+"\n"+r.output).join("\n\n")).join("\n\n");
+      $("rcTrialEvidence").textContent=({method:"分类：方法／参数／修复经验",rule:"分类：用户偏好／明确规则",legacy:"分类：历史未分类候选"}[trial.kind]||"分类未确认")+"\n"+(trial.disagreement?"第二轮有分歧，等待用户终审":stateLabels[trial.state]||"尚无验证信息")+"\n"+(trial.disagreement?"有分歧：第二轮审查有人通过、有人未通过（DSH 侧 "+trial.dsh_verdict+"，其它审查员 "+trial.peer_verdict+"；同侧有一人未通过即记未通过）。真实执行已通过，发布或拒绝由你决定，各审查员原文见下。\n":"")+((trial.reasons||[]).length?trial.reasons.join("；")+"\n":"")+(trial.trials||[]).map(t=>
+        (t.round?"第 "+t.round+" 轮 · ":"")+"验证任务："+t.task_id+" · "+(t.disagreement?"有分歧":t.passed?"通过":t.status==="failed"?"未通过":"尚未完成")+"\n任务卡："+JSON.stringify(t.card,null,2)+"\n真实执行回执："+JSON.stringify(t.execution,null,2)+"\n"+(t.reviews||[]).map(r=>r.agent+" · "+r.status+"\n"+r.output).join("\n\n")).join("\n\n");
       $("rcTrialRequest").hidden=!trial.required||x.status!=="delivery_approved";
       if((trial.experience_loop?.applications||[]).length) $("rcTrialEvidence").textContent += "\n\n真实任务应用、用户验收与原卡回流（成品采用不推断每条方法的因果贡献）：\n"+JSON.stringify(trial.experience_loop,null,2);
-      if((trial.reasons||[]).length) $("rcTrialEvidence").textContent += "\n阻断原因："+trial.reasons.join("；");
 
       $("rcPrompt").textContent = x.prompt||"";
       $("rcIdentity").textContent = "候选编号：" + id + "\n完整证据哈希：" + x.evidence_sha256;
@@ -3515,10 +3534,39 @@ Tabs.show(location.hash.slice(1).split("=")[0] || (new URLSearchParams(location.
       (data.modules||[]).forEach(m=>{ const tab=tabs[m.id]; if(!tab) return;
         tab.dataset.health = m.status||"ok";
         tab.title = m.status==="ok"? "" : `${m.title}：${m.detail||m.status}`; });
+      // 需要人看见的警告（例如端口监听检测不可用）放到正文里：标签上的悬浮提示不算
+      const warn = (data.modules||[]).filter(m=>m.warning).map(m=>`${m.title}：${m.warning}`);
+      const box = $("pageWarn");
+      if(box){ box.hidden = !warn.length; box.textContent = warn.length ? "⚠️ " + warn.join("；") : ""; }
       $("sysVersion").title = `监看中心 v${data.version||""}${data.revision? " · "+data.revision : ""}`;
     }catch(e){}
   }
   poll(); setInterval(poll, 10000);
+})();
+</script>
+
+<script>
+/* 后台并发（模块 backends，2026-10-24）：只在 Key 池页可见时每 10 秒读一次 */
+(() => {
+  const grid = document.getElementById("kbGrid"); if(!grid) return;
+  const NAME = {dsh:"DSH", agy:"AGY", qoder:"Qoder（备用）"}, CODES = ["429","404","500"];
+  const e = t => String(t == null ? "" : t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  async function load(){
+    if(typeof Tabs === "undefined" || Tabs.current !== "keypool" || document.hidden) return;
+    try{
+      const r = await fetch("api/backends", {cache:"no-store"}); const d = await r.json();
+      const run = d.running || {}, lim = d.limits || {};
+      grid.innerHTML = Object.keys(NAME).map(k => {
+        const errs = (d.runs || {})[k] || {};
+        const n = d.running ? run[k] : "?", cap = lim[k] != null ? lim[k] : "未配置";
+        return `<div class="kps-box"><h3>${e(NAME[k])}<span class="spacer"></span><span class="v">${e(n)} / ${e(cap)}</span></h3>
+          <div class="kps-row">${CODES.map(c => `<span class="nm${errs[c] ? " bad" : ""}">${c}：${e(errs[c] || 0)}</span>`).join(" · ")}</div></div>`;
+      }).join("") + `<div class="kps-box"><h3>Key 池（DSH 经它出站）</h3><div class="kps-row">${CODES.map(c => `<span class="nm">${c}：${e((d.keypool || {})[c] || 0)}</span>`).join(" · ")}</div></div>`;
+      const x = new Date((d.t || Date.now() / 1000) * 1000), p = v => String(v).padStart(2, "0");
+      document.getElementById("kbUpdated").textContent = `更新于 ${p(x.getHours())}:${p(x.getMinutes())}:${p(x.getSeconds())}`;
+    }catch(err){ grid.innerHTML = `<div class="kps-empty">读不到后台并发：${e(err.message)}</div>`; }
+  }
+  load(); setInterval(load, 10000); document.addEventListener("visibilitychange", load);
 })();
 </script>
 

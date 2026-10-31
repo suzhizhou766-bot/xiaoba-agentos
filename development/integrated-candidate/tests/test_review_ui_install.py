@@ -52,6 +52,12 @@ class ReviewUIInstallTest(unittest.TestCase):
         self.assertFalse(ui.run(self.config, apply=True, assets=self.assets)["restart_monitor_required"])
         self.assertEqual([p.name for p in self.runtime.iterdir()], ["review-ui-install.lock"])
 
+    def test_shipped_assets_match_their_manifest(self):
+        # 改了页面却没重算清单，发版安装时才会报 “UI asset hash mismatch”。
+        manifest = json.loads((ui.ASSETS / "manifest.json").read_text())
+        for entry in manifest["files"]:
+            self.assertEqual(ui.sha((ui.ASSETS / entry["asset"]).read_bytes()), entry["after_sha256"], entry["asset"])
+
     def test_drift_is_refused_before_any_write(self):
         changed = self.assistant / ui.TARGETS["xiaoba-monitor.html"][1]
         changed.write_text("another editor's work")
