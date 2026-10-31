@@ -66,6 +66,21 @@ class NodeIndependenceTests(fixtures.FixtureMixin, unittest.TestCase):
         self.assertEqual(current['revision'], request['revision'])
         self.assertEqual(len(current['assignments']), 2)
 
+    def test_model_name_case_and_whitespace_are_the_same_source(self):
+        # 模型是手填的：大小写和连续空白不同仍算同一来源，不能凑独立。
+        self.assertEqual(independence_key('/TEST/bin/shared', 'Gemini Flash'),
+                         independence_key('/TEST/bin/shared', 'gemini  flash'))
+        self.assertEqual(independence_key('/TEST/bin/shared', '  Gemini\tFlash  '),
+                         independence_key('/TEST/bin/shared', 'gemini flash'))
+        self.assertNotEqual(independence_key('/TEST/bin/shared', 'gemini flash'),
+                            independence_key('/TEST/bin/shared', 'gemini flash thinking'))
+        dsh = self.node('TEST-ind-case-dsh', 'dsh', '/TEST/bin/case', 'Gemini Flash')
+        peer = self.node('TEST-ind-case-peer', 'peer', '/TEST/bin/case', 'gemini  flash')
+        self.assertEqual(independence(dsh), independence(peer))
+        with self.assertRaisesRegex(ValueError, '来源'):
+            self.request(dsh, peer)
+        self.assertEqual(self.count('ri_requests'), 0)
+
     def test_legacy_four_field_sources_keep_source_ref_only(self):
         legacy = {'reviewer_id': 'TEST-legacy', 'kind': 'peer',
                   'source_ref': 'TEST-legacy-ref', 'provenance': 'TEST 旧四字段来源'}

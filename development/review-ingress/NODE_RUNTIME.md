@@ -49,7 +49,7 @@
 | /api/agent-pool/onboard | draft含已知name/interface/entry/model（可带稳定node_id及历史agent字段），kind为当前所需槽位；不全返回ask_user及逐项questions，齐全按同一稳定身份保存，默认关闭 |
 | /api/agent-pool/prepare | required_kinds数组及可选selections；只读返回ask_user、blocked或run；不会自行测试 |
 | /api/agent-pool/test | node_id、expected_revision、稳定test_id；只在启用后实际执行测试，结果持久化并写事件链；相同测试重放不再运行 |
-| /api/agent-pool/dispatch | candidate_id、scope、evidence、稳定request_id及可选selections；缺项返回补问，已测适用节点直接调用；已有有效回执不重复运行成功侧 |
+| /api/agent-pool/dispatch | candidate_id、scope、evidence、review_type（必填：new_experience / revalidation / reuse_change）及稳定request_id，另有可选selections；缺项返回补问，已测适用节点直接调用；已有有效回执不重复运行成功侧 |
 
 原create入口未传后台ID时也走prepare，不再猜默认后台。接口的ask_user.questions需由聊天宿主展示为主动问题，答案再传onboard。已知资料保留在调用方draft中，不把原始聊天存入第二大脑。
 

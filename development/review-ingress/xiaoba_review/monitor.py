@@ -46,6 +46,10 @@ class OpenReviewModule(Module):
                 Route('POST', '/api/open-review/sources', self.sources, 'write'),
                 Route('POST', '/api/open-review/requests', self.create, 'write'),
                 Route('POST', '/api/open-review/receipts', self.receive, 'write'),
+                Route('POST', '/api/open-review/manual/prepare', self.manual_prepare, 'write'),
+                Route('POST', '/api/open-review/manual/sent', self.manual_sent, 'write'),
+                Route('POST', '/api/open-review/manual/check', self.manual_check, 'write'),
+                Route('POST', '/api/open-review/manual/paste', self.manual_paste, 'write'),
                 Route('POST', '/api/open-review/attest', self.attest, 'write'),
                 Route('POST', '/api/open-review/replace', self.replace, 'write'),
                 Route('POST', '/api/open-review/run', self.run, 'write'),
@@ -88,6 +92,8 @@ class OpenReviewModule(Module):
         return Response(200, Path(__file__).with_name('native-center.js').read_bytes(), 'text/javascript; charset=utf-8')
 
     def state(self, req):
+        # 监看页面刷新时自动收取桌面节点已写完的文件回执（小八自动收）。
+        self.store.collect_manual_receipts()
         return 200, {'ok': True, 'inbox_online': self.inbox.online, **self.store.state()}
 
     def perform(self, action):
@@ -148,6 +154,20 @@ class OpenReviewModule(Module):
 
     def receive(self, req):
         return self.perform(lambda: self.store.receive(req.json()))
+
+    def manual_prepare(self, req):
+        data = req.json()
+        return self.perform(lambda: self.store.manual_prepare(data['assignment_id'], data.get('mode')))
+
+    def manual_sent(self, req):
+        return self.perform(lambda: self.store.manual_mark_sent(req.json()['assignment_id']))
+
+    def manual_check(self, req):
+        return self.perform(lambda: self.store.manual_check(req.json()['assignment_id']))
+
+    def manual_paste(self, req):
+        data = req.json()
+        return self.perform(lambda: self.store.manual_paste(data['assignment_id'], data.get('text', '')))
 
     def attest(self, req):
         return self.perform(lambda: self.store.attest(**req.json()))
