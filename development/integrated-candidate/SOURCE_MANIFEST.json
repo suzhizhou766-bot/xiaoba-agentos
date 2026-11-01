@@ -165,7 +165,7 @@
     "tests/test_cli_background.py": "621e683b65bb7cf9e7efbc59e2853b037761b8070582f376c0d4cd16819f7e04",
     "tests/test_cli_progress_signals.py": "d1c6d582097371d5ac07db91ad03c733f55354139bc8540b6f8bb348a0ae5e9d",
     "tests/test_cli_validation_flow.py": "d9172ef8ca3ab9cb36461b54445c593b31446dd1d75bccdaeadab559d144a7f5",
-    "tests/test_config_consistency.py": "12a8193995f4b7250fc80ba8fb441dd77e2d9c0f43aff93266d4a9fc04a7d378",
+    "tests/test_config_consistency.py": "1db6f438dacb969b85e8c046590cadc4f41de3f2183d1510ad784ff9fb5893c1",
     "tests/test_config_standby.py": "8ac63fa33b9c6a69f14778f443cc12bb9d513ced3e97ade84b63a8af9fbc8add",
     "tests/test_content_index.py": "2283bb38bf8f8f335eaac8589ac54f4e65c486b2fc83aa61ffbafc0d6f6fe37f",
     "tests/test_content_notes.py": "eb0d67e8269996583e127eb6979f4a1a25740478dcacac5c085fd692e5594764",
