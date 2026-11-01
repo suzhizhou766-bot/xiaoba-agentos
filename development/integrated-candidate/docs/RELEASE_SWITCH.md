@@ -19,7 +19,7 @@ python3 -B PACKAGE/agentos/scripts/switch_release.py readback --old-pid OLD_PID
 
 必须同时满足：旧 PID 不存活，新 PID 不同；服务与绑定配置的唯一 Worker 子进程一致；运行状态中的代码和清单指纹与磁盘一致；两处入口以正式配置验证目标版本；doctor 通过；KnowLP 用正式生成器的原格式逐文件读回通过。读回健康但版本不是预期目标，也判失败。
 
-队列中的 pending/running/retry/frozen_paused/resume_ready 都阻止切换；未释放租约包括已过期但尚未清除的租约。未完成修复任务同样阻止切换。命令不会删除任务、释放租约或替用户解冻。
+队列中的 running/retry/frozen_paused/resume_ready 和领过的 pending 都阻止切换；从没被领过的 pending（attempts=0、没有租约）可以留到切换后由新版本处理（发布说明第三十八节）。未释放租约包括已过期但尚未清除的租约。未完成修复任务同样阻止切换。命令不会删除任务、释放租约或替用户解冻。
 
 外部命令检查返回码；`launchctl bootout` 使用 `gui/UID/LABEL` 服务标识。启停后的等待检查真实进程与服务状态。独立读回若没有传入切换前 PID，只能证明当前运行态，结果明确标为 `restart_verified=false`，不证明历史重启成功。
 
@@ -36,9 +36,10 @@ python3 -B PACKAGE/agentos/scripts/switch_release.py readback --old-pid OLD_PID
 目前实现两种受限处理器：
 
 - `install_absent_file`：仅在共享 skills/工具/系统范围安装不存在的文件；相同内容跳过，不同内容拒绝覆盖，禁止凭据和配置目录。
-- `config_set`：仅允许将已退役自动恢复字段 `recovery.automatic_actions` 设为空列表，检查原值并保留所有其它字段。认证、模型、线路及任意配置补丁都拒绝。这句限制的是切换命令能**写**什么，不是配置能**加载**什么：加载侧 `recovery.automatic_actions` 缺省与写空列表两者等价、都能正常加载，只有非空列表才拒绝（见 `src/xiaoba_agentos/config.py` 的恢复段校验）。
+- `config_set`：只允许已审查的固定迁移：将已退役自动恢复字段 `recovery.automatic_actions` 设为空列表，以及把三个内容路径移到助理目录的固定位置（`skills.root_dir`、`skills.index_path`、`knowledge.index_path`，步骤 0002～0004）。检查原值并保留其它字段。自动恢复限制的是切换命令能**写**什么，不是配置能**加载**什么：加载侧缺省与空列表等价，非空列表拒绝（见 `src/xiaoba_agentos/config.py`）。
+- 线路迁移唯一例外（用户 2026-11-01 授权）：`0005-agy-configured-model` 把 `cli_routes.local_agy` 从声明中逐字段相同的旧路由（`driver=agy`、`selection=local_account`、原 `desktop_debug_port`，无 `model`）整体迁为 `{"driver":"agy","selection":"configured_model","model":"Gemini 3.8 Flash (High)"}`。编号、路径和执行值由脚本固定校验；其它线路、模型、认证及任意配置补丁继续拒绝。现场与 `check.value` 不同则预检零写入拒绝。失败时配置原始字节和步骤历史都由内存日志撤销。该步骤执行后不再比对现场路由值，用户以后可以自行换模型；历史步骤内容哈希仍须一致，其它步骤的结果比对保持不变。
 
-甲版声明的专属步骤为空；一般切换更新的唯一配置字段是 `release.expected_version`。数据库结构迁移、新的数据格式迁移和新的处理器需要另版明确实现与验收，甲版遇到结构版本变化直接拒绝。
+甲版声明的专属步骤为空；当前声明包含 0002～0005，一般版本绑定仍只更新 `release.expected_version`。切换前由用户把 `integrations.agy_command` 和 `paths.agy_command` 两处都改为 `/Users/suzhizhou/.local/bin/agy`；AGY 路由由切换中的 0005 迁移，切换后不用再改路由。新版本读回的 doctor 必须全部通过，否则自动退回。数据库结构迁移、新的数据格式迁移和新的处理器需要另版明确实现与验收，遇到结构版本变化直接拒绝。
 
 ## 内容保护与首次使用
 

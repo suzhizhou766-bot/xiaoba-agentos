@@ -527,6 +527,12 @@ def entry_checks(layout: Layout, system: System, version: str, allow_route_outag
 CONTENT_PATHS = {'skills.root_dir': 'skills', 'skills.index_path': 'skills/index.json',
                  'knowledge.index_path': '系统/价值文件索引/index.json'}
 
+# User-authorized one-time route migration; never a general model/config patch.
+AGY_ROUTE_STEP = '0005-agy-configured-model'
+AGY_ROUTE_PATH = 'cli_routes.local_agy'
+AGY_ROUTE_VALUE = {'driver': 'agy', 'selection': 'configured_model',
+                   'model': 'Gemini 3.8 Flash (High)'}
+
 
 def config_get(raw: dict, dotted: str) -> Any:
     section, _, key = dotted.partition('.')
@@ -534,10 +540,19 @@ def config_get(raw: dict, dotted: str) -> Any:
 
 
 def config_step(layout: Layout, step: dict) -> tuple:
-    """(字段, 执行前应有的值, 执行后的值)。只认已审查的两类：退役自动动作、内容路径。"""
+    """(字段, 执行前应有的值, 执行后的值)。仅处理明确批准的固定迁移。"""
     execute, check = step['execute'], step['check']
     path = execute.get('path')
     require(check.get('kind') == 'config_value_equals' and check.get('path') == path, 'config step check is incomplete')
+    if step['id'] == AGY_ROUTE_STEP or path == AGY_ROUTE_PATH:
+        before = check.get('value')
+        require(step['id'] == AGY_ROUTE_STEP
+                and execute == {'kind': 'config_set', 'path': AGY_ROUTE_PATH, 'value': AGY_ROUTE_VALUE}
+                and set(check) == {'kind', 'path', 'value'}
+                and isinstance(before, dict) and before.get('driver') == 'agy'
+                and before.get('selection') == 'local_account' and 'model' not in before,
+                'step cannot change authentication/models/routes outside the authorized AGY migration')
+        return path, before, AGY_ROUTE_VALUE.copy()
     if path == 'recovery.automatic_actions':
         require(execute.get('value') == [] and set(execute) == {'kind', 'path', 'value'} and set(check) == {'kind', 'path', 'value'},
                 'step cannot change authentication/models/routes or revive automatic actions')
@@ -587,7 +602,10 @@ def checked_spec(layout: Layout, old: dict, new: dict) -> dict:
             # Only reviewed handlers exist; arbitrary config patching is never accepted.
             path, before_value, after_value = config_step(layout, step)
             expected_value = after_value if step['id'] in history['steps'] else before_value
-            require(config_get(load(layout.config), path) == expected_value, 'config step input/result differs')
+            # This one-time migration must not pin the user's future model.
+            # The handler and the historical declaration hash remain mandatory.
+            if not (step['id'] == AGY_ROUTE_STEP and step['id'] in history['steps']):
+                require(config_get(load(layout.config), path) == expected_value, 'config step input/result differs')
         else:
             payload = step_payload(layout, step)
             require(check == {'kind': 'absent_or_identical', 'sha256': digest(payload)}, 'step check and execution differ')

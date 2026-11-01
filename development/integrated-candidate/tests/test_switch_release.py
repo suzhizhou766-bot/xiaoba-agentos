@@ -753,5 +753,246 @@ class SwitchReleaseTest(unittest.TestCase):
         self.assertEqual(b'v9.0.1\n' + suffix, target.read_bytes())
 
 
+class AgyRouteMigrationTest(unittest.TestCase):
+    """Card 30: real preflight/apply, fixture services, real local route readiness."""
+    STEP_ID = '0005-agy-configured-model'
+    OLD_ROUTE = {
+        'desktop_debug_port': '/Users/suzhizhou/Library/Application Support/Antigravity/DevToolsActivePort',
+        'driver': 'agy', 'selection': 'local_account'}
+    NEW_ROUTE = {'driver': 'agy', 'selection': 'configured_model',
+                 'model': 'Gemini 3.8 Flash (High)'}
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.fx = Fixture(Path(self.temp.name))
+        command = self.fx.root / 'fixture-agy'
+        write(command, '#!/bin/sh\nexit 99\n')  # Readiness inspects it; it must never run.
+        command.chmod(0o700)
+        raw = switch.load(self.fx.layout.config)
+        raw.update(cli_routes={'local_agy': copy.deepcopy(self.OLD_ROUTE),
+                               'local_dsh': {'driver': 'dsh', 'selection': 'local_harness',
+                                             'desktop_config': str(self.fx.root / 'fixture-dsh.json')}},
+                   integrations={'agy_command': str(command)},
+                   agents=[{'name': 'agy_review', 'type': 'local_cli', 'driver': 'agy',
+                            'cli_route': 'local_agy'}],
+                   user_fields={'unicode': '逐字节保留', 'nested': [False, 1, None]})
+        write(self.fx.layout.config, switch.encoded(raw))
+        original_doctor = self.fx.system.doctor
+
+        def doctor(argv):
+            if switch.load(self.fx.layout.index)['current_release'] == 'v9.0.0':
+                # The old doctor only fails its backend readiness gate.
+                self.fx.system.calls.append(argv)
+                return (1, copy.deepcopy(SwitchReleaseTest.OUTAGE))
+            from xiaoba_agentos.config import AppConfig
+            from xiaoba_agentos.gateway import local_cli_readiness
+            config = AppConfig(self.fx.layout.config, switch.load(self.fx.layout.config))
+            config._validate_cli_routes()
+            readiness = local_cli_readiness(config, config.agents)
+            if not readiness['ok']:
+                self.fx.system.calls.append(argv)
+                return (1, {**copy.deepcopy(SwitchReleaseTest.OUTAGE), 'local_cli_routes': readiness})
+            return original_doctor(argv)
+
+        self.fx.system.doctor = doctor
+
+    def step(self):
+        return {'id': self.STEP_ID,
+                'check': {'kind': 'config_value_equals', 'path': 'cli_routes.local_agy',
+                          'value': copy.deepcopy(self.OLD_ROUTE)},
+                'execute': {'kind': 'config_set', 'path': 'cli_routes.local_agy',
+                            'value': copy.deepcopy(self.NEW_ROUTE)},
+                'undo': {'kind': 'restore_in_memory'}}
+
+    def declare(self, step):
+        path = self.fx.layout.package / 'agentos' / switch.SPEC
+        spec = switch.load(path)
+        spec['steps'] = [step]
+        write(path, switch.encoded(spec))
+        seal(self.fx.layout.package)
+
+    def apply(self, fault=None):
+        ticket = switch.preflight(self.fx.layout, self.fx.system, now=lambda: 1000)
+        self.assertTrue(ticket['ok'], ticket)
+        return switch.apply(self.fx.layout, ticket, self.fx.system, now=lambda: 1000, fault=fault)
+
+    def next_package(self):
+        old = self.fx.layout
+        current = old.index.parent / 'v9.0.1'
+        package = self.fx.root / 'next-package'
+        shutil.copytree(current, package)
+        for path in [package, *package.rglob('*')]:
+            path.chmod(path.stat().st_mode | 0o200)
+        release = switch.load(package / 'RELEASE.json')
+        release['version'] = 'v9.0.2'
+        write(package / 'RELEASE.json', switch.encoded(release))
+        path = package / 'agentos' / switch.SPEC
+        spec = switch.load(path)
+        spec['from_source_manifest_sha256'] = switch.state(current / 'agentos/SOURCE_MANIFEST.json')['sha256']
+        write(path, switch.encoded(spec))
+        seal(package)
+        return switch.Layout(old.runtime, old.config, package, old.vault, old.graph, old.entries, old.plist)
+
+    def test_without_0005_new_doctor_refuses_old_route_and_rolls_back(self):
+        before = self.fx.whole_tree()
+        result = self.apply()
+        self.assertFalse(result['activated'], result)
+        self.assertIn('post-switch readback failed', result['error'])
+        self.assertEqual('已退回', result['rollback']['status'], result)
+        self.assertEqual(before, self.fx.whole_tree())
+
+    def test_0005_switches_route_and_preserves_all_other_config_bytes(self):
+        self.declare(self.step())
+        expected = switch.load(self.fx.layout.config)
+        original_fields = {key: switch.encoded(value) for key, value in expected.items()}
+        result = self.apply()
+        self.assertTrue(result['activated'], result)
+        self.assertTrue(result['read_back']['checks']['doctor_ok'])
+        actual = switch.load(self.fx.layout.config)
+        self.assertEqual(self.NEW_ROUTE, actual['cli_routes']['local_agy'])
+        expected['release']['expected_version'] = 'v9.0.1'
+        expected['cli_routes']['local_agy'] = self.NEW_ROUTE
+        self.assertEqual(switch.encoded(expected), self.fx.layout.config.read_bytes())
+        for key, value in actual.items():
+            if key not in ('release', 'cli_routes'):
+                self.assertEqual(original_fields[key], switch.encoded(value), key)
+        self.assertEqual(expected['cli_routes']['local_dsh'], actual['cli_routes']['local_dsh'])
+        self.assertEqual(switch.digest(switch.encoded(self.step())),
+                         switch.load(self.fx.layout.history)['steps'][self.STEP_ID]['sha256'])
+
+    def test_failure_after_0005_restores_config_and_history_exactly(self):
+        self.declare(self.step())
+        for existing_history in (False, True):
+            with self.subTest(existing_history=existing_history):
+                if existing_history:
+                    write(self.fx.layout.history, b'{"steps": {}, "marker": "preserve formatting"}\n')
+                before = self.fx.whole_tree()
+                config_bytes = self.fx.layout.config.read_bytes()
+
+                def fail(phase):
+                    if phase == 'vault_merge':
+                        self.assertEqual(self.NEW_ROUTE, switch.load(self.fx.layout.config)['cli_routes']['local_agy'])
+                        self.assertIn(self.STEP_ID, switch.load(self.fx.layout.history)['steps'])
+                        raise switch.SwitchError('card30 failure after route migration')
+
+                result = self.apply(fault=fail)
+                self.assertFalse(result['activated'], result)
+                self.assertIn('card30 failure after route migration', result['error'])
+                self.assertEqual('已退回', result['rollback']['status'], result)
+                self.assertEqual(config_bytes, self.fx.layout.config.read_bytes())
+                self.assertEqual(before, self.fx.whole_tree())
+
+    def test_old_route_extra_field_is_refused_with_zero_writes(self):
+        self.declare(self.step())
+        raw = switch.load(self.fx.layout.config)
+        raw['cli_routes']['local_agy']['extra'] = 'user field'
+        write(self.fx.layout.config, switch.encoded(raw))
+        before = self.fx.whole_tree()
+        result = switch.preflight(self.fx.layout, self.fx.system)
+        self.assertFalse(result['ok'], result)
+        self.assertIn('config step input/result differs', result['error'])
+        self.assertEqual(before, self.fx.whole_tree())
+        self.assertFalse(any(call[0] == 'launchctl' for call in self.fx.system.calls))
+
+    def test_route_model_path_and_declaration_tampering_are_refused_without_writes(self):
+        variants = []
+        for model in ('Another Model', None):
+            step = self.step()
+            step['execute']['value']['model'] = model
+            variants.append(step)
+        step = self.step()
+        step['execute']['value']['extra'] = 'not authorized'
+        variants.append(step)
+        step = self.step()
+        step['execute']['path'] = step['check']['path'] = 'cli_routes.local_dsh'
+        variants.append(step)
+        step = self.step()
+        step['check'] = {'kind': 'config_value_equals', 'path': 'recovery.automatic_actions', 'value': None}
+        step['execute'] = {'kind': 'config_set', 'path': 'recovery.automatic_actions', 'value': []}
+        variants.append(step)
+        for value in ({'driver': 'dsh', 'selection': 'local_account'},
+                      {'driver': 'agy', 'selection': 'configured_model'},
+                      {**self.OLD_ROUTE, 'model': 'unexpected'}):
+            step = self.step()
+            step['check']['value'] = value
+            variants.append(step)
+        for part in ('check', 'execute'):
+            step = self.step()
+            step[part]['extra'] = True
+            variants.append(step)
+        step = self.step()
+        step['id'] = '0006-another-route-change'
+        variants.append(step)
+        for number, step in enumerate(variants):
+            with self.subTest(variant=number):
+                self.declare(step)
+                before = self.fx.whole_tree()
+                result = switch.preflight(self.fx.layout, self.fx.system)
+                self.assertFalse(result['ok'], result)
+                self.assertEqual(before, self.fx.whole_tree())
+                self.assertFalse(any(call[0] == 'launchctl' for call in self.fx.system.calls))
+
+    def test_user_model_change_does_not_block_next_preflight_or_get_overwritten(self):
+        self.declare(self.step())
+        result = self.apply()
+        self.assertTrue(result['activated'], result)
+        next_layout = self.next_package()
+        raw = switch.load(next_layout.config)
+        raw['cli_routes']['local_agy']['model'] = 'User Chosen Model'
+        write(next_layout.config, switch.encoded(raw))
+        before = self.fx.whole_tree()
+        ticket = switch.preflight(next_layout, self.fx.system, now=lambda: 1000)
+        self.assertTrue(ticket['ok'], ticket)
+        self.assertEqual(before, self.fx.whole_tree())
+        result = switch.apply(next_layout, ticket, self.fx.system, now=lambda: 1000)
+        self.assertTrue(result['activated'], result)
+        self.assertEqual('User Chosen Model', switch.load(next_layout.config)['cli_routes']['local_agy']['model'])
+
+    def test_executed_0005_hash_is_still_checked_after_user_model_change(self):
+        self.declare(self.step())
+        result = self.apply()
+        self.assertTrue(result['activated'], result)
+        next_layout = self.next_package()
+        raw = switch.load(next_layout.config)
+        raw['cli_routes']['local_agy']['model'] = 'User Chosen Model'
+        write(next_layout.config, switch.encoded(raw))
+        path = next_layout.package / 'agentos' / switch.SPEC
+        spec = switch.load(path)
+        # Still a valid old-route check, but changing a past step is forbidden.
+        spec['steps'][0]['check']['value']['desktop_debug_port'] = '/changed-by-package'
+        write(path, switch.encoded(spec))
+        seal(next_layout.package)
+        before = self.fx.whole_tree()
+        result = switch.preflight(next_layout, self.fx.system)
+        self.assertFalse(result['ok'], result)
+        self.assertIn('executed step has been modified', result['error'])
+        self.assertEqual(before, self.fx.whole_tree())
+
+    def test_current_deployment_declares_exactly_the_authorized_0005(self):
+        spec = switch.load(ROOT / switch.SPEC)
+        self.assertEqual([self.step()], [step for step in spec['steps'] if step['id'] == self.STEP_ID])
+
+    def test_other_executed_config_steps_still_require_their_result(self):
+        raw = switch.load(self.fx.layout.config)
+        raw['cli_routes']['local_agy'] = copy.deepcopy(self.NEW_ROUTE)
+        write(self.fx.layout.config, switch.encoded(raw))
+        self.declare({'id': '0001-disable-automatic-actions',
+                      'check': {'kind': 'config_value_equals', 'path': 'recovery.automatic_actions', 'value': None},
+                      'execute': {'kind': 'config_set', 'path': 'recovery.automatic_actions', 'value': []},
+                      'undo': {'kind': 'restore_in_memory'}})
+        result = self.apply()
+        self.assertTrue(result['activated'], result)
+        next_layout = self.next_package()
+        raw = switch.load(next_layout.config)
+        raw['recovery']['automatic_actions'] = ['drift']
+        write(next_layout.config, switch.encoded(raw))
+        before = self.fx.whole_tree()
+        result = switch.preflight(next_layout, self.fx.system)
+        self.assertFalse(result['ok'], result)
+        self.assertIn('config step input/result differs', result['error'])
+        self.assertEqual(before, self.fx.whole_tree())
+
+
 if __name__ == '__main__':
     unittest.main()
