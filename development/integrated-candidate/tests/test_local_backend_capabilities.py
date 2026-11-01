@@ -9,7 +9,7 @@ from xiaoba_agentos.config import AppConfig, ConfigError
 
 class BackendOwnedSelectionTest(unittest.TestCase):
     def test_local_backends_reject_master_model_pools_and_upstream_fields(self):
-        baseline = json.loads((Path(__file__).resolve().parents[1] / 'config/agentos.json').read_text())
+        baseline = json.loads((Path(__file__).resolve().parents[1] / 'tests/fixtures/agentos-with-backends.json').read_text())
         for route in ('local_agy', 'local_dsh'):
             # AGY 的模型就写在路由上（用户 2026-11-01 裁决），所以只有 DSH 不许带 model。
             keys = ('model_pool', 'provider', 'provider_id', 'endpoint', 'credential')

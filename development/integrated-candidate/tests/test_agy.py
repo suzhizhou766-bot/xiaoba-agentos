@@ -29,7 +29,7 @@ class AgyIntegrationTest(unittest.TestCase):
         home = patch.object(Path, 'home', return_value=self.root)
         home.start()
         self.addCleanup(home.stop)
-        raw = json.loads((Path(__file__).resolve().parents[1] / 'config/agentos.json').read_text())
+        raw = json.loads((Path(__file__).resolve().parents[1] / 'tests/fixtures/agentos-with-backends.json').read_text())
         raw['project_dir'] = str(self.root)
         raw['runtime_dir'] = str(self.root / 'runtime')
         raw['integrations']['agy_command'] = '/usr/bin/true'

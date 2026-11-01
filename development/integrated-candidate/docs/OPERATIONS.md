@@ -30,15 +30,11 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 - 详见 `docs/AGY_DESKTOP_FOLLOW.md`（后台模型选择边界）与 `docs/RELEASE_V1.6.5.md` 第十四节。
 - 切换（`switch_release.py`）前的两项检查（v1.6.5 起，见发布说明第三十八、四十、四十一节）：旧版本 doctor 只允许因“后台线路就绪”（`local_cli_routes`）不通过——报告须明确 `ok` 为假、`paths` 非空且全部为真、线路检查（`local_cli_routes`）明确不通过、其它各判定检查都在且明确通过（`ok` 为 true）；doctor 通过时票据也记下不参与判定的失败项——失败原文写进切换票据，其它任何情况照旧拒绝；退回后读回旧版用同一条规则；切换后读回时新版本 doctor 必须完全通过，否则自动退回。队列里从没被领过的 pending 任务（attempts=0、没有租约）可以留到切换后由新版本处理；运行中、重试中、冻结、可恢复的任务和任何未释放的租约照旧挡住切换。
 
-## 备用后台 qodercli（v1.6.5 起）
+## Agent 池
 
-分派前补位须有可验证来源：真实失败探针，或已记录的外部故障（`external_upstream`、`external_auth`，这一种不需要探针标记）。只有内部或未知类别的降级、又没有失败探针证据时，不能借此启用备用；启用的主后台少于两个时，领任务前无条件挡住，备用不补，不会只用一个主后台加备用接单（备用只顶替两个主后台中不可用的那一个）；补位事件的 `health_evidence` 由闸门、派发与构包共用判定。被冻结的任务仍须用户显式恢复。
-
-- 发布包配置模板带 `qoder_review`（`standby: true`）。AGY 路由仅由已授权的切换步骤 0005 迁移；其它后台线路仍不由切换命令修改。备用 Qoder 的线上配置须经用户同意另行登记：在 `cli_routes` 加 `local_qoder`，`agents` 加 `qoder_review`，`integrations` 加 `qoder_command`，内容与包里模板一致；再重启 Worker（`launchctl kickstart -k gui/$(id -u)/com.xiaoba.agentos`）并运行 `doctor`。不登记时小八照旧只用 AGY + DSH。
-- 用 qodercli 的前提：本机已安装标准版 qodercli 并登录。`local_qoder` 采用 `qodercli_settings`，绑定 `settings_path=/Users/suzhizhou/.qoder/settings.json`，用用户在 qodercli 里上次选定的模型和该模型的思考强度，每次调用前读取、通过 CLI 单次参数执行；不读取 Qoder 桌面，不使用 Qoder CN 或 qoderclicn。读不到明确选择、思考强度不支持、或 CLI 实际换了模型，都停止并报告。 备用调用时关闭工具、MCP 为空、关闭 hook、不保存会话、在临时空目录运行，所以不接需要工具、联网或按名字分工的任务，细则见 `STANDBY_POLICY.md`。
-- 三个后台的常规任务共用后台等待，不设 300 秒总截止；`timeout_seconds` 只保留给显式健康探针。AGY 原生等待为 0（直到完成），Qoder 使用 stream-json。运行中记录安全进度并续租，进程存在不等于上游已接单。300 秒是“连续无进展”窗口，不是补位许可：连续 300 秒没有真实进展就判为卡住，按外部上游故障记录（用户 2026-10-20 定：本地只能观察到 CLI 不再产出，分不清是上游停算还是本地挂起，统一按外部处理；代码里 `NoProgressTimeout` 的类别就是 `external_upstream`），先结束原来的 CLI 进程组（CLI 以独立进程组启动，整组回收，不留子进程），再按补位规则判断要不要补（心跳、PID、续租都不刷新计时）。CLI 自己报出的内部错误、工具调用标记、思考泄露等仍按内部处理，不补。能补的是外部上游故障、外部认证故障，以及真实的健康探针失败（不论原因，用户 2026-10-21 定）；任务中途的内部故障、输出预算耗尽、思考泄露不补。完整判断表见 `docs/STANDBY_POLICY.md`。
-- 补位情况看 `status`、任务结果的 `standby_substitution` 字段和通知；被补位的主后台一直保持 `external_blocked`，直到用户下次“上班”时的真实探针重新记录它健康为止；探针仍失败就按这次失败重新记为不健康（外部故障仍是 `external_blocked`），不会因为“上班”本身而解除。
-- `doctor` 只按两个主后台判断能否接单；备用 Qoder 的 CLI 是否可用单独写在 `standby_cli_routes`，坏了不会挡住上班、接单和安装，但需要用户修好，否则主后台出故障时就没有备用可补。
+谁审查、谁协作由用户在池里建节点，角色是审查、协作、两者。没有默认审查节点。配置模板不带默认节点。旧配置里的线路名字仍能加载，只作历史资料，不参与派活，切换时也不会自动建成节点。doctor 的 ok 只表示本地完整性；审查节点不足单独报告，不让 ok 变假。要审查的任务在节点够两份独立结论之前不入队。被冻结的任务仍须用户显式恢复。
+- 节点的掉线时限写在节点资料里，缺省 300 秒，是连续无进展窗口。人工转交和 tmux 等待不按掉线计。历史任务里的 `standby.substituted` 事件仍能读出，新任务不再按固定后台补位。
+- `doctor` 的 ok 只看本地完整性。审查节点不足写在单独的 `review_nodes` 里，不把 ok 打成假。
 
 ## 冻结任务恢复操作
 

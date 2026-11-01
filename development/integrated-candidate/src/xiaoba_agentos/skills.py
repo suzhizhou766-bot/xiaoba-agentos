@@ -285,12 +285,8 @@ class SkillRegistry:
         if project_dir is None:
             return []
         try:
-            # The same reviewers skill-publish checked: enabled primaries only. A
-            # registered standby never reviewed these skills, and counting it made
-            # every published skill fail once the standby was enabled (round-50
-            # rehearsal).
-            reviewers = [agent.name for agent in getattr(self.config, "agents", [])
-                         if agent.enabled and not getattr(agent, "standby", False)]
+            from .pool_dispatch import active_names
+            reviewers = active_names(self.config, purpose="review")
             return content_index.publication_problems(
                 index, project_dir, self.config.skills_root,
                 getattr(self.config, "database_path", Path("/nonexistent")), reviewers)

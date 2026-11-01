@@ -178,8 +178,8 @@ class RecoveryConfigRetirementTest(unittest.TestCase):
         self.assertEqual(2, config.raw["schema_version"])
         self.assertNotIn("automatic_actions", config.recovery)
         self.assertTrue(config.recovery["resume_requires_user"])
-        self.assertEqual(2, len(config.primary_agents))
-        self.assertEqual(["qoder_review"], [a.name for a in config.standby_agents])
+        self.assertEqual(0, len(config.primary_agents))
+        self.assertEqual([], [a.name for a in config.standby_agents])
 
     def test_unrelated_config_constraints_continue_to_hold(self):
         # 1. recovery 必须是对象

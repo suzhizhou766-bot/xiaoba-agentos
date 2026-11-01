@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from xiaoba_agentos.gateway import command_environment
 
-TYPES = ('agy', 'dsh', 'qoder', 'workbuddy', 'codex', 'claude', 'other')
+TYPES = ('agy', 'dsh', 'qoder', 'workbuddy', 'codebuddy', 'codex', 'claude', 'other')
 ENTRY_TYPES = {'agy':'agy', 'antigravity':'agy', 'dsh':'dsh', 'qoder':'qoder',
                'qodercli':'qoder', 'codebuddy':'workbuddy', 'workbuddy':'workbuddy',
                'codex':'codex', 'codex.js':'codex', 'claude':'claude'}
@@ -24,6 +24,11 @@ def agent_type(node):
     if path.name == 'bin.js' and path.parts[-4:-1] == ('apps', 'cli', 'lib'):
         return 'dsh'
     return ENTRY_TYPES.get(path.name.casefold(), 'other')
+
+
+def source_family(kind):
+    """用户 2026-11-02：WorkBuddy 的 CLI 就是 CodeBuddy，两种类型只算一个来源。"""
+    return 'codebuddy' if kind == 'workbuddy' else kind
 
 
 def entry_warning(entry):
@@ -50,7 +55,8 @@ def cli_identity(entry, workspace, kind):
     return {'protocol':'cli-worklog-v1', 'agent_type':kind,
             'implementation_sha256':implementation_digest((
                 'cli_identity.py', 'resource_cli.py', 'resource_agy_cli.py', 'resource_vendor_cli.py',
-                'resource_stdio.py', 'resource_agy.py', 'agent_workspace.py', 'workday.py')),
+                'resource_stdio.py', 'resource_agy.py', 'agent_workspace.py', 'workday.py',
+                'resource_workbuddy.py')),
             'workspace':str(workspace.path)}
 
 
@@ -76,11 +82,15 @@ def specific_failure(kind, label, model, stdout, stderr, check_model=True):
     if any(s in text for s in ('cannot find module', 'unknown option', 'unrecognized option',
                                 'unexpected argument', 'unknown command')):
         code, message = 'unsupported_entry', label+'入口无法启动或不支持适配参数；请检查 CLI 安装和节点类型。'
+    elif any(s in text for s in ('permission denied', 'operation not permitted', '权限被拒', 'not permitted by sandbox')):
+        code, message = 'permission_denied', label+'被系统拒绝执行；这不是上游故障，也不记成节点测试失败。'
     elif any(s in text for s in ('not logged in', 'not authenticated', 'authentication required',
                                   'authentication failed', 'login required', 'please log in',
                                   'please login', 'please sign in', 'unauthorized',
                                   'invalid api key', 'invalid authentication', '未登录', '请先登录')):
         code, message = 'cli_not_logged_in', label+'尚未登录或登录已失效；请你在该 CLI 中处理登录，再手动测试运行。'
+        if kind == 'workbuddy':
+            message = 'WorkBuddy CLI认证上下文未就绪；不能据此判断桌面端已退出登录。请在原生CLI中完成认证，再手动测试运行。'
     elif check_model and any(re.search(p, text) for p in (
             r'(?:unknown|invalid|unsupported|unrecognized) model',
             r'model[^\n]{0,160}(?:not found|not recognized|does not exist|not supported|not available)',
@@ -92,7 +102,11 @@ def specific_failure(kind, label, model, stdout, stderr, check_model=True):
             message = label+'不认节点里的模型名“'+model+'”；请修改节点模型后重新测试运行。'
     if code:
         failure = InteractiveError(code, message+'不自动重试、不换模型、不换后台。')
-        failure.failure_class = 'permanent'
+        if code == 'permission_denied':
+            failure.failure_class = 'permission_denied'
+            failure.preserve_node_health = True
+        else:
+            failure.failure_class = 'permanent'
         return failure
     return None
 

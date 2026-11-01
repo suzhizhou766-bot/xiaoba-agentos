@@ -452,11 +452,8 @@ class StandbyReleaseGateTest(unittest.TestCase):
             completed_agents=["agy_review", "qoder_review"],
             standby_event=standby_event,
         )
-        result = BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
-        self.assertTrue(result["standby_substituted"])
-        self.assertEqual("dsh_review", result["replaced"])
-        self.assertEqual("external_failure", result["reason"])
-        self.assertEqual(["agy_review", "qoder_review"], result["successful_agents"])
+        with self.assertRaisesRegex(RuntimeError, "固定后台名字或备用补位"):
+            BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
 
     def test_gate_rejects_judge_only_evidence_without_the_substitution_event(self):
         """门禁拒绝：数据库里没有 standby.substituted 事件，只有 judge.decided 里的补位证据。
@@ -535,8 +532,8 @@ class StandbyReleaseGateTest(unittest.TestCase):
         # Plan 甲: a real failed probe is covered even when its class is internal.
         db = self._setup_database(completed_agents=['agy_review', 'qoder_review'],
                                   standby_event=self._probe_cover('internal_headroom'))
-        result = BUILD_RELEASE_MODULE.validate_acceptance_database(db, 'task-1', self.root)
-        self.assertTrue(result['standby_substituted'])
+        with self.assertRaisesRegex(RuntimeError, "固定后台名字或备用补位"):
+            BUILD_RELEASE_MODULE.validate_acceptance_database(db, 'task-1', self.root)
 
     def test_gate_rejects_a_probe_cover_when_the_replaced_side_was_recorded_healthy(self):
         # D4: the event said dsh failed while dsh's own record said healthy.
@@ -661,7 +658,7 @@ class StandbyReleaseGateTest(unittest.TestCase):
             standby_event=standby_event,
             healthy_agents=["agy_review"],
         )
-        with self.assertRaisesRegex(RuntimeError, "no current real multi-Agent health evidence"):
+        with self.assertRaisesRegex(RuntimeError, "固定后台名字或备用补位"):
             BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
 
     def test_gate_legacy_agy_dsh_path_unchanged(self):
@@ -669,11 +666,8 @@ class StandbyReleaseGateTest(unittest.TestCase):
         db = self._setup_database(
             completed_agents=["agy_review", "dsh_review"],
         )
-        result = BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
-        self.assertFalse(result["standby_substituted"])
-        self.assertIsNone(result["replaced"])
-        self.assertIsNone(result["reason"])
-        self.assertEqual(["agy_review", "dsh_review"], result["successful_agents"])
+        with self.assertRaisesRegex(RuntimeError, "固定后台名字或备用补位"):
+            BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
 
 
 class StandbyHealthProvenanceContractTest(unittest.TestCase):

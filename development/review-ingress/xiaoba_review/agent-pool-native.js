@@ -25,8 +25,8 @@
   }
   column.addEventListener('scroll',drawRoutes);window.addEventListener('resize',drawRoutes);
   const title=topo.closest('.panel')?.querySelector('.panel-head h2');if(title)title.textContent='实时架构拓扑 · 后台节点可管理';
-  const flow=topo.closest('.panel')?.querySelector('.flow');if(flow)flow.textContent='后台 Agent 列可直接添加、开关和移除节点。节点状态来自本机登记，仅用于开放审查；其他运行数据仍按当前数据源显示，旧 Worker 后台名单沿用原配置。';
-  const tableHeading=document.getElementById('agentRows')?.closest('.panel')?.querySelector('h2');if(tableHeading)tableHeading.textContent='旧 Worker 后台状态';
+  const flow=topo.closest('.panel')?.querySelector('.flow');if(flow)flow.textContent='审查和协作只派给这里开启并通过测试的节点。没有默认名单。';
+  const tableHeading=document.getElementById('agentRows')?.closest('.panel')?.querySelector('h2');if(tableHeading)tableHeading.textContent='历史线路资料';
   function element(tag,text,parent){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(parent)parent.append(n);return n;}
   function action(parent,text,fn,cls){const b=element('button',text,parent);b.type='button';b.className=cls;b.addEventListener('click',async()=>{b.disabled=true;try{await fn();}catch(error){pool.report(error);}finally{b.disabled=false;}});return b;}
   pool.watch((state,writable)=>{
@@ -36,6 +36,7 @@
     column.replaceChildren();
     const nodes=state?.nodes.filter(n=>!n.removed)||[],enabled=nodes.filter(n=>n.enabled).length;
     element('p',state?enabled+' 开启 / '+nodes.length+' 节点 · 本机':'节点服务未连接',column).className='ap-caption';
+    if(state && nodes.length===0)element('p','当前开启并通过测试的独立审查节点不足 2 个，这次不派审查。请先添加节点。',column).className='ap-caption';
     for(const node of nodes){
       const card=element('div',undefined,column);card.className='ap-card'+(node.enabled?' ap-enabled':'');card.dataset.nodeId=node.node_id;
       const main=action(card,'',()=>pool.open(node),'ap-node-main');main.dataset.nodeId=node.node_id;main.setAttribute('aria-label','设置 '+node.name);main.title=node.name+' · '+node.agent+' · '+(node.model||(node.interface==='cli'?(node.agent_type==='dsh'?'由 DSH 桌面配置决定':'由 CLI 当前配置决定'):'模型未登记'));element('strong',node.name,main);element('span',node.model||(node.interface==='cli'?(node.agent_type==='dsh'?'由 DSH 桌面配置决定':'由 CLI 当前配置决定'):'模型未登记'),main);

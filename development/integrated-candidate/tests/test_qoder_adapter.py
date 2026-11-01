@@ -97,7 +97,7 @@ class QoderAdapterTest(unittest.TestCase):
         self.stub = QoderStub(self.root)
         self.settings = self.root / ".qoder" / "settings.json"
         write_settings(self.settings)
-        raw = json.loads((PROJECT / "config/agentos.json").read_text(encoding="utf-8"))
+        raw = json.loads((PROJECT / "tests/fixtures/agentos-with-backends.json").read_text(encoding="utf-8"))
         raw["project_dir"] = str(self.root)
         raw["runtime_dir"] = str(self.root / "runtime")
         raw["memory"].update(knowlp_enabled=False, obsidian_vault=str(self.root), publish_enabled=False)

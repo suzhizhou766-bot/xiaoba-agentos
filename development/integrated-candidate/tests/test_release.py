@@ -234,8 +234,8 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
                 {
                     "worker": {"minimum_successful_agents": 2},
                     "agents": [
-                        {"name": "dsh_review", "enabled": True},
-                        {"name": "agy_review", "enabled": True},
+                        {"name": "south-node", "enabled": True},
+                        {"name": "north-node", "enabled": True},
                     ],
                 }
             ),
@@ -263,10 +263,17 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
                 ),
             },
             "runs": [
-                {"agent_name": "dsh_review", "status": "completed", "output": "FINAL_ACCEPTANCE: PASS\nA"},
-                {"agent_name": "agy_review", "status": "completed", "output": "FINAL_ACCEPTANCE: PASS\nB"},
+                {"agent_name": "south-node", "status": "completed", "output": "FINAL_ACCEPTANCE: PASS\nA"},
+                {"agent_name": "north-node", "status": "completed", "output": "FINAL_ACCEPTANCE: PASS\nB"},
             ],
             "memory_candidate": {"status": "pending_delivery_review"},
+            "pool_nodes": [
+                {"node_id": "south-node", "enabled": True, "test_passed": True,
+                 "independence": ["cli:codex", "alpha"]},
+                {"node_id": "north-node", "enabled": True, "test_passed": True,
+                 "independence": ["cli:claude", "beta"]},
+            ],
+            "execution": {"author_ids": [], "executor_ids": [], "checked_idle_ids": []},
         }
 
     def audit_payload(self):
@@ -306,7 +313,7 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
     def test_formal_release_requires_real_two_agent_evidence(self):
         self.evidence.write_text(json.dumps(self.payload()), encoding="utf-8")
         result = BUILD_RELEASE_MODULE.validate_acceptance_evidence(self.evidence, self.root)
-        self.assertEqual(["agy_review", "dsh_review"], result["successful_agents"])
+        self.assertEqual(["north-node", "south-node"], result["successful_agents"])
         self.assertEqual("task-1", result["task_id"])
 
     def test_tool_call_markup_cannot_be_release_evidence(self):
@@ -410,6 +417,9 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
             CREATE TABLE agent_health (
                 agent_name TEXT, status TEXT, provider TEXT, model TEXT, last_probe_at REAL
             );
+            CREATE TABLE ri_sources (
+                id TEXT PRIMARY KEY, data TEXT NOT NULL
+            );
             """
         )
         payload = self.payload()
@@ -435,22 +445,38 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
             (
                 task["id"],
                 "judge.decided",
-                json.dumps({"winner": "dsh_review", "successful_agents": 2}),
+                json.dumps({"winner": "south-node", "successful_agents": 2}),
                 1,
             ),
         )
         connection.executemany(
             "INSERT INTO agent_health VALUES (?,?,?,?,?)",
             [
-                ("dsh_review", "healthy", "福利 gpt", "test-model", 1.0),
-                ("agy_review", "healthy", "福利 gpt", "test-model", 1.0),
+                ("south-node", "healthy", "福利 gpt", "test-model", 1.0),
+                ("north-node", "healthy", "福利 gpt", "test-model", 1.0),
             ],
         )
+        for node_id, entry, model in (
+            ("south-node", "cli:codex", "alpha"),
+            ("north-node", "cli:claude", "beta"),
+        ):
+            connection.execute(
+                "INSERT INTO ri_sources VALUES (?,?)",
+                (node_id, json.dumps({
+                    "reviewer_id": node_id, "kind": "review",
+                    "source_ref": "agent-entry:" + node_id,
+                    "node": {
+                        "enabled": True, "removed": False, "interface": "cli",
+                        "entry": entry, "model": model, "agent_type": entry.split(":")[-1],
+                        "test": {"status": "passed"},
+                    },
+                }, ensure_ascii=False)),
+            )
         connection.commit()
         connection.close()
         result = BUILD_RELEASE_MODULE.validate_acceptance_database(database, "task-1", self.root)
         self.assertEqual("a" * 64, result["candidate_sha256"])
-        self.assertEqual(["agy_review", "dsh_review"], result["successful_agents"])
+        self.assertEqual(["north-node", "south-node"], result["successful_agents"])
 
         connection = sqlite3.connect(database)
         connection.execute("DELETE FROM events WHERE event_type='judge.decided'")

@@ -56,7 +56,7 @@ def main():
     native.initialize()
     store = ReviewStore(native, runtime / 'memory-outbox', args.agent_workspace_root)
     from xiaoba_review.resource_stdio import json_stdio_factory
-    backends = BackendRegistry(store,resource_factory=lambda source:json_stdio_factory(source,args.agent_workspace_root))
+    backends = BackendRegistry(store,resource_factory=lambda source:json_stdio_factory(source,store.workspace_root))
     if args.dsh_reviewer or args.dsh_agent:
         if not (native_config and args.dsh_reviewer and args.dsh_agent):
             parser.error('真实 DSH 需要 --config、--dsh-reviewer 和 --dsh-agent，禁止隐式默认')
@@ -90,7 +90,7 @@ def main():
     def index(req):
         response = original_index(req)
         if response.code == 200:
-            link = '<nav style="padding:12px"><a href="/open-review">DSH＋开放审查 · 任务卡 / 回执 / 裁决材料</a></nav>'
+            link = '<nav style="padding:12px"><a href="/open-review">开放审查 · 任务卡 / 回执 / 裁决材料</a></nav>'
             response.body = response.body.replace(b'<body>', b'<body>' + link.encode(), 1)
             response.body = response.body.replace(b'</body>', b'<script src="/open-review-native.js"></script><script src="/architecture/native-center.js"></script></body>', 1)
         return OpenReviewModule.mount_pool(response,ctx.page_token)

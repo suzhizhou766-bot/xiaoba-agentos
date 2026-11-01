@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from .resource_cli import CliWorklogResource
+from .resource_workbuddy import WorkBuddyCliResource
 
 # Restrict tool-capable print CLIs to file I/O. No shell, network or subagent
 # tool is offered; permission hooks and normal client authentication stay active.
@@ -32,27 +33,34 @@ class QoderCliResource(CliWorklogResource):
                 '--mcp-config', '{"mcpServers":{}}', '--output-format', 'stream-json']
 
 
-class WorkBuddyCliResource(CliWorklogResource):
-    agent_type, label, provider = 'workbuddy', 'WorkBuddy', 'workbuddy_cli'
-
-    def _environment(self):
-        # WorkBuddy ships its lite bundle. The generic CLI launcher otherwise
-        # selects a headless/full bundle that this app package does not include.
-        # This is the launcher's native variant switch, not a permission bypass.
-        return dict(super()._environment(), CODEBUDDY_FORCE_LITE_WB_BUNDLE='1')
-
-    def _command(self, entry, timeout):
-        return [entry, '-p', *(['--model', self.model] if self.model else []), '--permission-mode', 'acceptEdits',
-                '--tools', FILE_TOOLS, '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-                '--output-format', 'stream-json']
-
-
 class CodexCliResource(CliWorklogResource):
     agent_type, label, provider = 'codex', 'Codex', 'codex_cli'
 
     def _command(self, entry, timeout):
         return [entry, 'exec', *(['-m', self.model] if self.model else []), '-s', 'workspace-write',
                 '-C', str(self.workspace.path), '--skip-git-repo-check', '--ephemeral', '--json', '-']
+
+
+class CodeBuddyCliResource(CliWorklogResource):
+    """Independent CodeBuddy Code, distinct from the desktop bundled engine."""
+    agent_type, label, provider = 'codebuddy', 'WorkBuddy CLI（CodeBuddy）', 'codebuddy_cli'
+
+    def _environment(self):
+        env = dict(super()._environment())
+        # Normal CLI authentication/settings stay client-owned. Do not inherit
+        # a desktop product, gateway, API key, or sidecar bootstrap from a host.
+        for key in list(env):
+            if key.startswith(('CODEBUDDY_', 'WORKBUDDY_', 'ACC_PRODUCT_CONFIG')) or key in ('SERVER__HOST', 'SERVER__PORT'):
+                env.pop(key)
+        env['DISABLE_AUTOUPDATER'] = '1'
+        return env
+
+    def _command(self, entry, timeout):
+        return [entry, '-p', *(['--model', self.model] if self.model else []),
+                '--permission-mode', 'acceptEdits', '--tools', FILE_TOOLS,
+                '--allowedTools', FILE_TOOLS, '--no-session-persistence',
+                '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+                '--output-format', 'stream-json', '--verbose']
 
 
 class ClaudeCliResource(CliWorklogResource):
@@ -65,4 +73,4 @@ class ClaudeCliResource(CliWorklogResource):
 
 
 RESOURCES = {'dsh':DshCliResource, 'qoder':QoderCliResource, 'workbuddy':WorkBuddyCliResource,
-             'codex':CodexCliResource, 'claude':ClaudeCliResource}
+             'codebuddy':CodeBuddyCliResource, 'codex':CodexCliResource, 'claude':ClaudeCliResource}

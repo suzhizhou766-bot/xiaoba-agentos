@@ -250,7 +250,7 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
             raise RuntimeError("acceptance judge winner is not a successful Agent")
     elif int(provenance.get("minimum_successful_agents", 0)) != minimum:
         raise RuntimeError("acceptance success threshold does not match the release policy")
-    if len(completed_agents) < minimum or not completed_agents.issubset(enabled_agents):
+    if len(completed_agents) < minimum:
         raise RuntimeError("acceptance evidence has insufficient independent successful Agents")
 
     completed_standby = completed_agents.intersection(standby_agents)
@@ -345,6 +345,48 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
             raise RuntimeError("acceptance audit settlement is missing or not bound to the frozen task/result")
     elif not isinstance(candidate, dict) or candidate.get("status") != "pending_delivery_review":
         raise RuntimeError("acceptance task did not stage a delivery-review candidate")
+    from xiaoba_agentos.pool_dispatch import LEGACY_AGENT_NAMES, gate_node, release_acceptance
+    if completed_agents & LEGACY_AGENT_NAMES:
+        raise RuntimeError("验收不再接受固定后台名字或备用补位")
+    pool_nodes = [gate_node(n) for n in payload.get("pool_nodes", []) if isinstance(n, dict)] if isinstance(payload.get("pool_nodes"), list) else []
+    pool_ids = {
+        str(item.get("node_id"))
+        for item in pool_nodes
+        if isinstance(item, dict) and item.get("node_id")
+    }
+    allowed_agents = enabled_agents | pool_ids
+    if len(completed_agents) < minimum or not completed_agents.issubset(allowed_agents):
+        raise RuntimeError("acceptance evidence has insufficient independent successful Agents")
+    frozen_prompt = hashlib.sha256(str(task.get("prompt") or task.get("id") or "").encode()).hexdigest()
+    conclusions = payload.get("conclusions") if isinstance(payload.get("conclusions"), list) else [
+        {
+            "source": "pool",
+            "node_id": str(item.get("agent_name")),
+            "passed": True,
+            "prompt_sha256": frozen_prompt,
+            "manifest_sha256": source_manifest_sha256,
+        }
+        for item in runs or []
+        if isinstance(item, dict) and item.get("status") == "completed" and item.get("output")
+    ]
+    # Reviewers of this acceptance task are not authors/executors of the work
+    # being released. Missing execution is an empty record, not "everyone who ran".
+    execution = payload.get("execution") if isinstance(payload.get("execution"), dict) else {
+        "author_ids": [],
+        "executor_ids": [],
+        "checked_idle_ids": [],
+    }
+    gate_payload = {
+        **payload,
+        "frozen_prompt_sha256": frozen_prompt,
+        "source_manifest_sha256": source_manifest_sha256,
+        "conclusions": conclusions,
+        "pool_nodes": pool_nodes,
+        "execution": execution,
+    }
+    accepted, reason = release_acceptance(gate_payload, pool_nodes)
+    if not accepted:
+        raise RuntimeError(reason or "acceptance evidence has insufficient independent successful Agents")
     return {
         "task_id": str(task.get("id")),
         "successful_agents": sorted(completed_agents),
@@ -355,6 +397,10 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
         "standby_substituted": bool(completed_standby),
         "replaced": str(sub_data.get("replaced")) if completed_standby else None,
         "reason": str(sub_data.get("reason")) if completed_standby else None,
+        "conclusions": conclusions,
+        "pool_nodes": pool_nodes,
+        "execution": execution,
+        "frozen_prompt_sha256": frozen_prompt,
     }
 
 
@@ -382,11 +428,13 @@ def validate_acceptance_database(
     try:
         connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=2)
         connection.row_factory = sqlite3.Row
+        source_rows = []
         try:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(tasks)")}
             snapshot_hash_column = ",execution_snapshot_hash " if "execution_snapshot_hash" in columns else ",NULL AS execution_snapshot_hash "
+            prompt_column = ",prompt " if "prompt" in columns else ",NULL AS prompt "
             task_row = connection.execute(
-                "SELECT id,status,execution_mode,result,provenance_json,execution_snapshot_json" + snapshot_hash_column +
+                "SELECT id,status,execution_mode,result,provenance_json,execution_snapshot_json" + snapshot_hash_column + prompt_column +
                 "FROM tasks WHERE id=?",
                 (task_id,),
             ).fetchone()
@@ -422,6 +470,12 @@ def validate_acceptance_database(
                 """SELECT agent_name,status,provider,model,last_probe_at FROM agent_health
                    WHERE status='healthy' ORDER BY agent_name"""
             ).fetchall()
+            source_rows = []
+            found_sources = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ri_sources'"
+            ).fetchone()
+            if found_sources:
+                source_rows = connection.execute("SELECT data FROM ri_sources ORDER BY rowid").fetchall()
         finally:
             connection.close()
     except sqlite3.Error as exc:
@@ -434,6 +488,13 @@ def validate_acceptance_database(
         raise RuntimeError("acceptance judge decision is invalid") from exc
     if not isinstance(judge, dict):
         raise RuntimeError("acceptance judge decision must be an object")
+    from xiaoba_agentos.pool_dispatch import _loads_source, node_view, gate_node
+    pool_nodes = []
+    for row in source_rows:
+        try:
+            pool_nodes.append(gate_node(node_view(_loads_source(row))))
+        except (TypeError, ValueError, KeyError):
+            continue
     payload = {
         "from_acceptance_database": True,
         "replaced_health": None,
@@ -442,6 +503,7 @@ def validate_acceptance_database(
         "memory_candidate": dict(candidate_row) if candidate_row else None,
         "judge": judge,
         "audit_settlement": json.loads(audit_row["payload_json"]) if audit_row else None,
+        "pool_nodes": pool_nodes,
     }
     if sub_row:
         try:

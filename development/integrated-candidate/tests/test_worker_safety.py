@@ -55,7 +55,7 @@ class LeaseReleaseTest(unittest.TestCase):
             task_id = store.submit("任务", 3)
             done = store.submit("已完成", 3)
             self.assertEqual(task_id, store.lease_next(1800)["id"])
-            store.complete(done, "结果")
+            store.complete_manually(done, "结果")
             self.assertFalse(store.has_runnable_work() and store.get_task(task_id)["status"] != "running")
             self.assertEqual(1, store.expire_running_leases())
             self.assertTrue(store.has_runnable_work())
@@ -93,7 +93,7 @@ class SessionClosingTest(unittest.TestCase):
             store = self._store(directory)
             session = store.start_session()
             task_id = store.submit("任务", 1, session_id=str(session["id"]))
-            store.fail(task_id, "失败")
+            store.fail_manually(task_id, "失败")
             packet = store.session_review_packet(str(session["id"]))
             self.assertEqual("closed", packet["session"]["status"])
             self.assertEqual([str(session["id"])], packet["closed_sessions"])
@@ -108,7 +108,7 @@ class SessionClosingTest(unittest.TestCase):
             task_id = store.submit("任务", 1, session_id=str(session["id"]))
             staged = root / "c.md"
             staged.write_text("证据", encoding="utf-8")
-            store.complete_with_memory_candidate(task_id, "结果", str(staged), _sha(staged), [])
+            store.complete_with_memory_candidate(task_id, "结果", str(staged), _sha(staged), [], expected_attempt=0)
             self.assertEqual("closing", store.session_review_packet(str(session["id"]))["session"]["status"])
             self.assertEqual([], store.close_resolved_sessions())
             code, _payload = execute_review(config, store, task_id, "delivery", "reject", "不需要")
@@ -120,7 +120,7 @@ class SessionClosingTest(unittest.TestCase):
             store = self._store(directory)
             session = store.start_session()
             task_id = store.submit("任务", 1, session_id=str(session["id"]))
-            store.fail(task_id, "失败")
+            store.fail_manually(task_id, "失败")
             with store.connect() as conn:  # the state the old flow left behind
                 conn.execute("UPDATE work_sessions SET status='closing',closing_at=? WHERE id=?",
                              (time.time(), session["id"]))
@@ -259,14 +259,14 @@ class ReviewedDefectsTest(unittest.TestCase):
             # No sidecar before: a rollback must not leave one claiming the candidate is queued.
             with patch.object(store, "_append_event_tx", side_effect=RuntimeError("late failure")):
                 with self.assertRaises(RuntimeError):
-                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [])
+                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0)
             self.assertFalse(sidecar.exists())
             self.assertIsNone(store.get_memory_candidate(task_id))
             # An earlier sidecar is put back unchanged.
             sidecar.write_text('{"status": "earlier"}', encoding="utf-8")
             with patch.object(store, "_append_event_tx", side_effect=RuntimeError("late failure")):
                 with self.assertRaises(RuntimeError):
-                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [])
+                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0)
             self.assertEqual('{"status": "earlier"}', sidecar.read_text(encoding="utf-8"))
 
     def test_sidecar_is_kept_when_the_failure_came_after_commit(self):
@@ -284,7 +284,7 @@ class ReviewedDefectsTest(unittest.TestCase):
 
             with patch.object(store, "_secure_permissions", side_effect=permissions):
                 with self.assertRaises(PermissionError):
-                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [])
+                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0)
             self.assertEqual("completed", store.get_task(task_id)["status"])
             sidecar = json.loads(staged.with_suffix(".md.status.json").read_text(encoding="utf-8"))
             self.assertEqual(("pending_delivery_review", evidence), (sidecar["status"], sidecar["evidence_sha256"]))
@@ -315,7 +315,7 @@ class ReviewedDefectsTest(unittest.TestCase):
             task_id = store.submit("任务", 2)
             for path, digest in ((str(staged), "0" * 64), (str(staged.with_name("missing.md")), evidence)):
                 with self.assertRaises(ValueError):
-                    store.complete_with_memory_candidate(task_id, "结果", path, digest, [])
+                    store.complete_with_memory_candidate(task_id, "结果", path, digest, [], expected_attempt=0)
             self.assertNotEqual("completed", store.get_task(task_id)["status"])
             store.hold_constraint_task(task_id, "结果", {"reason": "test"})
             with self.assertRaises(ValueError):
@@ -326,13 +326,13 @@ class ReviewedDefectsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store, staged, evidence = self._store(Path(directory))
             task_id = store.submit("任务", 2)
-            store.complete(task_id, "结果")  # the old two-step path, interrupted before staging
+            store.complete_manually(task_id, "结果")  # the old two-step path, interrupted before staging
             self.assertIsNone(store.get_memory_candidate(task_id))
-            self.assertFalse(store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, []))
+            self.assertFalse(store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0))
             self.assertEqual("pending_delivery_review", store.get_memory_candidate(task_id)["status"])
             self.assertEqual(1, _event_count(store, task_id, "task.completed"))
             self.assertEqual(1, _event_count(store, task_id, "memory.candidate_staged"))
-            self.assertFalse(store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, []))
+            self.assertFalse(store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0))
             self.assertEqual(1, _event_count(store, task_id, "memory.candidate_staged"))
 
     def test_failed_staging_leaves_no_orphan_files(self):
@@ -372,7 +372,7 @@ class ReviewedDefectsTest(unittest.TestCase):
             reviewed = store.submit("已完成", 1, session_id=str(session["id"]))
             staged = root / "c.md"
             staged.write_text("证据", encoding="utf-8")
-            store.complete_with_memory_candidate(reviewed, "结果", str(staged), _sha(staged), [])
+            store.complete_with_memory_candidate(reviewed, "结果", str(staged), _sha(staged), [], expected_attempt=0)
             store.submit("仍在排队", 1, session_id=str(session["id"]))
             store.session_review_packet(str(session["id"]))
             execute_review(config, store, reviewed, "delivery", "reject", "")

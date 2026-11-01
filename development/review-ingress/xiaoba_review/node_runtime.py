@@ -30,6 +30,31 @@ def missing_fields(node):
     return [k for k in FIELDS if not node.get(k) and not (k == 'model' and node.get('interface') == 'cli')]
 
 
+def readiness(db, source, adapter_for):
+    node=node_state(source)
+    if node.get('removed'):return {'ready':False,'reason':'removed'}
+    if not node.get('enabled'):return {'ready':False,'reason':'disabled'}
+    if missing_fields(node):return {'ready':False,'reason':'missing_configuration'}
+    if node.get('interface') == 'tmux':return {'ready':False,'reason':'tmux_collaborator_only'}
+    if node.get('test_running'):return {'ready':False,'reason':'testing'}
+    adapter=adapter_for(source)
+    if not adapter or not getattr(adapter,'supports_resource_plan',False):
+        return {'ready':False,'reason':'adapter_required'}
+    if getattr(adapter,'pending_action',None):return {'ready':False,'reason':'native_confirmation_required'}
+    try:identity=adapter.resource_identity()
+    except (OSError,ValueError,AttributeError,TypeError):return {'ready':False,'reason':'entry_unavailable'}
+    test=node.get('test',{})
+    if test.get('status')!='passed' or test.get('spec_digest')!=digest(spec(source)) or test.get('runner_digest')!=digest(identity):
+        return {'ready':False,'reason':'test_required'}
+    if not isinstance(test.get('execution_evidence'),dict) or digest(test['execution_evidence'])!=test.get('evidence_digest'):
+        return {'ready':False,'reason':'test_evidence_invalid'}
+    event=db.execute("SELECT payload_json FROM events WHERE event_id=? AND event_type='agent_pool.test_finished'",(test.get('event_id'),)).fetchone()
+    if not event or json.loads(event[0])!={'node_id':source['reviewer_id'],'test':{k:v for k,v in test.items() if k!='event_id'}}:
+        return {'ready':False,'reason':'test_evidence_invalid'}
+    return {'ready':True,'reason':'tested','test_id':test['test_id'],'spec_digest':test['spec_digest']}
+
+
+
 class NodeRuntime:
     def __init__(self, pool):
         self.pool, self.store, self.backends = pool, pool.store, pool.backends
@@ -112,7 +137,19 @@ class NodeRuntime:
             if attended is None and not callable(getattr(adapter,'run_task',None)):raise ValueError('该节点尚未接入工作文件回执')
         if attended is not None:
             return self.pool.tmux.submit(attended,task_id,step_code,instruction,materials)
-        return adapter.run_task(task_id,step_code,instruction,materials)
+        # When dispatched against a native task, record the work automatically.
+        # Old external work IDs retain their workspace-only receipts.
+        native_task=self.store.native.get_task(task_id)
+        if not native_task:return adapter.run_task(task_id,step_code,instruction,materials)
+        self.store.native.record_task_participant(task_id,node_id,'collaborator')
+        run=self.store.native.start_agent_run(task_id,node_id,{'purpose':'collaboration','step_code':step_code})
+        try:
+            result=adapter.run_task(task_id,step_code,instruction,materials)
+        except Exception as exc:
+            self.store.native.finish_agent_run(run,'permanent_error',None,type(exc).__name__,0)
+            raise
+        self.store.native.finish_agent_run(run,result.get('status','failed'),result.get('body'),None,0)
+        return result
 
     def preview(self, node_id):
         if not isinstance(node_id,str) or not node_id or len(node_id)>128:
@@ -145,27 +182,7 @@ class NodeRuntime:
                 'message':'配置已保存；在原运行总览开启节点并测试运行，测试通过后可直接调用。'}
 
     def readiness(self, db, source):
-        node=node_state(source)
-        if node.get('removed'):return {'ready':False,'reason':'removed'}
-        if not node.get('enabled'):return {'ready':False,'reason':'disabled'}
-        if missing_fields(node):return {'ready':False,'reason':'missing_configuration'}
-        if node.get('interface') == 'tmux':return {'ready':False,'reason':'tmux_collaborator_only'}
-        if node.get('test_running'):return {'ready':False,'reason':'testing'}
-        adapter=self.backends.adapter_for(source)
-        if not adapter or not getattr(adapter,'supports_resource_plan',False):
-            return {'ready':False,'reason':'adapter_required'}
-        if getattr(adapter,'pending_action',None):return {'ready':False,'reason':'native_confirmation_required'}
-        try:identity=adapter.resource_identity()
-        except (OSError,ValueError,AttributeError,TypeError):return {'ready':False,'reason':'entry_unavailable'}
-        test=node.get('test',{})
-        if test.get('status')!='passed' or test.get('spec_digest')!=digest(spec(source)) or test.get('runner_digest')!=digest(identity):
-            return {'ready':False,'reason':'test_required'}
-        if not isinstance(test.get('execution_evidence'),dict) or digest(test['execution_evidence'])!=test.get('evidence_digest'):
-            return {'ready':False,'reason':'test_evidence_invalid'}
-        event=db.execute("SELECT payload_json FROM events WHERE event_id=? AND event_type='agent_pool.test_finished'",(test.get('event_id'),)).fetchone()
-        if not event or json.loads(event[0])!={'node_id':source['reviewer_id'],'test':{k:v for k,v in test.items() if k!='event_id'}}:
-            return {'ready':False,'reason':'test_evidence_invalid'}
-        return {'ready':True,'reason':'tested','test_id':test['test_id'],'spec_digest':test['spec_digest']}
+        return readiness(db, source, self.backends.adapter_for)
 
     def test_run(self, node_id, expected_revision, test_id):
         with self.store.native.read_only() as db:
@@ -223,7 +240,7 @@ class NodeRuntime:
                 message='入口未按节点协议或本次挑战返回；请核对 Agent 类型、调用入口、登录和模型配置。未标记测试通过，不自动重试。'
             if getattr(exc,'occupant',None):message=self.occupied_message(exc)
             model_tasks_sent=getattr(exc,'model_tasks_sent',None)
-            if reason=='native_workspace_trust_required':status='blocked'
+            if reason in {'native_workspace_trust_required', 'permission_denied'}:status='blocked'
         with self.store.transaction() as db:
             current=self.store.source(db,node_id);node=node_state(current)
             if node.get('test_running')!=test_id:raise Conflict('测试执行权已失效')
@@ -275,32 +292,72 @@ class NodeRuntime:
                 'node_id':node_id,'action_id':action_id,'result':result,'experience_approval':False})
         return result
 
-    def prepare(self, required_kinds, selections=None, task_type=None):
+    def prepare(self, required_kinds, selections=None, task_type=None, candidate_id=None):
         if task_type is not None and (not isinstance(task_type,str) or not task_type.strip() or len(task_type)>128):raise ValueError('任务类型格式异常')
-        if not isinstance(required_kinds,list) or not required_kinds or len(set(required_kinds))!=len(required_kinds) or set(required_kinds)-{'dsh','peer'}:
+        if not isinstance(required_kinds,list) or not required_kinds or len(set(required_kinds))!=len(required_kinds) or set(required_kinds)-{'dsh','peer','review','collaborate','both'}:
             raise ValueError('需要明确当前任务的后台槽位')
         selections=selections or {}
         if not isinstance(selections,dict) or set(selections)-set(required_kinds):raise ValueError('节点选择与当前任务槽位不符')
-        chosen={};questions=[];blockers=[]
+        chosen={};questions=[];blockers=[];used=set()
         with self.store.native.read_only() as db:
             if not self.store.native.verify_event_chain_tx(db)['ok']:
                 return {'route':'blocked','reason':'event_chain_invalid','questions':[]}
             sources=[json.loads(r[0]) for r in db.execute('SELECT data FROM ri_sources ORDER BY rowid')]
+            if candidate_id is not None:
+                from xiaoba_agentos.task_participants import execution_context
+                task=db.execute('SELECT * FROM tasks WHERE id=?',(candidate_id,)).fetchone()
+                if task is None:raise ValueError('待审查任务不存在')
+                excluded=set(execution_context(self.store.native,dict(task),db)['excluded_ids'])
+                sources=[s for s in sources if s['reviewer_id'] not in excluded]
             for kind in required_kinds:
-                candidates=[s for s in sources if s['kind']==kind and not node_state(s)['removed']]
+                from xiaoba_agentos.pool_dispatch import mapped_role
+                def seat(source, wanted):
+                    stored = source['kind']
+                    if stored == wanted:
+                        return True
+                    try:
+                        role = mapped_role(stored)
+                    except ValueError:
+                        return False
+                    if wanted in {'dsh','peer','review'}:
+                        return role in {'review','both'}
+                    if wanted in {'collaborate','collaborator'}:
+                        return role in {'collaborate','both'}
+                    return role == wanted
+                alive=[s for s in sources if not node_state(s)['removed'] and s['reviewer_id'] not in used]
+                exact=[s for s in alive if s['kind']==kind]
+                candidates=exact or [s for s in alive if seat(s, kind)]
                 explicit=selections.get(kind)
                 if explicit:candidates=[s for s in candidates if s['reviewer_id']==explicit]
                 ready=[s for s in candidates if self.readiness(db,s)['ready']]
-                if len(ready)==1:chosen[kind]=ready[0];continue
+                remaining=required_kinds[required_kinds.index(kind):]
+                # When all remaining seats need exactly this eligible set, no
+                # choice is being made. More nodes than seats still use scores.
+                if (len(ready)==len(remaining) and len(ready)>1
+                        and len({independence(s) for s in ready})==len(ready)
+                        and all(seat(s,wanted) for s in ready for wanted in remaining)
+                        and not any(selections.get(wanted) for wanted in remaining)):
+                    first=min(ready,key=lambda s:s['reviewer_id'])
+                    chosen[kind]=first;used.add(first['reviewer_id']);continue
+                if len(ready)==1:chosen[kind]=ready[0];used.add(ready[0]['reviewer_id']);continue
                 if len(ready)>1:
                     from datetime import datetime
                     from zoneinfo import ZoneInfo
                     rankings=self.scoring.weekly(datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat(),task_type)['ranking']
-                    scores={(v['source_ref'],v['model']):(v['points'],v['success_rate'],v['tasks']) for v in rankings}
-                    ranked=[(scores.get((v['source_ref'],node_state(v).get('model')),(0,0,0)),v) for v in ready]
+                    scores={(v.get('role') or '', v['source_ref'], v['model']):(v['points'],v['success_rate'],v['tasks']) for v in rankings}
+                    scores.update({(v['source_ref'], v['model']):(v['points'],v['success_rate'],v['tasks']) for v in rankings})
+                    def rank_of(source):
+                        state=node_state(source)
+                        try:
+                            role=mapped_role(source['kind'])
+                        except ValueError:
+                            role=''
+                        model=state.get('model')
+                        return scores.get((role, source['source_ref'], model)) or scores.get((source['source_ref'], model)) or (0,0,0)
+                    ranked=[(rank_of(v),v) for v in ready]
                     best=max(v[0] for v in ranked)
                     winners=[v for score,v in ranked if score==best]
-                    if best[0]>0 and len(winners)==1:chosen[kind]=winners[0];continue
+                    if best[0]>0 and len(winners)==1:chosen[kind]=winners[0];used.add(winners[0]['reviewer_id']);continue
                     questions.append({'kind':kind,'field':'node_id','question':'本任务使用哪个已测试节点？','options':[{'node_id':s['reviewer_id'],'name':node_state(s)['name']} for s in ready]});continue
                 if not candidates:
                     questions.extend({'kind':kind,'field':k,'question':v} for k,v in FIELDS.items())

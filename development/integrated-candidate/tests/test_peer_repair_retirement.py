@@ -218,9 +218,9 @@ class RetirementTest(unittest.TestCase):
         self.assertEqual([], declared_automatic_actions(config))
         self.assertNotIn("automatic_actions", config.raw["recovery"])
         self.assertTrue(config.raw["recovery"]["resume_requires_user"])
-        # Routing, the enabled pair and worker policy are untouched.
-        self.assertEqual({"agy_review", "dsh_review"}, {a.name for a in config.primary_agents})
-        self.assertEqual(["qoder_review"], [a.name for a in config.standby_agents])
+        # The shipped template has no default roster. Historical names are not a dispatch list.
+        self.assertEqual(set(), {a.name for a in config.primary_agents})
+        self.assertEqual([], [a.name for a in config.standby_agents])
         self.assertEqual(2, int(config.worker["minimum_successful_agents"]))
         self.assertEqual(86400, int(config.worker["health_max_age_seconds"]))
 

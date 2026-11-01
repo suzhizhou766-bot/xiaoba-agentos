@@ -347,6 +347,7 @@ class CLIRuntimeTest(unittest.TestCase):
             "memory_probe": {"ok": True},
             "enabled_agents": ["agy_review", "dsh_review"],
             "minimum_successful_agents": 2,
+            "review_nodes": {"enough": True},
         }
         preflight.update(overrides)
         return preflight
@@ -408,7 +409,7 @@ class MemoryReceiptCLITest(unittest.TestCase):
         self.store = EventStore(self.root / "runtime" / "agentos.sqlite3")
         self.store.initialize()
         self.task_id = self.store.submit("source", 1)
-        self.store.complete(self.task_id, "result")
+        self.store.complete_manually(self.task_id, "result")
         self.candidate = self.root / "candidate.md"
         self.candidate.write_text("---\nstatus: pending_review\n---\n\nbody\n", encoding="utf-8")
         self.sha = hashlib.sha256(self.candidate.read_bytes()).hexdigest()

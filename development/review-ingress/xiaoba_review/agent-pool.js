@@ -100,7 +100,7 @@
       for(const row of rows)el('p',row.model+'：'+row.points+' 分 / '+row.tasks+' 项任务，完成得好 '+Math.round(row.success_rate*100)+'%',box);
       el('p','按任务记＋1或0，不计资源投入，不形成永久总分。',box);
     }).disabled=!writable();
-    if(node.enabled){const a=el('a','用于审查任务 →',actions);a.className='ap-primary';a.href='/open-review?'+(node.kind==='dsh'?'dsh=':'peer=')+encodeURIComponent(node.node_id);}
+    if(node.enabled){const a=el('a','用于审查任务 →',actions);a.className='ap-primary';a.href='/open-review?node='+encodeURIComponent(node.node_id);}
     button(actions,'修改节点',()=>open('edit',node)).disabled=!writable();
     button(actions,node.enabled?'关闭节点':'开启节点',()=>change(node,'toggle',!node.enabled)).disabled=!writable();
     const remove=button(actions,removeConfirm?'确认移除（历史保留）':'移除节点',async()=>{if(!removeConfirm){removeConfirm=true;remove.textContent='确认移除（历史保留）';return;}await change(node,'remove');},'ap-danger');remove.disabled=!writable();
@@ -110,11 +110,13 @@
     const root=byId('apManage');root.replaceChildren();const list=el('div',undefined,root);list.className='ap-list';
     for(const node of state?.nodes.filter(n=>!n.removed)||[])button(list,node.name+' · '+(node.enabled?'开启':'关闭'),()=>open('detail',node));
     button(list,'＋ 添加节点',()=>open('add'),'ap-primary').disabled=!writable();
+    const waiting=state?.waiting_tasks||[];
+    if(waiting.length){el('h3','待处理任务',root);for(const task of waiting)el('p',task.id+' · '+task.last_error+' · 尝试 '+task.attempts,root);}
     const removed=state?.nodes.filter(n=>n.removed)||[];
     if(removed.length){const group=el('details',undefined,root);group.className='ap-removed';el('summary','已移除的节点 · '+removed.length,group);for(const node of removed){const row=el('div',undefined,group);row.className='ap-removed-row';el('span',node.name,row);button(row,'恢复节点',()=>change(node,'restore')).disabled=!writable();}}
   }
   function renderDrawer(){
-    const signature=JSON.stringify([mode,selected,removeConfirm,writable(),state?.nodes]);if(signature===drawerSignature)return;drawerSignature=signature;
+    const signature=JSON.stringify([mode,selected,removeConfirm,writable(),state?.nodes,state?.waiting_tasks]);if(signature===drawerSignature)return;drawerSignature=signature;
     if(mode==='detail'){const node=state?.nodes.find(n=>!n.removed&&n.node_id===selected);if(node)detail(node);else open('manage');}else if(mode==='manage')manage();
   }
   function publish(){for(const watcher of watchers)watcher(state,writable());renderDrawer();}
@@ -131,7 +133,7 @@
     const kind=form.elements.kind;
     let option=kind.querySelector('[value="collaborator"]');
     if(attended&&!option){option=el('option','协作员（上下文不隔离）',kind);option.value='collaborator';}
-    if(attended)kind.value='collaborator';else if(option){option.remove();kind.value='peer';}
+    if(attended)kind.value='collaborator';else if(option){option.remove();if(kind.value==='collaborator')kind.value='review';}
     kind.disabled=attended;cliForm();
   }
   function cliForm(){
@@ -144,7 +146,7 @@
     warning.textContent='入口含版本目录或版本号，更新后可能失效。建议使用稳定入口或软链；DSH 建议使用 current 下的 CLI。仍可保存。';
   }
   const INTERFACE_LABELS={cli:'CLI',desktop:'桌面端',web:'Web',tmux:'CLI · 用户在场（tmux）'};
-  const KIND_LABELS={dsh:'审查槽位 A（兼容旧 DSH 槽位）',peer:'审查槽位 B',collaborator:'协作员（上下文不隔离）'};
+  const KIND_LABELS={dsh:'审查',peer:'审查',collaborator:'协作',review:'审查',collaborate:'协作',both:'两者'};
   function addForm(){
     const form=byId('apForm');form.reset();
     form.elements.kind.disabled=false;form.elements.interface.disabled=false;

@@ -27,7 +27,7 @@ class TaskAtomicityTest(unittest.TestCase):
 
     def test_complete_missing_task_does_not_append_an_event(self):
         with self.assertRaises(KeyError):
-            self.store.complete("missing-task", "result")
+            self.store.complete_manually("missing-task", "result")
 
         self.assertEqual(0, self._event_count("missing-task", "task.completed"))
         self.assertTrue(self.store.verify_event_chain()["ok"])
@@ -37,7 +37,7 @@ class TaskAtomicityTest(unittest.TestCase):
         leased = self.store.lease_next(60)
         self.assertEqual(task_id, leased["id"])
         stale = dict(leased)
-        self.store.complete(task_id, "original result")
+        self.store.complete_manually(task_id, "original result")
 
         with self.assertRaises(ValueError):
             self.store.retry_or_fail(stale, "late worker result", 0)
@@ -145,12 +145,12 @@ class TaskAtomicityTest(unittest.TestCase):
         fail_id = self.store.submit("direct failure", 1)
         fail_task = self.store.lease_next(60)
         self.assertEqual(fail_id, fail_task["id"])
-        self.assertEqual("failed", self.store.fail(fail_id, "invalid input"))
+        self.assertEqual("failed", self.store.fail_manually(fail_id, "invalid input"))
 
         complete_id = self.store.submit("success", 1)
         complete_task = self.store.lease_next(60)
         self.assertEqual(complete_id, complete_task["id"])
-        self.store.complete(complete_id, "done")
+        self.store.complete_manually(complete_id, "done")
         self.assertEqual("completed", self.store.get_task(complete_id)["status"])
         self.assertTrue(self.store.verify_event_chain()["ok"])
 

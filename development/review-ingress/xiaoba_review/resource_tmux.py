@@ -222,6 +222,14 @@ class TmuxChannel:
                     job['receipt_error'] = reason
                 self._save(db, job)
 
+    def cancel_waiting(self, node_id):
+        """Cancel this node's in-person waits. No-op when it has none."""
+        with self.store.native.read_only() as db:
+            waiting = [job['job_id'] for job in self.jobs(db).values()
+                       if job['node_id'] == node_id and job['status'] in ACTIVE]
+        for job_id in waiting:
+            self.cancel(node_id, job_id)
+
     def cancel(self, node_id, job_id):
         with self.store.transaction() as db:
             job = self.jobs(db).get(job_id)

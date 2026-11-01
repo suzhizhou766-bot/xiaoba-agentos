@@ -497,7 +497,7 @@ class MemoryRetrievalLifecycleGateTest(unittest.TestCase):
         self.store.initialize()
         self.sha = hashlib.sha256(b"candidate-bytes").hexdigest()
         self.task_id = self.store.submit("source prompt", 1)
-        self.store.complete(self.task_id, "source result")
+        self.store.complete_manually(self.task_id, "source result")
         self.note = self.vault / "AgentOS" / f"{self.task_id}.md"
         self.note.write_text(
             "---\n"

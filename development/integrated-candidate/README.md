@@ -1,6 +1,6 @@
-# 小八 AgentOS v1.6.5 · AGY + DSH
+# 小八 AgentOS v1.6.5
 
-主后台：agy_review + dsh_review；两份来自不同后台的独立合格结果才交付。备用后台：qoder_review（v1.6.5 起），平时不参与，只在主后台健康探针真实失败或任务中途遇外部故障时公开补位，规则见 docs/STANDBY_POLICY.md。两者都只走各自的本地 CLI 路由。模型来源：DSH 跟随 DeepSeek Harness 桌面的配置；AGY 用配置 `cli_routes.local_agy.model` 里写明的模型（用户 2026-11-01 定）；Qoder 用用户在 qodercli 里上次选定的模型与思考强度。每次调用以 CLI 单次参数传入；配置里的模型就是实际使用的模型，不核实、不比对。AGY 没写模型或读不到 Qoder 选定的模型就停止，不擅换、不回退。小八不读取 Antigravity 和 Qoder 的桌面。
+谁审查、谁协作，只由用户在 Agent 池里设定。没有默认审查节点。要审查的任务至少两份彼此独立的合格结论才交付；独立性看入口程序和模型。宿主可以补一票，条件是这次的执行记录显示宿主没干活、也不是作者，而且不能两票都是宿主。池里没有够格的审查节点时，要审查的任务不入队，页面写明原因。配置模板里不再带固定后台名单；旧配置里的线路资料仍能读，不参与派活。
 
 统一入口：`~/.agents/skills/xiaoba-agentos/scripts/xiaoba`；Codex 自动发现 skill：`~/.codex/skills/xiaoba-agentos`。入口 fail-closed 验证发布后运行已绑定 CLI。
 

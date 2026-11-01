@@ -6,17 +6,14 @@ def load(name, file):
 class CurrentReleaseTest(unittest.TestCase):
  def test_exact_enabled_pair_and_policy(self):
   c=json.loads((ROOT/'config/agentos.json').read_text())
-  self.assertEqual({'agy_review','dsh_review'},{a['name'] for a in c['agents'] if a['enabled'] and not a.get('standby')})
-  # v1.6.5: exactly one standby, which only ever covers a failed primary.
-  self.assertEqual(['qoder_review'],[a['name'] for a in c['agents'] if a.get('standby')])
-  self.assertEqual('qoder',next(a for a in c['agents'] if a.get('standby'))['driver'])
+  self.assertEqual(set(),{a['name'] for a in c['agents'] if a.get('enabled') and not a.get('standby')})
+  self.assertEqual([],[a['name'] for a in c['agents'] if a.get('standby')])
   self.assertEqual(2,c['worker']['minimum_successful_agents'])
   self.assertTrue(c['release']['final_publish_requires_human'])
  def test_generator_repeatable_and_tree_valid(self):
   m=load('current_brain',ROOT/'scripts/build_second_brain.py')
   a=m.build(ROOT);b=m.build(ROOT);self.assertEqual(a,b);self.assertEqual([],m.validate(a))
-  self.assertIn('AGY',a['10_治理与裁决/模型链路与认证.md'])
-  self.assertIn('DSH',a['10_治理与裁决/模型链路与认证.md'])
+  self.assertIn('Agent 池',a['10_治理与裁决/模型链路与认证.md'])
  def test_indices_version_and_history_current_only(self):
   version=load('agentos_version',ROOT/'scripts/agentos_version.py').software_version(ROOT)
   self.assertRegex(version,r'^v\d+\.\d+\.\d+$','pyproject.toml 声明的软件版本必须是 vX.Y.Z')
