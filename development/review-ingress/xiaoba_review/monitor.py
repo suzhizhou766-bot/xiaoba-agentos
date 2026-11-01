@@ -26,6 +26,7 @@ class OpenReviewModule(Module):
                 Route('GET', '/api/agent-pool/state', lambda req: (200,self.pool.state()), 'read'),
                 Route('POST', '/api/agent-pool/preview', self.terminal_preview, 'write'),
                 Route('POST', '/api/agent-pool/nodes', lambda req: self.perform(lambda: self.pool.add(req.json())), 'write'),
+                Route('POST', '/api/agent-pool/edit', lambda req: self.perform(lambda: self.pool.edit(req.json())), 'write'),
                 Route('POST', '/api/agent-pool/toggle', lambda req: self.perform(lambda: self.pool.change(**req.json(),operation='toggle')), 'write'),
                 Route('POST', '/api/agent-pool/remove', lambda req: self.perform(lambda: self.pool.change(**req.json(),operation='remove')), 'write'),
                 Route('POST', '/api/agent-pool/restore', lambda req: self.perform(lambda: self.pool.change(**req.json(),operation='restore')), 'write'),

@@ -12,7 +12,7 @@
 - stdin只写一行NDJSON `{"event":"user","message":{"content":…}}`后关闭。派发句沿用PTY写法，另加“只执行这张卡；不要检索旧任务记录、其它日期的工作日志或小八源码”，末尾附`XIAOBA_TASK_CARD=<卡路径>`。`cwd`是节点固定工作区，`start_new_session=True`以便按进程组回收；环境变量与PTY版同源但不设`TERM`。
 - 每适配器一把锁串行；每次调用期间持有工作区`.session.lock`，结束后释放，同工作区占用仍报`workspace_session_busy`。顺序仍是`verify`→`begin`→`workday.prepare`。`work`类任务先查`previous_work`，命中直接返回并带`replayed=True`，不再起进程；原记录失败则报`work_step_failed`。
 - stdout累计上限1MiB，超过即结束进程组并报`cli_output_limit`；stderr写入有界临时文件，原文不保存、不返回、不进证据。stdout新增可解析JSON行或回执文件大小变化都算进展；连续300秒无进展结束进程组并报`cli_no_progress`。健康探针与初始化总期限90秒，审查与工作无总期限。任何情况不自动重试、不换模型、不换后台。
-- 完成判定只看`workday.read(ticket)`：合格回执且进程已退出即成功；合格回执但进程未退出，最多再等30秒后结束进程组，回执仍有效并记`process_terminated_after_receipt: true`；退出码0且`result`为SUCCESS却没有合格回执报`receipt_missing`；退出码非0或`result`非SUCCESS时先查原生目录信任字样，命中抛`NativeWorkspaceConsent`（状态记blocked，不自动确认、不加任何跳过参数），其余报`cli_failed`并只保留`failure_class`（transient/permanent）。`workday.read`抛出的`WorkspaceError`原样上抛。
+- 完成判定只看`workday.read(ticket)`：合格回执且进程已退出即成功；合格回执但进程未退出，最多再等30秒后结束进程组，回执仍有效并记`process_terminated_after_receipt: true`；退出码0且`result`为SUCCESS却没有合格回执报`receipt_missing`；退出码非0或`result`非SUCCESS时先查原生目录信任字样，命中抛`NativeWorkspaceConsent`（状态记blocked，不自动确认、不加任何跳过参数），agy明确报模型名不被认可时报`model_not_recognized`（permanent，消息只用节点配置里的模型名），其余报`cli_failed`并只保留`failure_class`（transient/permanent）。`workday.read`抛出的`WorkspaceError`原样上抛。
 - 证据字段为`provider='antigravity_cli'`、`model`（配置原值）、`route_source='native_cli_per_step'`、`model_source='node_configuration'`、`call_id`（每次调用）、`execution_mode`、`reply_source='daily_worklog'`、`worklog`；不声称已核验实际上游模型。旧回执里的`model_verification`字段仍能读，新回执一律不再写。身份协议为`agy-cli-worklog-v1`，`implementation_sha256`由`resource_agy_cli.py`、`agent_workspace.py`、`workday.py`三文件字节拼接计算，`instance`在构造时生成、同一服务进程内不变，服务重启后必须重新测试。
 - 只读终端预览返回`supported`、`state`（`not_started`/`running`/`receipt_received`/`failed`/`closed`）、`session_id`（当前或最近一次`call_id`）、`turn`（已完成调用数），再合并`TerminalPreview().snapshot()`；正文是一行进度摘要（第几次调用、已收到几条流事件、回执字节数）加回执日志本轮新增部分的最后40行，统一经`set_screen()`脱敏限幅，不含stdout或stderr原文。
 - `retire()`置停用标志：无任务在跑立即关闭，有任务在跑等它结算后再关；停用后新任务报`session_closed`。`close()`结束进程组（SIGTERM，2秒后SIGKILL）并释放工作区锁。
@@ -89,7 +89,7 @@ CLI JSON入口从stdin接收对象，protocol=xiaoba-resource-v1，operation=tes
 - 输出使用textContent呈现，UTF-8跨块解码，按光标移动和擦除重建当前80行×240列画面后替换预览，避免把TUI重绘碎片不断追加。先脱敏再限幅，可识别的敏感字段隐藏整个画面，邮箱替换为隐藏标记；预览上限仍为160行、每行1024字符。重启清空，不把原始终端转录落盘。它是当前画面的文本投影，不宣称完整复刻TUI颜色或无限历史滚动。
 - 本轮同时修复真实AGY Plan输入提示附带说明时的就绪误判。未知提示、权限和目录信任仍不能自动确认；夹具能完成两轮，不代表真实AGY已完成两轮。
 
-固定工作区父目录由本机启动参数--agent-workspace-root指定，不从网页接收；本次用户指定/Users/suzhizhou/Documents/私人助理/工作区。首次实际使用按节点名称建立子目录。归属标记绑定node_id/source_ref/name，不接管同名非空目录、不跟随子目录符号链接、不自动迁移或删除已有文件；冲突交用户决定。
+固定工作区父目录由本机启动参数--agent-workspace-root指定，不从网页接收；本次用户指定/Users/suzhizhou/Documents/私人助理/工作区。首次实际使用按节点名称建立子目录；节点改名时目录名固定为改名前的值（存进节点资料的workspace_name），材料不搬。归属判定只认node_id：标记里的source_ref和name是写入时的快照，节点改资料后对不上也照常可用，不要求用户迁移。不接管同名非空目录、不跟随子目录符号链接、不自动迁移或删除已有文件；冲突交用户决定，提示写明占用节点名和它是否已移除。
 
 .session.lock阻止同一工作区同时启动两份交互进程。任务卡、合格结构化结果和执行回执存于任务记录子目录；记录.jsonl绑定顺序、前项哈希、任务卡和回执文件摘要，启动及每轮发送前校验，异常停止该节点派活。目录信任仍由用户在节点确认；信任不发送模型任务、不使测试合格。
 

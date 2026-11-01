@@ -35,6 +35,11 @@ from .workday import WorkdayReceipts
 
 
 TRUST_PROMPT = 'Do you trust the contents of this project'
+# agy 1.4.12 reports an unknown model name as
+# `invalid model selection (--model "X" --effort ""): model X is not recognized
+# as a known model or custom model in settings` followed by `Available models:`.
+# Both markers are required; either one alone is some other CLI failure.
+MODEL_REJECTED = ('invalid model selection', 'not recognized')
 ANTI_DRIFT = '只执行这张卡；不要检索旧任务记录、其它日期的工作日志或小八源码。'
 HEALTH_DISPATCH = ('这是文件写回探针，请读取这张卡并直接写入它指定的回执文件。'
     '不要自行做系统健康诊断，不要新建当日台账。')
@@ -325,6 +330,17 @@ class AgyCliResource:
         except Exception: return None
         return str(payload.get('status', '')).upper() or None
 
+    @staticmethod
+    def _model_rejected(*texts):
+        """Whether agy itself said the configured model name is unknown.
+
+        Each text is scanned whole and on its own. The redacted tail keeps only
+        the last 2000 characters, and a long `Available models:` list pushes the
+        error line out of it, so detection cannot run on that tail.
+        """
+        return any(all(marker in text.casefold() for marker in MODEL_REJECTED)
+                   for text in texts if text)
+
     def _settle_exit(self):
         self._drain()
         process = self._process
@@ -336,6 +352,14 @@ class AgyCliResource:
                 'AGY本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
         if TRUST_PROMPT in stdout or TRUST_PROMPT in stderr:
             raise NativeWorkspaceConsent()
+        if self._model_rejected(stderr, stdout):
+            # The name comes from the node configuration only; agy's own output,
+            # including its model list, is never parsed, returned or stored.
+            failure = InteractiveError('model_not_recognized',
+                'AGY不认节点里的模型名“%s”；请在节点设置里点“修改节点”，改成 agy models 列出的名字后重新测试运行。'
+                '不自动重试、不换模型、不换后台。' % self.model)
+            failure.failure_class = 'permanent'
+            raise failure
         # Only a short class survives; the raw text is never returned or stored.
         detail = _redact_error(stderr or stdout or 'agy cli failed')
         failure = InteractiveError('cli_failed',

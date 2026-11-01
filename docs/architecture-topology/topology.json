@@ -750,11 +750,20 @@
           },
           "by": "agent",
           "text": "上班和派后台时才过入口，日常任务可直接路由"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793532642913,
+          "before": {
+            "issues": "已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成"
+          },
+          "by": "agent",
+          "text": "v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办"
         }
       ],
       "id": "entry",
       "intent": "上班和派后台任务时必须过的大门，日常任务不需要过；进门前核对已安装版本、配置与源码是同一套，对得上才放行。用户决定：把 v1.6.5 正式接到统一入口上，替换现在装着的 v1.6.4 启动环节，让实际运行和图上的 v1.6.5 流程一致；完成后核实新会话启动走的确实是 v1.6.5。",
-      "issues": "已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成",
+      "issues": "已安装入口和 session-start 已是 v1.6.5（2026-11-01）；图上其余 v1.6.5 流程是否都接上未逐项核对",
       "note": "",
       "pending": false,
       "refs": "~/.agents/skills/xiaoba-agentos/scripts/xiaoba",
@@ -1151,11 +1160,20 @@
           },
           "by": "agent",
           "text": "更正：修复已随 PR 合入 main，上一条写成未合入是看了过期的本地 main"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793532642913,
+          "before": {
+            "issues": "代码现状：C1 和卡 1～22 的修复随分支 architecture-repair-20261031 合入 main，未发版；未做真实调用\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH"
+          },
+          "by": "agent",
+          "text": "v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办"
         }
       ],
       "id": "backends",
       "intent": "后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可随时添加、删除、开启、关闭；每个节点单独设角色：审查、分工协作，或两样都做。旧的 AGY＋DSH 固定名单退役。",
-      "issues": "代码现状：C1 和卡 1～22 的修复随分支 architecture-repair-20261031 合入 main，未发版；未做真实调用\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH",
+      "issues": "代码现状：随 v1.6.5 上线（2026-11-01）；AGY、DSH 真实探针和一次真实生产任务已通过\nCLI 用户在场通道（tmux）随版本带上，在隔离演示里真实调用通过，见「用户在场通道」\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH",
       "note": "",
       "pending": false,
       "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py\nreview-ingress/xiaoba_review/agent_pool.py\nreview-ingress/AGENT_POOL.md\nreview-ingress/xiaoba_review/resource_tmux.py",
@@ -3666,15 +3684,25 @@
           },
           "by": "agent",
           "text": "裁决 8：待用户处理加上长期未命中"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793532642913,
+          "before": {
+            "issues": "",
+            "status": "dev"
+          },
+          "by": "agent",
+          "text": "v1.6.5 上线后正式 8799 已带 Agent 模块，状态改为已上线"
         }
       ],
       "id": "monitor",
       "intent": "「运行总览」显示：\n· Agent 池各节点的开关、测试资格、本地检测报告和派活后的掉线情况（上班不发探针，宿主核验这份检测报告，用户也在这里看）；\n· 待用户处理：初审队列、终审队列、复用计分提交的（有改动 / 14 天未用）、掉线待换人、NEEDS_INFO 待补材料、退役待删除、待验证经验 30 天未命中；\n· 今日台账：今天的任务、谁在干、干到哪；\n· 评分：Agent＋模型周评分、正式经验排名。\n· B19：同一 Agent 连续产出不合格的记录，由用户决定是否换掉。",
-      "issues": "",
+      "issues": "Agent 模块已在正式 8799 看到（2026-11-01）；“有分歧”提示只在演示上确认过，等第一张真实分歧卡再确认",
       "note": "",
       "pending": false,
       "refs": "私人助理/工具/小八监看",
-      "status": "dev",
+      "status": "done",
       "sub": "Agent 池状态 · 待你处理 · 今日台账 · 评分排名",
       "title": "运行监看",
       "uses": [
@@ -3800,11 +3828,20 @@
           },
           "by": "agent",
           "text": "裁决 3、4、9：掉线口径；台账只放指针"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793532642913,
+          "before": {
+            "issues": "未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\n现行 v1.6.4 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉"
+          },
+          "by": "agent",
+          "text": "v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办"
         }
       ],
       "id": "workday",
       "intent": "工作日台账＝小八上班后在工作区建的当天文件夹，所有节点共用。动态索引的目的：A 节点写入、B 节点读取 A 的产出时不搞乱，让各节点认得路、找对地方。",
-      "issues": "未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\n现行 v1.6.4 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉",
+      "issues": "未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\n现行 v1.6.5 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉",
       "note": "",
       "pending": false,
       "refs": "私人助理/工作区/YYYY-MM-DD-小八台账/\n私人助理/工具/每日台账索引总目录/\nreview-ingress/xiaoba_review/workday.py",
@@ -4014,20 +4051,9 @@
       "y": 1253
     },
     {
-      "id": "attended",
-      "g": "g4",
-      "x": 70,
-      "y": 1403,
-      "title": "用户在场通道",
-      "sub": "tmux 派卡，权限框由用户批，只认文件回执",
-      "status": "dev",
-      "expanded": false,
-      "pending": false,
-      "note": "",
       "desc": "小八把“去读这张卡”发到用户登记的 tmux 会话，发送后不重发、不读屏幕、不替用户确认，回执文件由监看服务自动收。上下文不隔离，只能当协作员，不计入独立审查。",
-      "intent": "用户可以介入调用流程。CLI 用户在场时用 tmux，权限框由用户批；无人值守时用一次性调用。桌面端读卡写文件自动收回执，App 写不了时退回贴回；网页端由用户发送、贴回，小八校验。",
-      "issues": "未做真实调用：本机未装 tmux，只有假 tmux 的离线测试\n待验证：文字后紧接 Enter 是否被真实 CLI 吞掉；监看服务能否找到 tmux\n发送前不检查前台程序是不是 Agent，由用户确认\n移除节点前要先取消等待",
-      "refs": "review-ingress/xiaoba_review/resource_tmux.py\nreview-ingress/tests/test_tmux_channel.py\nreview-ingress/AGENT_POOL.md",
+      "expanded": false,
+      "g": "g4",
       "history": [
         {
           "agent": "Claude",
@@ -4035,10 +4061,30 @@
           "before": {},
           "by": "agent",
           "text": "新增：用户定的三端方案，卡 20 实现了 CLI 部分"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793532642913,
+          "before": {
+            "issues": "未做真实调用：本机未装 tmux，只有假 tmux 的离线测试\n待验证：文字后紧接 Enter 是否被真实 CLI 吞掉；监看服务能否找到 tmux\n发送前不检查前台程序是不是 Agent，由用户确认\n移除节点前要先取消等待"
+          },
+          "by": "agent",
+          "text": "v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办"
         }
-      ]
+      ],
+      "id": "attended",
+      "intent": "用户可以介入调用流程。CLI 用户在场时用 tmux，权限框由用户批；无人值守时用一次性调用。桌面端读卡写文件自动收回执，App 写不了时退回贴回；网页端由用户发送、贴回，小八校验。",
+      "issues": "隔离演示真实调用通过（卡 28，回车未被吞）；随 v1.6.5 上线，正式 8799 上还没真实派过卡\n发送前只拒绝前台是 shell 或目录不对，不确认前台是不是目标 Agent\n移除节点前要先取消等待",
+      "note": "",
+      "pending": false,
+      "refs": "review-ingress/xiaoba_review/resource_tmux.py\nreview-ingress/tests/test_tmux_channel.py\nreview-ingress/AGENT_POOL.md",
+      "status": "dev",
+      "sub": "tmux 派卡，权限框由用户批，只认文件回执",
+      "title": "用户在场通道",
+      "x": 70,
+      "y": 1403
     }
   ],
-  "savedAt": 1793451461970,
+  "savedAt": 1793532642913,
   "version": 1
 }

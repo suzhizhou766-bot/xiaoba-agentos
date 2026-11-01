@@ -61,6 +61,31 @@ class CliFixture(fixtures.FixtureMixin):
             if flag('nonzero-exit'):
                 sys.stderr.write('TEST transient failure: rate limit reached\n')
                 sys.exit(3)
+            # Real agy 1.4.12 text for a model name it does not know. The name in
+            # the output is fixed on purpose: the node's configured value is the
+            # only allowed source for the user-facing message.
+            if flag('invalid-model') or flag('invalid-model-short'):
+                sys.stderr.write('Antigravity CLI TEST\nerror: invalid model selection '
+                    '(--model "gemini 3.8 flash higt" --effort ""): model gemini 3.8 flash higt '
+                    'is not recognized as a known model or custom model in settings\n')
+                if flag('invalid-model'):
+                    # Long enough that the first line falls out of the last 2000
+                    # characters any redacted tail would keep.
+                    sys.stderr.write('Available models:\n')
+                    for i in range(160):
+                        sys.stderr.write('  TEST-available-model-%03d\tdisplay name %03d\n'%(i,i))
+                sys.exit(2)
+            if flag('model-conflict-only'):
+                sys.stderr.write('error: invalid model selection (--model "gemini-3.8-flash-high" '
+                    '--effort "low"): --model gemini-3.8-flash-high conflicts with --effort=low\n')
+                sys.exit(2)
+            if flag('not-recognized-only'):
+                sys.stderr.write('error: udict_swap(): data format 02020000 (format version 2.0) '
+                    'is not recognized as dictionary data\n')
+                sys.exit(2)
+            if flag('fetch-models-network'):
+                sys.stderr.write('error: failed to fetch available models: connection refused\n')
+                sys.exit(2)
             if flag('fail-status'):
                 print(json.dumps({'event':'result','result':{'status':'ERROR','error':'TEST permanent failure: invalid request'}}))
                 sys.exit(0)
@@ -127,8 +152,8 @@ class CliFixture(fixtures.FixtureMixin):
     def review(self,adapter,task='TASK-1',assignment='ASSIGN-1',step='REVIEW-01'):
         return adapter.run({'task_id':task,'assignment_id':assignment,'step_code':step,'card_digest':'TEST'})
 
-    def receipts(self):
-        return sorted((self.workspaces/'用户自定名字').rglob('执行回执-*.json'),
+    def receipts(self,name='用户自定名字'):
+        return sorted((self.workspaces/name).rglob('执行回执-*.json'),
             key=lambda p:p.stat().st_mtime)
 
 
@@ -302,6 +327,98 @@ class CliFailureTests(CliFixture,unittest.TestCase):
         with self.assertRaises(InteractiveError) as error:adapter.test_resource({},'TEST-challenge')
         self.assertEqual(error.exception.code,'cli_output_limit')
         self.assertEqual(len(self.starts()),1)
+
+
+class ModelNameTests(CliFixture,unittest.TestCase):
+    """agy's own unknown-model error must reach the user as a model-name problem."""
+
+    REAL='gemini 3.8 flash higt'
+    MESSAGE=('AGY不认节点里的模型名“%s”；请在节点设置里点“修改节点”，改成 agy models 列出的名字后重新测试运行。'
+             '不自动重试、不换模型、不换后台。')
+
+    def stored(self,name='用户自定名字'):
+        return json.loads(self.receipts(name)[-1].read_text())
+
+    def assert_no_raw_output(self,data):
+        text=json.dumps(data,ensure_ascii=False)
+        for leaked in ('Available models','not recognized','invalid model selection',
+                       'TEST-available-model-000','Antigravity CLI TEST'):
+            self.assertNotIn(leaked,text)
+
+    def assert_model_name_error(self,node,result,model):
+        self.assertEqual(result['status'],'failed',result)
+        self.assertEqual(result['reason'],'model_not_recognized')
+        self.assertEqual(result['message'],self.MESSAGE%model)
+        # One child process: no automatic retry, no fallback model or backend.
+        self.assertEqual(len(self.starts()),1)
+        data=self.stored()
+        self.assertEqual(data['reason'],'model_not_recognized')
+        self.assertEqual(data['execution_evidence']['failure_class'],'permanent')
+        self.assertEqual(data['execution_evidence']['model'],model)
+        self.assert_no_raw_output(data)
+        # The node settings page renders node.test.message, so the reason and the
+        # translated text have to survive into the node state too.
+        state=self.node(node)['test']
+        self.assertEqual(state['reason'],'model_not_recognized')
+        self.assertEqual(state['message'],self.MESSAGE%model)
+        self.assertFalse(self.node(node)['readiness']['ready'])
+        self.assertEqual(self.node(node)['readiness']['reason'],'test_required')
+
+    def test_a_long_available_models_list_does_not_hide_the_model_name_error(self):
+        (self.root/'invalid-model').touch();node=self.add(model=self.REAL)
+        self.assert_model_name_error(node,self.probe(node),self.REAL)
+
+    def test_the_error_is_recognized_without_an_available_models_list(self):
+        (self.root/'invalid-model-short').touch();node=self.add(model=self.REAL)
+        self.assert_model_name_error(node,self.probe(node),self.REAL)
+
+    def test_the_message_uses_the_node_value_and_never_parses_agy_output(self):
+        (self.root/'invalid-model').touch()
+        for index,model in enumerate(('"Gemini 3.8 Flash"','小八测试模型','模型名 带 空格')):
+            with self.subTest(model=model):
+                # One workspace per node name, so each case gets its own.
+                name='TEST-model-%d'%index
+                node=self.add(node_id=name,model=model,name=name)
+                result=self.probe(node)
+                self.assertEqual(result['message'],self.MESSAGE%model)
+                # agy echoed a different name; it must not leak into the message.
+                self.assertNotIn(self.REAL,result['message'])
+                self.assertNotIn('TEST-available-model',result['message'])
+                self.assertEqual(self.stored(name)['execution_evidence']['model'],model)
+
+    def test_a_review_step_also_carries_the_reason_into_its_receipt(self):
+        (self.root/'invalid-model').touch();node=self.add(model=self.REAL)
+        adapter=self.adapter(node)
+        with self.assertRaises(InteractiveError) as error:
+            self.review(adapter,task='TASK-model',assignment='ASSIGN-model')
+        self.assertEqual(error.exception.code,'model_not_recognized')
+        self.assertEqual(error.exception.user_message,self.MESSAGE%self.REAL)
+        data=self.stored()
+        self.assertEqual(data['status'],'failed')
+        self.assertEqual(data['reason'],'model_not_recognized')
+        self.assert_no_raw_output(data)
+
+    def test_a_single_marker_stays_a_generic_cli_failure(self):
+        node=self.add(model=self.REAL)
+        for marker in ('model-conflict-only','not-recognized-only'):
+            with self.subTest(marker=marker):
+                (self.root/marker).touch()
+                result=self.probe(node,'TEST-'+marker)
+                self.assertEqual(result['status'],'failed',result)
+                self.assertEqual(result['reason'],'cli_failed')
+                self.assertEqual(result['message'],
+                    'AGY调用未完成本次任务；不自动重试、不换模型、不换后台。')
+                data=self.stored()
+                self.assertEqual(data['execution_evidence']['failure_class'],'permanent')
+                self.assert_no_raw_output(data)
+                (self.root/marker).unlink()
+
+    def test_a_network_fault_while_listing_models_stays_transient(self):
+        (self.root/'fetch-models-network').touch();node=self.add(model=self.REAL)
+        result=self.probe(node)
+        self.assertEqual(result['status'],'failed',result)
+        self.assertEqual(result['reason'],'cli_failed')
+        self.assertEqual(self.stored()['execution_evidence']['failure_class'],'transient')
 
 
 class CliSessionTests(CliFixture,unittest.TestCase):

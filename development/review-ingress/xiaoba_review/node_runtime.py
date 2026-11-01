@@ -14,9 +14,15 @@ FIELDS = {'name':'Agent 如何命名？', 'interface':'使用哪种调用方式�
 
 
 def spec(source):
+    """What a passed test is bound to: the call itself, not the node's label.
+
+    `name` is deliberately absent. Readiness, the mid-test change check and the
+    frozen-card comparison all key off this digest, so including the name would
+    take away the run qualification a rename has to keep (卡 32：只改名称不作废).
+    """
     node = node_state(source)
     return {'node_id':source['reviewer_id'], 'source_ref':source['source_ref'], 'kind':source['kind'],
-            **{k:node.get(k) for k in ('name','agent','interface','entry','model')}}
+            **{k:node.get(k) for k in ('agent','interface','entry','model')}}
 
 
 class NodeRuntime:
@@ -206,6 +212,7 @@ class NodeRuntime:
             from .resource_agy import InteractiveError
             from .agent_workspace import WorkspaceError
             if isinstance(exc,(InteractiveError,WorkspaceError)):reason=exc.code;message=exc.user_message
+            if getattr(exc,'occupant',None):message=self.occupied_message(exc)
             model_tasks_sent=getattr(exc,'model_tasks_sent',None)
             if reason=='native_workspace_trust_required':status='blocked'
         with self.store.transaction() as db:
@@ -221,6 +228,15 @@ class NodeRuntime:
             node['test']={**test,'event_id':event};node.pop('test_running',None);node.pop('test_deadline',None);node['revision']+=1;current['node']=node
             db.execute('UPDATE ri_sources SET data=? WHERE id=?',(canonical(current),node_id))
             return node['test']
+
+    def occupied_message(self,exc):
+        """Name who holds the directory; the marker's own name may be out of date."""
+        with self.store.native.read_only() as db:
+            row=db.execute('SELECT data FROM ri_sources WHERE id=?',(exc.occupant,)).fetchone()
+        if not row:return exc.user_message
+        node=node_state(json.loads(row[0]))
+        return '%s占用它的节点：“%s”（%s）。不自动接管、覆盖或删除。'%(
+            exc.user_message,node.get('name'),'已移除，材料保留' if node['removed'] else '未移除')
 
     def confirm_interactive_workspace(self,node_id,expected_revision,action_id,session_id,decision):
         if decision!='trust' or type(expected_revision) is not int:

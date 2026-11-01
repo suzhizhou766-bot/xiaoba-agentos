@@ -1,102 +1,147 @@
 [
   {
-    "id": "c1793451461970backends",
+    "at": 1793532642913,
+    "before": "{\"issues\": \"代码现状：C1 和卡 1～22 的修复随分支 architecture-repair-20261031 合入 main，未发版；未做真实调用\\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\"}",
+    "day": "2026-11-01",
+    "op": "agent",
+    "target": "backends",
+    "text": "整理「后台执行适配器 · Agent 池」：v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办",
+    "id": "c1793532642913backends"
+  },
+  {
+    "at": 1793532642913,
+    "before": "{\"issues\": \"已安装 session-start 仍属 v1.6.4，v1.6.5 正式接线未完成\"}",
+    "day": "2026-11-01",
+    "op": "agent",
+    "target": "entry",
+    "text": "整理「统一 xiaoba 入口」：v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办",
+    "id": "c1793532642913entry"
+  },
+  {
+    "at": 1793532642913,
+    "before": "{\"issues\": \"未实现：每日索引、总目录、接续清单；现有 workday.py 只写每个节点自己的日 Markdown\\n现行 v1.6.4 session-start 仍做 AGY＋DSH 真实探针；HANDOFF 第七批「开工先写健康回执」需按本裁定改掉\"}",
+    "day": "2026-11-01",
+    "op": "agent",
+    "target": "workday",
+    "text": "整理「工作日台账」：v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办",
+    "id": "c1793532642913workday"
+  },
+  {
+    "at": 1793532642913,
+    "before": "{\"issues\": \"未做真实调用：本机未装 tmux，只有假 tmux 的离线测试\\n待验证：文字后紧接 Enter 是否被真实 CLI 吞掉；监看服务能否找到 tmux\\n发送前不检查前台程序是不是 Agent，由用户确认\\n移除节点前要先取消等待\"}",
+    "day": "2026-11-01",
+    "op": "agent",
+    "target": "attended",
+    "text": "整理「用户在场通道」：v1.6.5 于 2026-11-01 切换上线，按实际情况更新问题与待办",
+    "id": "c1793532642913attended"
+  },
+  {
+    "at": 1793532642913,
+    "before": "{\"status\": \"dev\", \"issues\": \"\"}",
+    "day": "2026-11-01",
+    "op": "agent",
+    "target": "monitor",
+    "text": "整理「运行监看」：v1.6.5 上线后正式 8799 已带 Agent 模块，状态改为已上线",
+    "id": "c1793532642913monitor"
+  },
+  {
     "at": 1793451461970,
+    "before": "{\"issues\": \"代码现状：C1 和卡 1～22 的修复已提交到分支 architecture-repair-20261031，未合入 main、未发版；未做真实调用\\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "backends",
-    "before": "{\"issues\": \"代码现状：C1 和卡 1～22 的修复已提交到分支 architecture-repair-20261031，未合入 main、未发版；未做真实调用\\n新增 CLI 用户在场通道（tmux），只有离线测试，见「用户在场通道」\\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\"}",
-    "text": "整理「后台执行适配器 · Agent 池」：更正：修复已随 PR 合入 main，上一条写成未合入是看了过期的本地 main"
+    "text": "整理「后台执行适配器 · Agent 池」：更正：修复已随 PR 合入 main，上一条写成未合入是看了过期的本地 main",
+    "id": "c1793451461970backends"
   },
   {
-    "id": "c1793451351873run2",
     "at": 1793451351873,
+    "before": "{\"issues\": \"代码仍读 judge.decided（validation_evidence.py:100），待改\\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "run2",
-    "before": "{\"issues\": \"代码仍读 judge.decided（validation_evidence.py:100），待改\\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）\"}",
-    "text": "整理「执行第二轮重新验证」：问题 3 已由卡 4 修复（候选代码）"
+    "text": "整理「执行第二轮重新验证」：问题 3 已由卡 4 修复（候选代码）",
+    "id": "c1793451351873run2"
   },
   {
-    "id": "c1793451351873attended",
     "at": 1793451351873,
+    "before": "",
     "day": "2026-10-31",
     "op": "agent",
     "target": "attended",
-    "before": "",
-    "text": "新增「用户在场通道」节点和两条连线：用户定的三端方案，卡 20 实现了 CLI 部分"
+    "text": "新增「用户在场通道」节点和两条连线：用户定的三端方案，卡 20 实现了 CLI 部分",
+    "id": "c1793451351873attended"
   },
   {
-    "id": "c1793451351873diff",
     "at": 1793451351873,
+    "before": "{\"issues\": \"问题4（待改代码）：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "diff",
-    "before": "{\"issues\": \"问题4（待改代码）：两方结论被合并写进 dsh_verdict / peer_verdict，分歧丢失（experience_workflow.py:709）\"}",
-    "text": "整理「核对两轮差异与原因」：问题 4 已由卡 4 修复（候选代码）"
+    "text": "整理「核对两轮差异与原因」：问题 4 已由卡 4 修复（候选代码）",
+    "id": "c1793451351873diff"
   },
   {
-    "id": "c1793451351873receipts",
     "at": 1793451351873,
+    "before": "{\"issues\": \"问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡\\n待实现：定义什么算工作进度（文件回执方式下用什么信号，见任务卡 8）\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "receipts",
-    "before": "{\"issues\": \"问题6：回执的 evidence_refs 只查非空，未核对是否出自任务卡\\n待实现：定义什么算工作进度（文件回执方式下用什么信号，见任务卡 8）\"}",
-    "text": "整理「统一回执入口」：核实第 2 版合同已校验证据引用；按卡 11 定下工作进度信号"
+    "text": "整理「统一回执入口」：核实第 2 版合同已校验证据引用；按卡 11 定下工作进度信号",
+    "id": "c1793451351873receipts"
   },
   {
-    "id": "c1793451351873collab",
     "at": 1793451351873,
+    "before": "{\"issues\": \"角色仍只有 dsh / peer 两个槽位，需改为 审查 / 协作\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "collab",
-    "before": "{\"issues\": \"角色仍只有 dsh / peer 两个槽位，需改为 审查 / 协作\"}",
-    "text": "整理「协作节点」：tmux 节点已使用 collaborator 角色，其它节点未改"
+    "text": "整理「协作节点」：tmux 节点已使用 collaborator 角色，其它节点未改",
+    "id": "c1793451351873collab"
   },
   {
-    "id": "c1793451351873confirmed",
     "at": 1793451351873,
+    "before": "{\"issues\": \"问题5：代码只比对 source_ref 字符串（store.py:164），且把同一 CLI 路径 / 同一网站视为同一来源，与“入口程序＋模型”规则不一致，需改\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "confirmed",
-    "before": "{\"issues\": \"问题5：代码只比对 source_ref 字符串（store.py:164），且把同一 CLI 路径 / 同一网站视为同一来源，与“入口程序＋模型”规则不一致，需改\"}",
-    "text": "整理「实际来源确认与独立性核对」：问题 5 已由卡 9、卡 12 修复（候选代码）：独立性看入口程序＋模型，模型名归一后比较"
+    "text": "整理「实际来源确认与独立性核对」：问题 5 已由卡 9、卡 12 修复（候选代码）：独立性看入口程序＋模型，模型名归一后比较",
+    "id": "c1793451351873confirmed"
   },
   {
-    "id": "c1793451351873peer",
     "at": 1793451351873,
+    "before": "{\"issues\": \"实现测试后确定联调方式\\nAGY 在 stream-json 模式下不能响应权限确认（旧问题，待改用 CLI 每步调用后复核）\\n位置里的 resource_agy_cli.py 还没提交到 GitHub\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "peer",
-    "before": "{\"issues\": \"实现测试后确定联调方式\\nAGY 在 stream-json 模式下不能响应权限确认（旧问题，待改用 CLI 每步调用后复核）\\n位置里的 resource_agy_cli.py 还没提交到 GitHub\"}",
-    "text": "整理「审查节点 B」：删除已过时的未提交说明；写入卡 11 结论：无人值守不跑命令"
+    "text": "整理「审查节点 B」：删除已过时的未提交说明；写入卡 11 结论：无人值守不跑命令",
+    "id": "c1793451351873peer"
   },
   {
-    "id": "c1793451351873backends",
     "at": 1793451351873,
+    "before": "{\"issues\": \"代码现状：v1.6.5 C1（AGY 恢复每步一次 CLI 调用并保留回执卡）只在用户本机工作区，未提交；离线 146 项通过的证据也只在本机，GitHub 版接入口是 126 项；未做真实调用，结论看任务卡 8。\\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "backends",
-    "before": "{\"issues\": \"代码现状：v1.6.5 C1（AGY 恢复每步一次 CLI 调用并保留回执卡）只在用户本机工作区，未提交；离线 146 项通过的证据也只在本机，GitHub 版接入口是 126 项；未做真实调用，结论看任务卡 8。\\n节点角色仍只有 dsh / peer 两个槽位（agent_pool.py:71），需改为 审查 / 协作\\n旧 Worker 后台名单未迁移，生产仍走固定 AGY＋DSH\"}",
-    "text": "整理「后台执行适配器 · Agent 池」：C1 和修复已提交到分支；记录新增的用户在场通道"
+    "text": "整理「后台执行适配器 · Agent 池」：C1 和修复已提交到分支；记录新增的用户在场通道",
+    "id": "c1793451351873backends"
   },
   {
-    "id": "c1793451351873review_evidence",
     "at": 1793451351873,
+    "before": "{\"issues\": \"代码现状：回执合同还是第 1 版（development/review-ingress/xiaoba_review/store.py:142），没有评分、适用限制、审查类型和重复经验字段；上面的说明写的是设计要求。任务卡 2 修。\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "review_evidence",
-    "before": "{\"issues\": \"代码现状：回执合同还是第 1 版（development/review-ingress/xiaoba_review/store.py:142），没有评分、适用限制、审查类型和重复经验字段；上面的说明写的是设计要求。任务卡 2 修。\"}",
-    "text": "整理「当轮独立审查证据」：回执合同第 2 版已由卡 2、卡 21 实现（候选代码）"
+    "text": "整理「当轮独立审查证据」：回执合同第 2 版已由卡 2、卡 21 实现（候选代码）",
+    "id": "c1793451351873review_evidence"
   },
   {
-    "id": "c1793451351873run1",
     "at": 1793451351873,
+    "before": "{\"issues\": \"代码仍读 judge.decided（validation_evidence.py:100），待改\\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）\"}",
     "day": "2026-10-31",
     "op": "agent",
     "target": "run1",
-    "before": "{\"issues\": \"代码仍读 judge.decided（validation_evidence.py:100），待改\\n问题3（处理方式已定，代码待改）：FAIL 记本轮未通过，NEEDS_INFO 暂停补材料（experience_workflow.py:700）\"}",
-    "text": "整理「执行第一轮隔离验证」：问题 3 已由卡 4 修复（候选代码）"
+    "text": "整理「执行第一轮隔离验证」：问题 3 已由卡 4 修复（候选代码）",
+    "id": "c1793451351873run1"
   },
   {
     "at": 1793369207299,

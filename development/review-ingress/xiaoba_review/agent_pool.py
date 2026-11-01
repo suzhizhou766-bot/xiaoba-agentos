@@ -52,6 +52,63 @@ def independence(source):
     return independence_key(source['source_ref'], state.get('model') if state.get('entry') else None)
 
 
+# 用户 2026-11-01 要求节点可修改。节点ID、角色、调用方式是不可改的身份字段。
+NODE_FIELDS = ('name', 'agent', 'entry', 'model')
+TMUX_FIELDS = ('tmux_session', 'working_directory')
+
+
+def entry_identity(clean):
+    """The entry program behind source_ref: one service, one identity."""
+    interface, entry = clean['interface'], clean['entry']
+    if interface == 'tmux':
+        if not Path(entry).is_absolute():raise ValueError('CLI入口需要绝对路径')
+        return entry
+    if interface == 'web':
+        url = urlsplit(entry)
+        from urllib.parse import parse_qsl
+        credential_fields={'token','key','api_key','password','authorization','cookie','session'}
+        if (url.scheme not in {'https','http'} or not url.netloc or url.username or url.password or url.fragment
+                or any(k.casefold() in credential_fields for k,v in parse_qsl(url.query))):
+            raise ValueError('Web入口需要不含登录材料的HTTP地址')
+        # One service and its conversation URLs share one entry program;
+        # independence adds the model on top of it (see independence()).
+        return url.scheme.lower()+'://'+url.netloc.lower()
+    if interface == 'cli':
+        path = Path(entry)
+        if not path.is_absolute():
+            raise ValueError('CLI入口请填写程序的绝对路径，不填写shell命令')
+        return str(path.resolve())
+    return entry.casefold()
+
+
+def validate_node(value):
+    """The one registration check, shared by add and edit; never a second copy."""
+    tmux = value.get('interface') == 'tmux'
+    fields = {'node_id','name','agent','kind','interface','entry','model'}
+    if tmux:fields |= set(TMUX_FIELDS)
+    if set(value) != fields:
+        raise ValueError('请填写节点名称、Agent、角色、调用方式、入口及模型')
+    for key in ('node_id','name','agent','entry','model'):
+        if not isinstance(value[key],str) or not value[key].strip() or len(value[key]) > 2048 or any(c in value[key] for c in '\r\n\0'):
+            raise ValueError('节点字段不完整或格式异常：'+key)
+    if len(value['node_id']) > 128 or value['kind'] not in ({'collaborator'} if tmux else {'dsh','peer'}) or value['interface'] not in {'cli','desktop','web','tmux'}:
+        raise ValueError('未知节点角色或调用方式')
+    from xiaoba_agentos.memory import MemoryBridge
+    if MemoryBridge._sensitive_reason(canonical(value)):
+        raise ValueError('Agent池只登记调用资料，请勿填写密钥、令牌或登录材料')
+    clean = {k:v.strip() if isinstance(v,str) else v for k,v in value.items()}
+    if tmux:
+        from .resource_tmux import validate_session, validate_directory
+        clean['tmux_session'] = validate_session(value['tmux_session'])
+        clean['working_directory'] = validate_directory(value['working_directory'])
+        clean['context_isolated'] = False
+    return clean, entry_identity(clean), tmux
+
+
+def entry_ref(interface, identity):
+    return 'agent-entry:'+digest([interface,identity])
+
+
 class AgentPool:
     def __init__(self, store, backends):
         self.store, self.backends = store, backends
@@ -84,63 +141,120 @@ class AgentPool:
                 'selection_scope':'open_review_tasks','client_settings_modified':False}
 
     def add(self, value):
-        tmux = value.get('interface') == 'tmux'
-        fields = {'node_id','name','agent','kind','interface','entry','model'}
-        if tmux:fields |= {'tmux_session','working_directory'}
-        if set(value) != fields:
-            raise ValueError('请填写节点名称、Agent、角色、调用方式、入口及模型')
-        for key in ('node_id','name','agent','entry','model'):
-            if not isinstance(value[key],str) or not value[key].strip() or len(value[key]) > 2048 or any(c in value[key] for c in '\r\n\0'):
-                raise ValueError('节点字段不完整或格式异常：'+key)
-        if len(value['node_id']) > 128 or value['kind'] not in ({'collaborator'} if tmux else {'dsh','peer'}) or value['interface'] not in {'cli','desktop','web','tmux'}:
-            raise ValueError('未知节点角色或调用方式')
-        from xiaoba_agentos.memory import MemoryBridge
-        if MemoryBridge._sensitive_reason(canonical(value)):
-            raise ValueError('Agent池只登记调用资料，请勿填写密钥、令牌或登录材料')
-        clean = {k:v.strip() if isinstance(v,str) else v for k,v in value.items()}
-        entry = clean['entry']
-        if tmux:
-            from .resource_tmux import validate_session, validate_directory
-            clean['tmux_session'] = validate_session(value['tmux_session'])
-            clean['working_directory'] = validate_directory(value['working_directory'])
-            clean['context_isolated'] = False
-            identity = clean['entry']
-            if not Path(identity).is_absolute():raise ValueError('CLI入口需要绝对路径')
-        elif clean['interface'] == 'web':
-            url = urlsplit(entry)
-            from urllib.parse import parse_qsl
-            credential_fields={'token','key','api_key','password','authorization','cookie','session'}
-            if (url.scheme not in {'https','http'} or not url.netloc or url.username or url.password or url.fragment
-                    or any(k.casefold() in credential_fields for k,v in parse_qsl(url.query))):
-                raise ValueError('Web入口需要不含登录材料的HTTP地址')
-            # One service and its conversation URLs share one entry program;
-            # independence adds the model on top of it (see independence()).
-            identity = url.scheme.lower()+'://'+url.netloc.lower()
-        elif clean['interface'] == 'cli':
-            path = Path(entry)
-            if not path.is_absolute():
-                raise ValueError('CLI入口请填写程序的绝对路径，不填写shell命令')
-            identity = str(path.resolve())
-        else:
-            identity = entry.casefold()
+        clean, identity, tmux = validate_node(value)
         source = {'reviewer_id':clean['node_id'],'kind':clean['kind'],
-            'source_ref':'agent-entry:'+digest([clean['interface'],identity]),
+            'source_ref':entry_ref(clean['interface'],identity),
             'provenance':'用户在Agent池登记的调用资源；未探测或核实客户端设置',
             'node':{'version':1,'revision':1,'enabled':False,'removed':False,
                     **{k:clean[k] for k in ('name','agent','interface','entry','model')}}}
         if tmux:
-            source['node'].update({k:clean[k] for k in ('tmux_session','working_directory','context_isolated')})
+            source['node'].update({k:clean[k] for k in (*TMUX_FIELDS,'context_isolated')})
         with self.store.transaction() as db:
             old = db.execute('SELECT data FROM ri_sources WHERE id=?', (clean['node_id'],)).fetchone()
             if old:
                 existing = json.loads(old[0])
                 # Retry cannot reset a node's switches or removal state.
-                fields = ('name','agent','interface','entry','model') + (('tmux_session','working_directory') if tmux else ())
+                fields = ('name','agent','interface','entry','model') + (TMUX_FIELDS if tmux else ())
                 if existing['kind'] != source['kind'] or any(node_state(existing).get(k) != source['node'][k] for k in fields):
                     raise Conflict('同一节点ID已用于不同资源')
                 return existing
             db.execute('INSERT INTO ri_sources VALUES (?,?)', (clean['node_id'],canonical(source)))
             self.store.native._append_event_tx(db,None,'agent_pool.added',source)
+        return source
+
+    def _require_idle(self, db, node_id, state):
+        """An edit must not race work this node still owns."""
+        if state.get('test_running'):
+            raise Conflict('该节点正在测试，请等测试结束再修改')
+        rows = db.execute('SELECT running,request_id FROM ri_assignments WHERE source_id=? AND active=1',
+                          (node_id,)).fetchall()
+        if any(row['running'] for row in rows):
+            raise Conflict('该节点有进行中的调用，请等它结束再修改')
+        for row in rows:
+            # fresh() reads common and candidate_id off the row, so this cannot
+            # project a single column.
+            request = db.execute('SELECT * FROM ri_requests WHERE id=?', (row['request_id'],)).fetchone()
+            # A settled request keeps its assignment active forever, so only an
+            # unsettled one is still live work; otherwise a node that has ever
+            # reviewed could never be edited again.
+            # A stale request can never settle and its card can never run again.
+            if request and request['state'] == 'waiting_receipts' and self.store.fresh(db,request):
+                raise Conflict('该节点仍有未结算的审查指派，请等本次审查结束再修改')
+        if state.get('interface') == 'tmux':
+            from .resource_tmux import ACTIVE
+            if any(job['status'] in ACTIVE and job['node_id'] == node_id for job in self.tmux.jobs(db).values()):
+                raise Conflict('该节点有等待中的在场任务，请等它结束再修改')
+
+    def edit(self, value):
+        """Change a node's editable fields; its identity, role and interface stay.
+
+        Readiness is bound to digest(spec(source)) and to the adapter identity, so
+        a changed entry, model or Agent loses run qualification by itself; nothing
+        here fakes that by clearing a digest. A rename keeps the qualification.
+        Switches, receipts and frozen cards survive either way.
+        """
+        if not isinstance(value,dict) or set(value) - {'node_id','expected_revision'} - set(NODE_FIELDS) - set(TMUX_FIELDS):
+            # The per-node list below is the accurate one; tmux fields only exist
+            # for tmux nodes, so this guard must not promise them to every caller.
+            raise ValueError('只能修改节点资料；节点ID、角色、调用方式不能改')
+        node_id, expected_revision = value.get('node_id'), value.get('expected_revision')
+        if not isinstance(node_id,str) or not node_id or type(expected_revision) is not int:
+            raise ValueError('需要节点ID和当前修订号')
+        changes = {k:v for k,v in value.items() if k not in {'node_id','expected_revision'}}
+        with self.store.transaction() as db:
+            source = self.store.source(db,node_id)
+            state = node_state(source)
+            tmux = state.get('interface') == 'tmux'
+            allowed = NODE_FIELDS + (TMUX_FIELDS if tmux else ())
+            if not changes or set(changes) - set(allowed):
+                raise ValueError('可修改：名称、Agent、入口、模型'
+                    + ('、会话名、工作目录' if tmux else '')
+                    + '；节点ID、角色、调用方式不能改')
+            if state.get('legacy'):
+                raise ValueError('旧四字段来源没有节点资料，不能修改；请重新登记节点')
+            if state['removed']:
+                raise ValueError('节点已移除，请先恢复再修改')
+            fields = {'node_id':node_id,'kind':source['kind'],'interface':state['interface'],
+                      **{k:changes[k] if k in changes else state.get(k) for k in allowed}}
+            clean, identity, _ = validate_node(fields)
+            after = {'source_ref':entry_ref(clean['interface'],identity),
+                     **{k:clean[k] for k in allowed}}
+            same = after['source_ref'] == source['source_ref'] and all(state.get(k) == after[k] for k in allowed)
+            if state['revision'] != expected_revision:
+                # An identical retry of the edit that just landed is not a change.
+                if not (same and state['revision'] == expected_revision+1):
+                    raise Conflict('节点已变化，请刷新后重试')
+                return source
+            if same:
+                return source
+            self._require_idle(db,node_id,state)
+            before = dict(state)
+            before_ref = source['source_ref']
+            if after['name'] != state['name']:
+                state.setdefault('workspace_name',state['name'])  # 名字变了，目录和任务记录不搬。
+            state.update({k:after[k] for k in allowed},revision=state['revision']+1)
+            source['node'] = state
+            source['source_ref'] = after['source_ref']
+            # Readiness fails on its own digest once spec() moves, so replacing the
+            # record only stops the page from showing a result that no longer
+            # applies — and a rename must not do even that. The superseded result
+            # stays in agent_pool.test_finished and in this event's `before`.
+            from .node_runtime import spec
+            moved = digest(spec({'reviewer_id':node_id,'kind':source['kind'],
+                                 'source_ref':before_ref,'node':before})) != digest(spec(source))
+            if moved and before.get('test'):
+                state['test'] = {'status':'invalidated','reason':'node_edited',
+                                 'test_id':before['test'].get('test_id'),
+                                 'message':'节点资料已修改，上一次测试结果不再适用；请重新测试运行。'}
+            db.execute('UPDATE ri_sources SET data=? WHERE id=?', (canonical(source),node_id))
+            self.store.native._append_event_tx(db,None,'agent_pool.edited',{
+                'node_id':node_id,'before':before,'after':dict(state),
+                'before_source_ref':before_ref,'after_source_ref':after['source_ref']})
+        # A rebuilt adapter is what points at the new entry and model. Skipping the
+        # rebuild for a rename is what keeps its qualification: a fresh AGY adapter
+        # carries a new instance id, and readiness reads that as an untested runner.
+        if moved:
+            self.backends.retire_resource(node_id)
         return source
 
     def change(self, node_id, expected_revision, operation, enabled=None):

@@ -22,7 +22,10 @@ class BackendRegistry:
         if source['reviewer_id'] in self.adapters:return self.adapters[source['reviewer_id']]
         if not self.resource_factory:return None
         node=source.get('node',{})
-        key=canonical([source['source_ref'],source['kind'],*[node.get(k) for k in ('name','interface','entry','model')]])
+        # `name` is not in the key: the workspace directory is pinned at the first
+        # rename, so rebuilding would only hand readiness a fresh adapter instance
+        # and cost a renamed node its test qualification.
+        key=canonical([source['source_ref'],source['kind'],*[node.get(k) for k in ('interface','entry','model')]])
         with self.resource_lock:
             cached=self.resource_adapters.get(source['reviewer_id'])
             if cached and cached[0]==key:return cached[1]
