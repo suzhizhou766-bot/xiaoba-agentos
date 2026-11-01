@@ -73,13 +73,14 @@
       return;
     }
     const dl=el('dl',undefined,root);
-    for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',node.model||'未登记'],['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
+    for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',(node.model||'由 CLI 当前配置决定')+(node.agent_type==='dsh'?' · 由 DSH 桌面配置决定':'')],['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
     el('p',node.backend_available?'已接入本机调用器，按节点填写的入口与模型配置派发任务。':'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
     if(node.execution_mode==='native_interactive_serial')el('p','同一交互会话逐条执行任务卡，过程与回执写入当日Markdown；终端只供查看进度。',root).className='ap-note';
     const actions=el('div',undefined,root);actions.className='ap-actions';
-    const readiness=node.readiness||{},labels={disabled:'已关闭',removed:'已移除',missing_configuration:'资料待补齐',adapter_required:'调用器待接入',entry_changed_or_unavailable:'入口待核对',test_required:'尚未通过当前配置的测试',test_evidence_invalid:'测试证据无效',native_confirmation_required:'等待你确认AGY原生工作区',testing:'正在测试',tested:'测试通过，可直接运行'};
+    const readiness=node.readiness||{},labels={disabled:'已关闭',removed:'已移除',missing_configuration:'资料待补齐',adapter_required:'调用器待接入',entry_changed_or_unavailable:'入口待核对',entry_unavailable:'入口不存在或不可执行',test_required:'尚未通过当前配置的测试',test_evidence_invalid:'测试证据无效',native_confirmation_required:'等待你确认AGY原生工作区',testing:'正在测试',tested:'测试通过，可直接运行'};
     const status=el('p','运行资格：'+(labels[readiness.reason]||'待测试'),root);status.className='ap-note';root.insertBefore(status,actions);
     if(node.test?.test_id){const last=el('p','最近测试：'+node.test.test_id+' · '+node.test.status,root);last.className='ap-note';root.insertBefore(last,actions);}
+    if(node.entry_warning)el('p',node.entry_warning,root).className='ap-note';
     if(node.test?.message&&!node.pending_action)el('p',node.test.message,root).className='ap-note';
     if(node.test?.reason==='interactive_result_invalid')el('p','上面的失败来自先前的终端结果读取。新的文件回执方式尚未在此节点实测。',root).className='ap-note';
     if(node.pending_action?.type==='native_workspace_trust'){
@@ -89,7 +90,7 @@
       el('p','这会授予AGY此目录的读、改和执行权限；请你本人决定。关闭节点可取消。',consent).className='ap-note';
     }
     const warning=el('p','测试运行会按节点配置向此入口发送任务；不读取或修改你的登录设置。',root);warning.className='ap-note';root.insertBefore(warning,actions);
-    button(actions,'测试运行',async()=>{const test=await api('test',{node_id:node.node_id,expected_revision:node.revision,test_id:crypto.randomUUID()});await refresh();note(test.result.status==='passed'?'测试通过，后续相同配置的适用任务直接运行，不再补问资料。':test.result.message||'测试未通过；不会自动调用或换用其它后台。');},'ap-primary').disabled=!writable()||!node.enabled||Boolean(node.test_running)||Boolean(node.pending_action);
+    button(actions,'测试运行',async()=>{const test=await api('test',{node_id:node.node_id,expected_revision:node.revision,test_id:crypto.randomUUID()});await refresh();if(selected===node.node_id&&mode==='detail')note(test.result.status==='passed'?'测试通过，后续相同配置的适用任务直接运行，不再补问资料。':test.result.message||'测试未通过；不会自动调用或换用其它后台。');},'ap-primary').disabled=!writable()||!node.enabled||Boolean(node.test_running)||Boolean(node.pending_action);
     button(actions,'本周表现',async()=>{
       const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const data=await api('weekly-scores',{day});root.querySelector('[data-weekly-scores]')?.remove();const box=el('section',undefined,root);box.className='ap-note';box.dataset.weeklyScores=node.node_id;
@@ -131,7 +132,16 @@
     let option=kind.querySelector('[value="collaborator"]');
     if(attended&&!option){option=el('option','协作员（上下文不隔离）',kind);option.value='collaborator';}
     if(attended)kind.value='collaborator';else if(option){option.remove();kind.value='peer';}
-    kind.disabled=attended;
+    kind.disabled=attended;cliForm();
+  }
+  function cliForm(){
+    const form=byId('apForm'),cli=form.elements.interface.value==='cli';
+    byId('apTypeField').hidden=!cli;form.elements.agent_type.disabled=!cli;
+    form.elements.model.required=!cli;
+    byId('apModelNote').textContent=cli?(form.elements.agent_type.value==='dsh'?'由 DSH 桌面配置决定；填写的模型文字原样保留，不传模型参数。':'模型可留空，由 CLI 当前配置决定；填写后按原值传入，不读取 CLI 设置。'):'';
+    const warning=byId('apEntryWarning'),versioned=/(?:^|[\/\\])versions[\/\\]|\d+\.\d+\.\d+/.test(form.elements.entry.value);
+    warning.hidden=!cli||!versioned;
+    warning.textContent='入口含版本目录或版本号，更新后可能失效。建议使用稳定入口或软链；DSH 建议使用 current 下的 CLI。仍可保存。';
   }
   const INTERFACE_LABELS={cli:'CLI',desktop:'桌面端',web:'Web',tmux:'CLI · 用户在场（tmux）'};
   const KIND_LABELS={dsh:'审查槽位 A（兼容旧 DSH 槽位）',peer:'审查槽位 B',collaborator:'协作员（上下文不隔离）'};
@@ -161,8 +171,10 @@
       +' · 调用方式 '+(INTERFACE_LABELS[node.interface]||node.interface)
       +'。要换这三项请移除后重新添加。Agent 名称沿用原值：'+(node.agent||'未登记')+'。';
     byId('apSubmit').textContent='保存修改';
-    form.elements.name.focus();
+    form.elements.agent_type.value=node.agent_type||'other';cliForm();form.elements.name.focus();
   }
+  byId('apForm').elements.agent_type.addEventListener('change',cliForm);
+  byId('apForm').elements.entry.addEventListener('input',cliForm);
   byId('apForm').elements.interface.addEventListener('change',tmuxForm);
   byId('apForm').addEventListener('submit',async event=>{
     event.preventDefault();const submit=event.submitter;submit.disabled=true;
@@ -172,6 +184,7 @@
         // agent 不发送：名称和 Agent 是两项资料，改名不该顺带改掉 Agent。
         const payload={node_id:node.node_id,expected_revision:node.revision,
                        name:value.name,entry:value.entry,model:value.model};
+        if(node.interface==='cli'&&value.agent_type!==node.agent_type)payload.agent_type=value.agent_type;
         if(node.interface==='tmux'){payload.tmux_session=value.tmux_session;payload.working_directory=value.working_directory;}
         const edited=await api('edit',payload);
         await refresh();open('detail',state.nodes.find(n=>n.node_id===node.node_id));

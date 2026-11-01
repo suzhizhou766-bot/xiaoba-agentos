@@ -135,25 +135,12 @@ class AgyInteractiveResource:
         self._retired = False
         self._turns = 0
         self.pending_action = None
-        self._launch_checksum = None
         self._input_ready = False
         self._consent_submitted = False
 
     def resource_identity(self):
-        path = Path(self.entry).resolve(strict=True)
-        if not path.is_file() or not os.access(path, os.X_OK):
-            raise InteractiveError('entry_unavailable', 'AGY入口不是可执行文件。')
-        if self._process is not None and self._process.poll() is not None:
-            raise InteractiveError('session_closed', 'AGY交互会话已结束，请显式测试后再运行。')
-        with path.open('rb') as stream:
-            checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
-        if self._launch_checksum is not None and checksum!=self._launch_checksum:
-            raise InteractiveError('entry_changed', 'AGY入口已变化，请关闭再开启节点并显式测试。')
-        implementation = hashlib.sha256(b''.join(Path(__file__).with_name(name).read_bytes()
-            for name in ('resource_agy.py','agent_workspace.py','workday.py','terminal_preview.py','terminal_screen.py'))).hexdigest()
-        return {'protocol':'agy-interactive-worklog-v2', 'entry':str(path), 'sha256':checksum,
-                'implementation_sha256':implementation, 'session':self._session,
-                'workspace':str(self.workspace.path)}
+        from .cli_identity import cli_identity
+        return dict(cli_identity(self.entry, self.workspace, 'agy'), protocol='agy-interactive-worklog-v3')
 
     def terminal_snapshot(self):
         state = self._state
@@ -197,7 +184,6 @@ class AgyInteractiveResource:
         self._input_ready = False
         self._consent_submitted = False
         self.pending_action = None
-        self._launch_checksum = None
         self._session = uuid.uuid4().hex
 
     def _environment(self):
@@ -244,7 +230,7 @@ class AgyInteractiveResource:
             if answer is not None:return answer
 
     def _start(self):
-        identity = self.resource_identity()
+        self.resource_identity()
         self._workspace_lock = self.workspace.lock_session()
         directory = self.workspace.ensure()
         self.workspace.verify()
@@ -255,14 +241,13 @@ class AgyInteractiveResource:
         env = self._environment()
         # Pass the user's value verbatim. Do not query models, read defaults,
         # infer an effort variant, or require the banner to identify a model.
-        argv = [identity['entry'], '--mode', 'accept-edits', '--sandbox', '--model', self.model]
+        argv = [self.entry, '--mode', 'accept-edits', '--sandbox', *(['--model', self.model] if self.model else [])]
         master, slave = pty.openpty();self._master = master
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH',80,240,0,0))
         try:
             self._process = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave,
                 cwd=str(directory), env=env, start_new_session=True, close_fds=True)
         finally:os.close(slave)
-        self._launch_checksum = identity['sha256']
         try:self._await_ready()
         except InteractiveError as exc:
             if exc.code=='interactive_timeout':
@@ -327,7 +312,7 @@ class AgyInteractiveResource:
                     value,evidence=prior
                     if value is None:raise InteractiveError('work_step_failed','原任务步骤已失败并留有记录，不自动重跑。')
                     return value,dict(evidence,replayed=True)
-            before = self.resource_identity()
+            self.resource_identity()
             record = None
             try:
                 if self.pending_action:raise NativeWorkspaceConsent()
@@ -352,7 +337,6 @@ class AgyInteractiveResource:
                 while data:data=data[os.write(self._master,data):]
                 os.write(self._master, b'\r')
                 value = self._wait(lambda screen:(None,''), timeout, file_ticket=ticket)
-                if before != self.resource_identity():raise InteractiveError('entry_changed', 'AGY入口在交互期间发生变化。')
                 self._turns += 1
                 evidence = dict(self._evidence(),reply_source='daily_worklog',worklog=value['worklog'])
                 self.workspace.finish(record,'execution_completed' if value['status']=='completed' else value['status'],value,evidence)

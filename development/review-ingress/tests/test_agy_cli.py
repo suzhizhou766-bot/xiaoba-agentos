@@ -443,7 +443,7 @@ class CliSessionTests(CliFixture,unittest.TestCase):
         self.assertEqual(len(self.starts()),2)
         self.assertEqual(adapter.terminal_snapshot()['turn'],2)
 
-    def test_retire_rejects_new_tasks_and_a_new_adapter_requires_a_new_test(self):
+    def test_retire_rejects_new_tasks_and_restart_keeps_test(self):
         node=self.add();self.probe(node);adapter=self.adapter(node)
         adapter.retire()
         self.assertEqual(adapter.terminal_snapshot()['state'],'closed')
@@ -453,8 +453,8 @@ class CliSessionTests(CliFixture,unittest.TestCase):
         self.backends.close()
         fresh=self.backends.adapter_for(self.source(node))
         self.assertIsNot(fresh,adapter)
-        self.assertEqual(self.node(node)['readiness']['reason'],'test_required')
-        self.assertFalse(self.node(node)['readiness']['ready'])
+        self.assertEqual(self.node(node)['readiness']['reason'],'tested')
+        self.assertTrue(self.node(node)['readiness']['ready'])
 
     def test_terminal_snapshot_is_read_only_and_shows_the_receipt_tail(self):
         node=self.add();adapter=self.adapter(node)

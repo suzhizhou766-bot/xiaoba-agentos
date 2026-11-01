@@ -212,17 +212,17 @@ class InteractiveTests(InteractiveFixture, unittest.TestCase):
         self.assertEqual([x['event'] for x in self.calls()],['start','turn'])
         with self.assertRaises(ProcessLookupError):os.kill(self.calls()[0]['pid'],0)
 
-    def test_disable_ends_idle_session_and_reenable_requires_new_test(self):
+    def test_disable_ends_idle_session_and_reenable_keeps_test(self):
         node=self.add();self.probe(node);pid=self.calls()[0]['pid']
         self.pool.change(node,self.node(node)['revision'],'toggle',False)
         with self.assertRaises(ProcessLookupError):os.kill(pid,0)
         self.pool.change(node,self.node(node)['revision'],'toggle',True)
-        self.assertFalse(self.node(node)['readiness']['ready'])
+        self.assertTrue(self.node(node)['readiness']['ready'])
         self.assertEqual(len(self.calls()),2)  # No reconnect/test merely by opening.
 
-    def test_process_restart_does_not_inherit_an_old_live_session_pass(self):
+    def test_process_restart_preserves_test_without_starting_session(self):
         node=self.add();self.probe(node);self.backends.close()
-        self.assertFalse(self.node(node)['readiness']['ready'])
+        self.assertTrue(self.node(node)['readiness']['ready'])
         self.assertEqual(len(self.calls()),2)
 
     def test_selection_uses_entry_not_user_display_name_and_keeps_other_protocol(self):

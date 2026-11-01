@@ -161,7 +161,7 @@ class AgentWorkspace:
             if not worklog:
                 host_day=datetime.fromtimestamp(row['time'],ZoneInfo('Asia/Shanghai')).date().isoformat()
                 source=json.loads(self._read(root/'任务记录'/record/'任务卡.json'))
-                if receipt.get('status')!='failed' or host_day!=day or not source.get('task_id') or not evidence.get('model'):continue
+                if receipt.get('status')!='failed' or host_day!=day or not source.get('task_id') or 'model' not in evidence:continue
                 worklog={'task_id':source['task_id'],'step_code':source['step_code'],'date':day}
             if worklog['date']!=day:continue
             seen.add(row['receipt_sha256'])

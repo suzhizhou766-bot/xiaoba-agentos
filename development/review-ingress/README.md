@@ -95,3 +95,42 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B tests/browser_smoke.py
 同一运行器现已接入 [architecture-center](../architecture-center/README.md)。监看页面新增“架构与升级发布”标签，编辑先进入独立待发布工作区，正式切换保留原生门禁。未配置本机执行器时发布按钮不可用；本仓库的启动方式不等于已安装或切换用户本机。
 
 说明：用户的最新规范（任务前直接记录资源、运行不重复核实模型，2026-11-01）已在本文描述的现行流程中生效——AGY 的新执行回执不再写”模型核对结果”这类字段，改动前写入的旧回执仍能读取。上面第 1 条的来源登记继续按”入口程序＋模型”判独立性，这一规则不因去掉模型核对而改变。
+
+
+## Agent 池 CLI 类型与稳定入口（卡 33）
+
+添加 CLI 节点时可选择 AGY、DSH、Qoder、WorkBuddy、Codex、Claude 或其它。
+已知类型采用各自的小适配器，共用固定工作区、派工卡、工作日志、回执校验、进程组回收与无进展计时；
+每张卡启动一次 CLI。任务文本只经 stdin 发送，不出现在命令行参数里。
+其它类型继续使用 `xiaoba-resource-v1` JSON stdio 协议，普通厂商 CLI 不能冒充此协议。
+旧节点没有 `agent_type` 时按入口名推断（`codebuddy` 归 WorkBuddy、DSH 的 `apps/cli/lib/bin.js` 归 DSH）；
+原有 `source_ref` 保留，无需重建节点。
+
+模型文字由用户填写，填写后原样传给支持模型参数的 CLI，不核实模型、不读取任何 CLI 设置或登录文件。
+用户本轮确认允许模型留空：此时不传模型参数，由 CLI 当前配置决定，之后由用户自行核实填写。
+DSH 无模型参数，始终标明“由 DSH 桌面配置决定”，用户填写的文字仍保留。
+DSH 复用原生 headless + desktop overlay + JSON + stdin 调用形状，CLI 自己加载
+`$DSH_HOME/profiles/desktop/cordis.patch.yml`（原生默认 home 为 `~/.dsh`）；小八只传路径，不打开配置。
+子进程环境沿用核心 `command_environment` 的密钥环境清理与 PATH 规则，Qoder 同样清除全部 `QODER_*`。
+另清除 `CLAUDECODE`、`CLAUDE_CODE_ENTRYPOINT`、`CODEX_THREAD_ID`、
+`CODEX_INTERNAL_ORIGINATOR_OVERRIDE`、`AGY_SESSION_ID`，防止继承父会话标记。
+
+无人值守只接不需要命令的文件任务。AGY 用 accept-edits+sandbox；DSH/Codex 用 workspace-write；
+Qoder 用 accept_edits，Claude/WorkBuddy 用 acceptEdits。支持工具白名单的 CLI 只开放文件 I/O 并禁用额外 MCP；
+不使用权限跳过开关，也不自动登录、切模型、升级或重试。
+默认连续 300 秒工作日志没有变化才判无进展，stdout JSON 事件不会刷新计时。
+入口不支持、未登录、模型不被认可、入口不可用均返回固定中文提示；原始 stdout/stderr 不进回执、数据库或 HTTP 响应。
+
+入口保存用户所填路径并用该路径启动，不解析成版本目标、不绑定入口文件哈希。
+软链更新后下一张卡自动使用新目标；服务重启也保留已通过的资格。
+测试资格只绑定调用配置和小八适配器实现；改入口、模型、Agent 类型等调用配置或升级适配器代码才需重测，改名保持资格。
+入口不存在或不可执行仍立即不可用。路径出现 `versions/` 或版本号时页面提示可能随更新失效但允许保存；
+DSH 建议使用 `current` 下的稳定入口。适配器与模板不绑定安装版本或安装位置。
+独立性按已知 CLI 类型＋节点模型判断；同类型同模型的不同路径算同一入口，其它类型仍按解析后路径判断。
+
+WorkBuddy 应用附带的是精简 CLI 产物；小八只对 WorkBuddy 子进程设置
+`CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`，让原生启动器选择应用自带的 lite bundle。
+不设置时启动器会寻找本应用未附带的 headless/full bundle，并错误地表现为模块缺失。
+不改应用安装包、CLI 设置、登录或模型配置，也不安装另一套 CodeBuddy。
+该变量只选择产物变体，不跳过权限；文件工具白名单和 acceptEdits 保持。
+参数已重新经本机 `--help` 核对，真实调用结果以本卡后续修复回执为准。

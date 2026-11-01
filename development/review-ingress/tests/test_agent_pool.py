@@ -11,6 +11,7 @@ from xiaoba_review.agent_workspace import AgentWorkspace
 from xiaoba_review.backends import BackendRegistry
 from xiaoba_review.store import ReviewStore, Conflict
 from xiaoba_agentos.store import EventStore
+from xiaoba_agentos.validation_evidence import independence_key
 
 
 class PoolFixture(fixtures.FixtureMixin):
@@ -154,8 +155,8 @@ class PoolTests(PoolFixture,unittest.TestCase):
         self.assertEqual(one['source_ref'],two['source_ref'])
         with self.assertRaises(ValueError):self.add(node_id='TEST-bad',interface='web',entry='https://user:fake@example.com')
 
-    def test_unknown_fields_or_missing_model_never_enter_database(self):
-        for value in (dict(self.value(),unexpected='anything'),self.value(model=''),self.value(entry='agent --run')):
+    def test_unknown_fields_or_invalid_model_type_never_enter_database(self):
+        for value in (dict(self.value(),unexpected='anything'),self.value(model=None),self.value(entry='agent --run')):
             with self.assertRaises(ValueError):self.pool.add(value)
         self.assertEqual(self.count('ri_sources'),3)
 
@@ -211,6 +212,19 @@ class PoolTests(PoolFixture,unittest.TestCase):
         with self.native.connect() as db:db.execute("UPDATE events SET event_hash='TEST broken' WHERE sequence=1")
         self.assertFalse(self.pool.state()['event_chain']['ok'])
         with self.assertRaisesRegex(ValueError,'事件链'):self.add()
+
+
+class BlankModelReviewTests(PoolFixture,unittest.TestCase):
+    def test_a_blank_model_node_can_be_assigned_and_finish_a_review(self):
+        source=self.toggle(self.add(model=''),True)
+        request=self.request_node(source)
+        self.complete(request)
+        self.assertNotEqual(self.store.get(request['id'])['state'],'waiting_receipts')
+
+    def test_the_shared_key_treats_blank_as_no_model_and_rejects_other_types(self):
+        self.assertEqual(independence_key('TEST-ref',''),'TEST-ref')
+        self.assertEqual(independence_key('TEST-ref','  '),'TEST-ref')
+        with self.assertRaises(ValueError):independence_key('TEST-ref',7)
 
 
 class PoolEditTests(PoolFixture,unittest.TestCase):
