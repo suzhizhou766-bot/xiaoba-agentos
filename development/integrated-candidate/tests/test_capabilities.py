@@ -107,6 +107,26 @@ class CapabilityRegistryTest(unittest.TestCase):
         for t in ('shell_read', 'shell_write_workspace', 'structured_editor_write'):
             self.assertFalse(r.has_capability('AMD AI', 'DeepSeek-V4-Flash', t))
 
+    def test_agy_high_and_low_declare_the_same_capabilities(self):
+        # 卡 29：补上 High 是为了让配置里的模型能力可知，不是放宽权限；
+        # 两份声明必须逐字相同，shell 与 filesystem 仍为 false。
+        registry = CapabilityRegistry()
+        declared = registry.providers()["Antigravity"]
+        self.assertEqual(declared["gemini-3.8-flash-low"], declared["gemini-3.8-flash-high"])
+        for model in ("gemini-3.8-flash-low", "gemini-3.8-flash-high"):
+            caps = registry.capabilities_for("Antigravity", model)
+            self.assertIs(True, caps["reasoning"], model)
+            for token in ("shell", "filesystem", "shell_read", "shell_write_workspace",
+                          "structured_editor_write", "filesystem_read",
+                          "filesystem_write_workspace", "network_access"):
+                self.assertIs(False, caps[token], f"{model} widened {token}")
+
+    def test_an_undeclared_agy_model_stays_unknown(self):
+        registry = CapabilityRegistry()
+        caps = registry.capabilities_for("Antigravity", "Gemini 3.8 Flash (Medium)")
+        self.assertEqual(set(registry.tokens()), set(caps))
+        self.assertTrue(all(value == "unknown" for value in caps.values()), caps)
+
     def test_malformed_capability_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'caps.json';p.write_text(json.dumps({'providers': {'p': {'m': {'shell': 'yes'}}}}))

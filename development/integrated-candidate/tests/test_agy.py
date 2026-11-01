@@ -320,6 +320,16 @@ class AgyIntegrationTest(unittest.TestCase):
         enabled, _ = capable_agents([self.agent], CapabilityRegistry(), ['reasoning'])
         self.assertEqual([], enabled)
 
+    def test_the_model_written_in_the_shipped_config_is_known(self):
+        # 卡 29：配置里写 Gemini 3.8 Flash (High) 时能力是已知的，AGY 能进需要
+        # reasoning 的任务；补这份声明不放宽 shell 与 filesystem。
+        self.assertEqual('Gemini 3.8 Flash (High)', self.model)
+        enabled, _ = capable_agents([self.agent], CapabilityRegistry(), ['reasoning'])
+        self.assertEqual([self.agent], enabled)
+        for token in ('shell', 'filesystem'):
+            enabled, _ = capable_agents([self.agent], CapabilityRegistry(), [token])
+            self.assertEqual([], enabled, token)
+
     def test_route_rejects_cc_switch_credentials(self):
         self.config.raw['cli_routes'] = {'local_agy': {**self.config.raw['cli_routes']['local_agy'], 'credential': 'forbidden'}}
         self.config.raw['agents'] = [self.agent.raw]

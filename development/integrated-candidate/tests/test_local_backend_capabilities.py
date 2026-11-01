@@ -26,8 +26,10 @@ class BackendOwnedSelectionTest(unittest.TestCase):
         self.assertTrue(registry.has_capability('Antigravity', 'Gemini 3.8 Flash (Low)', 'reasoning'))
         self.assertFalse(registry.has_capability('Antigravity', 'Gemini 3.8 Flash (Low)', 'shell_write_workspace'))
         self.assertFalse(registry.has_capability('Antigravity', 'Undeclared backend model', 'reasoning'))
-        # A different effort variant must not silently inherit Low's declaration.
-        self.assertFalse(registry.has_capability('Antigravity', 'Gemini 3.8 Flash (High)', 'reasoning'))
+        # 配置里的值（用户 2026-11-01 裁决后写在高推理档）已声明；别的推理档仍不能借用。
+        self.assertTrue(registry.has_capability('Antigravity', 'Gemini 3.8 Flash (High)', 'reasoning'))
+        self.assertFalse(registry.has_capability('Antigravity', 'Gemini 3.8 Flash (High)', 'shell'))
+        self.assertFalse(registry.has_capability('Antigravity', 'Gemini 3.8 Flash (Medium)', 'reasoning'))
 
     def test_ambiguous_display_name_does_not_grant_capabilities(self):
         with tempfile.TemporaryDirectory() as tmp:

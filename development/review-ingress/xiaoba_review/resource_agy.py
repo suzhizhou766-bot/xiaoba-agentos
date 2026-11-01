@@ -308,8 +308,10 @@ class AgyInteractiveResource:
             return {'state':'ready_for_explicit_test','model_tasks_sent':0}
 
     def _evidence(self):
+        # model_verification was dropped by the user's 2026-11-01 ruling; old
+        # receipts carrying it stay readable because no reader requires the key.
         return {'provider':'antigravity_cli', 'model':self.model, 'route_source':'native_interactive_session',
-                'model_source':'node_configuration','model_verification':'not_performed',
+                'model_source':'node_configuration',
                 'session_id':self._session, 'turn':self._turns, 'execution_mode':self.execution_mode}
 
     def _turn(self, instruction, context, timeout=None, kind='review', record_id=None, step_code=None, task_id=None, health_only=False):
