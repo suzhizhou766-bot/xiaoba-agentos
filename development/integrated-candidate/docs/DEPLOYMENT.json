@@ -49,6 +49,30 @@
       "undo": {
         "kind": "restore_in_memory"
       }
+    },
+    {
+      "id": "0005-agy-configured-model",
+      "check": {
+        "kind": "config_value_equals",
+        "path": "cli_routes.local_agy",
+        "value": {
+          "desktop_debug_port": "/Users/suzhizhou/Library/Application Support/Antigravity/DevToolsActivePort",
+          "driver": "agy",
+          "selection": "local_account"
+        }
+      },
+      "execute": {
+        "kind": "config_set",
+        "path": "cli_routes.local_agy",
+        "value": {
+          "driver": "agy",
+          "selection": "configured_model",
+          "model": "Gemini 3.8 Flash (High)"
+        }
+      },
+      "undo": {
+        "kind": "restore_in_memory"
+      }
     }
   ]
 }
