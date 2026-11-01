@@ -89,12 +89,13 @@ def independence_key(source_ref, model=None):
     避免“Gemini Flash”和“gemini  flash”被当成两个来源凑独立。
     真实模型名的别名（不同写法指同一模型）无法判断，不在本函数处理。
     旧的四字段来源没有模型资料，仍只按 source_ref 判断，行为不变。
+    CLI 节点模型留空表示跟随 CLI 当前配置，同样只按 source_ref 判断。
     """
     if not isinstance(source_ref, str) or not source_ref.strip():
         raise ValueError("缺少实际来源标识，无法核对独立性")
-    if model is None:
+    if model is None or (isinstance(model, str) and not model.strip()):
         return source_ref
-    if not isinstance(model, str) or not model.strip():
+    if not isinstance(model, str):
         raise ValueError("模型标识格式异常，无法核对独立性")
     normalized_model = " ".join(model.split()).casefold()
     return source_ref.strip() + "|model:" + normalized_model

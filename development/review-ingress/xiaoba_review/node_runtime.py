@@ -22,7 +22,12 @@ def spec(source):
     """
     node = node_state(source)
     return {'node_id':source['reviewer_id'], 'source_ref':source['source_ref'], 'kind':source['kind'],
-            **{k:node.get(k) for k in ('agent','interface','entry','model')}}
+            **{k:node.get(k) for k in ('agent','interface','entry','model')},
+            **({'agent_type':node['agent_type']} if 'agent_type' in node else {})}
+
+
+def missing_fields(node):
+    return [k for k in FIELDS if not node.get(k) and not (k == 'model' and node.get('interface') == 'cli')]
 
 
 class NodeRuntime:
@@ -47,7 +52,7 @@ class NodeRuntime:
                 if len(candidates)!=1:
                     questions.append({'kind':kind,'question':'请明确本次开工链路使用的已开启节点','node_ids':[v['reviewer_id'] for v in candidates]});continue
                 source=candidates[0];node=node_state(source)
-                if any(not node.get(k) for k in FIELDS):
+                if missing_fields(node):
                     blockers.append({'node_id':source['reviewer_id'],'reason':'missing_configuration'});continue
                 adapter=self.backends.adapter_for(source)
                 if not getattr(adapter,'supports_workday_receipts',False):
@@ -121,7 +126,7 @@ class NodeRuntime:
             'supported':False,'state':'not_connected','text':'','read_only':True}
 
     def onboard(self, draft, kind='peer'):
-        if not isinstance(draft,dict) or set(draft)-set(FIELDS)-{'node_id','agent'} or kind not in {'dsh','peer'}:
+        if not isinstance(draft,dict) or set(draft)-set(FIELDS)-{'node_id','agent','agent_type'} or kind not in {'dsh','peer'}:
             raise ValueError('对话配置只接受用户提供的节点名称、调用方式、入口和模型')
         from xiaoba_agentos.memory import MemoryBridge
         if MemoryBridge._sensitive_reason(canonical(draft)):
@@ -129,12 +134,13 @@ class NodeRuntime:
         for key,value in draft.items():
             if not isinstance(value,str) or len(value)>2048 or any(c in value for c in '\r\n\0'):
                 raise ValueError('节点资料格式异常：'+key)
-        missing = [k for k in FIELDS if not draft.get(k,'').strip()]
+        missing = missing_fields(draft)
         if missing:
             return {'route':'ask_user','draft':draft,'kind':kind,
                     'questions':[{'field':k,'question':FIELDS[k]} for k in missing]}
         source = self.pool.add({'node_id':draft.get('node_id') or 'chat-'+digest([kind,draft])[:32], 'kind':kind,
-            'agent':draft.get('agent') or draft['name'], **{k:draft[k] for k in FIELDS}})
+            'agent':draft.get('agent') or draft['name'], **{k:draft.get(k,'') for k in FIELDS},
+            **({'agent_type':draft['agent_type']} if 'agent_type' in draft else {})})
         return {'route':'test_required','node_id':source['reviewer_id'],
                 'message':'配置已保存；在原运行总览开启节点并测试运行，测试通过后可直接调用。'}
 
@@ -142,7 +148,7 @@ class NodeRuntime:
         node=node_state(source)
         if node.get('removed'):return {'ready':False,'reason':'removed'}
         if not node.get('enabled'):return {'ready':False,'reason':'disabled'}
-        if any(not node.get(k) for k in FIELDS):return {'ready':False,'reason':'missing_configuration'}
+        if missing_fields(node):return {'ready':False,'reason':'missing_configuration'}
         if node.get('interface') == 'tmux':return {'ready':False,'reason':'tmux_collaborator_only'}
         if node.get('test_running'):return {'ready':False,'reason':'testing'}
         adapter=self.backends.adapter_for(source)
@@ -150,7 +156,7 @@ class NodeRuntime:
             return {'ready':False,'reason':'adapter_required'}
         if getattr(adapter,'pending_action',None):return {'ready':False,'reason':'native_confirmation_required'}
         try:identity=adapter.resource_identity()
-        except (OSError,ValueError,AttributeError,TypeError):return {'ready':False,'reason':'entry_changed_or_unavailable'}
+        except (OSError,ValueError,AttributeError,TypeError):return {'ready':False,'reason':'entry_unavailable'}
         test=node.get('test',{})
         if test.get('status')!='passed' or test.get('spec_digest')!=digest(spec(source)) or test.get('runner_digest')!=digest(identity):
             return {'ready':False,'reason':'test_required'}
@@ -180,7 +186,7 @@ class NodeRuntime:
                 return {'status':'blocked','reason':'adapter_required','message':'此调用方式尚未接入受信调用器；不会把配置登记当成测试通过。'}
             try:identity=adapter.resource_identity()
             except (OSError,ValueError,AttributeError):
-                return {'status':'blocked','reason':'entry_unavailable','message':'调用入口不可用或缺少受信适配器，请检查入口；未标记测试通过。'}
+                return {'status':'blocked','reason':'entry_unavailable','message':'调用入口不存在或不可执行；请检查节点入口路径；未标记测试通过。'}
             plan=resource_plan(source);plan_digest=digest(spec(source))
             if node.get('test_running'):
                 self.store.native._append_event_tx(db,None,'agent_pool.test_abandoned',{'node_id':node_id,'test_id':node['test_running']})
@@ -196,7 +202,7 @@ class NodeRuntime:
             if (not isinstance(text,str) or text.strip()!=challenge or contains_non_answer_markers(text) or detect_reasoning_leak(text)
                     or not result.get('provider') or not result.get('route_source')):
                 raise ValueError('测试没有按挑战原文回答，或缺少调用来源')
-            if digest(adapter.resource_identity())!=digest(identity):raise ValueError('测试期间入口发生变化')
+            if digest(adapter.resource_identity())!=digest(identity):raise ValueError('测试期间适配器代码发生变化')
             # 证据里的 model 记节点配置原值。model_verification 是旧回执字段：
             # 旧数据继续能读，新回执一律不再写。
             evidence={'provider':result['provider'],'model':plan['model'],
@@ -212,6 +218,9 @@ class NodeRuntime:
             from .resource_agy import InteractiveError
             from .agent_workspace import WorkspaceError
             if isinstance(exc,(InteractiveError,WorkspaceError)):reason=exc.code;message=exc.user_message
+            elif isinstance(exc,ValueError):
+                reason='response_invalid'
+                message='入口未按节点协议或本次挑战返回；请核对 Agent 类型、调用入口、登录和模型配置。未标记测试通过，不自动重试。'
             if getattr(exc,'occupant',None):message=self.occupied_message(exc)
             model_tasks_sent=getattr(exc,'model_tasks_sent',None)
             if reason=='native_workspace_trust_required':status='blocked'

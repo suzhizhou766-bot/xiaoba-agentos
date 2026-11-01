@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .store import Conflict, canonical, digest
+from .cli_identity import TYPES, agent_type, entry_warning
 from xiaoba_agentos.validation_evidence import independence_key
 
 
@@ -37,7 +38,7 @@ def resource_plan(source):
         raise ValueError('tmux上下文不隔离，只能作为协作员，不能独立审查')
     if not state.get('entry'):
         return None  # Existing four-field sources retain their old contract.
-    return {k:state[k] for k in ('revision','name','agent','interface','entry','model')} | {
+    return {k:state[k] for k in ('revision','name','agent','interface','entry','model')} | ({'agent_type':state['agent_type']} if 'agent_type' in state else {}) | {
         'node_id':source['reviewer_id'],'source_ref':source['source_ref']}
 
 
@@ -49,11 +50,19 @@ def independence(source):
     state = node_state(source)
     if state.get('interface') == 'tmux':
         raise ValueError('tmux上下文不隔离，不计入独立审查')
-    return independence_key(source['source_ref'], state.get('model') if state.get('entry') else None)
+    identity = source['source_ref']
+    model = state.get('model') if state.get('entry') else None
+    if state.get('interface') == 'cli' and state.get('entry'):
+        kind = agent_type(state)
+        identity = 'cli:'+kind if kind != 'other' else str(Path(state['entry']).resolve())
+        # DSH 不收模型参数，节点里的模型文字不影响实际调用，不能拿它凑独立。
+        if kind == 'dsh':model = None
+    return independence_key(identity, model)
 
 
 # 用户 2026-11-01 要求节点可修改。节点ID、角色、调用方式是不可改的身份字段。
 NODE_FIELDS = ('name', 'agent', 'entry', 'model')
+OPTIONAL_FIELDS = ('agent_type',)
 TMUX_FIELDS = ('tmux_session', 'working_directory')
 
 
@@ -77,7 +86,8 @@ def entry_identity(clean):
         path = Path(entry)
         if not path.is_absolute():
             raise ValueError('CLI入口请填写程序的绝对路径，不填写shell命令')
-        return str(path.resolve())
+        kind = agent_type(clean)
+        return 'cli:'+kind if kind != 'other' else str(path.resolve())
     return entry.casefold()
 
 
@@ -86,17 +96,19 @@ def validate_node(value):
     tmux = value.get('interface') == 'tmux'
     fields = {'node_id','name','agent','kind','interface','entry','model'}
     if tmux:fields |= set(TMUX_FIELDS)
-    if set(value) != fields:
+    if set(value) - set(OPTIONAL_FIELDS) != fields:
         raise ValueError('请填写节点名称、Agent、角色、调用方式、入口及模型')
     for key in ('node_id','name','agent','entry','model'):
-        if not isinstance(value[key],str) or not value[key].strip() or len(value[key]) > 2048 or any(c in value[key] for c in '\r\n\0'):
+        if not isinstance(value[key],str) or (not value[key].strip() and not (key == 'model' and value.get('interface') == 'cli')) or len(value[key]) > 2048 or any(c in value[key] for c in '\r\n\0'):
             raise ValueError('节点字段不完整或格式异常：'+key)
     if len(value['node_id']) > 128 or value['kind'] not in ({'collaborator'} if tmux else {'dsh','peer'}) or value['interface'] not in {'cli','desktop','web','tmux'}:
         raise ValueError('未知节点角色或调用方式')
     from xiaoba_agentos.memory import MemoryBridge
     if MemoryBridge._sensitive_reason(canonical(value)):
         raise ValueError('Agent池只登记调用资料，请勿填写密钥、令牌或登录材料')
-    clean = {k:v.strip() if isinstance(v,str) else v for k,v in value.items()}
+    if 'agent_type' in value and value['agent_type'] not in TYPES:
+        raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、WorkBuddy、Codex、Claude 或其它')
+    clean = {k:v.strip() if isinstance(v,str) and k != 'entry' else v for k,v in value.items()}
     if tmux:
         from .resource_tmux import validate_session, validate_directory
         clean['tmux_session'] = validate_session(value['tmux_session'])
@@ -130,6 +142,7 @@ class AgentPool:
                     source_ref=source['source_ref'],running=running,backend_available=direct,
                     execution_mode=getattr(adapter,'execution_mode',None),
                     pending_action=getattr(adapter,'pending_action',None),
+                    agent_type=agent_type(state), entry_warning=entry_warning(state.get('entry') or ''),
                     readiness=self.runtime.readiness(db,source)))
             jobs = self.tmux.jobs(db)
             for node in nodes:
@@ -147,6 +160,7 @@ class AgentPool:
             'provenance':'用户在Agent池登记的调用资源；未探测或核实客户端设置',
             'node':{'version':1,'revision':1,'enabled':False,'removed':False,
                     **{k:clean[k] for k in ('name','agent','interface','entry','model')}}}
+        if 'agent_type' in clean:source['node']['agent_type'] = clean['agent_type']
         if tmux:
             source['node'].update({k:clean[k] for k in (*TMUX_FIELDS,'context_isolated')})
         with self.store.transaction() as db:
@@ -154,7 +168,7 @@ class AgentPool:
             if old:
                 existing = json.loads(old[0])
                 # Retry cannot reset a node's switches or removal state.
-                fields = ('name','agent','interface','entry','model') + (TMUX_FIELDS if tmux else ())
+                fields = ('name','agent','interface','entry','model') + (TMUX_FIELDS if tmux else ()) + tuple(k for k in OPTIONAL_FIELDS if k in clean)
                 if existing['kind'] != source['kind'] or any(node_state(existing).get(k) != source['node'][k] for k in fields):
                     raise Conflict('同一节点ID已用于不同资源')
                 return existing
@@ -193,7 +207,7 @@ class AgentPool:
         here fakes that by clearing a digest. A rename keeps the qualification.
         Switches, receipts and frozen cards survive either way.
         """
-        if not isinstance(value,dict) or set(value) - {'node_id','expected_revision'} - set(NODE_FIELDS) - set(TMUX_FIELDS):
+        if not isinstance(value,dict) or set(value) - {'node_id','expected_revision'} - set(NODE_FIELDS) - set(TMUX_FIELDS) - set(OPTIONAL_FIELDS):
             # The per-node list below is the accurate one; tmux fields only exist
             # for tmux nodes, so this guard must not promise them to every caller.
             raise ValueError('只能修改节点资料；节点ID、角色、调用方式不能改')
@@ -205,7 +219,7 @@ class AgentPool:
             source = self.store.source(db,node_id)
             state = node_state(source)
             tmux = state.get('interface') == 'tmux'
-            allowed = NODE_FIELDS + (TMUX_FIELDS if tmux else ())
+            allowed = NODE_FIELDS + (TMUX_FIELDS if tmux else ()) + tuple(k for k in OPTIONAL_FIELDS if k in state or k in changes)
             if not changes or set(changes) - set(allowed):
                 raise ValueError('可修改：名称、Agent、入口、模型'
                     + ('、会话名、工作目录' if tmux else '')
@@ -217,7 +231,8 @@ class AgentPool:
             fields = {'node_id':node_id,'kind':source['kind'],'interface':state['interface'],
                       **{k:changes[k] if k in changes else state.get(k) for k in allowed}}
             clean, identity, _ = validate_node(fields)
-            after = {'source_ref':entry_ref(clean['interface'],identity),
+            changed_entry = clean['entry'] != state['entry'] or clean.get('agent_type') != state.get('agent_type')
+            after = {'source_ref':entry_ref(clean['interface'],identity) if changed_entry else source['source_ref'],
                      **{k:clean[k] for k in allowed}}
             same = after['source_ref'] == source['source_ref'] and all(state.get(k) == after[k] for k in allowed)
             if state['revision'] != expected_revision:
@@ -252,7 +267,7 @@ class AgentPool:
                 'before_source_ref':before_ref,'after_source_ref':after['source_ref']})
         # A rebuilt adapter is what points at the new entry and model. Skipping the
         # rebuild for a rename is what keeps its qualification: a fresh AGY adapter
-        # carries a new instance id, and readiness reads that as an untested runner.
+        # points at the new entry and model; unchanged specs keep qualification.
         if moved:
             self.backends.retire_resource(node_id)
         return source

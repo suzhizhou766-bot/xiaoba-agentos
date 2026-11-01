@@ -107,11 +107,11 @@ print(json.dumps(r))
         self.assertEqual(self.runtime.test_run(node,before,'TEST-test-1'),one);self.assertEqual(self.calls(),['test'])
         with self.assertRaises(Conflict):self.runtime.test_run(node,before,'TEST-new-id')
 
-    def test_program_change_invalidates_pass_and_original_retry(self):
+    def test_program_update_keeps_pass_and_does_not_reprobe(self):
         node=self.add();self.probe(node)
         with (self.root/'TEST-peer').open('a') as out:out.write('\n# TEST changed entry\n')
-        self.assertFalse(self.node(node)['readiness']['ready']);self.assertEqual(self.runtime.prepare(['peer'])['route'],'ask_user')
-        with self.assertRaises(Conflict):self.probe(node)
+        self.assertTrue(self.node(node)['readiness']['ready']);self.assertEqual(self.runtime.prepare(['peer'])['route'],'run')
+        self.assertEqual(self.probe(node)['status'],'passed')
         self.assertEqual(self.calls(),['test'])
 
     def test_a_reported_model_that_differs_or_is_missing_is_not_a_failure(self):
