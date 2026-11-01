@@ -73,7 +73,7 @@
       return;
     }
     const dl=el('dl',undefined,root);
-    for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',(node.model||'由 CLI 当前配置决定')+(node.agent_type==='dsh'?' · 由 DSH 桌面配置决定':'')],['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
+    for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',(node.model||'由 CLI 当前配置决定')+(node.agent_type==='dsh'?' · 由 DSH 桌面配置决定':'')],...(node.interface==='cli'?[['掉线时限',(node.no_progress_seconds||300)+' 秒']]:[]),['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
     el('p',node.backend_available?'已接入本机调用器，按节点填写的入口与模型配置派发任务。':'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
     if(node.execution_mode==='native_interactive_serial')el('p','同一交互会话逐条执行任务卡，过程与回执写入当日Markdown；终端只供查看进度。',root).className='ap-note';
     const actions=el('div',undefined,root);actions.className='ap-actions';
@@ -139,6 +139,7 @@
   function cliForm(){
     const form=byId('apForm'),cli=form.elements.interface.value==='cli';
     byId('apTypeField').hidden=!cli;form.elements.agent_type.disabled=!cli;
+    byId('apTimeoutField').hidden=!cli;form.elements.no_progress_seconds.disabled=!cli;
     form.elements.model.required=!cli;
     byId('apModelNote').textContent=cli?(form.elements.agent_type.value==='dsh'?'由 DSH 桌面配置决定；填写的模型文字原样保留，不传模型参数。':'模型可留空，由 CLI 当前配置决定；填写后按原值传入，不读取 CLI 设置。'):'';
     const warning=byId('apEntryWarning'),versioned=/(?:^|[\/\\])versions[\/\\]|\d+\.\d+\.\d+/.test(form.elements.entry.value);
@@ -173,7 +174,7 @@
       +' · 调用方式 '+(INTERFACE_LABELS[node.interface]||node.interface)
       +'。要换这三项请移除后重新添加。Agent 名称沿用原值：'+(node.agent||'未登记')+'。';
     byId('apSubmit').textContent='保存修改';
-    form.elements.agent_type.value=node.agent_type||'other';cliForm();form.elements.name.focus();
+    form.elements.agent_type.value=node.agent_type||'other';form.elements.no_progress_seconds.value=node.no_progress_seconds||'';cliForm();form.elements.name.focus();
   }
   byId('apForm').elements.agent_type.addEventListener('change',cliForm);
   byId('apForm').elements.entry.addEventListener('input',cliForm);
@@ -187,6 +188,7 @@
         const payload={node_id:node.node_id,expected_revision:node.revision,
                        name:value.name,entry:value.entry,model:value.model};
         if(node.interface==='cli'&&value.agent_type!==node.agent_type)payload.agent_type=value.agent_type;
+        if(node.interface==='cli')payload.no_progress_seconds=value.no_progress_seconds?Number(value.no_progress_seconds):null;
         if(node.interface==='tmux'){payload.tmux_session=value.tmux_session;payload.working_directory=value.working_directory;}
         const edited=await api('edit',payload);
         await refresh();open('detail',state.nodes.find(n=>n.node_id===node.node_id));
@@ -196,6 +198,7 @@
           :'节点已修改；上一次测试结果不再适用，请重新测试运行后再用于审查。');
         return;
       }
+      if(value.no_progress_seconds)value.no_progress_seconds=Number(value.no_progress_seconds);else delete value.no_progress_seconds;
       if(value.interface==='tmux')value.kind='collaborator';const signature=JSON.stringify(value);if(!pendingAdd||pendingAdd.signature!==signature)pendingAdd={signature,id:crypto.randomUUID()};const added=await api('nodes',{node_id:pendingAdd.id,...value,agent:value.name});const id=added.result.reviewer_id;pendingAdd=null;await refresh();open('detail',state.nodes.find(n=>n.node_id===id));note('节点已添加，保持关闭；请开启并测试运行。');}catch(error){note(error);}finally{submit.disabled=false;}
   });
   byId('apDispatchGo').addEventListener('click',async()=>{

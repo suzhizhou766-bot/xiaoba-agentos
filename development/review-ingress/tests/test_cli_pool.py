@@ -300,6 +300,25 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
         day=datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
         self.assertEqual([v['failure_reason'] for v in workspace.workday_inputs(day)],['cli_failed'])
 
+    def test_node_time_limit_can_be_set_and_changed_without_losing_qualification(self):
+        source=self.pool.add({'node_id':'L','name':'L','agent':'codex','agent_type':'codex','kind':'peer',
+            'interface':'cli','entry':str(self.fake('entry-limit')),'model':'','no_progress_seconds':1200})
+        self.assertEqual(source['node']['no_progress_seconds'],1200)
+        self.assertEqual(self.registry.adapter_for(source).no_progress_seconds,1200)
+        self.pool.change('L',source['node']['revision'],'toggle',True)
+        self.assertEqual(self.probe('L')['status'],'passed')
+        self.assertTrue(self.node('L')['readiness']['ready'])
+        edited=self.pool.edit({'node_id':'L','expected_revision':self.node('L')['revision'],'no_progress_seconds':600})
+        self.assertEqual(self.registry.adapter_for(edited).no_progress_seconds,600)
+        self.assertEqual(self.node('L')['no_progress_seconds'],600)
+        self.assertTrue(self.node('L')['readiness']['ready'])  # 时限不是调用配置，不用重测
+        cleared=self.pool.edit({'node_id':'L','expected_revision':self.node('L')['revision'],'no_progress_seconds':None})
+        self.assertEqual(self.registry.adapter_for(cleared).no_progress_seconds,300)
+        for bad in (0,-1,86401,'1200',True,1.5):
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ValueError,'掉线时限'):
+                    self.pool.edit({'node_id':'L','expected_revision':self.node('L')['revision'],'no_progress_seconds':bad})
+
     def test_a_rejected_default_model_does_not_blame_an_unused_node_value(self):
         for kind,model in (('claude',''),('dsh','TEST desktop text')):
             with self.subTest(kind=kind):

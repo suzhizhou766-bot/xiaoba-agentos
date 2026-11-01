@@ -25,7 +25,7 @@ class BackendRegistry:
         # `name` is not in the key: the workspace directory is pinned at the first
         # rename, so rebuilding would only hand readiness a fresh adapter instance
         # and cost a renamed node its test qualification.
-        key=canonical([source['source_ref'],source['kind'],*[node.get(k) for k in ('interface','entry','model','agent_type')]])
+        key=canonical([source['source_ref'],source['kind'],*[node.get(k) for k in ('interface','entry','model','agent_type','no_progress_seconds')]])
         with self.resource_lock:
             cached=self.resource_adapters.get(source['reviewer_id'])
             if cached and cached[0]==key:return cached[1]

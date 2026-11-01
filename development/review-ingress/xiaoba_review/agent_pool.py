@@ -62,7 +62,8 @@ def independence(source):
 
 # 用户 2026-11-01 要求节点可修改。节点ID、角色、调用方式是不可改的身份字段。
 NODE_FIELDS = ('name', 'agent', 'entry', 'model')
-OPTIONAL_FIELDS = ('agent_type',)
+OPTIONAL_FIELDS = ('agent_type', 'no_progress_seconds')
+MAX_NO_PROGRESS_SECONDS = 86400
 TMUX_FIELDS = ('tmux_session', 'working_directory')
 
 
@@ -106,6 +107,9 @@ def validate_node(value):
     from xiaoba_agentos.memory import MemoryBridge
     if MemoryBridge._sensitive_reason(canonical(value)):
         raise ValueError('Agent池只登记调用资料，请勿填写密钥、令牌或登录材料')
+    limit = value.get('no_progress_seconds')
+    if limit is not None and (type(limit) is not int or not 1 <= limit <= MAX_NO_PROGRESS_SECONDS):
+        raise ValueError('掉线时限要填 1 到 86400 之间的整数秒')
     if 'agent_type' in value and value['agent_type'] not in TYPES:
         raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、WorkBuddy、CodeBuddy Code、Codex、Claude 或其它')
     clean = {k:v.strip() if isinstance(v,str) and k != 'entry' else v for k,v in value.items()}
@@ -162,7 +166,8 @@ class AgentPool:
             'provenance':'用户在Agent池登记的调用资源；未探测或核实客户端设置',
             'node':{'version':1,'revision':1,'enabled':False,'removed':False,
                     **{k:clean[k] for k in ('name','agent','interface','entry','model')}}}
-        if 'agent_type' in clean:source['node']['agent_type'] = clean['agent_type']
+        for key in OPTIONAL_FIELDS:
+            if clean.get(key) is not None:source['node'][key] = clean[key]
         if tmux:
             source['node'].update({k:clean[k] for k in (*TMUX_FIELDS,'context_isolated')})
         with self.store.transaction() as db:
@@ -170,7 +175,7 @@ class AgentPool:
             if old:
                 existing = json.loads(old[0])
                 # Retry cannot reset a node's switches or removal state.
-                fields = ('name','agent','interface','entry','model') + (TMUX_FIELDS if tmux else ()) + tuple(k for k in OPTIONAL_FIELDS if k in clean)
+                fields = ('name','agent','interface','entry','model') + (TMUX_FIELDS if tmux else ()) + tuple(k for k in OPTIONAL_FIELDS if clean.get(k) is not None)
                 if existing['kind'] != source['kind'] or any(node_state(existing).get(k) != source['node'][k] for k in fields):
                     raise Conflict('同一节点ID已用于不同资源')
                 return existing
