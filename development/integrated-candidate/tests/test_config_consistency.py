@@ -85,10 +85,12 @@ class ConfigConsistencyTest(unittest.TestCase):
 
         随包配置里的 runtime_dir/project_dir 是本机绝对路径，检查函数照着它们
         会读到真实的 .runtime 和 .agents（测试因此变成依赖本机状态的非隔离测试）。
-        夹具只替换 runtime_dir，schema 2 的其余内容和 project_dir 原样不动。
+        夹具替换 runtime_dir，并把 project_dir 指到候选目录，否则候选不在本机项目目录
+        下（如发版时的冻结副本）时配置被当成别的安装、检查变成空跑；schema 2 的其余内容不动。
         """
         shipped = AppConfig.load(CANDIDATE_CONFIG)
-        isolated = AppConfig(shipped.path, {**shipped.raw, "runtime_dir": str(self.config.runtime_dir)})
+        isolated = AppConfig(shipped.path, {**shipped.raw, "runtime_dir": str(self.config.runtime_dir),
+                                            "project_dir": str(CANDIDATE_CONFIG.parents[1])})
         return shipped, isolated
 
     def _release_reference(self, release_dir: Path, config_path: Path) -> Path:
