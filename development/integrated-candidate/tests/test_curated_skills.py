@@ -47,7 +47,7 @@ class CuratedSkillSmokeTest(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual("PASS", json.loads(result.stdout)["status"])
 
-    def test_project_storyboard_accepts_complete_and_rejects_incomplete_manually(self):
+    def test_project_storyboard_accepts_complete_and_rejects_incomplete(self):
         headers = ["镜号", "时间段", "时长", "叙事任务", "画面内容", "音乐节拍", "补拍备选", "注意事项"]
         with tempfile.TemporaryDirectory() as temporary:
             valid = Path(temporary) / "valid.csv"

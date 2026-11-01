@@ -375,7 +375,7 @@ class SwitchRecoveryTests(unittest.TestCase):
         self.assertTrue(result['ok'], result)
         self.assertEqual([b'partial new bytes'], [Path(p).read_bytes() for p in result['preserved_leftovers']])
 
-    def test_undo_short_write_leaves_installed_file_complete_manually(self):
+    def test_undo_short_write_leaves_installed_file_complete(self):
         path = self.fx.root / 'undo.txt'; path.write_bytes(b'ORIGINAL')
         writer = switch.Writer(); writer.write(path, b'COMPLETE NEW FILE', switch.state(path))
         class ShortFile:
