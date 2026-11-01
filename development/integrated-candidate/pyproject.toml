@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xiaoba-agentos"
-version = "1.6.5"
+version = "1.6.6"
 description = "小八 AgentOS：可审计会话路由、双阶段裁决与可恢复多智能体生产循环"
 readme = "README.md"
 requires-python = ">=3.9"

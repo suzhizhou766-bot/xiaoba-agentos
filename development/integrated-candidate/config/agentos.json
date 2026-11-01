@@ -4,7 +4,7 @@
   "project_dir": "/Users/suzhizhou/Documents/小八AgentOS",
   "release": {
     "index_path": "/Users/suzhizhou/Documents/小八AgentOS/.runtime/releases/index.json",
-    "expected_version": "v1.6.5",
+    "expected_version": "v1.6.6",
     "final_publish_requires_human": true
   },
   "worker": {

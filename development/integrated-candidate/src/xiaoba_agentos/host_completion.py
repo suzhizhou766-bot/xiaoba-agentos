@@ -14,9 +14,31 @@ def _text(value):
     return isinstance(value, str) and bool(value.strip()) and not contains_non_answer_markers(value) and not detect_reasoning_leak(value)
 
 
+def _settlement_committed(store, task_id):
+    """Decide from the database, never from the exception, whether this task settled."""
+    try:
+        return store.get_task(task_id)['status'] == 'completed'
+    except Exception:
+        return True  # 读不出来就不删，宁可留下待人工核对
+
+
 def complete_host(config, store, task_id, receipt, *, user_chose_host=False):
     if not isinstance(receipt, dict):raise ValueError('需要JSON宿主回执')
     checksum = hashlib.sha256(json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    staged = []
+    try:
+        return _settle_host(config, store, task_id, receipt, checksum,
+                            user_chose_host=user_chose_host, staged_out=staged.append)
+    except Exception:
+        # 事务回滚后不留一个没有数据库行的候选文件；提交与否由数据库决定。
+        if staged and not _settlement_committed(store, task_id):
+            for leftover in (staged[0], staged[0].with_suffix(staged[0].suffix+'.status.json')):
+                try: leftover.unlink()
+                except OSError: pass
+        raise
+
+
+def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=False, staged_out=None):
     with store.connect() as db:
         db.execute('BEGIN IMMEDIATE')
         if not store.verify_event_chain_tx(db)['ok']:raise ValueError('事件链校验失败')
@@ -28,6 +50,9 @@ def complete_host(config, store, task_id, receipt, *, user_chose_host=False):
             if json.loads(old[0])['receipt_sha256'] != checksum:raise ValueError('同一任务已接收不同宿主回执')
             return {'status': 'completed', 'task_id': task_id, 'replayed': True}
         if task['status'] not in {'pending','retry'}:raise ValueError('宿主不能结算正在运行或已结束的任务')
+        if snapshot.get('experience_trial'):
+            # 受控验证的轮次由 complete_audit 推进；宿主结算不走这条线，放行会让轮次卡住。
+            raise ValueError('受控验证任务不能由宿主结算，请等池节点凑够审查结论')
         context = execution_context(store, task, db)
         host = context.get('host')
         if not host or receipt.get('reviewer_id') != host['id']:raise ValueError('回执不属于本任务指定宿主')
@@ -36,7 +61,14 @@ def complete_host(config, store, task_id, receipt, *, user_chose_host=False):
         from .memory import MemoryBridge
         if MemoryBridge._sensitive_reason(json.dumps(receipt, ensure_ascii=False)):
             raise ValueError('宿主回执含敏感资料')
+        # 要进初审的新经验走宿主补票时候选不能丢：走 Worker 那一条路径、同一套门禁。
+        # 审计任务本来就不产候选，宿主也不在这里结算审计回执或调用裁判。
+        from .experience_workflow import policy
+        produces_candidate = policy(task)['kind'] != 'audit'
+        if produces_candidate and not store._candidate_gates_tx(db, task_id):
+            raise ValueError('约束保留还没由用户释放，宿主不能结算这个任务')
         label = None
+        verdict = None
         pool_runs = []
         if needs_review(task):
             if host['worked'] or host['author']:raise ValueError('宿主这次干过活或是作者，不能审查')
@@ -82,15 +114,29 @@ def complete_host(config, store, task_id, receipt, *, user_chose_host=False):
             if pool_runs:
                 final += '\n\n池节点审查结论：\n'+'\n\n'.join(r['agent_name']+': '+r['output'] for r in pool_runs)
             if label:final = label+'\n\n'+final
+            verdict = receipt['verdict']
+            # 宿主的 FAIL、NEEDS_INFO 照样结算（结论必须留下来），但不得被读成通过。
+            final = '宿主审查结论：'+verdict+{'PASS':'','FAIL':'（未通过）','NEEDS_INFO':'（未通过，需补资料）'}[verdict]+'\n\n'+final
         else:
             if not _text(receipt.get('result')):raise ValueError('宿主实际结果为空或违反B19')
             final = receipt['result']
         provenance = {'kind': 'host_review' if needs_review(task) else 'host_manual', 'status': 'completed',
+                      'verdict': verdict,
                       'result_sha256': hashlib.sha256(final.encode()).hexdigest(), 'receipt_sha256': checksum,
                       'host_id': host['id'], 'pool_run_ids': [r['id'] for r in pool_runs], 'label': label}
+        evidence_sha256 = None
+        if produces_candidate:
+            staged = MemoryBridge(config, store).stage_experience(task_id, task['prompt'], final, store.task_runs(task_id))
+            staged_out(staged)
+            evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
+            store._require_staged_evidence(str(staged), evidence_sha256)
         store._append_event_tx(db, task_id, 'host.receipt_accepted', {'receipt_sha256': checksum, 'receipt': receipt,
                                'user_chose_host': user_chose_host, 'label': label, 'pool_run_ids': provenance['pool_run_ids']})
         db.execute("UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
                    (final,json.dumps(provenance,ensure_ascii=False,sort_keys=True),time.time(),task_id))
         store._append_event_tx(db, task_id, 'task.completed', {'result_sha256': provenance['result_sha256'], 'manual': True})
+        if produces_candidate:
+            source_task_ids = [str(hit.get('source_task_id')) for hit in snapshot.get('memory_hits', []) if hit.get('source_task_id')]
+            store._insert_candidate_tx(db, task_id, str(staged), evidence_sha256, source_task_ids, time.time())
+            store._append_event_tx(db, task_id, 'memory.candidate_staged', {'evidence_sha256': evidence_sha256})
         return {'status': 'completed', 'task_id': task_id, 'label': label}

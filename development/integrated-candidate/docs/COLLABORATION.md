@@ -1,19 +1,18 @@
-# v1.6.5 AGY + DSH 分工与审核
+# v1.6.6 Agent 池分工与审核
 
-Assignments 必须且只能包含 `agy_review` 与 `dsh_review`。工作及审核均要求两者独立成功。协作任务不用备用 `qoder_review`：分工按名字冻结、备用又关闭了全部工具，所以主后台在协作任务中失败时按原流程冻结、等用户恢复，不补位（见 `docs/STANDBY_POLICY.md`）；备用补位只用于普通独立审查任务。
+Assignments 必须且只能包含这次选中的协作节点，每个节点一条。协作节点和审查节点都由用户在 Agent 池设定，没有默认名单，也没有备用补位。同一任务里协作过的节点不能审查；没有协作节点时不排队。
 
 # Collaboration Before Independent Review
 
 `collaborate` and `collaborate-review` use the normal task queue, verified release binding,
 health gates, concurrent adapters, retry budget, execution receipts and audit chain.
-They do not change provider selection or backend file permissions. Each backend keeps
-its own local CLI route: agy uses the Antigravity desktop login, dsh uses the DeepSeek
-Harness desktop configuration.
+They do not change provider selection or backend file permissions. Each node keeps
+its own entry and model from the Agent pool; login stays in that CLI.
 
 ## Work
 
-Prepare an assignments JSON object with exactly one non-empty instruction per enabled
-Agent name. Supply a sourced UTF-8 context file (64 KiB maximum). Assign concrete,
+Prepare an assignments JSON object with exactly one non-empty instruction per selected
+collaboration node. Supply a sourced UTF-8 context file (64 KiB maximum). Assign concrete,
 independent subtasks and ask for precise patches or other usable contributions.
 
 ```sh
@@ -46,7 +45,7 @@ xiaoba run --once
 xiaoba show REVIEW_TASK_ID
 ```
 
-Review requires completed work, the same full Agent roster, valid contribution receipts,
+Review requires completed work, reviewers who did not collaborate, valid contribution receipts,
 and new integration evidence. Every reviewer receives the same frozen task evidence;
 historical per-Agent memory is excluded. Review always invokes new Agent runs in a new
 task. All reviewers must succeed before the existing deterministic judge runs. The judge

@@ -1,4 +1,4 @@
-# v1.6.5 运维
+# v1.6.6 运维
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
@@ -8,7 +8,7 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 "$XIAOBA" review-list --stage all
 ```
 
-上班先验证 AGY+DSH 两个真实探针。只读检查不创建任务；session-start 更新健康会话状态。不要从旧探针推出此刻远程可用。Worker 身份为小八 AgentOS Runner；沙箱禁止 kill(pid,0) 时可能误报 alive=false，需授权只读进程确认，不盲目重启。
+上班不发真实探针，只做本地检查：节点是否开启、测试资格是否有效、入口是否还在。节点要真实连通时，由用户在页面手动测试运行。只读检查不创建任务。Worker 身份为小八 AgentOS Runner；沙箱禁止 kill(pid,0) 时可能误报 alive=false，需授权只读进程确认，不盲目重启。
 
 正式变更：冻结候选源码 → 重建技能/知识/源码清单 → 单元测试、单根Vault和KnowLP检查 → 临时 runtime/index 的生产模式双Agent验收 → 验证验收与同源哈希绑定 → 暂停Worker → 发布及入口切换 → 重载Worker → doctor/status/索引复验。不跨版本迁移授权结论。备份仅在用户直接、明确要求时执行；发布授权不包含备份授权，未经明确授权应跳过内置备份步骤。详见 `docs/USER_RULES.md`。
 
@@ -35,6 +35,56 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 谁审查、谁协作由用户在池里建节点，角色是审查、协作、两者。没有默认审查节点。配置模板不带默认节点。旧配置里的线路名字仍能加载，只作历史资料，不参与派活，切换时也不会自动建成节点。doctor 的 ok 只表示本地完整性；审查节点不足单独报告，不让 ok 变假。要审查的任务在节点够两份独立结论之前不入队。被冻结的任务仍须用户显式恢复。
 - 节点的掉线时限写在节点资料里，缺省 300 秒，是连续无进展窗口。人工转交和 tmux 等待不按掉线计。历史任务里的 `standby.substituted` 事件仍能读出，新任务不再按固定后台补位。
 - `doctor` 的 ok 只看本地完整性。审查节点不足写在单独的 `review_nodes` 里，不把 ok 打成假。
+
+## 生产入口与宿主回执
+
+原生 CLI 的 `submit --no-review` 创建工作任务。宿主身份用 `--host-id / --host-entry / --host-model` 指定；这三项只标识宿主，不能声明“没干活”。
+
+实际参与者通过 `task-work-record TASK --actor-id ID --role author|executor|collaborator` 追加记录，不能撤销。页面对已有原生任务调用 `/api/agent-pool/work` 时自动记协作参与者和 agent_runs；Worker 的协作任务则从 workflow 与 agent_runs 取参与者。
+
+产物送审使用 `submit "审查说明" --work-task WORK_TASK --memory-kind audit`，指定补票宿主时加上述三个宿主参数。Worker 从来源任务、作者记录和实际执行记录推导排除名单，提交方不能传一个空名单覆盖它们；已有 collaborate-review 的工作关联使用同一排除规则，页面送审读取候选自己的作者和来源任务记录。
+
+### 宿主结算
+
+一个池节点完成后，任务保持 pending，`last_error` 标明 `awaiting_host`；后续轮询不重跑该节点、不增加 attempts。宿主提交实际回执：
+
+```sh
+xiaoba task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json
+```
+
+旧任务没有宿主身份时，先用 `task-host-bind TASK_ID --host-id ID --host-entry ENTRY --host-model MODEL` 追加不可覆盖的身份审计记录，不改冻结题面。身份绑定不声明“没干活”，资格仍按实际参与记录判断。
+
+审查回执的字段如下，TASK、HASH、HOST、时间戳按实际填写，内容必须由指定宿主实际审查产生：
+
+```json
+{
+  "receipt_id": "stable-receipt-id",
+  "task_id": "TASK",
+  "snapshot_sha256": "HASH",
+  "reviewer_id": "HOST",
+  "verdict": "PASS",
+  "findings": "实际审查结论与理由",
+  "evidence_refs": ["task:TASK"],
+  "review_type": "new_experience",
+  "score": 8,
+  "applicability": "适用条件和限制",
+  "duplicate_of": null,
+  "started_at": 1793500000,
+  "finished_at": 1793500010
+}
+```
+
+证据引用只接受当前冻结任务或其明确关联工作任务的 `task:ID`。`review_type` 可取 new_experience、revalidation、reuse_change。系统校验身份、任务摘要、正文 B19、证据、评分、适用条件、时间和池节点执行收据，校验不通过不结算。
+
+合格的 FAIL、NEEDS_INFO 也照样结算为 completed：宿主的结论要留下来，不因为没通过就丢掉，也不伪造成 PASS。verdict 同时写进任务来源记录（`provenance_json` 的 `verdict`）和结果第一行（`宿主审查结论：FAIL（未通过）`、`宿主审查结论：NEEDS_INFO（未通过，需补资料）`），所以 `status` 和 Agent 池页面都看得出这一票没通过。宿主是作者或执行者时拒绝审查；全部池审查员不可用时，只有用户明确选择的 `--user-chose-host` 才走宿主兜底，结果标“无独立审查”，普通补票不加这个标记。
+
+无需审查的任务使用同一入口，JSON 只需 task_id、snapshot_sha256、reviewer_id、result，result 是宿主实际结果，不加结论抬头。接收回执、最终结果和完成事件在同一事务写入；相同回执可重放、不重复结算，不同回执拒绝覆盖。这里不批准或发布经验，也不调用确定性裁判。
+
+### 工作区、资格与队列
+
+- Agent 工作区根目录沿用 run.py 的 `--agent-workspace-root`，通过同一数据库的 `agent_pool.workspace_bound` 审计事件绑定；Worker、ReviewStore 与页面适配器共享该路径，不增加配置字段。重启沿用原绑定；传入不同根目录拒绝启动，不复制或搬迁既有材料。未绑定且没有有效测试资格的真实节点不派活。
+- 页面和 Worker 共用 `node_runtime.readiness`，比较 spec_digest、runner_digest、证据摘要与测试完成事件。适配器更新后须重测，不发模型探针。RELEASE.json 的节点证据只保留 node_id、enabled、test_passed、independence。
+- Worker 扫描全部到期任务，跳过等宿主或当前节点不足的任务，不领租约、不耗次数；跳过原因写入 `last_error` 和去重审计事件，Agent 池管理页的“待处理任务”显示这些记录。
 
 ## 冻结任务恢复操作
 

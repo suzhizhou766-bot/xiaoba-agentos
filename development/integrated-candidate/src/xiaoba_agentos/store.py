@@ -2132,6 +2132,59 @@ class EventStore:
             self._restore_sidecar_unless_committed(task_id, staged_path, evidence_sha256, previous_sidecar)
             raise
 
+    def _candidate_gates_tx(self, conn: sqlite3.Connection, task_id: str) -> bool:
+        """The gates every settlement path passes before a candidate is queued.
+
+        Which entry completed a task must not decide whether its candidate
+        reaches initial review, so both the worker and the host receipt ask
+        here. Returns False when a pending constraint hold keeps the candidate
+        out of delivery; neither path may bypass human release.
+        """
+        if conn.execute(
+            "SELECT 1 FROM constraint_holds WHERE task_id=? AND status='pending'",
+            (task_id,),
+        ).fetchone():
+            # Covers both the normal completed hold and inconsistent
+            # legacy states; no candidate can bypass human release.
+            return False
+        from .experience_workflow import policy
+        full_task = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
+        if policy(full_task)["kind"] == "audit":
+            raise ValueError("audit task must use audit-only settlement")
+        self._reject_terminal_memory_reregistration(conn, task_id)
+        return True
+
+    def _insert_candidate_tx(
+        self,
+        conn: sqlite3.Connection,
+        task_id: str,
+        staged_path: str,
+        evidence_sha256: str,
+        source_task_ids: Optional[List[str]],
+        now: float,
+        *,
+        repaired: bool = False,
+    ) -> None:
+        """Queue the candidate row and its status sidecar. Approves nothing."""
+        conflict = "" if repaired else """
+                   ON CONFLICT(task_id) DO UPDATE SET
+                       staged_path=excluded.staged_path,
+                       evidence_sha256=excluded.evidence_sha256,
+                       source_task_ids_json=excluded.source_task_ids_json,
+                       updated_at=excluded.updated_at"""
+        conn.execute(
+            """INSERT INTO memory_candidates(
+                   task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at
+               ) VALUES(?,?,?,?,?,?,?)""" + conflict,
+            (
+                task_id, "pending_delivery_review", staged_path, evidence_sha256,
+                _canonical(sorted(set(source_task_ids or []))), now, now,
+            ),
+        )
+        self._write_candidate_status_sidecar_values(
+            task_id, staged_path, "pending_delivery_review", evidence_sha256, now
+        )
+
     def _complete_with_memory_candidate_tx(
         self,
         task_id: str,
@@ -2153,17 +2206,8 @@ class EventStore:
                 raise TypeError("complete_with_memory_candidate() 必须传入 expected_attempt")
             if row["status"] not in {"completed"} and int(row["attempts"]) != int(expected_attempt):
                 raise ValueError(f"task {task_id!r} 旧尝试不能结算任务")
-            if conn.execute(
-                "SELECT 1 FROM constraint_holds WHERE task_id=? AND status='pending'",
-                (task_id,),
-            ).fetchone():
-                # Covers both the normal completed hold and inconsistent
-                # legacy states; no candidate can bypass human release.
+            if not self._candidate_gates_tx(conn, task_id):
                 return False
-            from .experience_workflow import policy
-            full_task = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
-            if policy(full_task)["kind"] == "audit":
-                raise ValueError("audit task must use audit-only settlement")
             if row["status"] == "completed":
                 if self._existing_candidate_status(conn, task_id) is not None:
                     # A finished candidate is idempotent (no-op) unless it is
@@ -2173,45 +2217,20 @@ class EventStore:
                 # Completed without a candidate must not exist; if an older
                 # code path left one behind, queue the candidate now instead of
                 # reporting an idempotent no-op that would hide the gap.
-                conn.execute(
-                    """INSERT INTO memory_candidates(
-                           task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at
-                       ) VALUES(?,?,?,?,?,?,?)""",
-                    (
-                        task_id, "pending_delivery_review", staged_path, evidence_sha256,
-                        _canonical(sorted(set(source_task_ids or []))), now, now,
-                    ),
-                )
-                self._write_candidate_status_sidecar_values(
-                    task_id, staged_path, "pending_delivery_review", evidence_sha256, now
+                self._insert_candidate_tx(
+                    conn, task_id, staged_path, evidence_sha256, source_task_ids, now,
+                    repaired=True,
                 )
                 self._append_event_tx(
                     conn, task_id, "memory.candidate_staged",
                     {"evidence_sha256": evidence_sha256, "repaired_missing_candidate": True},
                 )
                 return False
-            self._reject_terminal_memory_reregistration(conn, task_id)
             conn.execute(
                 "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
                 (result, _canonical(provenance), now, task_id),
             )
-            conn.execute(
-                """INSERT INTO memory_candidates(
-                       task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at
-                   ) VALUES(?,?,?,?,?,?,?)
-                   ON CONFLICT(task_id) DO UPDATE SET
-                       staged_path=excluded.staged_path,
-                       evidence_sha256=excluded.evidence_sha256,
-                       source_task_ids_json=excluded.source_task_ids_json,
-                       updated_at=excluded.updated_at""",
-                (
-                    task_id, "pending_delivery_review", staged_path, evidence_sha256,
-                    _canonical(sorted(set(source_task_ids or []))), now, now,
-                ),
-            )
-            self._write_candidate_status_sidecar_values(
-                task_id, staged_path, "pending_delivery_review", evidence_sha256, now
-            )
+            self._insert_candidate_tx(conn, task_id, staged_path, evidence_sha256, source_task_ids, now)
             self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_sha256})
             self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
         return True
