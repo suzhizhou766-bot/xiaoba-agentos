@@ -8,14 +8,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
-from .config import AppConfig, agy_settings_default, qoder_settings_default
+from .config import AGY_RETIRED_SELECTIONS, AppConfig, agy_configured_model, qoder_settings_default
 
 
 class GatewayUnavailable(RuntimeError):
     pass
 
-
-_AGY_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,79}")
 
 _ROUTE_DIAGNOSTIC_LIMIT = 400
 
@@ -45,23 +43,6 @@ def _redact_diagnostic(value: object, limit: int = _ROUTE_DIAGNOSTIC_LIMIT) -> s
     and everything beyond the last ``limit`` characters, is not.
     """
     return redact_credentials(" ".join(str(value or "").split()))[-limit:]
-
-
-def read_agy_cli_selection(settings_path: Any) -> Dict[str, Any]:
-    """The model the user last chose in the agy CLI, from its own settings.
-
-    Read-only; only the top-level `model` string is taken (agy stores the
-    display name, e.g. "Gemini 3.8 Flash (High)", which `--model` accepts).
-    """
-    path = Path(str(settings_path)).expanduser()
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 256 * 1024:
-        raise ValueError("agy 设置文件不存在、是链接或过大")
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    name = raw.get("model") if isinstance(raw, dict) else None
-    if not isinstance(name, str) or not _AGY_MODEL.fullmatch(name.strip()) or name != name.strip():
-        raise ValueError("agy 设置里没有明确的模型名")
-    return {"provider": "Antigravity", "model": name, "model_source": "agy_cli_settings",
-            "settings_path": str(path)}
 
 
 # A model id, never something shaped like a CLI flag ("--tools", "-c").
@@ -102,23 +83,28 @@ def local_cli_route(config: AppConfig, route_name: str, agent_name: str) -> Dict
     if not isinstance(route, dict):
         raise GatewayUnavailable(f"本地 CLI 路由未登记：{route_name}")
     driver = str(route.get("driver", ""))
+    route_selection = str(route.get("selection", ""))
     if driver == "agy":
-        # User 2026-10-20: AGY uses the model the user last chose in the agy CLI;
-        # the Antigravity desktop is no longer read. A live config still written
-        # the old way (selection local_account + desktop fields) is treated the
-        # same way, so a release switch never strands AGY before the route is
-        # re-registered; its desktop fields are ignored.
-        if str(route.get("selection", "")) not in ("local_account", "agy_cli_settings"):
+        # User 2026-11-01: the model written in the config is the model in use.
+        # The agy CLI settings file and the Antigravity desktop are not read, so
+        # a route still written the old way is refused with the migration
+        # spelled out instead of quietly falling back to another model source.
+        if route_selection in AGY_RETIRED_SELECTIONS:
+            raise GatewayUnavailable(
+                f"AGY 路由 {route_name} 仍是旧写法（selection={route_selection}）："
+                f"{AGY_RETIRED_SELECTIONS[route_selection]}；请改成 selection=configured_model 并写明 model"
+            )
+        if route_selection != "configured_model":
             raise GatewayUnavailable(f"本地 CLI 路由选择策略无效：{route_name}")
         credential_desc = "managed_by_antigravity_local_account"
-        selection = "agy_cli_settings"
+        selection = "configured_model"
     elif driver == "dsh":
-        if str(route.get("selection", "")) != "local_harness":
+        if route_selection != "local_harness":
             raise GatewayUnavailable(f"本地 CLI 路由选择策略无效：{route_name}")
         credential_desc = "managed_by_dsh_desktop_settings"
         selection = "local_harness"
     elif driver == "qoder":
-        if str(route.get("selection", "")) != "qodercli_settings":
+        if route_selection != "qodercli_settings":
             raise GatewayUnavailable(f"本地 CLI 路由选择策略无效：{route_name}")
         credential_desc = "managed_by_qodercli_login"
         selection = "qodercli_settings"
@@ -127,12 +113,12 @@ def local_cli_route(config: AppConfig, route_name: str, agent_name: str) -> Dict
 
     if driver == "agy":
         try:
-            metadata = read_agy_cli_selection(route.get("settings_path") or agy_settings_default())
-        except (OSError, KeyError, ValueError) as exc:
-            raise GatewayUnavailable("agy CLI 设置里没有可用的选定模型，停止调用；请在 agy 里选好模型：" + str(exc)) from exc
-        return {**metadata, "route": route_name, "driver": driver,
-                "selection": selection, "credential": credential_desc,
-                "global_switch_required": False}
+            model = agy_configured_model(route, route_name)
+        except ValueError as exc:
+            raise GatewayUnavailable(str(exc)) from exc
+        return {"provider": "Antigravity", "model": model, "model_source": "node_configuration",
+                "route": route_name, "driver": driver, "selection": selection,
+                "credential": credential_desc, "global_switch_required": False}
 
     if driver == "dsh" and route.get("desktop_config") and "web_config" not in route:
         try:

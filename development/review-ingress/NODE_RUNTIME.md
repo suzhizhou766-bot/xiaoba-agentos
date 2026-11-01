@@ -13,7 +13,7 @@
 - 每适配器一把锁串行；每次调用期间持有工作区`.session.lock`，结束后释放，同工作区占用仍报`workspace_session_busy`。顺序仍是`verify`→`begin`→`workday.prepare`。`work`类任务先查`previous_work`，命中直接返回并带`replayed=True`，不再起进程；原记录失败则报`work_step_failed`。
 - stdout累计上限1MiB，超过即结束进程组并报`cli_output_limit`；stderr写入有界临时文件，原文不保存、不返回、不进证据。stdout新增可解析JSON行或回执文件大小变化都算进展；连续300秒无进展结束进程组并报`cli_no_progress`。健康探针与初始化总期限90秒，审查与工作无总期限。任何情况不自动重试、不换模型、不换后台。
 - 完成判定只看`workday.read(ticket)`：合格回执且进程已退出即成功；合格回执但进程未退出，最多再等30秒后结束进程组，回执仍有效并记`process_terminated_after_receipt: true`；退出码0且`result`为SUCCESS却没有合格回执报`receipt_missing`；退出码非0或`result`非SUCCESS时先查原生目录信任字样，命中抛`NativeWorkspaceConsent`（状态记blocked，不自动确认、不加任何跳过参数），其余报`cli_failed`并只保留`failure_class`（transient/permanent）。`workday.read`抛出的`WorkspaceError`原样上抛。
-- 证据字段为`provider='antigravity_cli'`、`model`（配置原值）、`route_source='native_cli_per_step'`、`model_source='node_configuration'`、`model_verification='not_performed'`、`call_id`（每次调用）、`execution_mode`、`reply_source='daily_worklog'`、`worklog`；不声称已核验实际上游模型。身份协议为`agy-cli-worklog-v1`，`implementation_sha256`由`resource_agy_cli.py`、`agent_workspace.py`、`workday.py`三文件字节拼接计算，`instance`在构造时生成、同一服务进程内不变，服务重启后必须重新测试。
+- 证据字段为`provider='antigravity_cli'`、`model`（配置原值）、`route_source='native_cli_per_step'`、`model_source='node_configuration'`、`call_id`（每次调用）、`execution_mode`、`reply_source='daily_worklog'`、`worklog`；不声称已核验实际上游模型。旧回执里的`model_verification`字段仍能读，新回执一律不再写。身份协议为`agy-cli-worklog-v1`，`implementation_sha256`由`resource_agy_cli.py`、`agent_workspace.py`、`workday.py`三文件字节拼接计算，`instance`在构造时生成、同一服务进程内不变，服务重启后必须重新测试。
 - 只读终端预览返回`supported`、`state`（`not_started`/`running`/`receipt_received`/`failed`/`closed`）、`session_id`（当前或最近一次`call_id`）、`turn`（已完成调用数），再合并`TerminalPreview().snapshot()`；正文是一行进度摘要（第几次调用、已收到几条流事件、回执字节数）加回执日志本轮新增部分的最后40行，统一经`set_screen()`脱敏限幅，不含stdout或stderr原文。
 - `retire()`置停用标志：无任务在跑立即关闭，有任务在跑等它结算后再关；停用后新任务报`session_closed`。`close()`结束进程组（SIGTERM，2秒后SIGKILL）并释放工作区锁。
 - 主入口核对时补了两处：结束进程组不再以agy主进程存活为前提，agy退出后留在本步进程组里的辅助进程也会被结束（先SIGTERM，2秒后SIGKILL；macOS对只剩未回收僵尸的组返回EPERM，先回收主进程，之后EPERM视为已无存活成员，主进程仍存活时被拒才报`session_cleanup_blocked`）；主进程退出后若辅助进程占着stdout，最多再等2秒即收尾，并在判定`receipt_missing`前补读一次回执。新增用例`test_helpers_left_in_the_call_group_are_ended_after_agy_exits`。
@@ -55,9 +55,9 @@
 
 ## 执行与可验证证据
 
-测试绑定节点配置摘要、调用器身份摘要、可执行入口的SHA-256（JSON入口）、当前随机挑战及实际响应、受信入口回报的provider/model/route_source和证据摘要，并与原生事件链中的同一节点事件核对。仅前端传passed、模型正文自称身份、复制另一节点事件或旧ID重放均不能获得资格。测试期间改开关不算有效PASS；中断测试不自动重探，只允许在原期限后显式启动新测试。
+测试绑定节点配置摘要、调用器身份摘要、可执行入口的SHA-256（JSON入口）、当前随机挑战及实际响应、受信入口回报的provider/route_source、节点配置的model原值和证据摘要，并与原生事件链中的同一节点事件核对。用户2026-11-01裁决：配置里的模型名就是实际使用的模型，所以测试只验证连通（能调用、能按挑战原文回答、能写回执），不核对入口回报的模型，也不因缺少模型证据判失败；测试通过的理由统一记为`challenge_completed_configured_node`。仅前端传passed、模型正文自称身份、复制另一节点事件或旧ID重放均不能获得资格。测试期间改开关不算有效PASS；中断测试不自动重探，只允许在原期限后显式启动新测试。
 
-CLI JSON入口从stdin接收对象，protocol=xiaoba-resource-v1，operation=test时附resource_plan/challenge；入口实际调用指定模型后从stdout返回相同protocol/challenge、output=challenge及真实provider/model/route_source。operation=review时接收冻结card，返回相同protocol、原card_digest、verdict/findings/evidence_refs和execution_evidence（含实际model）。模型元数据由受信调用器负责，不能依赖模型正文自述。入口必须是用户明确指定的可执行绝对路径，不接受shell命令，不猜任意厂商CLI的参数。标准入口45秒有界等待，失败或超时停止。
+CLI JSON入口从stdin接收对象，protocol=xiaoba-resource-v1，operation=test时附resource_plan/challenge；入口调用配置的模型后从stdout返回相同protocol/challenge、output=challenge及provider/route_source。operation=review时接收冻结card，返回相同protocol、原card_digest、verdict/findings/evidence_refs和execution_evidence。测试证据里的model记节点配置原值；入口回报的模型不比对，回报不同或缺少都不判失败，模型身份也不取信模型正文自述。入口必须是用户明确指定的可执行绝对路径，不接受shell命令，不猜任意厂商CLI的参数。标准入口45秒有界等待，失败或超时停止。
 
 除下述原生AGY接入外，普通CLI、桌面与Web仍需相应受信适配器，明确声明supports_resource_plan并实现resource_identity、test_resource及run；没有时返回adapter_required，不能假装测试通过。只是能打开应用或网页不算模型调用成功。
 
@@ -66,7 +66,7 @@ CLI JSON入口从stdin接收对象，protocol=xiaoba-resource-v1，operation=tes
 2026-10-28用户选择：小八复用一个交互会话，逐条发送并等待结果。原生可执行入口basename为agy或antigravity时使用专用PTY适配，不按用户自定义名称识别品牌，也不再把裸CLI当作xiaoba-resource-v1。未知自定义JSON入口及旧显式受信适配器优先级保持原样。
 
 - 每个节点在当前服务中只保留一个原生交互进程，任务锁串行发送；没有print、stream-json输入或跳过权限参数，不会为每项任务另起一次模型会话。不调用models子命令。
-- 以节点资料为调用依据，入口与model值原样传入；不查询模型目录、不读取默认模型、不识别欢迎页模型，也不猜High/Medium/Low。model仅为本会话参数，不写入持久设置。证据标记model_source=node_configuration、model_verification=not_performed，不把配置模型冒充实际上游模型证明。若原生CLI拒绝配置值，保留失败并由用户修改，不自动代填或换模型。
+- 以节点资料为调用依据，入口与model值原样传入；不查询模型目录、不读取默认模型、不识别欢迎页模型，也不猜High/Medium/Low。model仅为本会话参数，不写入持久设置。证据标记model_source=node_configuration，不把配置模型冒充实际上游模型证明；model_verification是旧回执字段，新回执不再写、旧回执仍能读。若原生CLI拒绝配置值，保留失败并由用户修改，不自动代填或换模型。
 - 首次启动使用宿主明确指定父目录下、按用户节点名建立的固定工作区，原生“Do you trust the contents of this project?”不会自动确认。状态携带pending_action，在原节点内显示目录、权限范围和用户确认按钮；interactive-confirm沿用同源/Host/令牌门禁，绑定节点修订号、action_id与session_id并写事件链。确认只推进目录许可，不发送模型任务、不标记测试通过，更不批准任何经验。用户随后显式点击测试运行。关闭节点可取消。
 - 只有所配置入口完成本次真实随机挑战、结构化结果边界和原生输入提示齐全，才记录调用测试通过，不额外要求模型身份核验。原始TUI、输入回显、工具标记、思考泄漏或无法解析的结果不能成为答案；终端原文只在内存中处理，不保存账号横幅或原始聊天。
 - 测试有明确短期限，普通任务无总截止，连续300秒无可验证结果进展停止。限流、登录、超时及其它失败不自动重试、重连或换后台。串行复用不是防封保证，不能据此规避平台限制。

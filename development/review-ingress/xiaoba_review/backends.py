@@ -96,8 +96,6 @@ class BackendRegistry:
         try:
             started = time.time()
             result = adapter.run(card)
-            if card.get('resource_plan') and result.get('execution_evidence',{}).get('model') != card['resource_plan']['model']:
-                raise ValueError('实际返回模型与本任务节点计划不一致，停止结算')
             # The adapter returns findings only; identity and version come from
             # the host's assignment, not self-assertions in model output.
             payload = {key: card[key] for key in ('review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision', 'reviewer_id',

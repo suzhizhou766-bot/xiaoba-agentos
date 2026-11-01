@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--runtime', type=Path, default=HERE / '.runtime', help='无配置时的新建独立运行目录')
     parser.add_argument('--port', type=int, default=8800)
     parser.add_argument('--agent-workspace-root', type=Path, help='用户指定的固定Agent工作区父目录；不从网页接收路径')
+    parser.add_argument('--tmux-path', help='用户在场通道的tmux可执行文件；不指定时用PATH里的tmux')
     parser.add_argument('--dsh-reviewer', help='已登记来源 ID；仅在明确指定时绑定真实 DSH 适配器')
     parser.add_argument('--dsh-agent', help='原配置内明确的 DSH Agent 名称')
     parser.add_argument('--inbox-offline', action='store_true')
@@ -41,6 +42,12 @@ def main():
     from xiaoba_review.store import ReviewStore, DecisionInbox
     from xiaoba_review.backends import BackendRegistry, NativeDsh
     from xiaoba_review.monitor import OpenReviewModule
+    from xiaoba_review import resource_tmux
+    if args.tmux_path:
+        try:
+            resource_tmux.configure_executable(args.tmux_path)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     native_config = AppConfig.load(args.config) if args.config else None
     runtime = native_config.runtime_dir if native_config else args.runtime.resolve()

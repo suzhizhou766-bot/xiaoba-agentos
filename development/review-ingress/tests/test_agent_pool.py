@@ -129,7 +129,7 @@ class PoolTests(fixtures.FixtureMixin,unittest.TestCase):
             with self.assertRaises(ValueError):self.pool.add(value)
         self.assertEqual(self.count('ri_sources'),3)
 
-    def test_pool_plan_requires_a_supporting_adapter_and_actual_returned_model(self):
+    def test_pool_plan_requires_a_supporting_adapter_and_records_the_configured_model(self):
         source=self.toggle(self.add(),True);req=self.request_node(source,peer_channel='backend_adapter')
         assignment=next(a for a in req['assignments'] if a['role']=='peer')
         class Adapter:
@@ -143,8 +143,14 @@ class PoolTests(fixtures.FixtureMixin,unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'测试'):self.backends.execute(assignment['id'])
         with self.native.read_only() as db:revision=node_state(self.store.source(db,source['reviewer_id']))['revision']
         self.assertEqual(self.pool.runtime.test_run(source['reviewer_id'],revision,'TEST-plan-gate')['status'],'passed')
-        with self.assertRaisesRegex(ValueError,'模型'):self.backends.execute(assignment['id'])
-        self.assertEqual(self.count('ri_receipts'),0)
+        # 用户 2026-11-01 裁决：适配器回报的模型与节点计划不同不再判失败，
+        # 回执照常结算，证据里保留适配器回报的原值。
+        result=self.backends.execute(assignment['id'])
+        self.assertEqual(result['status'],'valid')
+        data=self.store.get(req['id'])['receipts'][0]['data']
+        self.assertEqual('PASS',data['verdict'])
+        self.assertEqual('TEST wrong model',data['execution_evidence']['model'])
+        self.assertEqual(1,self.count('ri_receipts'))
 
     def test_disable_during_running_call_keeps_receipt_but_blocks_next_call(self):
         source=self.toggle(self.add(),True);req=self.request_node(source,peer_channel='backend_adapter')

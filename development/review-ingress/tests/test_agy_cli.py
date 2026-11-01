@@ -141,7 +141,8 @@ class CliContractTests(CliFixture,unittest.TestCase):
         self.assertEqual(evidence['model'],'Gemini 3.8 Flash')
         self.assertEqual(evidence['route_source'],'native_cli_per_step')
         self.assertEqual(evidence['model_source'],'node_configuration')
-        self.assertEqual(evidence['model_verification'],'not_performed')
+        # 用户 2026-11-01 裁决后新回执不再写 model_verification（旧回执仍能读）。
+        self.assertNotIn('model_verification',evidence)
         self.assertEqual(evidence['execution_mode'],'native_cli_per_step')
         self.assertEqual(evidence['reply_source'],'daily_worklog')
         self.assertEqual(evidence['output'],evidence['challenge'])

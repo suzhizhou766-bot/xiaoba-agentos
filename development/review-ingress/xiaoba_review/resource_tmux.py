@@ -1,9 +1,12 @@
-"""Attended CLI transport. Only file receipts settle work; never inspect a pane.
+"""Attended CLI transport. Only file receipts settle work; pane text is never read.
 
 The host persists `sending` BEFORE send-keys. Uncertain sends are never replayed.
 The existing monitor loop collects pending receipts without an inactivity timeout.
+Before typing anything the channel reads pane metadata (`display-message -p`),
+which reports the foreground program and its directory, never screen content.
 """
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -16,6 +19,32 @@ from .workday import WorkdayReceipts
 
 EVENT = 'agent_pool.tmux_job'
 ACTIVE = {'sending', 'waiting_user_agent'}
+
+# A shell in the foreground means the card text would be typed at a prompt and
+# run as commands (卡 26). `login` is how tmux names a login shell's wrapper.
+SHELLS = frozenset({'zsh', 'bash', 'sh', 'fish', 'dash', 'tcsh', 'ksh', 'login'})
+
+_EXECUTABLE = None
+
+
+def validate_executable(value):
+    if not isinstance(value, str) or any(c in value for c in '\r\n\0'):
+        raise ValueError('需要tmux可执行文件路径')
+    path = Path(value).expanduser()
+    if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
+        raise ValueError('tmux路径必须是已存在的可执行文件：' + str(path))
+    return str(path)
+
+
+def configure_executable(value):
+    """Point the attended channel at a tmux the service PATH cannot see.
+
+    Trusted host input (monitor config `agent_pool.tmux_path` or `run.py
+    --tmux-path`), never a web field. Empty clears it and PATH is used again.
+    """
+    global _EXECUTABLE
+    _EXECUTABLE = validate_executable(value) if value else None
+    return _EXECUTABLE
 
 
 def validate_session(value):
@@ -39,17 +68,53 @@ class TmuxChannel:
         # executable is trusted-host/test injection, never a web field.
         self.executable = executable
 
-    def _command(self, *args):
-        executable = self.executable or shutil.which('tmux')
+    def _run(self, args, capture):
+        executable = self.executable or _EXECUTABLE or shutil.which('tmux')
         if not executable:
             raise ValueError('本机未安装tmux；未发送任务')
         try:
-            result = subprocess.run([executable, *args], stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+            return subprocess.run([executable, *args], stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, text=capture, timeout=5, check=False,
+                # Without a UTF-8 locale (launchd) tmux prints tabs and non-ASCII
+                # as "_", and a pane directory could never match its node.
+                env=dict(os.environ, LC_ALL='en_US.UTF-8'))
         except (OSError, subprocess.TimeoutExpired):
             raise ValueError('tmux调用未确认完成；不自动重发，请核对原任务') from None
-        if result.returncode:
+
+    def _command(self, *args):
+        if self._run(args, False).returncode:
             raise ValueError('tmux会话不存在或调用失败；不自动重发')
+
+    def _pane(self, session):
+        """Foreground program and directory of the session's active pane.
+
+        `display-message -p` expands a format string; it prints no pane text, so
+        the channel still never reads the screen.
+        """
+        result = self._run(('display-message', '-p', '-t', '=' + session + ':',
+                            '#{pane_current_command}\t#{pane_current_path}'), True)
+        if result.returncode:
+            raise ValueError('tmux窗格元数据读取失败；未发送任务，不自动重发')
+        command, separator, path = (result.stdout or '').strip().partition('\t')
+        if not separator or not command or not path:
+            raise ValueError('tmux窗格元数据不完整；未发送任务，不自动重发')
+        return command.strip(), path.strip()
+
+    def _require_agent_foreground(self, session, node):
+        """Refuse to type a card at a shell prompt or in an unregistered directory.
+
+        卡 26 sent a task to a pane whose foreground was zsh, so the card text was
+        executed as commands. Only metadata is checked; nothing is read or retyped.
+        """
+        command, pane_path = self._pane(session)
+        if Path(command.lstrip('-')).name.lower() in SHELLS:
+            raise ValueError('tmux前台是shell（' + command + '），任务文字会被当成命令执行；'
+                             '未发送，请把该会话切到节点登记的Agent后再派发')
+        registered = Path(node['working_directory']).resolve()
+        if Path(pane_path).resolve() != registered:
+            raise ValueError('tmux窗格工作目录（' + pane_path + '）与节点登记目录（' + str(registered)
+                             + '）不同；未发送')
 
     def jobs(self, db):
         jobs = {}
@@ -90,6 +155,9 @@ class TmuxChannel:
             if any(j['status'] in ACTIVE and (j['node_id'] == source['reviewer_id'] or j['session'] == session) for j in jobs.values()):
                 raise Conflict('该节点或tmux会话已有等待任务；不并发发送')
             self._command('has-session', '-t', '='+session)
+            # Before any owned file is created and before `sending` is persisted:
+            # a refusal here must never leave a "已发送" record behind.
+            self._require_agent_foreground(session, node)
             workspace = self.workspace(source)
             record = workspace.begin('work', job_id, payload)
             ticket = WorkdayReceipts(workspace).prepare(record, task_id, step_code, instruction, materials)
@@ -140,7 +208,7 @@ class TmuxChannel:
                     receipt = WorkdayReceipts(workspace).read(ticket)
                     if receipt is None:continue
                     evidence = {'model':job['source']['node']['model'],
-                        'model_source':'node_configuration', 'model_verification':'not_performed',
+                        'model_source':'node_configuration',
                         'context_isolated':False, 'role':'collaborator', 'worklog':receipt['worklog']}
                     path = workspace.finish(job['record'], 'execution_completed', result=receipt, evidence=evidence)
                     job.pop('receipt_error', None)

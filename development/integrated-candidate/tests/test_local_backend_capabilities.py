@@ -11,7 +11,11 @@ class BackendOwnedSelectionTest(unittest.TestCase):
     def test_local_backends_reject_master_model_pools_and_upstream_fields(self):
         baseline = json.loads((Path(__file__).resolve().parents[1] / 'config/agentos.json').read_text())
         for route in ('local_agy', 'local_dsh'):
-            for key in ('model', 'model_pool', 'provider', 'provider_id', 'endpoint', 'credential'):
+            # AGY 的模型就写在路由上（用户 2026-11-01 裁决），所以只有 DSH 不许带 model。
+            keys = ('model_pool', 'provider', 'provider_id', 'endpoint', 'credential')
+            if route == 'local_dsh':
+                keys = ('model',) + keys
+            for key in keys:
                 raw = json.loads(json.dumps(baseline))
                 raw['cli_routes'][route][key] = ['another-model'] if key == 'model_pool' else 'override'
                 with self.subTest(route=route, key=key), self.assertRaises(ConfigError):

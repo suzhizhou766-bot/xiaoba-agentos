@@ -467,10 +467,11 @@
       "name": "模型用用户自己的选择：DSH 跟随桌面端，AGY 与 Qoder 用用户在各自 CLI 里上次选定的模型；不写死、不擅换",
       "status": "guarded",
       "tests": [
-        "test_agy.py::test_a_legacy_desktop_route_reads_the_cli_settings_and_never_the_desktop",
-        "test_agy.py::test_a_legacy_route_cannot_point_settings_path_at_an_arbitrary_file",
-        "test_agy.py::test_missing_or_unclear_settings_never_use_a_static_model",
-        "test_agy.py::test_route_rejects_static_override_and_a_wrong_settings_path",
+        "test_agy.py::test_a_route_without_a_usable_model_stops_before_any_call",
+        "test_agy.py::test_an_agy_route_takes_no_upstream_or_settings_field",
+        "test_agy.py::test_an_unknown_selection_is_refused",
+        "test_agy.py::test_retired_agy_selections_are_refused_with_the_migration_spelled_out",
+        "test_agy.py::test_the_configured_model_goes_to_the_cli_verbatim_and_no_settings_file_is_read",
         "test_config_standby.py::test_qoder_route_requires_an_absolute_settings_path",
         "test_dsh.py::test_desktop_configuration_is_the_only_backend_overlay",
         "test_dsh.py::test_missing_desktop_selection_never_runs_an_unpatched_cli",
@@ -478,11 +479,12 @@
         "test_dsh.py::test_route_rejects_legacy_web_static_upstream_and_relative_desktop_path",
         "test_dsh.py::test_shared_backend_configuration_is_forwarded_without_model_patch",
         "test_local_backend_capabilities.py::test_local_backends_reject_master_model_pools_and_upstream_fields",
+        "test_qoder_adapter.py::test_a_differing_reported_model_is_not_a_failure",
         "test_qoder_adapter.py::test_a_flag_shaped_model_name_is_not_a_model",
         "test_qoder_adapter.py::test_environment_is_scrubbed_and_qoder_model_overrides_are_removed",
-        "test_qoder_adapter.py::test_reported_model_is_what_actually_answered",
+        "test_qoder_adapter.py::test_missing_model_usage_is_not_a_failure",
         "test_qoder_adapter.py::test_settings_without_model_name_is_unavailable_not_defaulted",
-        "test_qoder_adapter.py::test_two_model_keys_are_always_a_failure"
+        "test_qoder_adapter.py::test_two_model_keys_are_not_a_failure"
       ]
     },
     "B19": {

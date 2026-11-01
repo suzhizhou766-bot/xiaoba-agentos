@@ -185,18 +185,22 @@ class NodeRuntime:
         try:
             result=adapter.test_resource(plan,challenge)
             text=result.get('output')
+            # 用户 2026-11-01 裁决：配置里的模型名就是实际使用的模型。连通测试只看
+            # 能不能调用、能不能按挑战原文回答；回报的模型不核对，缺证据也不判失败。
             if (not isinstance(text,str) or text.strip()!=challenge or contains_non_answer_markers(text) or detect_reasoning_leak(text)
-                    or result.get('model')!=plan['model'] or not result.get('provider') or not result.get('route_source')):
-                raise ValueError('测试响应或实际模型与节点计划不符')
+                    or not result.get('provider') or not result.get('route_source')):
+                raise ValueError('测试没有按挑战原文回答，或缺少调用来源')
             if digest(adapter.resource_identity())!=digest(identity):raise ValueError('测试期间入口发生变化')
-            evidence={k:result[k] for k in ('provider','model','route_source','output')}
-            for key in ('model_id','model_display','model_evidence_scope','model_source','model_verification','selection','session_id','turn','execution_mode','reply_source','worklog'):
+            # 证据里的 model 记节点配置原值。model_verification 是旧回执字段：
+            # 旧数据继续能读，新回执一律不再写。
+            evidence={'provider':result['provider'],'model':plan['model'],
+                      'route_source':result['route_source'],'output':result['output']}
+            for key in ('model_id','model_display','model_evidence_scope','model_source','selection','session_id','turn','execution_mode','reply_source','worklog'):
                 if key in result:evidence[key]=result[key]
             evidence['challenge']=challenge
             from xiaoba_agentos.memory import MemoryBridge
             if MemoryBridge._sensitive_reason(canonical(evidence)):raise ValueError('测试元数据含敏感资料，不保存')
-            proof=digest(evidence);status='passed';reason='challenge_and_model_verified'
-            if result.get('model_source')=='node_configuration':reason='challenge_completed_configured_node'
+            proof=digest(evidence);status='passed';reason='challenge_completed_configured_node'
         except Exception as exc:
             reason=type(exc).__name__
             from .resource_agy import InteractiveError

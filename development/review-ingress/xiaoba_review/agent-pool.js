@@ -57,7 +57,7 @@
     if(node.execution_mode==='native_interactive_serial'){const view=terminal(root,node),out=view.querySelector('pre');if(saved){out.textContent=saved.text;out.scrollTop=saved.scroll;}}
     if(node.interface==='tmux'){
       el('p','用户在场 · 上下文不隔离 · 仅限协作员',root).className='ap-note';
-      el('p','会话：'+node.tmux_session+' · 工作目录：'+node.working_directory,root).className='ap-note';
+      el('p','会话：'+node.tmux_session+' · 工作目录：'+node.working_directory+' · 发送前只读窗格元数据核对前台程序和工作目录：前台是shell或目录不符就不发送，也不记已发送。',root).className='ap-note';
       for(const job of node.tmux_jobs||[]){
         const box=el('section',undefined,root);
         const labels={waiting_user_agent:'等待用户/Agent',sending:'发送结果待核对，不自动重发',send_uncertain:'发送未确认，不自动重发',completed:'回执已收取',failed:'回执报告失败',blocked:'回执报告受阻',cancelled:'已取消等待'};
@@ -71,7 +71,7 @@
     }
     const dl=el('dl',undefined,root);
     for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',node.model||'未登记'],['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
-    el('p',node.backend_available?(node.execution_mode==='native_interactive_serial'?'已接入本机交互调用器，按节点填写的入口与模型配置派发任务。':'已接入本机调用器；调用仍须返回本任务模型的执行证据。'):'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
+    el('p',node.backend_available?'已接入本机调用器，按节点填写的入口与模型配置派发任务。':'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
     if(node.execution_mode==='native_interactive_serial')el('p','同一交互会话逐条执行任务卡，过程与回执写入当日Markdown；终端只供查看进度。',root).className='ap-note';
     const actions=el('div',undefined,root);actions.className='ap-actions';
     const readiness=node.readiness||{},labels={disabled:'已关闭',removed:'已移除',missing_configuration:'资料待补齐',adapter_required:'调用器待接入',entry_changed_or_unavailable:'入口待核对',test_required:'尚未通过当前配置的测试',test_evidence_invalid:'测试证据无效',native_confirmation_required:'等待你确认AGY原生工作区',testing:'正在测试',tested:'测试通过，可直接运行'};

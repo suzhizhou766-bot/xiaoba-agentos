@@ -11,6 +11,7 @@ from xiaoba_agentos.adapters import AgyAdapter, AgentResult, PermanentAdapterErr
 from xiaoba_agentos.output_hygiene import NON_ANSWER_MARKERS
 from xiaoba_agentos.capabilities import CapabilityRegistry, agent_provider_model, capable_agents
 from xiaoba_agentos.config import AppConfig, ConfigError
+from xiaoba_agentos import gateway
 from xiaoba_agentos.gateway import GatewayUnavailable, command_environment, local_cli_readiness, local_cli_route
 from xiaoba_agentos.health import model_paths
 from xiaoba_agentos.orchestrator import Orchestrator
@@ -23,8 +24,8 @@ class AgyIntegrationTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        # The agy settings path must be exactly the user's own; here the user's
-        # home is the temporary root.
+        # The user's home is the temporary root, so any settings file the tests
+        # plant sits exactly where a real one would be.
         home = patch.object(Path, 'home', return_value=self.root)
         home.start()
         self.addCleanup(home.stop)
@@ -33,18 +34,17 @@ class AgyIntegrationTest(unittest.TestCase):
         raw['runtime_dir'] = str(self.root / 'runtime')
         raw['integrations']['agy_command'] = '/usr/bin/true'
         raw['memory'].update(knowlp_enabled=False, obsidian_vault=str(self.root), publish_enabled=False)
-        self.config = AppConfig(self.root / 'config.json', raw)
-        self.agent = next(a for a in self.config.agents if a.raw.get('driver') == 'agy')
-        # The model the user last chose in the agy CLI (user 2026-10-20); the
-        # Antigravity desktop is no longer read.
-        self.settings = self.root / '.gemini' / 'antigravity-cli' / 'settings.json'
-        self.write_settings('gemini-3.8-flash-low')
-        raw['cli_routes']['local_agy'] = {'driver': 'agy', 'selection': 'agy_cli_settings',
-                                          'settings_path': str(self.settings)}
         if 'local_qoder' in raw['cli_routes']:
             raw['cli_routes']['local_qoder']['settings_path'] = str(self.root / '.qoder' / 'settings.json')
+        # 用户 2026-11-01 裁决：配置里的模型名就是实际使用的模型。AGY 的模型写在
+        # cli_routes.local_agy 上，agy CLI 设置文件不再被读取。
+        self.model = raw['cli_routes']['local_agy']['model']
+        self.settings = self.root / '.gemini' / 'antigravity-cli' / 'settings.json'
+        self.config = AppConfig(self.root / 'config.json', raw)
+        self.agent = next(a for a in self.config.agents if a.raw.get('driver') == 'agy')
 
-    def write_settings(self, model):
+    def plant_settings(self, model):
+        """Put an agy CLI settings file where a real one would be. It must be ignored."""
         self.settings.parent.mkdir(parents=True, exist_ok=True)
         self.settings.write_text(json.dumps({'model': model, 'trustedWorkspaces': []}), encoding='utf-8')
 
@@ -82,8 +82,8 @@ class AgyIntegrationTest(unittest.TestCase):
     def test_structured_success_reports_configured_route_and_isolated_plan(self):
         answer, run = self.run_payload({'status': 'SUCCESS', 'response': '结论：可行。依据：测试。风险：缺证据。验证：复查。'})
         self.assertEqual('Antigravity', answer.provider)
-        self.assertEqual('gemini-3.8-flash-low', answer.model)
-        self.assertEqual('agy_cli_settings', answer.route_source)
+        self.assertEqual(self.model, answer.model)
+        self.assertEqual('configured_model', answer.route_source)
         argv = run.call_args.args[0]
         self.assertEqual('plan', argv[argv.index('--mode') + 1])
         self.assertIn('--sandbox', argv)
@@ -133,61 +133,96 @@ class AgyIntegrationTest(unittest.TestCase):
         with self.assertRaises(PermanentAdapterError):
             self.run_payload({'status': 'ERROR', 'error': 'invalid model configuration'})
 
-    def test_cli_settings_model_is_read_again_for_each_invocation_without_effort_override(self):
+    def test_the_configured_model_goes_to_the_cli_verbatim_and_no_settings_file_is_read(self):
+        # 用户 2026-11-01 裁决。这里故意放一个内容不同的 agy CLI 设置文件：调用参数
+        # 和回执都必须只反映配置里写的模型，设置文件一次都不读。
+        self.plant_settings('Chosen-By-The-Settings-File')
         self.config._validate_cli_routes()
-        for model in ('Gemini 3.8 Flash (High)', 'Claude Opus 4.6 (Thinking)'):
-            self.write_settings(model)
-            answer, run = self.run_payload({'status': 'SUCCESS', 'response': '审查结果'})
-            self.assertEqual(model, answer.model)
-            self.assertEqual('agy_cli_settings', answer.route_source)
-            argv = run.call_args.args[0]
-            self.assertEqual(model, argv[argv.index('--model') + 1])
-            self.assertNotIn('--effort', argv)
-            self.assertIn('--sandbox', argv)
-            self.assertEqual('plan', argv[argv.index('--mode') + 1])
+        answer, run = self.run_payload({'status': 'SUCCESS', 'response': '审查结果'})
+        argv = run.call_args.args[0]
+        self.assertEqual(self.model, argv[argv.index('--model') + 1])
+        self.assertEqual(self.model, answer.model)
+        self.assertEqual('configured_model', answer.route_source)
+        self.assertNotIn('--effort', argv)
+        self.assertIn('--sandbox', argv)
+        self.assertEqual('plan', argv[argv.index('--mode') + 1])
+        self.assertFalse(hasattr(gateway, 'read_agy_cli_selection'),
+                         '读取 agy CLI 设置文件的入口必须已经移除')
 
-    def test_missing_or_unclear_settings_never_use_a_static_model(self):
-        for content in (None, '{}', '[]', '{"model": ""}', '{"model": " padded "}', '{"model": 5}', 'broken'):
-            with self.subTest(content=content):
-                if content is None:
-                    self.settings.unlink()
-                else:
-                    self.settings.write_text(content, encoding='utf-8')
+    def test_a_route_without_a_usable_model_stops_before_any_call(self):
+        # 没有可回退的默认模型，也没有文件可以补：报错要说清去配置里填。
+        for route in ({'driver': 'agy', 'selection': 'configured_model'},
+                      {'driver': 'agy', 'selection': 'configured_model', 'model': ''},
+                      {'driver': 'agy', 'selection': 'configured_model', 'model': '   '},
+                      {'driver': 'agy', 'selection': 'configured_model', 'model': 5}):
+            with self.subTest(model=route.get('model')):
+                self.config.raw['cli_routes']['local_agy'] = dict(route)
+                with self.assertRaises(ConfigError) as caught:
+                    self.config._validate_cli_routes()
+                self.assertIn('必须写明 model', str(caught.exception))
                 with self.assertRaises(GatewayUnavailable) as caught:
                     local_cli_route(self.config, 'local_agy', self.agent.name)
-                self.assertIn('agy CLI 设置', str(caught.exception))
-
-    def test_route_rejects_static_override_and_a_wrong_settings_path(self):
-        self.config.raw['cli_routes']['local_agy']['model_pool'] = ['gemini-3.8-flash-low']
-        with self.assertRaises(ConfigError): self.config._validate_cli_routes()
-        del self.config.raw['cli_routes']['local_agy']['model_pool']
-        # A same-shaped file outside the user's home is refused too (pre-review R9).
-        for value in ('relative/settings.json', str(self.root / 'antigravity-cli' / 'config.json'),
-                      str(self.root / 'other' / 'settings.json'),
-                      str(self.root / 'elsewhere' / '.gemini' / 'antigravity-cli' / 'settings.json'),
-                      '/tmp/any/antigravity-cli/settings.json'):
-            with self.subTest(settings_path=value):
-                self.config.raw['cli_routes']['local_agy']['settings_path'] = value
-                with self.assertRaises(ConfigError): self.config._validate_cli_routes()
-
-    def test_a_legacy_desktop_route_reads_the_cli_settings_and_never_the_desktop(self):
-        # A live config written before v1.6.5 still says local_account with the
-        # desktop fields. After the switch it must keep working without touching
-        # the Antigravity desktop until the route is re-registered.
-        self.config.raw['cli_routes']['local_agy'] = {
-            'driver': 'agy', 'selection': 'local_account',
-            'desktop_debug_port': str(self.root / 'DevToolsActivePort'),
-            'desktop_auto_start': True, 'desktop_app_path': '/Applications/Antigravity.app',
-        }
+                self.assertIn('必须写明 model', str(caught.exception))
+                with self.assertRaises(PermanentAdapterError) as caught:
+                    build_adapter(self.agent).run('审查方案', '')
+                self.assertIn('必须写明 model', str(caught.exception))
+        # 形状像命令行参数的模型名在到达 --model 之前就被拒绝。
+        for model in ('--model', '-c', '--tools', '_x', '.hidden', 'x' * 81, ' padded '):
+            with self.subTest(model=model):
+                self.config.raw['cli_routes']['local_agy']['model'] = model
+                with self.assertRaises(ConfigError) as caught:
+                    self.config._validate_cli_routes()
+                self.assertIn('不是可用的模型名', str(caught.exception))
+        self.config.raw['cli_routes']['local_agy']['model'] = self.model
         self.config._validate_cli_routes()
-        self.write_settings('Gemini 3.8 Flash (High)')
-        with patch('xiaoba_agentos.gateway.subprocess.run', side_effect=AssertionError('desktop must not be read')):
-            route = local_cli_route(self.config, 'local_agy', self.agent.name)
-        self.assertEqual('Gemini 3.8 Flash (High)', route['model'])
-        self.assertEqual('agy_cli_settings', route['model_source'])
-        # A legacy route may still never pin a model or an upstream.
-        self.config.raw['cli_routes']['local_agy']['model'] = 'pinned'
-        with self.assertRaises(ConfigError): self.config._validate_cli_routes()
+
+    def test_retired_agy_selections_are_refused_with_the_migration_spelled_out(self):
+        # 旧配置不能静默继续跑，也不能被偷偷解释成读设置文件或读桌面端。
+        self.plant_settings('Chosen-By-The-Settings-File')
+        for selection, text in (('agy_cli_settings', 'AGY 不再读 agy CLI 设置文件'),
+                                ('local_account', 'AGY 的桌面 local_account 路由已停用')):
+            with self.subTest(selection=selection):
+                self.config.raw['cli_routes']['local_agy'] = {
+                    'driver': 'agy', 'selection': selection, 'settings_path': str(self.settings),
+                    'desktop_debug_port': str(self.root / 'DevToolsActivePort'),
+                    'desktop_auto_start': True, 'desktop_app_path': '/Applications/Antigravity.app',
+                }
+                # 切换前没法先改配置（旧代码不认 model），所以旧配置要能加载，只有调用 AGY 被拒。
+                self.config._validate_cli_routes()
+                with self.assertRaises(GatewayUnavailable) as caught:
+                    local_cli_route(self.config, 'local_agy', 'agy_review')
+                self.assertIn(text, str(caught.exception))
+                self.assertIn('selection=configured_model', str(caught.exception))
+                with patch('xiaoba_agentos.gateway.subprocess.run',
+                           side_effect=AssertionError('desktop must not be read')):
+                    with self.assertRaises(GatewayUnavailable) as caught:
+                        local_cli_route(self.config, 'local_agy', self.agent.name)
+                self.assertIn(text, str(caught.exception))
+        self.config.raw['cli_routes']['local_agy'] = {
+            'driver': 'agy', 'selection': 'configured_model', 'model': self.model}
+
+    def test_an_unknown_selection_is_refused(self):
+        self.config.raw['cli_routes']['local_agy']['selection'] = 'something_new'
+        with self.assertRaises(ConfigError) as caught:
+            self.config._validate_cli_routes()
+        self.assertIn('必须是 configured_model', str(caught.exception))
+        self.config.raw['cli_routes']['local_agy']['selection'] = 'configured_model'
+
+    def test_an_agy_route_takes_no_upstream_or_settings_field(self):
+        for key in ('model_pool', 'provider', 'provider_id', 'endpoint', 'base_url',
+                    'api_key', 'settings_path', 'desktop_debug_port'):
+            with self.subTest(key=key):
+                self.config.raw['cli_routes']['local_agy'] = {
+                    'driver': 'agy', 'selection': 'configured_model', 'model': self.model,
+                    key: ['x'] if key == 'model_pool' else 'forbidden',
+                }
+                with self.assertRaises(ConfigError) as caught:
+                    self.config._validate_cli_routes()
+                self.assertIn('仅允许 driver、selection、model', str(caught.exception))
+                self.assertNotIn('forbidden', str(caught.exception))
+        self.config.raw['cli_routes']['local_agy'] = {
+            'driver': 'agy', 'selection': 'configured_model', 'model': self.model}
+        self.config._validate_cli_routes()
 
     def test_bad_json_and_nonobject_are_rejected(self):
         for output in ('broken', '[]'):
@@ -247,20 +282,6 @@ class AgyIntegrationTest(unittest.TestCase):
         argv = probe.call_args.args[0]
         self.assertEqual('300s', argv[argv.index('--print-timeout') + 1])
 
-    def test_a_legacy_route_cannot_point_settings_path_at_an_arbitrary_file(self):
-        # The gateway reads settings_path from a legacy route too, so it gets the
-        # same path check as the new form; otherwise any file could pick the model.
-        chosen = self.root / 'chosen.json'
-        chosen.write_text(json.dumps({'model': 'Chosen-By-Whoever-Edited-Config'}), encoding='utf-8')
-        self.config.raw['cli_routes']['local_agy'] = {
-            'driver': 'agy', 'selection': 'local_account', 'settings_path': str(chosen),
-            'desktop_debug_port': str(self.root / 'DevToolsActivePort'),
-        }
-        with self.assertRaises(ConfigError):
-            self.config._validate_cli_routes()
-        self.config.raw['cli_routes']['local_agy']['settings_path'] = str(self.settings)
-        self.config._validate_cli_routes()
-
     def test_final_acceptance_requires_one_standalone_verdict(self):
         prompt = 'End with FINAL_ACCEPTANCE: PASS or FINAL_ACCEPTANCE: FAIL'
         for output in ('PASS', 'FINAL_ACCEPTANCE: PASS suffix', 'FINAL_ACCEPTANCE: PASS\nFINAL_ACCEPTANCE: FAIL'):
@@ -286,10 +307,17 @@ class AgyIntegrationTest(unittest.TestCase):
         self.assertEqual(['agy_cli', 'antigravity_local_account', 'antigravity_service'], model_paths([self.agent])[self.agent.name])
 
     def test_capability_gate_uses_actual_agy_model(self):
-        self.assertEqual(('Antigravity', 'gemini-3.8-flash-low'), agent_provider_model(self.agent))
+        # 能力门读的是 cli_routes.local_agy 里用户写的模型；换成一个未声明的模型，
+        # 它不会借用别的模型的能力声明。
+        self.assertEqual(('Antigravity', self.model), agent_provider_model(self.agent))
+        self.config.raw['cli_routes']['local_agy']['model'] = 'Gemini 3.8 Flash (Low)'
+        self.assertEqual(('Antigravity', 'Gemini 3.8 Flash (Low)'), agent_provider_model(self.agent))
         enabled, _ = capable_agents([self.agent], CapabilityRegistry(), ['reasoning'])
         self.assertEqual([self.agent], enabled)
         enabled, _ = capable_agents([self.agent], CapabilityRegistry(), ['shell_write_workspace'])
+        self.assertEqual([], enabled)
+        self.config.raw['cli_routes']['local_agy']['model'] = 'Undeclared AGY Model'
+        enabled, _ = capable_agents([self.agent], CapabilityRegistry(), ['reasoning'])
         self.assertEqual([], enabled)
 
     def test_route_rejects_cc_switch_credentials(self):
