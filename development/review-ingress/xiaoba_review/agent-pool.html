@@ -14,6 +14,7 @@
     <div id="apTmuxFields" hidden><label>tmux 会话名<input name="tmux_session" maxlength="64" disabled></label><label>节点工作目录<input name="working_directory" placeholder="已存在的绝对目录" maxlength="2048" disabled></label><p class="ap-note">上下文不隔离，仅限协作。请你先在该会话打开 Agent；权限由你在终端批准。不会自动重发。</p></div>
     <label>模型<input name="model" placeholder="可留空，使用 CLI 当前配置" maxlength="200"></label>
     <p id="apModelNote" class="ap-note"></p>
+    <label id="apTimeoutField">掉线时限（秒）<input name="no_progress_seconds" type="number" min="1" max="86400" step="1" placeholder="留空用默认 300 秒"></label>
     <p class="ap-note">名称、调用方式、入口和模型均由你指定，也可通过与小八对话补齐。新节点先关闭；开启并测试通过后，小八直接使用适用节点，不重复问这些资料。支持 AGY、DSH、Qoder、WorkBuddy、CodeBuddy Code、Codex、Claude，每张卡调用一次，按文件回执判断结果。CLI 更新或服务重启保留运行资格；修改调用配置后需重测。无人值守只接文件读写任务。其它 CLI 使用小八 JSON 协议；桌面或 Web 需对应受信调用器。</p><button type="submit" id="apSubmit" class="ap-primary ap-wide">添加节点</button>
   </form>
   <section id="apDispatch" hidden>
