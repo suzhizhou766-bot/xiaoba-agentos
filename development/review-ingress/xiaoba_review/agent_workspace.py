@@ -20,8 +20,8 @@ def checksum(data):return hashlib.sha256(data).hexdigest()
 
 
 class WorkspaceError(ValueError):
-    def __init__(self,code,message):
-        super().__init__(message);self.code,self.user_message=code,message
+    def __init__(self,code,message,occupant=None):
+        super().__init__(message);self.code,self.user_message,self.occupant=code,message,occupant
 
 
 class AgentWorkspace:
@@ -29,12 +29,14 @@ class AgentWorkspace:
         self.root=Path(root) if root else None
         self.node_id,self.source_ref=source['reviewer_id'],source['source_ref']
         self.name=source['node']['name']
+        # 目录名在节点第一次改名时固定下来；归属只认 node_id，改名、改入口都不换目录。
+        self.directory=source['node'].get('workspace_name') or self.name
         self.owner={'schema':'xiaoba-agent-workspace-v1','node_id':self.node_id,
                     'source_ref':self.source_ref,'name':self.name}
 
     @property
     def path(self):
-        name=self.name
+        name=self.directory
         if (not name or name in {'.','..'} or name!=name.strip()
                 or any(c in name for c in '/\\') or any(ord(c)<32 for c in name)):
             raise WorkspaceError('workspace_name_invalid','节点名称不能作为安全目录名；请使用不含斜线和控制字符的名称。')
@@ -48,6 +50,15 @@ class AgentWorkspace:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise WorkspaceError('workspace_conflict','工作区记录不是普通文件，请人工核对。')
             return stream.read()
+
+    def _require_owner(self,marker):
+        try:owner=json.loads(self._read(marker))
+        except ValueError:owner=None
+        if not isinstance(owner,dict):
+            raise WorkspaceError('workspace_conflict','工作区归属记录无法读取，不能混用或覆盖；请由用户决定。')
+        if owner.get('node_id')!=self.node_id:
+            raise WorkspaceError('workspace_conflict','目录“%s”归另一个节点所有，不能混用或覆盖；请换一个节点名，或由用户处理这个目录。'%self.directory,
+                                 occupant=owner.get('node_id'))
 
     def _new(self,path,data):
         fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
@@ -63,14 +74,12 @@ class AgentWorkspace:
         if not path.is_dir():raise WorkspaceError('workspace_conflict','同名对象不是目录，不能覆盖。')
         marker=path/'.xiaoba-agent-workspace.json'
         if marker.exists() or marker.is_symlink():
-            if json.loads(self._read(marker))!=self.owner:
-                raise WorkspaceError('workspace_conflict','同名目录归属不同节点，不能混用或覆盖；请由用户决定。')
+            self._require_owner(marker)
         else:
             if any(path.iterdir()):
                 raise WorkspaceError('workspace_conflict','同名目录已有未登记材料，不能自动接管；请由用户决定。')
             try:self._new(marker,(canonical(self.owner)+'\n').encode())
-            except FileExistsError:
-                if json.loads(self._read(marker))!=self.owner:raise WorkspaceError('workspace_conflict','工作区归属冲突。')
+            except FileExistsError:self._require_owner(marker)
         records=path/'任务记录'
         if records.is_symlink():raise WorkspaceError('workspace_conflict','任务记录目录不能是符号链接。')
         records.mkdir(mode=0o700,exist_ok=True)

@@ -16,9 +16,11 @@
   function open(next,node){
     stopPreview();previewOpen=false;
     returnFocus=document.activeElement;mode=next;selected=node?.node_id||null;removeConfirm=false;drawerSignature=null;
-    drawer.hidden=false;byId('apScrim').hidden=false;byId('apForm').hidden=next!=='add';byId('apDetail').hidden=next!=='detail';byId('apManage').hidden=next!=='manage';byId('apDispatch').hidden=next!=='dispatch';
-    byId('apTitle').textContent=next==='add'?'添加 Agent 节点':next==='manage'?'管理后台节点':next==='dispatch'?'派工审查':node.name;note('');
-    if(next==='add'){byId('apForm').reset();tmuxForm();byId('apForm').elements.name.focus();}
+    drawer.hidden=false;byId('apScrim').hidden=false;const form=next==='add'||next==='edit';
+    byId('apForm').hidden=!form;byId('apDetail').hidden=next!=='detail';byId('apManage').hidden=next!=='manage';byId('apDispatch').hidden=next!=='dispatch';
+    byId('apTitle').textContent=next==='add'?'添加 Agent 节点':next==='edit'?'修改节点':next==='manage'?'管理后台节点':next==='dispatch'?'派工审查':node.name;note('');
+    if(next==='add'){addForm();}
+    else if(next==='edit'){fillForm(node);}
     else {renderDrawer();if(next==='dispatch')byId('apDispatchGo').disabled=!writable();byId('apClose').focus();}
   }
   function writable(){return Boolean(token&&token!=='__TOKEN__'&&state?.event_chain.ok);}
@@ -65,6 +67,7 @@
         if(job.receipt_error)el('p','回执暂不能收取：'+job.receipt_error+' 改好回执文件后会自动再收。',box);el('p','派工卡：'+job.task_card,box);el('p','回执：'+job.receipt_file,box);
         if(['sending','waiting_user_agent'].includes(job.status))button(box,'取消这次等待',async()=>{await api('tmux-cancel',{node_id:node.node_id,job_id:job.job_id});await refresh();note('已取消等待；终端内已开始的工作由你处理。');}).disabled=!writable();
       }
+      button(root,'修改节点',()=>open('edit',node)).disabled=!writable();
       button(root,node.enabled?'关闭节点':'开启节点',()=>change(node,'toggle',!node.enabled)).disabled=!writable();
       button(root,'移除节点',()=>change(node,'remove')).disabled=!writable();
       return;
@@ -97,6 +100,7 @@
       el('p','按任务记＋1或0，不计资源投入，不形成永久总分。',box);
     }).disabled=!writable();
     if(node.enabled){const a=el('a','用于审查任务 →',actions);a.className='ap-primary';a.href='/open-review?'+(node.kind==='dsh'?'dsh=':'peer=')+encodeURIComponent(node.node_id);}
+    button(actions,'修改节点',()=>open('edit',node)).disabled=!writable();
     button(actions,node.enabled?'关闭节点':'开启节点',()=>change(node,'toggle',!node.enabled)).disabled=!writable();
     const remove=button(actions,removeConfirm?'确认移除（历史保留）':'移除节点',async()=>{if(!removeConfirm){removeConfirm=true;remove.textContent='确认移除（历史保留）';return;}await change(node,'remove');},'ap-danger');remove.disabled=!writable();
     button(actions,'管理其他节点',()=>open('manage'));
@@ -129,10 +133,55 @@
     if(attended)kind.value='collaborator';else if(option){option.remove();kind.value='peer';}
     kind.disabled=attended;
   }
+  const INTERFACE_LABELS={cli:'CLI',desktop:'桌面端',web:'Web',tmux:'CLI · 用户在场（tmux）'};
+  const KIND_LABELS={dsh:'审查槽位 A（兼容旧 DSH 槽位）',peer:'审查槽位 B',collaborator:'协作员（上下文不隔离）'};
+  function addForm(){
+    const form=byId('apForm');form.reset();
+    form.elements.kind.disabled=false;form.elements.interface.disabled=false;
+    byId('apEditIdentity').hidden=true;byId('apSubmit').textContent='添加节点';
+    tmuxForm();form.elements.name.focus();
+  }
+  function fillForm(node){
+    // The add form is reused: only the editable fields are prefilled and sent.
+    const form=byId('apForm'),attended=node.interface==='tmux';
+    form.reset();
+    byId('apTmuxFields').hidden=!attended;
+    for(const name of ['tmux_session','working_directory']){
+      form.elements[name].disabled=!attended;form.elements[name].required=attended;
+      form.elements[name].value=attended?(node[name]||''):'';
+    }
+    let option=form.elements.kind.querySelector('[value="collaborator"]');
+    if(attended&&!option){option=el('option','协作员（上下文不隔离）',form.elements.kind);option.value='collaborator';}
+    form.elements.kind.value=node.kind;form.elements.interface.value=node.interface;
+    form.elements.name.value=node.name||'';form.elements.entry.value=node.entry||'';form.elements.model.value=node.model||'';
+    // 节点ID、角色、调用方式是身份，只读显示；改了就是另一个节点。
+    form.elements.kind.disabled=true;form.elements.interface.disabled=true;
+    const identity=byId('apEditIdentity');identity.hidden=false;
+    identity.textContent='不能改：节点ID '+node.node_id+' · 角色 '+(KIND_LABELS[node.kind]||node.kind)
+      +' · 调用方式 '+(INTERFACE_LABELS[node.interface]||node.interface)
+      +'。要换这三项请移除后重新添加。Agent 名称沿用原值：'+(node.agent||'未登记')+'。';
+    byId('apSubmit').textContent='保存修改';
+    form.elements.name.focus();
+  }
   byId('apForm').elements.interface.addEventListener('change',tmuxForm);
   byId('apForm').addEventListener('submit',async event=>{
     event.preventDefault();const submit=event.submitter;submit.disabled=true;
-    try{const value=Object.fromEntries(new FormData(event.target));if(value.interface==='tmux')value.kind='collaborator';const signature=JSON.stringify(value);if(!pendingAdd||pendingAdd.signature!==signature)pendingAdd={signature,id:crypto.randomUUID()};const added=await api('nodes',{node_id:pendingAdd.id,...value,agent:value.name});const id=added.result.reviewer_id;pendingAdd=null;await refresh();open('detail',state.nodes.find(n=>n.node_id===id));note('节点已添加，保持关闭；请开启并测试运行。');}catch(error){note(error);}finally{submit.disabled=false;}
+    try{const value=Object.fromEntries(new FormData(event.target));
+      if(mode==='edit'){
+        const node=state.nodes.find(n=>n.node_id===selected);
+        // agent 不发送：名称和 Agent 是两项资料，改名不该顺带改掉 Agent。
+        const payload={node_id:node.node_id,expected_revision:node.revision,
+                       name:value.name,entry:value.entry,model:value.model};
+        if(node.interface==='tmux'){payload.tmux_session=value.tmux_session;payload.working_directory=value.working_directory;}
+        const edited=await api('edit',payload);
+        await refresh();open('detail',state.nodes.find(n=>n.node_id===node.node_id));
+        // 只改名称不作废运行资格；提示要跟着实际结果说，不能一律叫用户重测。
+        note(edited.result?.node?.test?.status==='passed'
+          ?'节点已修改；本次改动不影响调用，运行资格和上一次测试结果都保留。'
+          :'节点已修改；上一次测试结果不再适用，请重新测试运行后再用于审查。');
+        return;
+      }
+      if(value.interface==='tmux')value.kind='collaborator';const signature=JSON.stringify(value);if(!pendingAdd||pendingAdd.signature!==signature)pendingAdd={signature,id:crypto.randomUUID()};const added=await api('nodes',{node_id:pendingAdd.id,...value,agent:value.name});const id=added.result.reviewer_id;pendingAdd=null;await refresh();open('detail',state.nodes.find(n=>n.node_id===id));note('节点已添加，保持关闭；请开启并测试运行。');}catch(error){note(error);}finally{submit.disabled=false;}
   });
   byId('apDispatchGo').addEventListener('click',async()=>{
     const go=byId('apDispatchGo');go.disabled=true;
@@ -151,6 +200,6 @@
       await refresh();
     }catch(error){note(error);}finally{go.disabled=!writable();}
   });
-  window.XiaobaAgentPool={watch(fn){watchers.push(fn);fn(state,writable());},add(){open('add');},manage(){open('manage');},dispatch(){open('dispatch');},open(node){open('detail',node);},toggle(node){return change(node,'toggle',!node.enabled);},report:note};
-  refresh();setInterval(()=>{if(!document.hidden&&mode!=='add')refresh();},5000);
+  window.XiaobaAgentPool={watch(fn){watchers.push(fn);fn(state,writable());},add(){open('add');},edit(node){open('edit',node);},manage(){open('manage');},dispatch(){open('dispatch');},open(node){open('detail',node);},toggle(node){return change(node,'toggle',!node.enabled);},report:note};
+  refresh();setInterval(()=>{if(!document.hidden&&mode!=='add'&&mode!=='edit')refresh();},5000);
 })();
