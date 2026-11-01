@@ -895,6 +895,24 @@ class AgyRouteMigrationTest(unittest.TestCase):
         self.assertEqual(before, self.fx.whole_tree())
         self.assertFalse(any(call[0] == 'launchctl' for call in self.fx.system.calls))
 
+    def test_old_route_other_than_the_authorized_one_is_refused_even_if_declared_and_live_agree(self):
+        # 声明和现场一起改成别的旧路由时比对会通过，只有处理函数能拦住（第五轮 DSH 审查）。
+        for value in ({**self.OLD_ROUTE, 'desktop_debug_port': '/tmp/another-port'},
+                      {**self.OLD_ROUTE, 'extra': 'user field'}):
+            with self.subTest(value=value):
+                step = self.step()
+                step['check']['value'] = value
+                self.declare(step)
+                raw = switch.load(self.fx.layout.config)
+                raw['cli_routes']['local_agy'] = value
+                write(self.fx.layout.config, switch.encoded(raw))
+                before = self.fx.whole_tree()
+                result = switch.preflight(self.fx.layout, self.fx.system)
+                self.assertFalse(result['ok'], result)
+                self.assertIn('authorized AGY migration', result['error'])
+                self.assertEqual(before, self.fx.whole_tree())
+                self.assertFalse(any(call[0] == 'launchctl' for call in self.fx.system.calls))
+
     def test_route_model_path_and_declaration_tampering_are_refused_without_writes(self):
         variants = []
         for model in ('Another Model', None):
@@ -959,8 +977,8 @@ class AgyRouteMigrationTest(unittest.TestCase):
         write(next_layout.config, switch.encoded(raw))
         path = next_layout.package / 'agentos' / switch.SPEC
         spec = switch.load(path)
-        # Still a valid old-route check, but changing a past step is forbidden.
-        spec['steps'][0]['check']['value']['desktop_debug_port'] = '/changed-by-package'
+        # The handler accepts this step, but changing a past step is forbidden.
+        spec['steps'][0]['note'] = 'changed by package'
         write(path, switch.encoded(spec))
         seal(next_layout.package)
         before = self.fx.whole_tree()

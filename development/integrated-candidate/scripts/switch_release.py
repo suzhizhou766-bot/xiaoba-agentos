@@ -530,6 +530,8 @@ CONTENT_PATHS = {'skills.root_dir': 'skills', 'skills.index_path': 'skills/index
 # User-authorized one-time route migration; never a general model/config patch.
 AGY_ROUTE_STEP = '0005-agy-configured-model'
 AGY_ROUTE_PATH = 'cli_routes.local_agy'
+AGY_ROUTE_BEFORE = {'desktop_debug_port': '/Users/suzhizhou/Library/Application Support/Antigravity/DevToolsActivePort',
+                    'driver': 'agy', 'selection': 'local_account'}
 AGY_ROUTE_VALUE = {'driver': 'agy', 'selection': 'configured_model',
                    'model': 'Gemini 3.8 Flash (High)'}
 
@@ -545,14 +547,11 @@ def config_step(layout: Layout, step: dict) -> tuple:
     path = execute.get('path')
     require(check.get('kind') == 'config_value_equals' and check.get('path') == path, 'config step check is incomplete')
     if step['id'] == AGY_ROUTE_STEP or path == AGY_ROUTE_PATH:
-        before = check.get('value')
         require(step['id'] == AGY_ROUTE_STEP
                 and execute == {'kind': 'config_set', 'path': AGY_ROUTE_PATH, 'value': AGY_ROUTE_VALUE}
-                and set(check) == {'kind', 'path', 'value'}
-                and isinstance(before, dict) and before.get('driver') == 'agy'
-                and before.get('selection') == 'local_account' and 'model' not in before,
+                and check == {'kind': 'config_value_equals', 'path': AGY_ROUTE_PATH, 'value': AGY_ROUTE_BEFORE},
                 'step cannot change authentication/models/routes outside the authorized AGY migration')
-        return path, before, AGY_ROUTE_VALUE.copy()
+        return path, AGY_ROUTE_BEFORE.copy(), AGY_ROUTE_VALUE.copy()
     if path == 'recovery.automatic_actions':
         require(execute.get('value') == [] and set(execute) == {'kind', 'path', 'value'} and set(check) == {'kind', 'path', 'value'},
                 'step cannot change authentication/models/routes or revive automatic actions')
