@@ -21,8 +21,6 @@ BASELINE = json.loads((PROJECT / "config/agentos.json").read_text(encoding="utf-
 BASELINE["agents"] = [a for a in BASELINE["agents"] if not a.get("standby")]
 BASELINE["cli_routes"].pop("local_qoder", None)
 BASELINE["integrations"].pop("qoder_command", None)
-# The template points at the real user's home; tests use /Users/fixture.
-BASELINE["cli_routes"]["local_agy"]["settings_path"] = "/Users/fixture/.gemini/antigravity-cli/settings.json"
 
 
 def baseline():
@@ -218,7 +216,7 @@ class StandbyConfigTest(unittest.TestCase):
         raw["agents"][-1]["model"] = "qfmodel"
         with self.assertRaises(ConfigError) as caught:
             self.load(raw)
-        self.assertIn("cli_route.model_pool", str(caught.exception))
+        self.assertIn("不在 Agent 上指定模型", str(caught.exception))
 
     def test_unknown_driver_is_still_rejected(self):
         raw = with_standby(baseline())

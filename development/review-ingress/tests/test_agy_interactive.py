@@ -127,7 +127,8 @@ class InteractiveTests(InteractiveFixture, unittest.TestCase):
         evidence=result['execution_evidence']
         self.assertEqual(evidence['model'],'Gemini 3.8 Flash')
         self.assertEqual(evidence['model_source'],'node_configuration')
-        self.assertEqual(evidence['model_verification'],'not_performed')
+        # 用户 2026-11-01 裁决后新回执不再写 model_verification（旧回执仍能读）。
+        self.assertNotIn('model_verification',evidence)
         self.assertEqual(result['reason'],'challenge_completed_configured_node')
         self.assertEqual(evidence['output'],evidence['challenge'])
         self.assertEqual(self.pool.runtime.prepare(['peer'])['route'],'run')
@@ -160,13 +161,13 @@ class InteractiveTests(InteractiveFixture, unittest.TestCase):
         self.assertEqual(result['status'],'passed',result)
         self.assertEqual(self.calls()[0]['argv'][-2:],['--model','TEST not a model'])
         self.assertEqual(result['execution_evidence']['model'],'TEST not a model')
-        self.assertEqual(result['execution_evidence']['model_verification'],'not_performed')
+        self.assertNotIn('model_verification',result['execution_evidence'])
 
     def test_explicit_model_is_session_only_and_not_claimed_as_verified(self):
         node=self.add(model='gemini-3.8-flash-low');result=self.probe(node)
         self.assertEqual(result['status'],'passed',result)
         self.assertEqual(result['execution_evidence']['model'],'gemini-3.8-flash-low')
-        self.assertEqual(result['execution_evidence']['model_verification'],'not_performed')
+        self.assertNotIn('model_verification',result['execution_evidence'])
         self.assertEqual(self.calls()[0]['argv'][-2:],['--model','gemini-3.8-flash-low'])
 
     def test_incorrect_challenge_in_file_is_rejected_without_retry(self):

@@ -107,7 +107,6 @@ class QoderAdapterTest(unittest.TestCase):
         home = patch.object(Path, "home", return_value=self.root)
         home.start()
         self.addCleanup(home.stop)
-        raw["cli_routes"]["local_agy"]["settings_path"] = str(self.root / ".gemini" / "antigravity-cli" / "settings.json")
         raw["cli_routes"]["local_qoder"] = {
             "driver": "qoder",
             "selection": "qodercli_settings",
@@ -214,39 +213,38 @@ class QoderAdapterTest(unittest.TestCase):
             "another-model", local_cli_route(self.config, "local_qoder", "qoder_review")["model"]
         )
 
-    def test_reported_model_is_what_actually_answered(self):
-        # A silent fallback to another model must not count as success.
+    # --- the configured model is the model in use (user 2026-11-01) --------
+    #
+    # What the CLI reports about which model answered is never checked: a
+    # differing, missing or ambiguous report is not a failure. The result records
+    # the model the user selected in qodercli, which is the one handed to
+    # --model.
+
+    def test_a_differing_reported_model_is_not_a_failure(self):
+        # Used to raise PermanentAdapterError("实际返回模型与配置不一致").
         self.stub.reply(self.payload(model="auto"))
-        with self.assertRaisesRegex(PermanentAdapterError, '不一致'):
-            self.run_agent()
+        answer = self.run_agent()
+        self.assertEqual("qfmodel", answer.model)
+        self.assertEqual("qfmodel", self.stub.argv()[self.stub.argv().index("--model") + 1])
 
-    def test_missing_model_usage_cannot_claim_the_selected_model(self):
+    def test_missing_model_usage_is_not_a_failure(self):
+        # Used to raise PermanentAdapterError("缺少实际模型证据").
         payload = self.payload()
-        payload.pop('modelUsage')
+        payload.pop("modelUsage")
         self.stub.reply(payload)
-        with self.assertRaisesRegex(PermanentAdapterError, '实际模型证据'):
-            self.run_agent()
+        self.assertEqual("qfmodel", self.run_agent().model)
 
-    def test_two_model_keys_are_always_a_failure(self):
-        # Concrete selection: modelUsage must be exactly that one model.  run()
-        # already enforced this, and _qoder_model has to agree with it.
+    def test_two_model_keys_are_not_a_failure(self):
+        # Used to raise on "不一致" and, for an alias selection, on "多个模型".
         payload = self.payload()
         payload["modelUsage"]["another-model"] = {"inputTokens": 1}
         self.stub.reply(payload)
-        with self.assertRaises(PermanentAdapterError) as caught:
-            self.run_agent()
-        self.assertIn("不一致", str(caught.exception))
-        # Alias selection: the alias may expand to whatever model answered, but
-        # to exactly one.  Two keys used to be resolved by taking the first key
-        # in sorted order, which reported a model the call did not necessarily
-        # use as the one that answered.
+        self.assertEqual("qfmodel", self.run_agent().model)
         write_settings(self.settings, model="auto", effort=None)
         payload = self.payload(model="auto")
         payload["modelUsage"]["another-model"] = {"inputTokens": 1}
         self.stub.reply(payload)
-        with self.assertRaises(PermanentAdapterError) as caught:
-            self.run_agent()
-        self.assertIn("多个模型", str(caught.exception))
+        self.assertEqual("auto", self.run_agent().model)
 
     def test_the_docstring_matches_what_the_code_actually_does(self):
         flat = " ".join(QoderAdapter.__doc__.split())

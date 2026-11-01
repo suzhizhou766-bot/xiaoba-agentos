@@ -74,8 +74,8 @@ class RecoveryConfigRetirementTest(unittest.TestCase):
             "cli_routes": {
                 "local_agy": {
                     "driver": "agy",
-                    "selection": "local_account",
-                    "desktop_debug_port": str(self.root / "port"),
+                    "selection": "configured_model",
+                    "model": "Gemini 3.8 Flash (High)",
                 },
                 "local_dsh": {
                     "driver": "dsh",

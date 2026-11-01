@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -27,21 +28,37 @@ class AgentConfig:
 
 
 
-def agy_settings_default() -> Path:
-    """Where the agy CLI keeps the model the user last chose (read at call time)."""
-    return Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
-
-
 def qoder_settings_default() -> Path:
     """Where standard qodercli keeps the model the user last chose."""
     return Path.home() / ".qoder" / "settings.json"
 
 
-def _require_agy_settings_path(value: Any) -> None:
-    # Exactly the user's own agy settings file: a same-shaped path elsewhere
-    # would let whoever writes the config pick the model (pre-review R9).
-    if Path(str(value)).expanduser() != agy_settings_default():
-        raise ConfigError("AGY 必须绑定本用户的 agy CLI 设置文件（~/.gemini/antigravity-cli/settings.json）")
+# A display name or id, never something shaped like a CLI flag ("--tools", "-c").
+_AGY_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,79}")
+
+# Retired by the user's 2026-11-01 ruling; both are refused with the migration
+# spelled out rather than silently reading the agy CLI settings file again.
+AGY_RETIRED_SELECTIONS = {
+    "agy_cli_settings": "AGY 不再读 agy CLI 设置文件",
+    "local_account": "AGY 的桌面 local_account 路由已停用",
+}
+
+
+def agy_configured_model(route: Dict[str, Any], route_name: str) -> str:
+    """The model the user wrote into the route; no file may supply it instead.
+
+    User 2026-11-01: the model in the configuration is the model in use. AGY is
+    called with this value verbatim and nothing verifies what answered.
+    """
+    value = route.get("model")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            f"cli_routes.{route_name} 必须写明 model：配置里的模型名就是实际使用的模型，"
+            "AGY 不再读 agy CLI 设置文件，也没有可回退的默认模型"
+        )
+    if value != value.strip() or not _AGY_MODEL.fullmatch(value):
+        raise ValueError(f"cli_routes.{route_name}.model 不是可用的模型名：{value!r}")
+    return value
 
 
 class AppConfig:
@@ -137,7 +154,10 @@ class AppConfig:
             if str(item.get("gateway_route", "")).strip():
                 raise ConfigError("local_cli 不得配置 gateway_route")
             if str(item.get("model", "")).strip():
-                raise ConfigError("local_cli 模型由 cli_route.model_pool 决定")
+                raise ConfigError(
+                    "local_cli 不在 Agent 上指定模型：AGY 的模型写在 cli_route 上，"
+                    "DSH 跟随桌面端，Qoder 用用户在 qodercli 里的选择"
+                )
             if not str(item.get("cli_route", "")).strip():
                 raise ConfigError(f"{item.get('name', '<unnamed>')} 缺少 cli_route")
             if driver == "qoder" and not str(integrations.get("qoder_command", "")).strip():
@@ -165,26 +185,20 @@ class AppConfig:
                 raise ConfigError(f"cli_routes.{name} 必须是对象")
             driver = str(route.get("driver", ""))
             if driver == "agy":
-                if str(route.get("selection", "")) == "agy_cli_settings":
-                    if set(route) - {"driver", "selection", "settings_path"}:
-                        raise ConfigError("AGY 的 agy_cli_settings 路由仅允许 driver、selection、settings_path；不得配置上游、模型或其他字段")
-                    _require_agy_settings_path(route.get("settings_path", ""))
+                selection = str(route.get("selection", ""))
+                # A live config can't be migrated before the switch (the old code
+                # refuses `model`), so it must still load afterwards: only calling
+                # AGY is refused, with the migration spelled out by the gateway.
+                if selection in AGY_RETIRED_SELECTIONS:
                     continue
-                if str(route.get("selection", "")) != "local_account":
-                    raise ConfigError(f"cli_routes.{name}.selection 必须是 agy_cli_settings 或 local_account")
-                # Legacy form from before v1.6.5. It now reads the agy CLI
-                # settings too; its desktop fields are accepted but ignored. A
-                # model or upstream may still never be configured here.
-                forbidden = sorted(
-                    key for key in ("credential", "base_url", "endpoint", "model_pool", "provider", "model", "provider_id")
-                    if key in route
-                )
-                if forbidden:
-                    raise ConfigError(f"cli_routes.{name} 不得配置上游、模型或凭据字段：" + ", ".join(forbidden))
-                # The gateway reads settings_path from a legacy route too, so it
-                # gets the same check; otherwise any file could pick the model.
-                if "settings_path" in route:
-                    _require_agy_settings_path(route["settings_path"])
+                if selection != "configured_model":
+                    raise ConfigError(f"cli_routes.{name}.selection 必须是 configured_model")
+                if set(route) - {"driver", "selection", "model"}:
+                    raise ConfigError("AGY 路由仅允许 driver、selection、model；不得配置上游、凭据、设置文件或其他字段")
+                try:
+                    agy_configured_model(route, name)
+                except ValueError as exc:
+                    raise ConfigError(str(exc)) from exc
                 continue
             if driver == "dsh":
                 if str(route.get("selection", "")) != "local_harness":

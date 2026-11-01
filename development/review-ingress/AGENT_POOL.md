@@ -15,7 +15,7 @@
 - 复用 `ri_sources.data`，可选 `node.version=1` 元数据记录资源和生命周期。核心 schema 7、ri_version 1、表结构不变。旧四字段来源保留原行为，首次显式切换才添加节点状态，不批量重分类历史资料。
 - 每个任务卡冻结 `resource_plan`，包含节点 ID、修订号、Agent、调用方式、入口和模型；之后开关变化不改写卡片。节点状态检查同时覆盖新任务卡创建、替换第二方和后台实际执行前的事务，不只在页面隐藏选项。
 - 已有专用适配器仍由可信宿主登记。CLI 可使用用户指定的 xiaoba-resource-v1 JSON stdio 入口：在明确测试或授权任务调用时执行绝对路径，不拼 shell 命令、不从网页 import 代码、不猜供应商参数。普通 CLI、桌面端与 Web 需要对应受信适配器；未接入时明确停止，不把能打开应用或网页当调用成功。
-- 新节点自动后台调用需适配器声明 `supports_resource_plan=True`，并返回与任务模型一致的实际 `execution_evidence.model`；未知、未接入或模型不符直接停止，不回退到其它 Agent。
+- 新节点自动后台调用需适配器声明 `supports_resource_plan=True`；未知或未接入直接停止，不回退到其它 Agent。模型按节点配置原值传入入口，回执记配置值：用户 2026-11-01 裁决「配置里的模型名就是实际使用的模型」，所以不核对实际作答模型，也不因缺少模型证据判失败；连通测试只验证能调用、能按挑战原文回答、能写回执。
 - 独立性看“入口程序＋模型”（用户 2026-10-30 裁决 6）：同一 CLI 实际路径或同一 Web 站点算同一入口，同一入口用 A 模型、B 模型算两个来源；改名称、换会话 URL 不会凑成两份独立意见。旧四字段来源没有模型资料，仍只按实际来源标识判断。更细的独立账号/实例映射尚不在本批范围。
 - 事件与节点状态在同一 BEGIN IMMEDIATE 事务提交，使用修订号拒绝旧页面覆盖。相同新增/开关回调只结算一次。来源和历史没有物理删除，不能通过重复添加复活已移除节点。
 - 新实现兼容旧数据；旧读者不会自动获得新开关门禁，因此部署时必须同批更新选择、执行、HTTP和界面组件，不能混合新旧调用器。降级/生产迁移仍需受审安装方案。
@@ -41,9 +41,11 @@
 
 在添加节点中选择「CLI · 用户在场（tmux）」，登记已有 tmux 会话名和节点工作目录，入口、模型仍是用户登记资料。角色固定为 collaborator；上下文不隔离，不进入审查选择、冻结审查任务卡或独立性计票。原 cli 无人值守路径不变。
 
-用户自行安装 tmux，并在指定会话前台打开 Agent、确认工作目录和所选模型。此通道不启动 CLI、不更改模型、不替用户确认权限；不能证明前台程序或实际上游模型。会话名只接受 1–64 个字母/数字/下划线/短横线，首字符必须是字母或数字。每个会话只允许一个等待任务。
+用户自行安装 tmux，并在指定会话前台打开 Agent、确认工作目录和所选模型。此通道不启动 CLI、不更改模型、不替用户确认权限；发送前只读窗格元数据核对前台程序和工作目录，不读屏幕内容，也不证明实际上游模型。会话名只接受 1–64 个字母/数字/下划线/短横线，首字符必须是字母或数字。每个会话只允许一个等待任务。
 
-POST /api/agent-pool/work 使用既有字段 node_id、expected_revision、task_id、step_code、instruction、materials，返回 job_id 和等待状态。任务正文只放派工卡；发送前 has-session 精确检查，send-keys 使用参数列表和 -l 字面文本，再单独发送 Enter。仅发送读卡提示；不使用 capture-pane，不解析终端，不代按权限确认。请确保会话当前前台是预期的 Agent，目标为该会话当前窗口的活动 pane。
+POST /api/agent-pool/work 使用既有字段 node_id、expected_revision、task_id、step_code、instruction、materials，返回 job_id 和等待状态。任务正文只放派工卡；发送前 has-session 精确检查，再用 display-message -p 只读 `#{pane_current_command}` 和 `#{pane_current_path}`：前台是 shell（zsh、bash、sh、fish、dash、tcsh、ksh、login）或窗格目录与节点登记目录不同，就拒绝发送并报出实际值，此时既不建工作文件也不落 sending 记录。核对通过后 send-keys 使用参数列表和 -l 字面文本，再单独发送 Enter。仅发送读卡提示；不使用 capture-pane，不解析终端，不代按权限确认。目标为该会话当前窗口的活动 pane。
+
+tmux 可执行文件默认取服务进程 PATH；正式监看可在 monitor.json 的 `agent_pool.tmux_path` 指定，开发版 run.py 用 `--tmux-path`。两者都是受信宿主输入，不接受网页字段。
 
 工作目录下专用 .xiaoba-tmux-<节点ID摘要> 子目录复用 AgentWorkspace/WorkdayReceipts，保留归属、卡片、文件摘要与工作日志校验；不会接管原项目目录。发送前先落 sending 事件，发送失败/中断不自动重发，同一 task_id＋step_code 重复提交只返回原记录，变更材料则拒绝。发送后 waiting_user_agent 显示「等待用户/Agent」，不走 300 秒掉线判定。
 

@@ -175,11 +175,6 @@ _QODER_NO_TOOL_REMINDER = (
     "只输出正文结论。"
 )
 
-# qodercli model names that stand for "whatever the provider picks", not for one
-# concrete model.  A concrete selection has to be proven by `modelUsage`; an
-# alias is allowed to expand, but only to exactly one model.
-_QODER_MODEL_ALIASES = ("auto", "ultimate", "fast", "efficient")
-
 
 # An HTTP 5xx only counts with context ("HTTP 503", "status 502", "upstream
 # 503", "SERVER: 503" as DSH prints it, "503 Service Unavailable"); a bare number such as "waited 503 seconds"
@@ -592,7 +587,7 @@ class AgyAdapter(BaseAdapter):
             int((time.monotonic() - started) * 1000),
             str(selection.get("provider", "")),
             str(selection.get("model", "")),
-            str(selection.get("selection") or "local_account"),
+            str(selection.get("selection") or "configured_model"),
         )
 
 
@@ -834,37 +829,16 @@ def _qoder_failure(signal: str, detail: str = "") -> AdapterError:
     return failure
 
 
-def _qoder_model(payload: Dict[str, Any], selection_model: str) -> str:
-    """Return the model that actually answered, proven by `modelUsage`.
-
-    One standard for both the concrete and the alias case: a concrete selection
-    must be the only key, and an alias must expand to exactly one model.  Two
-    keys mean the call used more than one model, so the answer cannot be
-    attributed to the selected one; picking the alphabetically first key (as
-    this used to do) turned that into a silent success.
-    """
-    usage = payload.get("modelUsage")
-    keys = [key for key in usage if isinstance(key, str) and key.strip()] if isinstance(usage, dict) else []
-    if not keys:
-        raise PermanentAdapterError("qoder 没有实际模型证据，不能确认用的是 qodercli 里选定的模型")
-    if selection_model in _QODER_MODEL_ALIASES:
-        if len(keys) > 1:
-            raise PermanentAdapterError(
-                "qoder 实际用了多个模型，无法确认哪一个是 qodercli 里选定的模型"
-            )
-        return keys[0]
-    if set(keys) != {selection_model}:
-        raise PermanentAdapterError("qoder 实际模型与 qodercli 里选定的模型不一致，拒绝静默回退")
-    return selection_model
-
-
 class QoderAdapter(BaseAdapter):
     """Standby read-only reviewer backed by the local qodercli login.
 
     The model is the one the user last selected in qodercli, read from
     ``~/.qoder/settings.json`` on every call
-    (``gateway.read_qodercli_selection``); AgentOS records the model that
-    answered and never picks or substitutes one.
+    (``gateway.read_qodercli_selection``); AgentOS passes that value on as
+    written and records it as the model of the result. Per the user's
+    2026-11-01 ruling the configured model is the model in use, so what
+    answered is never verified and a differing or missing report is not a
+    failure.
 
     Each call runs in an empty temporary directory with the tool surface closed:
     ``--tools ""`` so no tool can execute, an empty ``--strict-mcp-config`` so no
@@ -1042,13 +1016,12 @@ class QoderAdapter(BaseAdapter):
         ):
             raise TransientAdapterError("qoder 未履行明确的最终验收输出契约，不能作为成功结果")
         selection = self._selection or {}
-        actual = _qoder_model(payload, model)
         return AgentResult(
             self.config.name,
             output,
             int((time.monotonic() - started) * 1000),
             str(selection.get("provider", "qoder")),
-            actual,
+            model,
             "qodercli_settings",
         )
 

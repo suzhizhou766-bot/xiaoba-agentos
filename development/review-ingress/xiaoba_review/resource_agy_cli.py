@@ -378,7 +378,7 @@ class AgyCliResource:
     def _evidence(self, call_id=None):
         return {'provider': 'antigravity_cli', 'model': self.model,
                 'route_source': 'native_cli_per_step', 'model_source': 'node_configuration',
-                'model_verification': 'not_performed', 'call_id': call_id or self._call_id,
+                'call_id': call_id or self._call_id,
                 'execution_mode': self.execution_mode}
 
     def _failure_evidence(self, exc, call_id):

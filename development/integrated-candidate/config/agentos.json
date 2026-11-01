@@ -53,15 +53,15 @@
   },
   "integrations": {
     "node_command": "/Users/suzhizhou/Documents/私人助理/.runtime/node/bin/node",
-    "agy_command": "/Users/suzhizhou/Documents/AGY/agy",
+    "agy_command": "/Users/suzhizhou/.local/bin/agy",
     "dsh_command": "/Users/suzhizhou/Documents/DeepSeek Harness/current/apps/cli/lib/bin.js",
     "qoder_command": "/Users/suzhizhou/.local/bin/qodercli"
   },
   "cli_routes": {
     "local_agy": {
       "driver": "agy",
-      "selection": "agy_cli_settings",
-      "settings_path": "/Users/suzhizhou/.gemini/antigravity-cli/settings.json"
+      "selection": "configured_model",
+      "model": "Gemini 3.8 Flash (High)"
     },
     "local_dsh": {
       "driver": "dsh",
@@ -114,6 +114,6 @@
     "knowlp_module": "/Users/suzhizhou/Documents/Codex/KnowLP/runtime/knowlp_mcp.py",
     "knowlp_vault": "/Users/suzhizhou/Documents/私人助理/第二大脑",
     "knowlp_graph_dir": "/Users/suzhizhou/Documents/小八AgentOS/.runtime/knowlp",
-    "agy_command": "/Users/suzhizhou/Documents/AGY/agy"
+    "agy_command": "/Users/suzhizhou/.local/bin/agy"
   }
 }

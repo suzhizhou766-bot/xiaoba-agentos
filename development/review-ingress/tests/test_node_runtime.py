@@ -37,6 +37,7 @@ else:
        'execution_evidence':{'provider':'TEST subprocess','model':c['resource_plan']['model'],'route_source':'TEST isolated stdio'}}
     if c.get('review_type'):r.update(review_type=c['review_type'],score=8,applicability='TEST 仅夹具适用条件')
 if Path(__file__).with_name('wrong-'''+kind+'''').exists():r['model']='TEST incorrect model'
+if Path(__file__).with_name('nomodel-'''+kind+'''').exists():r.pop('model',None)
 if Path(__file__).with_name('fail-'''+kind+'''').exists():raise RuntimeError('TEST execution failed')
 print(json.dumps(r))
 '''
@@ -113,10 +114,21 @@ print(json.dumps(r))
         with self.assertRaises(Conflict):self.probe(node)
         self.assertEqual(self.calls(),['test'])
 
-    def test_model_mismatch_is_failure_with_no_automatic_retry(self):
-        node=self.add();(self.root/'wrong-peer').touch()
-        self.assertEqual(self.probe(node)['status'],'failed');self.assertFalse(self.node(node)['readiness']['ready'])
-        self.assertEqual(self.calls(),['test'])
+    def test_a_reported_model_that_differs_or_is_missing_is_not_a_failure(self):
+        # 用户 2026-11-01 裁决：配置里的模型名就是实际使用的模型。连通测试只看能不能
+        # 调用、能不能按挑战原文回答；入口回报的模型不核对，缺了也不判失败，
+        # 证据里的 model 一律记节点配置原值。
+        for marker in ('wrong-peer','nomodel-peer'):
+            with self.subTest(marker=marker):
+                (self.root/marker).touch()
+                node=self.add(node_id='TEST-'+marker)
+                result=self.probe(node,request='TEST-'+marker)
+                self.assertEqual(result['status'],'passed',result)
+                self.assertEqual(result['reason'],'challenge_completed_configured_node')
+                self.assertEqual(result['execution_evidence']['model'],'TEST-user-model')
+                self.assertNotIn('model_verification',result['execution_evidence'])
+                self.assertTrue(self.node(node)['readiness']['ready'])
+        self.assertEqual(self.calls(),['test','test'])
 
     def test_unknown_desktop_and_missing_program_cannot_self_pass(self):
         node=self.runtime.onboard({'name':'TEST desktop','interface':'desktop','entry':'TEST app','model':'TEST model'})['node_id']
