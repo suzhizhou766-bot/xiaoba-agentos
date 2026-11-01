@@ -201,6 +201,25 @@ class CliFailureTests(CliFixture,unittest.TestCase):
         with self.assertRaises(WorkspaceError) as error:adapter.test_resource({},'TEST-challenge')
         self.assertEqual(error.exception.code,'worklog_task_mismatch')
 
+    def test_a_leader_caught_mid_exit_is_not_a_blocked_cleanup(self):
+        # 全量测试里偶发：进程正在退出时 killpg 报 EPERM，节点被误判成清理受阻而停止派活。
+        import subprocess, sys
+        from unittest.mock import patch
+        adapter=self.adapter(self.add())
+        adapter._process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(.2)'])
+        with patch('os.killpg',side_effect=PermissionError):adapter._kill_group()
+        self.assertIsNotNone(adapter._process.poll())
+
+    def test_a_leader_that_stays_alive_is_still_a_blocked_cleanup(self):
+        import subprocess, sys
+        from unittest.mock import patch
+        adapter=self.adapter(self.add())
+        process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])
+        adapter._process=process
+        try:
+            with patch('os.killpg',side_effect=PermissionError),self.assertRaises(PermissionError):adapter._kill_group()
+        finally:process.kill();process.wait()
+
     def test_rewriting_an_accepted_prefix_is_rejected(self):
         node=self.add();self.probe(node);adapter=self.adapter(node)
         self.assertEqual(self.review(adapter,'TASK-1','ASSIGN-1')['verdict'],'PASS')

@@ -142,6 +142,7 @@ class InteractiveTests(InteractiveFixture, unittest.TestCase):
         adapter=self.backends.adapter_for(self.source(node))
         value=adapter.run({'card_digest':'TEST','resource_plan':{'model':'Gemini 3.8 Flash'}})
         self.assertEqual(value['verdict'],'PASS')
+        self.assertNotIn('model_verification',value['execution_evidence'])
         self.assertEqual(value['execution_evidence']['turn'],2)
         self.assertEqual(len({x['pid'] for x in self.calls()}),1)
         self.assertEqual([x['event'] for x in self.calls()],['start','turn','turn'])
@@ -169,6 +170,31 @@ class InteractiveTests(InteractiveFixture, unittest.TestCase):
         self.assertEqual(result['execution_evidence']['model'],'gemini-3.8-flash-low')
         self.assertNotIn('model_verification',result['execution_evidence'])
         self.assertEqual(self.calls()[0]['argv'][-2:],['--model','gemini-3.8-flash-low'])
+
+    def test_work_receipt_no_longer_carries_the_retired_model_verification_key(self):
+        # 用户 2026-11-01 裁决：不核对模型，就不再有“核对结果”这一说。
+        # 修前：工作回执的 execution_evidence 一律带 model_verification='not_performed'。
+        node=self.add();adapter=self.backends.adapter_for(self.source(node))
+        result=adapter.run_task('TEST-no-key','WORK-01','只写回测试内容，不执行额外步骤。',{})
+        self.assertEqual(result['status'],'completed',result)
+        self.assertNotIn('model_verification',result['execution_evidence'])
+        self.assertEqual('node_configuration',result['execution_evidence']['model_source'])
+
+    def test_a_receipt_written_before_the_ruling_is_still_readable(self):
+        # 旧回执能读：改动前按旧格式落盘的那份仍可按原任务步骤重放，字段不丢。
+        node=self.add();adapter=self.backends.adapter_for(self.source(node))
+        task='TEST-legacy-receipt'
+        payload={'task_id':task,'step_code':'WORK-01','model':'Gemini 3.8 Flash',
+                'instruction':'改动前写入的旧格式步骤','context':{}}
+        record=adapter.workspace.begin('work',task+'-WORK-01',payload)
+        legacy=dict(adapter._evidence(),model_verification='not_performed',reply_source='daily_worklog')
+        adapter.workspace.finish(record,'execution_completed',
+            {'status':'completed','body':'旧正文保持原样'},legacy)
+        result=adapter.run_task(task,'WORK-01','改动前写入的旧格式步骤',{})
+        evidence=result['execution_evidence']
+        self.assertTrue(evidence['replayed'],evidence)
+        self.assertEqual('not_performed',evidence['model_verification'])
+        self.assertEqual('Gemini 3.8 Flash',evidence['model'])
 
     def test_incorrect_challenge_in_file_is_rejected_without_retry(self):
         (self.root/'bad-json').touch();node=self.add();result=self.probe(node)

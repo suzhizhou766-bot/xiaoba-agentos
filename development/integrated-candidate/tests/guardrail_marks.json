@@ -464,7 +464,7 @@
       ]
     },
     "B18": {
-      "name": "模型用用户自己的选择：DSH 跟随桌面端，AGY 与 Qoder 用用户在各自 CLI 里上次选定的模型；不写死、不擅换",
+      "name": "模型用用户自己定的来源：DSH 跟随桌面端；AGY 用节点配置里写的模型，配置即实际使用、不再核实（用户 2026-11-01）；Qoder 用其在 qodercli 里上次选定的模型",
       "status": "guarded",
       "tests": [
         "test_agy.py::test_a_route_without_a_usable_model_stops_before_any_call",

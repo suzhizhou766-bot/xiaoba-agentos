@@ -5,7 +5,7 @@ description: 小八 AgentOS v1.6.5 的 AGY+DSH 工作入口（备用 Qoder 只�
 
 # 小八 AgentOS v1.6.5
 
-主后台：`agy_review` + `dsh_review`，两份不同 Agent 的非空合格结果才能进入本地确定性裁判。两者都只走各自的本地 CLI 路由；宿主自身不算后台之一。备用后台：`qoder_review`（qodercli，v1.6.5 起），平时不参与，只在某个主后台健康探针真实失败（不论原因）或任务中途遇外部故障时公开补位，见下文“失败与补位”。 模型来源（用户 2026-10-20 定）：DSH 跟随 DeepSeek Harness 桌面的配置；AGY 用用户在 agy CLI 里上次选定的模型（`~/.gemini/antigravity-cli/settings.json`），Qoder 用用户在 qodercli 里上次选定的模型与思考强度（`~/.qoder/settings.json`）。每次调用前只读读取、以 CLI 单次参数传入；读不到明确的模型名，或实际响应的模型与选定的不一致，就停止，不写死、不擅换、不回退。小八不再读取 Antigravity 和 Qoder 的桌面。
+主后台：`agy_review` + `dsh_review`，两份不同 Agent 的非空合格结果才能进入本地确定性裁判。两者都只走各自的本地 CLI 路由；宿主自身不算后台之一。备用后台：`qoder_review`（qodercli，v1.6.5 起），平时不参与，只在某个主后台健康探针真实失败（不论原因）或任务中途遇外部故障时公开补位，见下文“失败与补位”。 模型来源：DSH 跟随 DeepSeek Harness 桌面的配置；AGY 用配置 `cli_routes.local_agy.model` 里写明的模型（用户 2026-11-01 定）；Qoder 用用户在 qodercli 里上次选定的模型与思考强度。每次调用以 CLI 单次参数传入；配置里的模型就是实际使用的模型，不核实、不比对。AGY 没写模型或读不到 Qoder 选定的模型就停止，不擅换、不回退。小八不读取 Antigravity 和 Qoder 的桌面。
 
 ## 唯一入口与事实源
 

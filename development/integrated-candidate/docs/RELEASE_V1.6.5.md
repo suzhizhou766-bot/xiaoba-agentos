@@ -496,6 +496,43 @@ worker 被强制结束后，任务仍要等租约自然过期才会被回收，�
 
 第64轮 141 份中 138 份通过，未过 3 份：release_seal_connections 第2、3部分不是内容问题——DSH 两次连续 300 秒无进展（外部上游），Qoder 已替 AGY 给 PASS、同一任务不能补第二次，任务冻结（未解冻）；standby_rules_docs 第21部分属实（文档）：`docs/OPERATIONS.md` 切换前检查一句补全“paths 非空且全部为真、线路检查明确不通过、其它判定检查 ok 为 true、doctor 通过时也记非判定项”。第65轮把那两份审查题面各拆成两半重审（发版工具，不改源码）。只改文档，全量仍 1165 项。
 
+## 五十八、发版前收尾：AGY 模型写进配置、封装档位、切换后动作（2026-11-01，卡 27/28/29）
+
+用户 2026-11-01 裁决：配置里的模型名就是实际使用的模型；节点配置由用户自己设，连通测试通过即可。小八只读节点配置、调用 Agent、发任务卡、读回执，不核实模型。第十四节的口径到此为止，历史正文照原样保留。
+
+**代码改了什么**
+
+- AGY 的模型来源从"读 agy CLI 的设置文件"改为用户写在节点配置里：`cli_routes.local_agy` 只允许 `driver / selection / model` 三个字段，`selection` 固定 `configured_model`，`model` 写实际使用的模型名（候选配置里是 `Gemini 3.8 Flash (High)`）。小八不查模型目录、不读默认模型、不做模型比对，也不核实实际作答的是哪个模型；`model` 缺失或值像命令行开关时拒绝发起调用。旧写法 `agy_cli_settings`、`local_account` 仍能通过配置校验（切换前旧配置照常加载），但 AGY 调用会被拒绝并写明怎么迁移。
+- 执行回执不再写"模型核对结果"（`model_verification`）这类字段，`model_source` 记 `node_configuration`；改动前写入、带这个字段的旧回执仍能读取。
+- `CAPABILITY.json` 为 Antigravity 补声明 `gemini-3.8-flash-high`，与 `gemini-3.8-flash-low` 逐字段相同（reasoning、coding、long_context 为真，shell、filesystem 等仍为假）——补声明不放宽权限。未声明的推理档能力仍是 unknown，路由不会当成可用。
+- 用户在场通道派卡前先做只读窗格核对：`has-session` 精确检查会话，再用 `display-message -p` 读 `#{pane_current_command}` 和 `#{pane_current_path}`；前台仍是 shell、或窗格目录与节点登记目录不同，就拒绝发送并报出实际值，此时既不建工作文件也不落 sending 记录。核对通过才用参数列表加 `-l` 字面文本 send-keys，再单独发 Enter；不使用 capture-pane、不解析终端、不代按权限确认。卡 28 实测：Enter 未被吞、约 7 秒起有输出、回执文件在同轮结算。
+
+**封装档位**
+
+- 本次发版按迁移档（migration）封装（用户 2026-11-01 定）。档位本身仍由上一版发布包里的工具和规则算出，候选自带的规则不参与；常规档和迁移档一样要求两个健康后台的独立审查证据。
+- `artifacts/` 不再进包：它是 `install-service` 现算现写的 launchd 模板渲染输出，被 `.gitignore` 忽略、源码树里本来就没有，构包时按"存在才复制"，运行时的受管文件集合也不含它。
+
+**切换后用户要做的事**
+
+- 线上配置的 `cli_routes.local_agy`：`selection` 改为 `configured_model`，并新增 `model` 写明实际使用的模型名。切换前改不了——旧版本代码不接受 `model` 字段，会被配置校验拒绝。
+- `integrations.agy_command` 和 `paths.agy_command` 都指向 `/Users/suzhizhou/.local/bin/agy`。
+- 改完重启监看中心，让新配置和新模块生效。旧写法的配置在新版本里能加载，但 AGY 调用会被拒绝，直到上面两项改好。
+
+**monitor.json 的两项**
+
+- `agent_pool.tmux_path`：在场通道用的 tmux 可执行文件；不填时用服务进程 PATH 里的 tmux。开发版 `run.py` 用 `--tmux-path`。
+- `agent_pool.workspace_root`：Agent 工作区的父目录，派卡时在其下按节点建工作区和 `任务记录/`。没指定时报 `workspace_root_required`，不发送任务。开发版对应 `--agent-workspace-root`。两项都是受信宿主输入，不接受网页或 HTTP 字段。
+
+**首次启动新模块**
+
+- 接入口的 `ri_*` 表（`ri_sources`、`ri_inbox`、`ri_outbox`、`ri_receipts`、`ri_requests`、`ri_assignments`、`ri_workday_starts`、`ri_task_assessments`、`ri_version`）在第一次启动这些模块时于生产库建出；`DATABASE_SCHEMA_VERSION` 仍是 7，主结构不变。
+
+**中断处理**
+
+- 发布/切换中断后按显式命令处理：`recover` 查询 `.runtime/switch-recovery.json`，只报阶段和哈希，不自动执行或批准；`resume` 核对现场后从已核验阶段继续，保留残留临时文件；`abandon` 把这次中断的切换记为 abandoned 并给出后续步骤。
+
+本节改动范围：`CAPABILITY.json`、`resource_agy.py`、上面点名的文档、`tests/guardrail_marks.json` 的 B18 name 与配套测试；`SOURCE_MANIFEST.json` 由脚本重算。
+
 ## 没改的
 
 数据库结构 7 与全部表；认证；DSH 的模型与路由（AGY 的模型来源见第十四节）；核心解释器（固定 3.14）。配置结构只新增备用后台的可选字段，旧配置照常加载。切换命令只多了成功后的只读封装一步，不新增编号步骤。

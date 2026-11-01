@@ -359,7 +359,9 @@ class AgyCliResource:
             try: os.killpg(process.pid, number)
             except ProcessLookupError: return False
             except PermissionError:
-                if process.poll() is None: raise
+                # A leader caught mid-exit answers EPERM before poll() can see it.
+                try: process.wait(timeout=1)
+                except subprocess.TimeoutExpired: raise PermissionError from None
                 return False
             return True
         process.poll()

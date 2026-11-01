@@ -112,6 +112,22 @@
         "filesystem_read": false,
         "filesystem_write_workspace": false,
         "network_access": false
+      },
+      "gemini-3.8-flash-high": {
+        "reasoning": true,
+        "coding": true,
+        "shell": false,
+        "filesystem": false,
+        "vision": false,
+        "native_web_search": false,
+        "tool_calling": false,
+        "long_context": true,
+        "shell_read": false,
+        "shell_write_workspace": false,
+        "structured_editor_write": false,
+        "filesystem_read": false,
+        "filesystem_write_workspace": false,
+        "network_access": false
       }
     },
     "DeepSeekHarness": {
