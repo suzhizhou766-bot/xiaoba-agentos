@@ -246,7 +246,7 @@ class ProgressEventRateTest(unittest.TestCase):
                           PROGRESS_EVENT_MAX_SILENCE_SECONDS))
         # ...and not configuration: neither the shipped template nor the code's
         # config reader knows these knobs.
-        template = (Path(__file__).resolve().parents[1] / "config/agentos.json").read_text(encoding="utf-8")
+        template = (Path(__file__).resolve().parents[1] / "tests/fixtures/agentos-with-backends.json").read_text(encoding="utf-8")
         config_source = (Path(__file__).resolve().parents[1] / "src/xiaoba_agentos/config.py").read_text(encoding="utf-8")
         for knob in ("LEASE_RENEW_REMAINING_RATIO", "PROGRESS_EVENT_MIN_INTERVAL", "PROGRESS_EVENT_MAX_SILENCE",
                      "lease_renew", "progress_event_min", "progress_event_max"):

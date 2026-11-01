@@ -67,7 +67,18 @@ class Fixture:
             write(target / 'RELEASE.json', switch.encoded({
                 'version': version, 'status': 'verified_immutable_release', 'database_schema_version': 7,
                 'final_publish_requires_human': True, 'tests': {'result': 'passed'},
-                'acceptance': {'end_to_end_evidence': {'successful_agents': ['agy_review', 'dsh_review']}}}))
+                'acceptance': {'end_to_end_evidence': {
+                    'frozen_prompt_sha256': 'p', 'source_manifest_sha256': 'm',
+                    'pool_nodes': [
+                        {'node_id': 'north-node', 'enabled': True, 'test_passed': True, 'independence': ['cli:codex', 'alpha']},
+                        {'node_id': 'south-node', 'enabled': True, 'test_passed': True, 'independence': ['cli:claude', 'beta']},
+                    ],
+                    'conclusions': [
+                        {'source': 'pool', 'node_id': 'north-node', 'passed': True, 'prompt_sha256': 'p', 'manifest_sha256': 'm'},
+                        {'source': 'pool', 'node_id': 'south-node', 'passed': True, 'prompt_sha256': 'p', 'manifest_sha256': 'm'},
+                    ],
+                    'execution': {'author_ids': [], 'executor_ids': [], 'checked_idle_ids': []},
+                }}}))
             seal(target)
         new_spec = {'schema_version': 1, 'steps': [],
                     'from_source_manifest_sha256': switch.state(previous / 'agentos/SOURCE_MANIFEST.json')['sha256']}
@@ -505,15 +516,14 @@ class SwitchReleaseTest(unittest.TestCase):
         self.assertEqual(b'old bytes\n', target.read_bytes())
         self.assertEqual(0o640, target.stat().st_mode & 0o777)
 
-    def test_binding_accepts_dsh_plus_qoder_only_as_a_recorded_cover_for_agy(self):
-        # User 2026-10-25: AGY account disabled; DSH plus the standby Qoder may bind
-        # the release only when Qoder publicly covered AGY for an accepted reason.
+    def test_binding_rejects_fixed_backend_names(self):
+        # 2026-11-02: fixed names and standby cover no longer pass the gate.
         ok = switch.independent_acceptance
-        self.assertTrue(ok({'successful_agents': ['agy_review', 'dsh_review']}))
+        self.assertFalse(ok({'successful_agents': ['agy_review', 'dsh_review']}))
         cover = {'successful_agents': ['dsh_review', 'qoder_review'], 'standby_substituted': True,
                  'replaced': 'agy_review', 'reason': 'health_probe_failed'}
-        self.assertTrue(ok(cover))
-        self.assertTrue(ok(dict(cover, reason='external_failure')))
+        self.assertFalse(ok(cover))
+        self.assertFalse(ok(dict(cover, reason='external_failure')))
         for bad in ({'successful_agents': ['dsh_review', 'qoder_review']},
                     dict(cover, standby_substituted=False),
                     dict(cover, replaced='dsh_review'),

@@ -200,18 +200,20 @@ def config_consistency(
     }
 
 
-def execution_blockers(config: AppConfig, store: EventStore) -> list:
+def execution_blockers(config: AppConfig, store: EventStore, *, needs_review: bool = True,
+                       needs_collab: bool = False) -> list:
     """Why a task submitted right now would sit in the queue unexecuted.
 
-    Mirrors the gates the worker applies before leasing a task, without side
-    effects (nothing is started or repaired) and without remote inference.
-
-    A standby backend never blocks intake by itself. It only decides whether one
-    unhealthy primary can still be covered, so two healthy primaries stay able to
-    take work even when the standby is unprobed or unhealthy -- and two unhealthy
-    primaries stay blocked even when the standby is healthy, because a standby may
-    never pair with itself. The standby's own state is still reported by `doctor`.
+    Review and collaboration come from the Agent pool. An all-mock config is
+    the unit-test fixture and keeps the old local gate. Historical config
+    agents are not called and do not have to be probed.
     """
+    enabled = [agent for agent in config.agents if agent.enabled]
+    if not enabled and config.agents and all(agent.type == "mock" for agent in config.agents):
+        return ["没有启用任何 Agent"]
+    if not (enabled and all(agent.type == "mock" for agent in enabled)):
+        from .pool_dispatch import intake_blockers
+        return intake_blockers(store, needs_review=needs_review, needs_collab=needs_collab)
     primaries = config.primary_agents
     standbys = config.standby_agents
     if not primaries and not standbys:
@@ -454,8 +456,15 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
             "recovery.automatic_actions 仍声明自动动作，但同伴自动修复已退役，这些动作不会执行："
             + ", ".join(checks["recovery"]["declared_but_not_executed"])
         )
-    # A standby never counts toward the pair that has to agree independently.
-    enough_agents = len(config.primary_agents) >= checks["minimum_successful_agents"] > 0
+    # Reviewer shortage is reported on its own. It does not flip doctor.ok:
+    # nodes are created in the new page, and the new doctor must already pass
+    # before that page exists. Tasks that need review stay blocked until then.
+    from .pool_dispatch import _mock_agents, load_nodes, review_report
+    checks["review_nodes"] = review_report(load_nodes(store))
+    if _mock_agents(config):
+        enough_agents = len(config.primary_agents) >= checks["minimum_successful_agents"] > 0
+    else:
+        enough_agents = bool(checks["review_nodes"].get("enough"))
     checks["ok"] = (
         all(paths.values())
         and release_binding.get("ok", False)

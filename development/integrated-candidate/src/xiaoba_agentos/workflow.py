@@ -21,8 +21,13 @@ def verified_snapshot(task):
     return snapshot
 
 
-def work_plan(config, assignments, context):
-    names = sorted(agent.name for agent in config.primary_agents)
+def _roster(config, store=None, purpose="collab"):
+    from .pool_dispatch import active_names
+    return active_names(config, store, purpose=purpose)
+
+
+def work_plan(config, assignments, context, store=None):
+    names = _roster(config, store)
     if not names or not isinstance(assignments, dict) or sorted(assignments) != names:
         raise ValueError("assignments must name every enabled Agent exactly once")
     if any(not isinstance(value, str) or not value.strip() for value in assignments.values()):
@@ -68,12 +73,21 @@ def review_plan(config, store, work_task_id, context, artifacts):
     plan = snapshot.get("workflow", {})
     if plan.get("phase") != "work":
         raise ValueError("review requires a collaboration work task, not a prior review")
-    names = sorted(agent.name for agent in config.primary_agents)
-    if names != plan["agents"]:
-        raise ValueError("review must use the same complete Agent roster")
+    workers = list(plan["agents"] or [])
+    from .pool_dispatch import load_nodes, select_reviewers
+    nodes = load_nodes(store)
+    if nodes:
+        decision = select_reviewers(nodes, exclude_ids=workers)
+        names = [n['node_id'] for n in decision['reviewers']] if decision['route']=='run' else []
+    else:
+        names = _roster(config, store, purpose="review")
+    if set(names) & set(workers):
+        raise ValueError("同一任务不能既协作又审查")
+    if not names:
+        raise ValueError("没有可用的独立审查节点")
     if not context.strip() or digest(context) == snapshot["task_context"]["sha256"]:
         raise ValueError("review requires new frozen integration evidence")
-    records = contribution_records(config, store, work_task_id, names)
+    records = contribution_records(config, store, work_task_id, workers)
     bundle = json.loads(task["result"])
     if bundle.get("contributions") != records:
         raise ValueError("completed work contribution integrity mismatch")
@@ -95,10 +109,11 @@ def validate_plan(config, store, task, snapshot):
     verified_snapshot(task)
     if plan.get("version") != 1 or plan.get("phase") not in {"work", "review"}:
         raise ValueError("invalid collaboration phase")
-    if plan.get("agents") != sorted(agent.name for agent in config.primary_agents):
+    purpose = "collab" if plan["phase"] == "work" else "review"
+    if plan["phase"] == "work" and plan.get("agents") != _roster(config, store, purpose=purpose):
         raise ValueError("collaboration Agent roster changed")
     if plan["phase"] == "work":
-        work_plan(config, plan.get("assignments"), snapshot["task_context"]["text"])
+        work_plan(config, plan.get("assignments"), snapshot["task_context"]["text"], store=store)
     else:
         expected = review_plan(config, store, plan["work_task_id"], snapshot["task_context"]["text"],
                                [item["path"] for item in plan["artifacts"]])

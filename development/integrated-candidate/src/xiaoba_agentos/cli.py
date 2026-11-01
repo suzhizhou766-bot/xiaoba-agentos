@@ -394,6 +394,9 @@ def _submit_task(
     experience_kind: Optional[str] = None,
     problem_key: str = "",
     experience_trial: Optional[dict] = None,
+    work_task_id: Optional[str] = None,
+    host: Optional[dict] = None,
+    needs_review: bool = True,
 ) -> str:
     kind = experience_kind or ("audit" if prompt.startswith("你是小八 AgentOS 的独立审查者之一，只读审查技能 ") else "method")
     from .experience_workflow import KINDS, match_trials
@@ -433,6 +436,12 @@ def _submit_task(
             "minimum_successful_agents": int(config.worker["minimum_successful_agents"]),
         },
     }
+    if host is not None and (set(host) != {'id','entry','model'} or any(not isinstance(v,str) or not v.strip() for v in host.values())):
+        raise ValueError('宿主身份需要 id、entry、model；不能自述未干活')
+    if work_task_id and not store.get_task(work_task_id):
+        raise ValueError('来源工作任务不存在')
+    snapshot['needs_review'] = needs_review
+    snapshot['review_context'] = {'work_task_id': work_task_id, 'host': host, 'needs_review': needs_review}
     if workflow:
         snapshot["workflow"] = workflow
         snapshot["agent_memory_contexts"] = {}
@@ -995,8 +1004,12 @@ def _doctor_failure_reason(result: Dict[str, Any]) -> str:
 
 def _install_service(config: AppConfig, store: EventStore, backup_database: bool = False) -> Dict[str, Any]:
     preflight = doctor(config, store)
-    primaries = preflight.get("primary_agents", preflight.get("enabled_agents", []))
-    enough_agents = len(primaries) >= int(preflight.get("minimum_successful_agents", 0)) > 0
+    from .pool_dispatch import _mock_agents
+    if _mock_agents(config):
+        primaries = preflight.get("primary_agents", preflight.get("enabled_agents", []))
+        enough_agents = len(primaries) >= int(preflight.get("minimum_successful_agents", 0)) > 0
+    else:
+        enough_agents = bool((preflight.get("review_nodes") or {}).get("enough"))
     paths = preflight.get("paths")
     base_ready = (
         # Fail closed like the other checks: a missing or empty paths report is
@@ -1247,6 +1260,24 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--priority", type=int, default=0)
     submit.add_argument("--memory-kind", choices=("audit", "rule", "method"))
     submit.add_argument("--problem-key", default="")
+    submit.add_argument('--work-task', help='待审查产物的来源工作任务；从记录和agent_runs推导参与者')
+    submit.add_argument('--host-id')
+    submit.add_argument('--host-entry')
+    submit.add_argument('--host-model')
+    submit.add_argument('--no-review', action='store_true', help='工作任务；等宿主提交实际结果')
+    participant = sub.add_parser('task-work-record', help='追加实际参与记录，只增不减，不声明未干活')
+    participant.add_argument('task_id')
+    participant.add_argument('--actor-id', required=True)
+    participant.add_argument('--role', choices=('author','executor','collaborator'), required=True)
+    host_complete = sub.add_parser('task-host-complete', help='提交绑定任务的宿主回执；不批准经验')
+    host_complete.add_argument('task_id')
+    host_complete.add_argument('--receipt', required=True, help='JSON回执文件')
+    host_complete.add_argument('--user-chose-host', action='store_true', help='用户明确选了全部审查员不可用时的宿主兜底')
+    host_bind = sub.add_parser('task-host-bind', help='为旧的等宿主任务追加宿主身份，不改冻结题面')
+    host_bind.add_argument('task_id')
+    host_bind.add_argument('--host-id', required=True)
+    host_bind.add_argument('--host-entry', required=True)
+    host_bind.add_argument('--host-model', required=True)
     trials = sub.add_parser("memory-trial-run", help="在已授权任务中执行本机隔离测试并提交独立双审；不自动批准")
     trials.add_argument("task_id")
     trials.add_argument("--card", required=True)
@@ -1465,7 +1496,8 @@ def _content_index_command(config: AppConfig, args: Any) -> int:
         if args.command == "skill-review-prompt":
             print(prompt, end="")
             return 0
-        reviewers = [agent.name for agent in _primary_agents(config)]
+        from .pool_dispatch import active_names
+        reviewers = active_names(config, purpose="review")
         problems = content_index.review_problems(config.database_path, args.review_task, prompt, reviewers)
         result = {"ok": not problems, "skill": args.skill_id, "review_task": args.review_task, "index": str(config.skills_index)}
         if problems:
@@ -1969,6 +2001,23 @@ def main(argv: Optional[list] = None) -> int:
                     pass  # Preserve a concurrent human terminal decision.
             _print({"status": "blocked", "error": str(exc), "attempt_id": attempt_id, "execution_receipt": str(receipt_path) if receipt_path else None}, True)
             return 1
+    if args.command in {'task-work-record', 'task-host-complete', 'task-host-bind'}:
+        try:
+            if args.command == 'task-host-bind':
+                from .task_participants import bind_host
+                bind_host(store, args.task_id, {'id': args.host_id, 'entry': args.host_entry, 'model': args.host_model})
+                result = {'status': 'host_bound', 'task_id': args.task_id}
+            elif args.command == 'task-work-record':
+                store.record_task_participant(args.task_id, args.actor_id, args.role)
+                result = {'status': 'recorded', 'task_id': args.task_id}
+            else:
+                from .host_completion import complete_host
+                result = complete_host(config, store, args.task_id, json.loads(Path(args.receipt).read_text()), user_chose_host=args.user_chose_host)
+            _print(result, True)
+            return 0
+        except (KeyError, ValueError, OSError) as exc:
+            _print({'status': 'blocked', 'error': str(exc)}, True)
+            return 1
     if args.command == "submit":
         session = store.active_session() or store.start_session()
         decision = decide_route(args.prompt, explicit_agentos=True)
@@ -1991,6 +2040,10 @@ def main(argv: Optional[list] = None) -> int:
                 required_capabilities=tuple(args.requires_capability), needs_web=args.needs_web,
                 task_context=read_context_file(args.context_file),
                 experience_kind=args.memory_kind, problem_key=args.problem_key,
+                work_task_id=args.work_task,
+                host=({'id': args.host_id, 'entry': args.host_entry, 'model': args.host_model}
+                      if any((args.host_id,args.host_entry,args.host_model)) else None),
+                needs_review=not args.no_review,
             )
         except (SkillRegistryError, ValueError, OSError) as exc:
             _print({"status": "blocked", "error": str(exc)}, True)

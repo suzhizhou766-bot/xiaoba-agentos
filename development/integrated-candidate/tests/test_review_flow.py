@@ -24,7 +24,7 @@ class UnifiedReviewFlowTest(unittest.TestCase):
         staged.parent.mkdir(parents=True, exist_ok=True)
         staged.write_text("# 候选\n\n证据。\n", encoding="utf-8")
         sha = hashlib.sha256(staged.read_bytes()).hexdigest()
-        store.complete_with_memory_candidate(task_id, "结果", str(staged), sha, [])
+        store.complete_with_memory_candidate(task_id, "结果", str(staged), sha, [], expected_attempt=0)
         return config, store, task_id, sha
 
     def _packet(self, task_id: str, sha: str, stage: str, decision: str) -> dict:

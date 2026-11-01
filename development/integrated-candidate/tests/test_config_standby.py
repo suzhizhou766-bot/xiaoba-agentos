@@ -16,8 +16,15 @@ from xiaoba_agentos.config import AppConfig, ConfigError
 
 PROJECT = Path(__file__).resolve().parents[1]
 BASELINE = json.loads((PROJECT / "config/agentos.json").read_text(encoding="utf-8"))
-# The shipped template carries the standby since v1.6.5; these tests start from
-# the legacy pair and add the standby themselves.
+# The shipped template no longer lists backends. These tests still load the
+# historical pair, then add the old standby field, to prove that shape loads.
+if not BASELINE.get("agents"):
+    BASELINE["agents"] = [
+        {"name": "agy_review", "type": "local_cli", "driver": "agy", "cli_route": "local_agy",
+         "enabled": True, "timeout_seconds": 300, "role": "historical"},
+        {"name": "dsh_review", "type": "local_cli", "driver": "dsh", "cli_route": "local_dsh",
+         "enabled": True, "timeout_seconds": 300, "role": "historical"},
+    ]
 BASELINE["agents"] = [a for a in BASELINE["agents"] if not a.get("standby")]
 BASELINE["cli_routes"].pop("local_qoder", None)
 BASELINE["integrations"].pop("qoder_command", None)

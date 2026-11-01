@@ -21,22 +21,24 @@ class ReleaseDocsContractTest(unittest.TestCase):
         self.assertNotIn("v1.6.5 起代码移除", text)
         self.assertIn("移不进废纸篓时", text)
         self.assertIn("绝不会悄悄删掉", text)
-        self.assertIn("300 秒是“连续无进展”窗口，不是补位许可", text)
-        self.assertIn("任务中途的内部故障、输出预算耗尽、思考泄露不补", text)
+        self.assertIn("缺省 300 秒，是连续无进展窗口", text)
+        self.assertIn("没有默认审查节点", text)
         self.assertNotIn("连续300秒无实际进展或明确外部故障才允许按条件备用接替", text)
 
     def test_probe_failure_rule_is_the_same_everywhere(self):
-        # User 2026-10-21 (plan 甲): a real failed probe is covered whatever its
-        # cause; "internal faults are not covered" only applies mid-task.
+        # 2026-11-02: current docs no longer describe a fixed standby cover.
+        # The historical release note still records the old probe rule.
+        self.assertIn("不论原因", read("docs/RELEASE_V1.6.5.md"))
         for relative in ("docs/STANDBY_POLICY.md", "docs/OPERATIONS.md",
-                         ".agents/skills/xiaoba-agentos/SKILL.md", "docs/RELEASE_V1.6.5.md"):
+                         ".agents/skills/xiaoba-agentos/SKILL.md"):
             with self.subTest(document=relative):
-                self.assertIn("不论原因", read(relative))
+                self.assertIn("没有默认审查节点", read(relative))
+                self.assertNotIn("qoder_review", read(relative))
 
     def test_entry_skill_does_not_require_both_primaries_to_open_intake(self):
         skill = read(".agents/skills/xiaoba-agentos/SKILL.md")
         self.assertNotIn("两个后台真实探针均通过，才报告可接单", skill)
-        self.assertIn("备用后台健康（公开留痕补位），才报告可接单", skill)
+        self.assertIn("不发真实探针", skill)
 
 
 if __name__ == "__main__":

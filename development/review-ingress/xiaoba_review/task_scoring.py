@@ -44,12 +44,15 @@ class TaskScoring:
             if any(v.get('is_review') and not v.get('review_qualified') for v in facts):
                 raise ValueError('审查不合格的回执不能记为完成得好')
         model=next(iter(models))
+        from xiaoba_agentos.pool_dispatch import mapped_role
+        with self.store.native.read_only() as db:
+            role=mapped_role(self.store.source(db, node_id)['kind'])
         key=digest([facts[0]['source_ref'],model,task_id])
         # The day/weekly bucket comes from host completion time, not a date
         # invented in the agent's prose or a later assessment timestamp.
         completed_day=datetime.fromtimestamp(max(v['completed_at'] for v in facts),ZONE).date().isoformat()
         week,_=week_of(completed_day)
-        value={'node_id':node_id,'source_ref':facts[0]['source_ref'],'model':model,'task_id':task_id,
+        value={'node_id':node_id,'role':role,'source_ref':facts[0]['source_ref'],'model':model,'task_id':task_id,
             'task_type':task_type.strip(),'date':day,'completed_date':completed_day,'week_start':week,'outcome':outcome,
             'points':1 if outcome=='good' else 0,'evidence_refs':evidence_refs,
             'receipt_digests':sorted({v['receipt_sha256'] for v in facts}),
@@ -94,8 +97,9 @@ class TaskScoring:
             facts=self.inputs(value['node_id'],value['date'])
             digests={v['receipt_sha256'] for v in facts if v['task_id']==value['task_id'] and not v['health_check']}
             if not set(value['receipt_digests']).issubset(digests):raise ValueError('历史评分的任务证据已失效')
-            key=(value['source_ref'],value['model'])
-            bucket=groups.setdefault(key,{'source_ref':key[0],'model':key[1],'node_ids':[],
+            role=value.get('role') or ''
+            key=(role, value['source_ref'], value['model'])
+            bucket=groups.setdefault(key,{'role':role,'source_ref':value['source_ref'],'model':value['model'],'node_ids':[],
                 'points':0,'tasks':0,'good_tasks':0,'not_good_tasks':0,'task_types':{}})
             if value['node_id'] not in bucket['node_ids']:bucket['node_ids'].append(value['node_id'])
             bucket['points']+=value['points'];bucket['tasks']+=1
@@ -103,7 +107,7 @@ class TaskScoring:
             bucket['task_types'][value['task_type']]=bucket['task_types'].get(value['task_type'],0)+1
         ranking=list(groups.values())
         for value in ranking:value['success_rate']=value['good_tasks']/value['tasks']
-        ranking.sort(key=lambda v:(-v['points'],-v['success_rate'],-v['tasks'],v['source_ref'],v['model']))
+        ranking.sort(key=lambda v:(-v['points'],-v['success_rate'],-v['tasks'],v.get('role') or '',v['source_ref'],v['model']))
         return {'week_start':start,'week_end':end,'timezone':'Asia/Shanghai','task_type':task_type,
             'policy':'good +1; not_good 0; one whole task counted once',
             'ranking':ranking,'lifetime_score':False,'resource_inputs_collected':False,

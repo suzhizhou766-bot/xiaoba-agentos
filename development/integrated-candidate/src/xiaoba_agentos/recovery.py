@@ -99,6 +99,11 @@ def classify_failure(error: object) -> FailureClassification:
     if declared == "internal_adapter_candidate":
         return FailureClassification("internal_adapter_candidate", False, False, True)
     text = _safe_error(error).lower()
+    # A permission refusal is neither an upstream outage nor a failed node test.
+    if any(token in text for token in (
+        "permission denied", "operation not permitted", "权限被拒", "not permitted by sandbox", "eacces",
+    )):
+        return FailureClassification("permission_denied", False, False, True)
     # Local Headroom readiness is an internal condition and is checked first --
     # before an external class declared by the raiser, too: a message such as
     # "agy headroom unavailable" names the backend but is not an upstream
@@ -333,14 +338,31 @@ def live_agent_probe(config: Any, store: Any, agents: Optional[Iterable[Any]] = 
 
 
 def start_session_health(config: Any, store: Any) -> Dict[str, Any]:
-    """Probe every enabled Agent and report health; take no recovery action.
+    """Local session open. Do not send a real model probe.
 
-    Failed Agents keep the health status their own probe produced. Nothing is
-    marked `repairing`, no repair job is queued and no frozen task is advanced:
-    a session start may discover that the environment recovered, but only the
-    user's `task-resume` may act on it.
+    Mock fixtures still run the in-process probe so older unit tests can
+    exercise health rows. A config with real CLI agents only checks that pool
+    nodes are enabled, tested, and still have an entry. Shortage is reported
+    and does not by itself make the session fail.
     """
-    result = live_agent_probe(config, store)
-    result["peer_auto_repair"] = "retired"
-    result["repair_jobs"] = []
-    return result
+    enabled = [agent for agent in getattr(config, "agents", []) if getattr(agent, "enabled", False)]
+    if enabled and all(getattr(agent, "type", "") == "mock" for agent in enabled):
+        result = live_agent_probe(config, store)
+        result["peer_auto_repair"] = "retired"
+        result["repair_jobs"] = []
+        return result
+    from .pool_dispatch import load_nodes, review_report
+    report = review_report(load_nodes(store))
+    return {
+        "ok": True,
+        "session_mode": "ready",
+        "remote_inference_tested": False,
+        "live_probe_sent": False,
+        "review_nodes": report,
+        "peer_auto_repair": "retired",
+        "repair_jobs": [],
+        "healthy_agents": [],
+        "failed_agents": [],
+        "agents": [],
+        "memory_candidate_created": False,
+    }

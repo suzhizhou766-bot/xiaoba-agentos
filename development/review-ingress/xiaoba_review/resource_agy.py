@@ -123,6 +123,8 @@ class AgyInteractiveResource:
     def __init__(self, source, workspace_root=None):
         self.kind, self.source_ref = source['kind'], source['source_ref']
         self.entry, self.model = source['node']['entry'], source['node']['model']
+        limit = source['node'].get('no_progress_seconds', 300)
+        self.no_progress_seconds = limit if type(limit) is int and limit >= 1 else 300
         self._serial = threading.Lock()
         self._process = self._master = self._workspace_lock = None
         self.workspace = AgentWorkspace(workspace_root, source)
@@ -191,7 +193,9 @@ class AgyInteractiveResource:
             'node_command':shutil.which('node') or sys.executable})
         return dict(command_environment(config, 'agy'), TERM='xterm-256color', NO_COLOR='1')
 
-    def _wait(self, done, timeout, idle_timeout=300, file_ticket=None):
+    def _wait(self, done, timeout, idle_timeout=None, file_ticket=None):
+        if idle_timeout is None:
+            idle_timeout = self.no_progress_seconds
         raw = bytearray();started = last_progress = time.monotonic();progress = ''
         while True:
             if file_ticket:
@@ -206,7 +210,7 @@ class AgyInteractiveResource:
             if timeout is not None and now-started >= timeout:
                 raise InteractiveError('interactive_timeout', 'AGY交互响应未在本次测试期限内完成；不会自动重测。')
             if now-last_progress >= idle_timeout:
-                raise InteractiveError('interactive_no_progress', 'AGY交互会话连续300秒无可验证结果进展，已停止本次调用。')
+                raise InteractiveError('interactive_no_progress', 'AGY交互会话连续%d秒无可验证结果进展，已停止本次调用。' % idle_timeout)
             if not select.select([self._master], [], [], .1)[0]:continue
             try:chunk = os.read(self._master, 65536)
             except OSError as exc:

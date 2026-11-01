@@ -48,6 +48,9 @@ class CliWorklogResource:
     def __init__(self, source, workspace_root=None):
         self.kind, self.source_ref = source['kind'], source['source_ref']
         self.entry, self.model = source['node']['entry'], source['node']['model']
+        limit = source['node'].get('no_progress_seconds', self.no_progress_seconds)
+        if type(limit) is int and limit >= 1:
+            self.no_progress_seconds = limit
         self._serial = threading.Lock()
         self._process = None
         self._workspace_lock = None
@@ -138,6 +141,11 @@ class CliWorklogResource:
     def _start(self, directory, ticket, timeout, health_only):
         self.resource_identity()
         argv = self._command(self.entry, timeout)
+        self._spawn(argv, directory, self._input(ticket, health_only))
+        self._refresh_preview(ticket, self._log_size(ticket))
+
+    def _spawn(self, argv, directory, input_data=None):
+        """Own a fresh process group; service dialects send their input over IPC."""
         self._preview = TerminalPreview()
         self._stdout = bytearray()
         self._partial = b''
@@ -150,8 +158,9 @@ class CliWorklogResource:
             start_new_session=True, close_fds=True)
         self._process = process
         try:
-            process.stdin.write(self._input(ticket, health_only))
-            process.stdin.flush()
+            if input_data is not None:
+                process.stdin.write(input_data)
+                process.stdin.flush()
         finally:
             try: process.stdin.close()
             except OSError: pass
@@ -160,7 +169,9 @@ class CliWorklogResource:
                          daemon=True).start()
         self._stderr_thread = threading.Thread(target=self._pump_stderr, args=(process.stderr,), daemon=True)
         self._stderr_thread.start()
-        self._refresh_preview(ticket, self._log_size(ticket))
+
+    def _check_operation(self):
+        """Service dialects can finish a request before their server exits."""
 
     @staticmethod
     def _pump(stream, sink):
@@ -266,6 +277,7 @@ class CliWorklogResource:
             if current != size:
                 size = current; last_progress = time.monotonic()
                 self._refresh_preview(ticket, current)
+            self._check_operation()
             if process.poll() is not None:
                 # A helper agy left behind may hold stdout open; once the leader
                 # has exited, wait at most 2 s for the stream to close.

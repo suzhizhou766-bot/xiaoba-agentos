@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .store import Conflict, canonical, digest
-from .cli_identity import TYPES, agent_type, entry_warning
+from .cli_identity import TYPES, agent_type, entry_warning, source_family
 from xiaoba_agentos.validation_evidence import independence_key
 
 
@@ -54,7 +54,7 @@ def independence(source):
     model = state.get('model') if state.get('entry') else None
     if state.get('interface') == 'cli' and state.get('entry'):
         kind = agent_type(state)
-        identity = 'cli:'+kind if kind != 'other' else str(Path(state['entry']).resolve())
+        identity = 'cli:'+source_family(kind) if kind != 'other' else str(Path(state['entry']).resolve())
         # DSH 不收模型参数，节点里的模型文字不影响实际调用，不能拿它凑独立。
         if kind == 'dsh':model = None
     return independence_key(identity, model)
@@ -87,7 +87,7 @@ def entry_identity(clean):
         if not path.is_absolute():
             raise ValueError('CLI入口请填写程序的绝对路径，不填写shell命令')
         kind = agent_type(clean)
-        return 'cli:'+kind if kind != 'other' else str(path.resolve())
+        return 'cli:'+source_family(kind) if kind != 'other' else str(path.resolve())
     return entry.casefold()
 
 
@@ -101,13 +101,13 @@ def validate_node(value):
     for key in ('node_id','name','agent','entry','model'):
         if not isinstance(value[key],str) or (not value[key].strip() and not (key == 'model' and value.get('interface') == 'cli')) or len(value[key]) > 2048 or any(c in value[key] for c in '\r\n\0'):
             raise ValueError('节点字段不完整或格式异常：'+key)
-    if len(value['node_id']) > 128 or value['kind'] not in ({'collaborator'} if tmux else {'dsh','peer'}) or value['interface'] not in {'cli','desktop','web','tmux'}:
+    if len(value['node_id']) > 128 or value['kind'] not in ({'collaborator'} if tmux else {'dsh','peer','review','collaborate','both'}) or value['interface'] not in {'cli','desktop','web','tmux'}:
         raise ValueError('未知节点角色或调用方式')
     from xiaoba_agentos.memory import MemoryBridge
     if MemoryBridge._sensitive_reason(canonical(value)):
         raise ValueError('Agent池只登记调用资料，请勿填写密钥、令牌或登录材料')
     if 'agent_type' in value and value['agent_type'] not in TYPES:
-        raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、WorkBuddy、Codex、Claude 或其它')
+        raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、WorkBuddy、CodeBuddy Code、Codex、Claude 或其它')
     clean = {k:v.strip() if isinstance(v,str) and k != 'entry' else v for k,v in value.items()}
     if tmux:
         from .resource_tmux import validate_session, validate_directory
@@ -150,7 +150,9 @@ class AgentPool:
                     node.update(execution_mode='tmux_attended', context_isolated=False, role='collaborator',
                         tmux_jobs=[self.tmux.public(j) for j in jobs.values() if j['node_id']==node['node_id']])
             chain = self.store.native.verify_event_chain_tx(db)
+            waiting = [dict(row) for row in db.execute("SELECT id,status,attempts,last_error FROM tasks WHERE status IN ('pending','retry') AND last_error IS NOT NULL ORDER BY priority DESC,created_at")]
         return {'ok':True,'source':'local_database','nodes':nodes,'event_chain':chain,
+                'waiting_tasks':waiting,
                 'selection_scope':'open_review_tasks','client_settings_modified':False}
 
     def add(self, value):
@@ -277,6 +279,10 @@ class AgentPool:
             raise ValueError('需要明确的节点动作和修订号')
         if operation == 'toggle' and type(enabled) is not bool:
             raise ValueError('启用状态必须为布尔值')
+        if operation == 'remove':
+            # Drop a waiting in-person job before the node disappears, or the
+            # wait would keep judging a node the user already removed.
+            self.tmux.cancel_waiting(node_id)
         with self.store.transaction() as db:
             source = self.store.source(db,node_id)
             state = node_state(source)

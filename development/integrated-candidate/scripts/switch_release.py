@@ -453,11 +453,15 @@ STANDBY_COVER_REASONS = ('external_failure', 'health_probe_failed')
 
 
 def independent_acceptance(evidence: dict) -> bool:
-    agents = set(evidence.get('successful_agents') or [])
-    if agents == {'agy_review', 'dsh_review'}:
-        return True
-    return (agents == {'dsh_review', 'qoder_review'} and evidence.get('standby_substituted') is True
-            and evidence.get('replaced') == 'agy_review' and evidence.get('reason') in STANDBY_COVER_REASONS)
+    """Same rule as build_release: two qualified conclusions, not fixed names."""
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "src"
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from xiaoba_agentos.pool_dispatch import release_acceptance
+    ok, _reason = release_acceptance(evidence, evidence.get("pool_nodes") or [])
+    return ok
 
 
 # Doctor checks that never decide doctor's own `ok` (retained objects are reported,

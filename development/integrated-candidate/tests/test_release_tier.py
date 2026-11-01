@@ -117,7 +117,21 @@ class SwitchTierGateTest(unittest.TestCase):
         release = switch.load(self.package / 'RELEASE.json')
         release.pop('release_tier', None)
         release['acceptance']['end_to_end_evidence'] = (
-            {'successful_agents': ['agy_review', 'dsh_review']} if reviewers else None)
+            {
+                "frozen_prompt_sha256": "p",
+                "source_manifest_sha256": "m",
+                "execution": {"author_ids": [], "executor_ids": [], "checked_idle_ids": []},
+                "pool_nodes": [
+                    {"node_id": "north-node", "enabled": True, "test_passed": True,
+                     "independence": ["cli:codex", "alpha"]},
+                    {"node_id": "south-node", "enabled": True, "test_passed": True,
+                     "independence": ["cli:claude", "beta"]},
+                ],
+                "conclusions": [
+                    {"node_id": "north-node", "passed": True, "prompt_sha256": "p", "manifest_sha256": "m"},
+                    {"node_id": "south-node", "passed": True, "prompt_sha256": "p", "manifest_sha256": "m"},
+                ],
+            } if reviewers else None)
         write(self.package / 'RELEASE.json', switch.encoded(release))
         seal(self.package)
         if tier:

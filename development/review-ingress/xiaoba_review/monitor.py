@@ -9,7 +9,7 @@ from .store import Conflict
 
 
 class OpenReviewModule(Module):
-    id, title = 'open-review', 'DSH＋开放审查'
+    id, title = 'open-review', '开放审查'
 
     def __init__(self, ctx, store, inbox, backends):
         super().__init__(ctx)
@@ -118,7 +118,7 @@ class OpenReviewModule(Module):
                 raise ValueError('接口不再接受 contract_version；第 1 版只留给已存在的任务卡')
             task_type=data.pop('task_type',None)
             if not data.get('dsh_id') or not data.get('peer_id'):
-                prepared=self.pool.runtime.prepare(['dsh','peer'],{k:data[k+'_id'] for k in ('dsh','peer') if data.get(k+'_id')},task_type)
+                prepared=self.pool.runtime.prepare(['dsh','peer'],{k:data[k+'_id'] for k in ('dsh','peer') if data.get(k+'_id')},task_type,candidate_id=data.get('candidate_id'))
                 if prepared['route']!='run':return prepared
                 for kind,node_id in prepared['selections'].items():data[kind+'_id']=node_id
             review_type = data.get('review_type')
@@ -141,7 +141,7 @@ class OpenReviewModule(Module):
                 raise ValueError('派工必须指定审查类型 (review_type)')
             if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:
                 raise ValueError('未知审查类型')
-            prepared=self.pool.runtime.prepare(['dsh','peer'],data.get('selections'),data.get('task_type'))
+            prepared=self.pool.runtime.prepare(['dsh','peer'],data.get('selections'),data.get('task_type'),candidate_id=data.get('candidate_id'))
             if prepared['route']!='run':return prepared
             selected=prepared['selections']
             request=self.store.create(data['candidate_id'],selected['dsh'],selected['peer'],data['scope'],data['evidence'],

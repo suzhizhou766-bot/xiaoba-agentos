@@ -74,36 +74,7 @@
       "settings_path": "/Users/suzhizhou/.qoder/settings.json"
     }
   },
-  "agents": [
-    {
-      "name": "agy_review",
-      "type": "local_cli",
-      "driver": "agy",
-      "cli_route": "local_agy",
-      "enabled": true,
-      "timeout_seconds": 300,
-      "role": "只读独立审查员：使用 Antigravity 本地登录，只依据任务和冻结上下文独立分析；输出格式与题面任务约束一致，不得调用工具或修改文件。"
-    },
-    {
-      "name": "dsh_review",
-      "type": "local_cli",
-      "driver": "dsh",
-      "cli_route": "local_dsh",
-      "enabled": true,
-      "timeout_seconds": 300,
-      "role": "只读分工与审查员：使用 DeepSeek Harness 本地配置，只依据任务和冻结上下文独立分析；输出格式与题面任务约束一致，不得调用工具或修改文件。"
-    },
-    {
-      "name": "qoder_review",
-      "type": "local_cli",
-      "driver": "qoder",
-      "cli_route": "local_qoder",
-      "enabled": true,
-      "standby": true,
-      "timeout_seconds": 300,
-      "role": "备用只读审查员：仅在 AGY 或 DSH 健康探针真实失败或任务中途外部故障时补位；使用 qodercli 本地登录，模型与思考强度使用用户在 qodercli 里最近一次选定的模型，只依据任务和冻结上下文独立分析；输出格式与题面任务约束一致，不得调用工具或修改文件。"
-    }
-  ],
+  "agents": [],
   "evolution": {
     "minimum_samples": 3,
     "promotion_margin": 0.05,

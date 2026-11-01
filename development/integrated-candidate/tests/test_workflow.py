@@ -10,6 +10,7 @@ from xiaoba_agentos.orchestrator import Orchestrator
 from xiaoba_agentos.store import EventStore
 from xiaoba_agentos.task_context import freeze_context
 from xiaoba_agentos.workflow import work_plan, review_plan
+from test_pool_dispatch import _page_source, _seed
 
 
 class WorkflowTest(unittest.TestCase):
@@ -22,6 +23,14 @@ class WorkflowTest(unittest.TestCase):
         self.config = test_orchestrator.OrchestratorTest()._config(self.root, agents, minimum=1, budget=9)
         self.store = EventStore(self.config.database_path)
         self.store.initialize()
+        _seed(self.store, [
+            _page_source("a", "cli:codex", "a-m", kind="collaborator", agent_type="codex"),
+            _page_source("b", "cli:claude", "b-m", kind="collaborator", agent_type="claude"),
+            _page_source("c", "cli:qoder", "c-m", kind="collaborator", agent_type="qoder"),
+            _page_source("r1", "cli:codex", "r1-m", kind="review", agent_type="codex"),
+            _page_source("r2", "cli:claude", "r2-m", kind="review", agent_type="claude"),
+            _page_source("r3", "cli:qoder", "r3-m", kind="review", agent_type="qoder"),
+        ])
         self.calls = []
 
     def submit(self, plan, context):
@@ -53,7 +62,8 @@ class WorkflowTest(unittest.TestCase):
             outcome = Orchestrator(self.config, self.store).run_once()
         self.assertEqual("completed", outcome["status"])
         self.assertIn("winner", outcome)
-        self.assertEqual(3, len(self.calls))
+        self.assertEqual({"r1", "r2"}, {item[0] for item in self.calls})
+        self.assertEqual(2, len(self.calls))
         self.assertEqual(1, len({item[1] for item in self.calls}))
         self.assertEqual(1, len({item[2] for item in self.calls}))
         self.assertNotIn("specific patch", self.calls[0][2])

@@ -50,8 +50,9 @@ class ContentIndexCase(unittest.TestCase):
         self.config = SimpleNamespace(
             project_dir=self.project, skills_root=self.skills, skills_index=self.skills / "index.json",
             knowledge_index=self.knowledge / "index.json", database_path=self.database,
-            agents=[SimpleNamespace(name="agy_review", enabled=True), SimpleNamespace(name="dsh_review", enabled=True),
-                    SimpleNamespace(name="retired", enabled=False)])
+            agents=[SimpleNamespace(name="agy_review", type="mock", enabled=True),
+                    SimpleNamespace(name="dsh_review", type="mock", enabled=True),
+                    SimpleNamespace(name="retired", type="mock", enabled=False)])
         self.synced = 0
 
     @staticmethod
@@ -183,7 +184,7 @@ class DraftReviewPublishTest(ContentIndexCase):
         self.review("t1")
         code, result = self.run_command("skill-publish", review_task="t1")
         self.assertEqual((code, result["ok"]), (0, True), result)
-        self.config.agents.append(SimpleNamespace(name="qoder_review", enabled=True, standby=True))
+        self.config.agents.append(SimpleNamespace(name="qoder_review", type="mock", enabled=True, standby=True))
         self.assertTrue(self.verify()["ok"], self.verify()["problems"])
 
     def test_publish_without_a_matching_passed_review_changes_nothing(self):

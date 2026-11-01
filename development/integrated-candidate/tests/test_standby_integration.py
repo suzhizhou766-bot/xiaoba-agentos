@@ -203,9 +203,8 @@ class GateWhitelistTest(unittest.TestCase):
             standby_event={"replaced": "dsh_review", "standby": "qoder_review",
                            "reason": "external_failure", "failure_class": "external_auth"},
         )
-        result = BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
-        self.assertTrue(result["standby_substituted"])
-        self.assertEqual("dsh_review", result["replaced"])
+        with self.assertRaisesRegex(RuntimeError, "固定后台名字或备用补位"):
+            BUILD_RELEASE_MODULE.validate_acceptance_database(db, "task-1", self.root)
 
 
 if __name__ == "__main__":

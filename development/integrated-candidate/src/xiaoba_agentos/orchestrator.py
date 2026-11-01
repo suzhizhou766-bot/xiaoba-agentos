@@ -337,8 +337,14 @@ class Orchestrator:
         self.memory = MemoryBridge(config, store)
         self.circuit_breaker = CircuitBreaker(threshold=2)
 
+    def _fail_task(self, task: Dict[str, Any], error: str) -> str:
+        return self.store.fail(task["id"], error, expected_attempt=int(task["attempts"]))
+
     def _run_agent(self, task_id: str, agent_config: Any, prompt: str, context: str,
                    lease_attempt: Optional[int] = None, is_workflow_work: bool = False) -> AgentResult:
+        if agent_config.raw.get("pool_node"):
+            step = "WORK-01" if is_workflow_work else "REVIEW-01"
+            agent_config = replace(agent_config, raw={**agent_config.raw, "task_id": task_id, "step_code": step})
         run_id = self.store.start_agent_run(
             task_id,
             agent_config.name,
@@ -670,33 +676,65 @@ class Orchestrator:
         if not event_chain["ok"]:
             return {"status": "blocked_configuration", "error": "审计链校验失败；任务队列未被消费", "event_chain": event_chain}
         self.store.recover_expired()
-        # Only primaries are ever dispatched. The standby is resolved here so the
-        # health gate can tell "one primary down but coverable" from "the pair
-        # cannot be formed", and so a standby that is itself unhealthy never
-        # blocks a queue two healthy primaries could serve. Readiness is
-        # checked for the primaries alone: a standby with broken
-        # wiring is reported by doctor, not allowed to hold up intake.
-        primaries = self.config.primary_agents
-        standbys = self.config.standby_agents
-        standby = standbys[0] if standbys else None
-        enabled = primaries
-        if not enabled:
-            # A standby only ever stands in for one of two primaries, so with no
-            # primary enabled no pair can form; refuse before leasing, as v1.6.4
-            # did, instead of leasing a task only to fail it.
-            return {"status": "blocked_configuration", "error": "没有启用任何主后台 Agent；任务队列未被消费"}
+        # Dispatch comes from the Agent pool. Config agents are historical
+        # route notes, except an all-mock roster kept for existing unit tests.
+        # Standby substitution is retired: a node that already worked is simply
+        # not selected, and nothing calls a fixed backend name to fill in.
+        from .pool_dispatch import AWAITING_HOST, NO_INDEPENDENT, needs_review, runnable_tasks, snapshot_of, worker_roster
+        pending = runnable_tasks(self.store)
+        skipped = []
+        roster = None
+        nxt = None
+        for candidate in pending:
+            if not needs_review(candidate) and snapshot_of(candidate).get("workflow", {}).get("phase") != "work":
+                hold = {"status": "awaiting_host", "task_id": candidate["id"], "host": True,
+                        "review": "not_required", "error": AWAITING_HOST, "message": AWAITING_HOST}
+            else:
+                candidate_roster = worker_roster(self.config, self.store, task=candidate)
+                mode = candidate_roster["mode"]
+                if mode in {"pool", "mock"}:
+                    # A pool vote awaiting its host is not rerun on each poll.
+                    if candidate_roster.get("host") and all(
+                        _reusable_run(self.store.latest_agent_runs(candidate["id"]).get(a.name))
+                        for a in candidate_roster["agents"]
+                    ):
+                        hold = {"status": "awaiting_host", "task_id": candidate["id"], "host": True,
+                                "label": candidate_roster.get("label"), "message": "等待宿主提交合格审查回执"}
+                    else:
+                        nxt, roster = candidate, candidate_roster
+                        break
+                else:
+                    status = {"ask_user": "ask_user", "awaiting_host": "awaiting_host", "mock_disabled": "blocked_configuration"}.get(mode, "blocked_review_nodes")
+                    message = candidate_roster.get("message") or candidate_roster.get("label") or NO_INDEPENDENT
+                    if mode == "mock_disabled":message = "没有启用任何主后台 Agent；任务队列未被消费"
+                    hold = {"status": status, "task_id": candidate["id"], "error": message,
+                            "message": message, "host": mode == "awaiting_host", "calls": [],
+                            "review_nodes": candidate_roster.get("report"), "label": candidate_roster.get("label")}
+            self.store.mark_dispatch_wait(candidate["id"], hold["status"], hold.get("message") or hold.get("error") or "")
+            skipped.append(hold)
+        if nxt is None:
+            if skipped:
+                return {**skipped[0], "skipped": skipped}
+            roster = worker_roster(self.config, self.store)
+            if roster["mode"] == "mock_disabled":
+                return {"status": "blocked_configuration", "error": "没有启用任何主后台 Agent；任务队列未被消费"}
+            return {"status": "idle", "review_nodes": roster.get("report")}
+        enabled = list(roster["agents"])
+        # Mock fixtures still exercise the old cover path. A real config never
+        # reaches it: local CLI agents are not a dispatch list.
+        if roster["mode"] == "mock":
+            standby_agents = [agent for agent in self.config.agents if agent.enabled and agent.standby]
+            standby = standby_agents[0] if standby_agents else None
+        else:
+            standby = None
+        primaries = enabled
         required = int(worker.get("minimum_successful_agents", 2))
-        if len(enabled) < required:
-            # Same rule as health.execution_blockers: the standby covers one
-            # side of a pair, it never makes up a missing primary; and without
-            # enough primaries no task could ever settle (round 31).
+        if roster["mode"] == "mock" and len(enabled) < required:
             return {
                 "status": "blocked_configuration",
-                "error": f"启用的主后台只有 {len(enabled)} 个，少于 {required} 个；"
-                         + ("备用不能补足主后台；" if standby is not None else "")
-                         + "任务队列未被消费",
+                "error": f"启用的测试夹具只有 {len(enabled)} 个，少于 {required} 个；任务队列未被消费",
             }
-        local_readiness = local_cli_readiness(self.config, enabled)
+        local_readiness = local_cli_readiness(self.config, enabled if roster["mode"] != "pool" else [])
         if not local_readiness["ok"]:
             return {"status": "blocked_configuration", "error": "；".join(local_readiness["problems"]), "local_cli_routes": local_readiness}
         probed = list(enabled) + ([standby] if standby is not None else [])
@@ -720,7 +758,7 @@ class Orchestrator:
             item for item in unhealthy if standby is None or item["agent"] != standby.name
         ]
         standby_usable = standby is not None and len(unhealthy) == len(unhealthy_primaries)
-        if health_rows or any(agent.type == "local_cli" for agent in probed):
+        if roster["mode"] != "pool" and (health_rows or any(agent.type == "local_cli" for agent in probed)):
             # One unhealthy primary that a healthy standby can cover still yields
             # two independent conclusions; two never do, because a standby may not
             # pair with itself and the queue stays blocked instead.
@@ -732,7 +770,7 @@ class Orchestrator:
                     "error": "后台 Agent 实际推理健康门禁未通过；任务队列未被消费",
                     "agents": unhealthy,
                 }
-        task = self.store.lease_next(int(worker["lease_seconds"]))
+        task = self.store.lease_next(int(worker["lease_seconds"]), task_id=nxt["id"])
         if not task:
             return {"status": "idle"}
 
@@ -756,7 +794,7 @@ class Orchestrator:
         try:
             validate_plan(self.config, self.store, task, _snap)
         except (ValueError, KeyError, OSError) as exc:
-            self.store.fail(task["id"], "invalid collaboration evidence: " + str(exc))
+            self._fail_task(task, "invalid collaboration evidence: " + str(exc))
             return task_result({"status": "failed", "task_id": task["id"], "errors": [str(exc)]})
         workflow = _snap.get("workflow", {})
         _req_caps = list(_snap.get("required_capabilities") or [])
@@ -765,7 +803,7 @@ class Orchestrator:
         if _needs_web:
             _gate_agents, _gate_reason = web_capable_agents(_gate_agents, CapabilityRegistry(), needs_web=True)
             if not _gate_agents:
-                self.store.fail(task["id"], _gate_reason or "missing native_web_search")
+                self._fail_task(task, _gate_reason or "missing native_web_search")
                 return task_result({
                     "status": "blocked",
                     "reason": _gate_reason or "no web-capable agent",
@@ -776,7 +814,7 @@ class Orchestrator:
             _gate_agents, _missing = capable_agents(_gate_agents, CapabilityRegistry(), _req_caps)
             if not _gate_agents:
                 _lacked = sorted({tok for _, toks in _missing for tok in toks})
-                self.store.fail(task["id"], "missing capability: " + ", ".join(_lacked))
+                self._fail_task(task, "missing capability: " + ", ".join(_lacked))
                 return task_result({
                     "status": "blocked",
                     "reason": "missing capability: " + ", ".join(_lacked),
@@ -896,11 +934,13 @@ class Orchestrator:
                 candidates.append(agent)
 
         minimum = len(workflow["agents"]) if workflow else int(worker["minimum_successful_agents"])
+        if roster.get("host"):
+            minimum = len(enabled)  # Pool execution target; host receipt is still required before settlement.
         if len(results) + len(candidates) < minimum:
             error = "; ".join(errors) or "可用 Agent 数不足，无法达到成功门槛"
             if results and failures:
                 return self._freeze_for_recovery(task, results, failures, substitution or prior_substitution)
-            self.store.fail(task["id"], error)
+            self._fail_task(task, error)
             return task_result({"status": "failed", "task_id": task["id"], "errors": errors or [error]})
 
         default_budget = int(worker["max_attempts"]) * len(enabled)
@@ -923,7 +963,7 @@ class Orchestrator:
                     "needed": needed,
                 },
             )
-            self.store.fail(task["id"], error)
+            self._fail_task(task, error)
             return task_result({"status": "failed", "task_id": task["id"], "errors": [error]})
         candidates = candidates[:remaining_budget]
 
@@ -946,7 +986,7 @@ class Orchestrator:
                 if item.get("source_task_id")
             ]
         except (TypeError, ValueError) as exc:
-            self.store.fail(task["id"], "invalid frozen context: " + str(exc))
+            self._fail_task(task, "invalid frozen context: " + str(exc))
             return task_result({"status": "failed", "task_id": task["id"], "errors": ["invalid frozen context"]})
         if "execution_snapshot_json" in task and task.get("execution_snapshot_json"):
             fallback_context = "\n\n".join(value for value in (task_context, snapshot_skill_context, snapshot_context) if value)
@@ -1061,7 +1101,7 @@ class Orchestrator:
                     "output_hygiene: 候选答案含未剥离的模型推理内容，已隔离且干净候选不足："
                     + ", ".join(item["agent"] for item in quarantined)
                 )
-                self.store.fail(task["id"], reason)
+                self._fail_task(task, reason)
                 return task_result({
                     "status": "failed",
                     "task_id": task["id"],
@@ -1086,7 +1126,7 @@ class Orchestrator:
                 if results and failures:
                     return self._freeze_for_recovery(task, results, failures, substitution or prior_substitution)
                 error = "; ".join(errors) or "无法达到 Agent 成功门槛"
-                self.store.fail(task["id"], error)
+                self._fail_task(task, error)
                 return task_result({
                     "status": "failed",
                     "task_id": task["id"],
@@ -1106,7 +1146,7 @@ class Orchestrator:
             try:
                 validate_plan(self.config, self.store, task, _snap)
             except (ValueError, KeyError, OSError) as exc:
-                self.store.fail(task["id"], "collaboration evidence changed during execution: " + str(exc))
+                self._fail_task(task, "collaboration evidence changed during execution: " + str(exc))
                 return task_result({"status": "failed", "task_id": task["id"], "errors": [str(exc)]})
         if workflow.get("phase") == "work":
             contributions = contribution_records(self.config, self.store, task["id"], workflow["agents"])
@@ -1117,21 +1157,28 @@ class Orchestrator:
             leak = detect_reasoning_leak(payload)
             if leak:
                 reason = f"output_hygiene: 协作交付内容未通过最终扫描，命中特征 {leak[:5]}"
-                self.store.fail(task["id"], reason)
+                self._fail_task(task, reason)
                 return task_result({"status": "failed", "task_id": task["id"], "errors": [reason]})
             self.store.complete(task["id"], payload,
-                                provenance_kind="agentos_collaboration_work")
+                                provenance_kind="agentos_collaboration_work",
+                                expected_attempt=int(task["attempts"]))
             return task_result({**bundle, "status": "completed", "task_id": task["id"], "next_stage": "integration"})
 
         receipt_gate_error = self._verify_settlement_receipts(task, results)
         if receipt_gate_error:
-            self.store.fail(task["id"], receipt_gate_error)
+            self._fail_task(task, receipt_gate_error)
             return task_result({
                 "status": "failed",
                 "task_id": task["id"],
                 "errors": [receipt_gate_error],
                 "standby_substitution": substitution or prior_substitution,
             })
+
+        if roster.get("host"):
+            self.store.mark_dispatch_wait(task["id"], "awaiting_host", "等待宿主提交合格审查回执",
+                                          expected_attempt=task["attempts"])
+            return task_result({"status": "awaiting_host", "task_id": task["id"], "host": True,
+                                "label": roster.get("label"), "skipped": skipped})
 
         winner, scores = DeterministicJudge.choose(task["prompt"], results)
         breakdown = DeterministicJudge.explain(task["prompt"], results)
@@ -1149,6 +1196,8 @@ class Orchestrator:
             f"\n- 判定依据：{basis}（{_DECISION_BASIS_LABEL[basis]}）"
             + ("\n- 违反题面输出约束：\n" + "\n".join(breaches) if breaches else "")
         )
+        if roster.get("label"):
+            final = roster["label"] + "\n\n" + final
         self.store.append_event(
             task["id"],
             "judge.breakdown",
@@ -1189,7 +1238,7 @@ class Orchestrator:
         leak = detect_reasoning_leak(final)
         if leak:
             reason = f"output_hygiene: 裁判结果未通过最终扫描，命中特征 {leak[:5]}"
-            self.store.fail(task["id"], reason)
+            self._fail_task(task, reason)
             return task_result({
                 "status": "failed",
                 "task_id": task["id"],
@@ -1234,7 +1283,8 @@ class Orchestrator:
                 staged = self.memory.stage_experience(task["id"], task["prompt"], final, runs)
                 evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
                 self.store.complete_with_memory_candidate(
-                    task["id"], final, str(staged), evidence_sha256, memory_source_task_ids
+                    task["id"], final, str(staged), evidence_sha256, memory_source_task_ids,
+                    expected_attempt=int(task["attempts"]),
                 )
         except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
             # An exception here does not say whether the transaction committed
@@ -1272,6 +1322,8 @@ class Orchestrator:
             "winner": winner.agent,
             "scores": scores,
             "result": final,
+            "host": bool(roster.get("host")),
+            "label": roster.get("label") or (NO_INDEPENDENT if roster.get("host") else None),
             "standby_substitution": substitution or prior_substitution,
             "delivery_review": {
                 "status": "audit_only" if audit_only else "pending_delivery_review",

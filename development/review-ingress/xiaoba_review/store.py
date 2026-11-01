@@ -132,6 +132,19 @@ class ReviewStore:
         self.path = native_store.path
         self.outbox_root = Path(outbox_root).resolve()
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        if self.workspace_root is not None:
+            with self.native.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                if not self.native.verify_event_chain_tx(db)['ok']:
+                    raise Conflict('事件链校验失败，不能绑定工作区')
+                old = db.execute("SELECT payload_json FROM events WHERE event_type='agent_pool.workspace_bound' ORDER BY rowid DESC LIMIT 1").fetchone()
+                if old and json.loads(old[0])['root'] != str(self.workspace_root):
+                    raise Conflict('Agent工作区根目录与已有绑定不同，请由用户核对；不会分建工作区')
+                if not old:
+                    self.native._append_event_tx(db, None, 'agent_pool.workspace_bound', {'root': str(self.workspace_root)})
+        else:
+            from xiaoba_agentos.pool_dispatch import bound_workspace_root
+            self.workspace_root = bound_workspace_root(self.native)
         with self.transaction() as db:
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS ri_version (version INTEGER PRIMARY KEY);
@@ -225,8 +238,13 @@ class ReviewStore:
         source = self.source(db, source_id)
         from .agent_pool import resource_plan
         plan = resource_plan(source)
-        if role == 'dsh' and source['kind'] != 'dsh':
-            raise ValueError('固定审查方必须是已登记 DSH 来源')
+        from xiaoba_agentos.pool_dispatch import mapped_role
+        if mapped_role(source['kind']) not in {'review','both'}:
+            raise ValueError('审查席位必须使用审查角色节点')
+        from xiaoba_agentos.task_participants import execution_context
+        task = db.execute('SELECT * FROM tasks WHERE id=?', (request['candidate_id'],)).fetchone()
+        if task and source_id in execution_context(self.native, dict(task), db)['excluded_ids']:
+            raise ValueError('干过活或是作者的节点不能审查本任务')
         if channel not in {'external_handoff', 'backend_adapter'}:
             raise ValueError('未知接入通道')
         common = json.loads(request['common'])

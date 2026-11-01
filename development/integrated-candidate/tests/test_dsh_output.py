@@ -42,7 +42,7 @@ class DshAdapterCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        raw = json.loads((Path(__file__).resolve().parents[1] / "config/agentos.json").read_text())
+        raw = json.loads((Path(__file__).resolve().parents[1] / "tests/fixtures/agentos-with-backends.json").read_text())
         raw["cli_routes"]["local_dsh"] = {
             "driver": "dsh", "selection": "local_harness",
             "desktop_config": str(self.root / "desktop.yml"),
@@ -145,7 +145,7 @@ class DshRouteDiagnosticTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        raw = json.loads((Path(__file__).resolve().parents[1] / "config/agentos.json").read_text())
+        raw = json.loads((Path(__file__).resolve().parents[1] / "tests/fixtures/agentos-with-backends.json").read_text())
         raw["cli_routes"]["local_dsh"] = {
             "driver": "dsh", "selection": "local_harness",
             "desktop_config": str(self.root / "desktop.yml"),
@@ -201,7 +201,7 @@ class DshDesktopReaderGuardTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.project = Path(__file__).resolve().parents[1]
-        integrations = json.loads((cls.project / "config/agentos.json").read_text())["integrations"]
+        integrations = json.loads((cls.project / "tests/fixtures/agentos-with-backends.json").read_text())["integrations"]
         cls.node = integrations["node_command"]
         cls.dsh = integrations["dsh_command"]
         if not Path(cls.node).is_file():

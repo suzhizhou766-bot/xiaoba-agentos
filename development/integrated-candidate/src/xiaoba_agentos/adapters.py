@@ -444,6 +444,23 @@ class BaseAdapter:
         self.progress_callback = None
         self.progress_interval = 5.0
 
+    @property
+    def idle_limit(self) -> float:
+        """No-progress limit from the node record; 300 seconds when it is absent."""
+        raw = self.config.raw.get("no_progress_seconds", CLI_IDLE_TIMEOUT_SECONDS)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return float(CLI_IDLE_TIMEOUT_SECONDS)
+        return float(value if value >= 1 else CLI_IDLE_TIMEOUT_SECONDS)
+
+    def _idle_timeout_arg(self) -> dict:
+        """Pass the node limit only when it differs from run_cli's 300-second default."""
+        limit = self.idle_limit
+        if limit == float(CLI_IDLE_TIMEOUT_SECONDS):
+            return {}
+        return {"idle_timeout": limit}
+
     def run(self, prompt: str, context: str) -> AgentResult:
         raise NotImplementedError
 
@@ -536,6 +553,7 @@ class AgyAdapter(BaseAdapter):
                     progress_interval=self.progress_interval,
                     check=False,
                     env=command_environment(self.config.app_config, "agy"),
+                    **self._idle_timeout_arg(),
                 )
         except subprocess.TimeoutExpired as exc:
             error = TransientAdapterError(f"agy timeout：{self.config.name}")
@@ -713,6 +731,7 @@ class DshAdapter(BaseAdapter):
                     progress_interval=self.progress_interval,
                     check=False,
                     env=command_environment(self.config.app_config, "dsh"),
+                    **self._idle_timeout_arg(),
                 )
         except subprocess.TimeoutExpired as exc:
             error = TransientAdapterError(f"dsh timeout：{self.config.name}")
@@ -931,6 +950,7 @@ class QoderAdapter(BaseAdapter):
                     progress_interval=self.progress_interval,
                     check=False,
                     env=command_environment(self.config.app_config, "qoder"),
+                    **self._idle_timeout_arg(),
                 )
         except subprocess.TimeoutExpired as exc:
             error = TransientAdapterError(f"qoder timeout：{self.config.name}")
@@ -1032,7 +1052,52 @@ class MockAdapter(BaseAdapter):
         return AgentResult(self.config.name, template.format(name=self.config.name, prompt=prompt), 1)
 
 
+def _pool_cli_factory():
+    """Lazy import so core tests can patch this without loading xiaoba_review."""
+    from xiaoba_review.resource_stdio import json_stdio_factory
+    return json_stdio_factory
+
+
+class PoolCliAdapter(BaseAdapter):
+    """Start the node's real CLI via json_stdio_factory and take the file receipt."""
+
+    def run(self, prompt: str, context: str) -> AgentResult:
+        source = self.config.raw.get("pool_source")
+        root = self.config.raw.get("workspace_root")
+        if not isinstance(source, dict) or not root:
+            raise PermanentAdapterError("节点入口接不上：缺少节点资料或工作区根目录")
+        Path(root).mkdir(parents=True, exist_ok=True)
+        try:
+            factory = _pool_cli_factory()
+            resource = factory(source, root)
+        except Exception as exc:
+            raise PermanentAdapterError("节点入口接不上：" + str(exc)) from exc
+        if resource is None:
+            raise PermanentAdapterError("节点入口接不上")
+        task_id = str(self.config.raw.get("task_id") or "worker-task")
+        step = str(self.config.raw.get("step_code") or "REVIEW-01")
+        started = time.monotonic()
+        try:
+            result = resource.run_task(task_id, step, prompt, {"prompt": prompt, "context": context})
+        except Exception as exc:
+            raise PermanentAdapterError("节点调用未写出合格回执：" + str(exc)) from exc
+        body = str((result or {}).get("body") or "").strip()
+        if not isinstance(result, dict) or result.get("status") != "completed" or not body:
+            raise PermanentAdapterError("没有写出合格回执，任务不算完成")
+        evidence = result.get("execution_evidence") if isinstance(result.get("execution_evidence"), dict) else {}
+        return AgentResult(
+            self.config.name,
+            body,
+            int((time.monotonic() - started) * 1000),
+            str(evidence.get("provider") or "pool_cli"),
+            str(self.config.raw.get("model") or evidence.get("model") or ""),
+            str(evidence.get("route_source") or "cli_worklog"),
+        )
+
+
 def build_adapter(config: AgentConfig) -> BaseAdapter:
+    if config.type == "pool_cli":
+        return PoolCliAdapter(config)
     if config.type == "local_cli":
         driver = getattr(config, "driver", str(config.raw.get("driver", "")))
         if driver == "agy":

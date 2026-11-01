@@ -370,6 +370,8 @@ class AppConfigLike:
     def __init__(self, path: Path):
         self._raw = json.loads(path.read_text(encoding="utf-8"))
         self.project_dir = Path(self._raw["project_dir"])
+        self.agents = []
+        self.database_path = Path("/nonexistent")
 
     @property
     def skills(self):

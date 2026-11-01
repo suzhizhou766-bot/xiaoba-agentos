@@ -100,7 +100,7 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
         """把一条候选推到 published 或 retired，返回登记所需的全部坐标。"""
         assert status in MEMORY_TERMINAL_STATES
         task_id = self.store.submit("source", 1)
-        self.store.complete(task_id, "result")
+        self.store.complete_manually(task_id, "result")
         staged = self.root / f"{status}.md"
         staged.write_text("# terminal evidence\n", encoding="utf-8")
         evidence = _sha(staged)
@@ -160,8 +160,7 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
                     self._attempt(
                         status, same_hash,
                         lambda task_id, path, digest: self.store.complete_with_memory_candidate(
-                            task_id, "另一个结果", path, digest, ["new-source"]
-                        ),
+                            task_id, "另一个结果", path, digest, ["new-source"], expected_attempt=0),
                     )
 
     def test_release_constraint_hold_refuses_terminal_reregistration(self):
@@ -349,12 +348,12 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
     def test_missing_candidate_repair_on_a_completed_task_still_works(self):
         """补登记分支没有既有候选，终态检查不介入。"""
         task_id = self.store.submit("repair", 1)
-        self.store.complete(task_id, "result")
+        self.store.complete_manually(task_id, "result")
         staged = self.root / "repair.md"
         staged.write_text("# repaired evidence\n", encoding="utf-8")
         evidence = _sha(staged)
         self.assertFalse(
-            self.store.complete_with_memory_candidate(task_id, "result", str(staged), evidence, [])
+            self.store.complete_with_memory_candidate(task_id, "result", str(staged), evidence, [], expected_attempt=0)
         )
         self.assertEqual("pending_delivery_review", self.store.get_memory_candidate(task_id)["status"])
         self.assertEqual(1, self._event_count(task_id, "memory.candidate_staged"))
@@ -366,11 +365,11 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
         staged.write_text("# settled evidence\n", encoding="utf-8")
         evidence = _sha(staged)
         self.assertTrue(
-            self.store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [])
+            self.store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0)
         )
         before = self._snapshot(task_id, staged)
         self.assertFalse(
-            self.store.complete_with_memory_candidate(task_id, "另一个结果", str(staged), evidence, [])
+            self.store.complete_with_memory_candidate(task_id, "另一个结果", str(staged), evidence, [], expected_attempt=0)
         )
         self.assertEqual(before, self._snapshot(task_id, staged))
         self.assertEqual(1, self._event_count(task_id, "memory.candidate_staged"))
@@ -383,7 +382,7 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
         修订入口要处理的问题，这里不把它固化成产品必须满足的行为。
         """
         task_id = self.store.submit("source", 1)
-        self.store.complete(task_id, "result")
+        self.store.complete_manually(task_id, "result")
         staged = self.root / "draft.md"
         staged.write_text("# first draft\n", encoding="utf-8")
         first = _sha(staged)

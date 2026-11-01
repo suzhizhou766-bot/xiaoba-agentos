@@ -99,9 +99,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B tests/browser_smoke.py
 
 ## Agent 池 CLI 类型与稳定入口（卡 33）
 
-添加 CLI 节点时可选择 AGY、DSH、Qoder、WorkBuddy、Codex、Claude 或其它。
+添加 CLI 节点时可选择 AGY、DSH、Qoder、WorkBuddy CLI（CodeBuddy）、Codex、Claude 或其它。WorkBuddy 的 CLI 就是 CodeBuddy，页面只有这一个选项，判独立时也只算一个来源；`workbuddy` 类型只留给已有的内置引擎节点。
 已知类型采用各自的小适配器，共用固定工作区、派工卡、工作日志、回执校验、进程组回收与无进展计时；
-每张卡启动一次 CLI。任务文本只经 stdin 发送，不出现在命令行参数里。
+每张卡启动一次 CLI。任务文本经 stdin 或本次自有本地服务的 ACP 请求体发送，不出现在命令行参数里。
 其它类型继续使用 `xiaoba-resource-v1` JSON stdio 协议，普通厂商 CLI 不能冒充此协议。
 旧节点没有 `agent_type` 时按入口名推断（`codebuddy` 归 WorkBuddy、DSH 的 `apps/cli/lib/bin.js` 归 DSH）；
 原有 `source_ref` 保留，无需重建节点。
@@ -128,9 +128,24 @@ Qoder 用 accept_edits，Claude/WorkBuddy 用 acceptEdits。支持工具白名�
 DSH 建议使用 `current` 下的稳定入口。适配器与模板不绑定安装版本或安装位置。
 独立性按已知 CLI 类型＋节点模型判断；同类型同模型的不同路径算同一入口，其它类型仍按解析后路径判断。
 
-WorkBuddy 应用附带的是精简 CLI 产物；小八只对 WorkBuddy 子进程设置
-`CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`，让原生启动器选择应用自带的 lite bundle。
-不设置时启动器会寻找本应用未附带的 headless/full bundle，并错误地表现为模块缺失。
-不改应用安装包、CLI 设置、登录或模型配置，也不安装另一套 CodeBuddy。
-该变量只选择产物变体，不跳过权限；文件工具白名单和 acceptEdits 保持。
-参数已重新经本机 `--help` 核对，真实调用结果以本卡后续修复回执为准。
+WorkBuddy 应用附带精简引擎，采用原生 `--serve` + ACP HTTP/SSE，不能把直接退出的终端/stdio模式当成可用。
+每次只监听本机动态分配端口，使用本次随机网关密码及 `X-CodeBuddy-Request: 1`；禁止跳转、禁用代理转发，
+网关密码不进参数、日志或回执。保留请求校验和权限规则，不使用关闭认证或请求校验的开关。
+原生启动标记包括 lite bundle、WorkBuddy 宿主身份、禁用旧产品缓存和密码网关；
+应用内入口存在公开 `cli/product.json` 时仅将其路径交给原生产品管理器，区分 WorkBuddy 和 WorkBuddy AI。
+不读取用户设置、登录文件、令牌或模型目录，不改安装包、不安装另一套 CodeBuddy。
+先用原生账号状态接口核对初始化完成，只保留是否就绪的布尔值，不取含令牌的 ACP `getUserInfo`。
+账号未就绪与“账号就绪但任务通道拒绝认证”分开报告；RPC 成功结果中的原生错误也必须判失败。
+SSE 同时接收 GET 订阅流和当前 POST 响应流；原始事件不成为业务结果，仍只认可任务卡文件回执。
+
+需要本人认证时，可在本目录使用现有解释器运行 `-m xiaoba_review.workbuddy_login --login
+--entry <用户确认的应用内CLI入口> --workspace <现有登录工作目录>`（模块搜索路径须包含新核心源码）。
+这是显式人工操作：原生 CLI 发起浏览器认证并自行保存登录，宿主不显示、复制或记录凭据；自动派工从不调用它。
+不能把 CLI 认证错误等同于桌面已退出登录。参数和原生协议已在本机核对；真实调用状态见后续修复回执。
+
+WorkBuddy CLI 请选择 `codebuddy` 类型（独立安装的 CodeBuddy），入口填写本机查到的稳定可执行路径。
+它采用原生print+stdin，沿用固定工作区和文件回执；仅允许Read、Write、Edit、Glob、Grep文件工具，
+额外MCP关闭，不使用权限跳过参数。模型留空时由CLI默认选择；不读取账号、模型或设置文件。
+它不使用WorkBuddy桌面产品配置、lite强制开关或桌面认证上下文，父进程的这些变量会被清除。
+已有未填类型的`codebuddy`节点仍按旧规则解释为WorkBuddy；新建节点必须明确选择WorkBuddy CLI（CodeBuddy），
+避免静默改变旧节点的调用语义。

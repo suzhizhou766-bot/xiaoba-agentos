@@ -43,7 +43,7 @@ class EventStoreTest(unittest.TestCase):
         task_id = self.store.submit("hello", max_attempts=3)
         task = self.store.lease_next(60)
         self.assertEqual(task_id, task["id"])
-        self.store.complete(task_id, "done")
+        self.store.complete_manually(task_id, "done")
         self.assertEqual("completed", self.store.get_task(task_id)["status"])
         self.assertTrue(self.store.verify_event_chain()["ok"])
 
@@ -366,7 +366,7 @@ class EventStoreTest(unittest.TestCase):
 
     def test_frozen_memory_reuse_remains_pending_until_task_settlement(self):
         source = self.store.submit("source", 1)
-        self.store.complete(source, "source result")
+        self.store.complete_manually(source, "source result")
         task_id = self.store.submit("recover", 3)
         self.store.record_memory_reuse(task_id, source, "/vault/source.md")
         self.store.lease_next(60)
@@ -462,7 +462,7 @@ class EventStoreTest(unittest.TestCase):
 
     def test_two_stage_review_and_reuse_lifecycle(self):
         source_task = self.store.submit("source", 1)
-        self.store.complete(source_task, "source result")
+        self.store.complete_manually(source_task, "source result")
         self.store.stage_memory_candidate(source_task, "/tmp/source.md", "a" * 64)
         self.store.review_memory(source_task, "delivery", "approve", "第一次审核通过", "a" * 64)
         self.store.review_memory(source_task, "final", "approve", "最终审核通过", "a" * 64)
@@ -479,7 +479,7 @@ class EventStoreTest(unittest.TestCase):
 
     def test_successful_reuse_resets_consecutive_failure_count(self):
         source_task = self.store.submit("source", 1)
-        self.store.complete(source_task, "source result")
+        self.store.complete_manually(source_task, "source result")
         self.store.stage_memory_candidate(source_task, "/tmp/source.md", "e" * 64)
         self.store.review_memory(source_task, "delivery", "approve", "first", "e" * 64)
         self.store.review_memory(source_task, "final", "approve", "final", "e" * 64)
@@ -507,7 +507,7 @@ class EventStoreTest(unittest.TestCase):
 
     def test_final_review_cannot_skip_delivery_reapproval_after_revision(self):
         task_id = self.store.submit("revise", 1)
-        self.store.complete(task_id, "result")
+        self.store.complete_manually(task_id, "result")
         self.store.stage_memory_candidate(task_id, "/tmp/revise.md", "b" * 64)
         self.store.review_memory(task_id, "delivery", "revise", "需要修改", "b" * 64)
         with self.assertRaises(ValueError):
@@ -515,7 +515,7 @@ class EventStoreTest(unittest.TestCase):
 
     def test_final_review_is_bound_to_delivery_candidate_hash(self):
         task_id = self.store.submit("hash", 1)
-        self.store.complete(task_id, "result")
+        self.store.complete_manually(task_id, "result")
         self.store.stage_memory_candidate(task_id, "/tmp/hash.md", "c" * 64)
         self.store.review_memory(task_id, "delivery", "approve", "通过", "c" * 64)
         with self.assertRaises(ValueError):
@@ -594,7 +594,7 @@ class MemoryLifecycleStateMachineTest(unittest.TestCase):
 
     def _candidate_in_state(self, status: str) -> str:
         task_id = self.store.submit("source", 1)
-        self.store.complete(task_id, "result")
+        self.store.complete_manually(task_id, "result")
         self.store.stage_memory_candidate(task_id, "/tmp/candidate.md", self.sha)
         if status == "pending_delivery_review":
             return task_id
@@ -1050,7 +1050,7 @@ class SafetyRegressionTest(unittest.TestCase):
             store = EventStore(cfg.database_path)
             store.initialize()
             task_id = store.submit("x", 2)
-            store.fail(task_id, "permanent error")
+            store.fail_manually(task_id, "permanent error")
             self.assertEqual("failed", store.get_task(task_id)["status"])
             candidates = store.list_memory_candidates(task_id) if hasattr(store, "list_memory_candidates") else []
             self.assertEqual([], candidates)
@@ -1068,8 +1068,7 @@ class SafetyRegressionTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "does not match its evidence hash"):
                 store.complete_with_memory_candidate(
-                    task_id, "result", str(staged), original_sha256, []
-                )
+                    task_id, "result", str(staged), original_sha256, [], expected_attempt=0)
             self.assertNotEqual("completed", store.get_task(task_id)["status"])
             self.assertIsNone(store.get_memory_candidate(task_id))
             self.assertEqual(0, _event_count(store, task_id, "task.completed"))
@@ -1090,7 +1089,7 @@ class AtomicCompletionTest(unittest.TestCase):
                 store, "_write_candidate_status_sidecar_values", side_effect=OSError("disk full")
             ):
                 with self.assertRaises(OSError):
-                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [])
+                    store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0)
             self.assertNotEqual("completed", store.get_task(task_id)["status"])
             self.assertIsNone(store.get_memory_candidate(task_id))
             self.assertEqual(0, _event_count(store, task_id, "task.completed"))
@@ -1147,14 +1146,14 @@ class AtomicCompletionTest(unittest.TestCase):
             staged = root / "c.md"
             staged.write_text("x", encoding="utf-8")
             evidence = hashlib.sha256(staged.read_bytes()).hexdigest()
-            self.assertTrue(store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, []))
-            self.assertFalse(store.complete_with_memory_candidate(task_id, "另一个结果", str(staged), evidence, []))
+            self.assertTrue(store.complete_with_memory_candidate(task_id, "结果", str(staged), evidence, [], expected_attempt=0))
+            self.assertFalse(store.complete_with_memory_candidate(task_id, "另一个结果", str(staged), evidence, [], expected_attempt=0))
             self.assertEqual("结果", store.get_task(task_id)["result"])
             self.assertEqual(evidence, store.get_memory_candidate(task_id)["evidence_sha256"])
             self.assertEqual(1, _event_count(store, task_id, "task.completed"))
             self.assertEqual(1, _event_count(store, task_id, "memory.candidate_staged"))
             with self.assertRaises(KeyError):
-                store.complete_with_memory_candidate("missing", "r", str(staged), evidence, [])
+                store.complete_with_memory_candidate("missing", "r", str(staged), evidence, [], expected_attempt=0)
 
     def test_pending_constraint_hold_cannot_be_repaired_into_review_queue(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1168,8 +1167,7 @@ class AtomicCompletionTest(unittest.TestCase):
             evidence = hashlib.sha256(staged.read_bytes()).hexdigest()
 
             self.assertFalse(store.complete_with_memory_candidate(
-                task_id, "1517", str(staged), evidence, []
-            ))
+                task_id, "1517", str(staged), evidence, [], expected_attempt=0))
             self.assertIsNone(store.get_memory_candidate(task_id))
             self.assertFalse(staged.with_suffix(".md.status.json").exists())
             self.assertEqual(0, _event_count(store, task_id, "memory.candidate_staged"))
@@ -1177,8 +1175,7 @@ class AtomicCompletionTest(unittest.TestCase):
 
             store.release_constraint_hold(task_id)
             self.assertFalse(store.complete_with_memory_candidate(
-                task_id, "1517", str(staged), evidence, []
-            ))
+                task_id, "1517", str(staged), evidence, [], expected_attempt=0))
             self.assertEqual("pending_delivery_review", store.get_memory_candidate(task_id)["status"])
             self.assertEqual(1, _event_count(store, task_id, "memory.candidate_staged"))
             self.assertTrue(store.verify_event_chain()["ok"])
@@ -1197,8 +1194,7 @@ class AtomicCompletionTest(unittest.TestCase):
             evidence = hashlib.sha256(staged.read_bytes()).hexdigest()
 
             self.assertFalse(store.complete_with_memory_candidate(
-                task_id, "withheld", str(staged), evidence, []
-            ))
+                task_id, "withheld", str(staged), evidence, [], expected_attempt=0))
             self.assertEqual("retry", store.get_task(task_id)["status"])
             self.assertIsNone(store.get_memory_candidate(task_id))
             self.assertEqual(0, _event_count(store, task_id, "memory.candidate_staged"))

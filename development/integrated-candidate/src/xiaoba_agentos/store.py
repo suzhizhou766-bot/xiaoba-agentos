@@ -1955,14 +1955,34 @@ class EventStore:
                 self._append_event_tx(conn, task_id, "task.lease_renewed", {"attempt": attempt})
             return bool(changed)
 
-    def lease_next(self, lease_seconds: int) -> Optional[Dict[str, Any]]:
+    def record_task_participant(self, task_id: str, actor_id: str, role: str) -> None:
+        from .task_participants import record_participant
+        record_participant(self, task_id, actor_id, role)
+
+    def mark_dispatch_wait(self, task_id: str, status: str, reason: str, expected_attempt=None) -> None:
+        """A visible hold without consuming a retry; release only our own lease."""
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            row = conn.execute('SELECT status,attempts,last_error FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if not row or row['status'] not in {'pending','retry','running'}:raise ValueError('任务不在可等待状态')
+            if row['status']=='running' and (expected_attempt != row['attempts'] or not self._lease_live_tx(conn, task_id, expected_attempt)):
+                raise ValueError('执行权已失效')
+            message = status+': '+reason
+            conn.execute("UPDATE tasks SET status='pending',lease_until=NULL,last_error=?,updated_at=? WHERE id=?", (message,time.time(),task_id))
+            if row['last_error'] != message:
+                self._append_event_tx(conn, task_id, 'task.dispatch_wait', {'status': status, 'reason': reason})
+
+    def _lease_live_tx(self, conn, task_id, attempt):
+        return bool(conn.execute("SELECT 1 FROM tasks WHERE id=? AND attempts=? AND lease_until>?", (task_id,attempt,time.time())).fetchone())
+
+    def lease_next(self, lease_seconds: int, task_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             # Read the clock only after waiting for the writer lock.  A clock
             # value captured before the wait can produce a lease that is
             # already expired by the time this method returns.
             now = time.time()
-            row = conn.execute("SELECT * FROM tasks WHERE status IN ('pending','retry') AND run_after<=? ORDER BY priority DESC, created_at ASC LIMIT 1", (now,)).fetchone()
+            row = conn.execute("SELECT * FROM tasks WHERE status IN ('pending','retry') AND run_after<=?" + (" AND id=?" if task_id else "") + " ORDER BY priority DESC, created_at ASC LIMIT 1", (now,task_id) if task_id else (now,)).fetchone()
             if not row:
                 return None
             attempts = row["attempts"] + 1
@@ -2010,7 +2030,10 @@ class EventStore:
                 {"agent": row["agent_name"], "run_id": run_id, "status": status, "latency_ms": latency_ms},
             )
 
-    def complete(self, task_id: str, result: str, provenance_kind: str = "agentos_multi_adjudicated") -> None:
+    def complete(self, task_id: str, result: str, provenance_kind: str = "agentos_multi_adjudicated",
+                 expected_attempt: Optional[int] = None) -> None:
+        if expected_attempt is None:
+            raise TypeError("complete() 必须传入 expected_attempt；手动结算请用 complete_manually()")
         provenance = {
             "kind": provenance_kind,
             "status": "completed",
@@ -2018,9 +2041,11 @@ class EventStore:
         }
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            current = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+            current = conn.execute("SELECT status,attempts FROM tasks WHERE id=?", (task_id,)).fetchone()
             if current is None:
                 raise KeyError(task_id)
+            if int(current["attempts"]) != int(expected_attempt):
+                raise ValueError(f"task {task_id!r} 旧尝试不能结算任务")
             if current["status"] not in TASK_SETTLEMENT_SOURCE_STATES:
                 raise ValueError(
                     f"task {task_id!r} cannot complete from status {current['status']!r}"
@@ -2035,6 +2060,35 @@ class EventStore:
                 raise RuntimeError(f"task {task_id!r} completion update affected {changed} rows")
             self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": hashlib.sha256(result.encode()).hexdigest()})
 
+    def complete_manually(self, task_id: str, result: str, provenance_kind: str = "host_manual") -> None:
+        """User or host settlement. Does not check expected_attempt."""
+        provenance = {
+            "kind": provenance_kind,
+            "status": "completed",
+            "result_sha256": hashlib.sha256(result.encode()).hexdigest(),
+            "manual": True,
+        }
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = conn.execute("SELECT status,attempts,execution_snapshot_json FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if current is None:
+                raise KeyError(task_id)
+            if json.loads(current["execution_snapshot_json"] or "{}").get("review_context"):
+                raise ValueError("本任务必须经 task-host-complete 提交绑定回执")
+            if current["status"] not in TASK_SETTLEMENT_SOURCE_STATES:
+                raise ValueError(
+                    f"task {task_id!r} cannot complete from status {current['status']!r}"
+                )
+            now = time.time()
+            changed = conn.execute(
+                "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? "
+                "WHERE id=? AND status IN ('pending','running')",
+                (result, _canonical(provenance), now, task_id),
+            ).rowcount
+            if changed != 1:
+                raise RuntimeError(f"task {task_id!r} completion update affected {changed} rows")
+            self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": hashlib.sha256(result.encode()).hexdigest(), "manual": True})
+
     def complete_with_memory_candidate(
         self,
         task_id: str,
@@ -2043,6 +2097,7 @@ class EventStore:
         evidence_sha256: str,
         source_task_ids: Optional[List[str]] = None,
         provenance_kind: str = "agentos_multi_adjudicated",
+        expected_attempt: Optional[int] = None,
     ) -> bool:
         """Complete a task and stage its review candidate in one transaction.
 
@@ -2057,6 +2112,8 @@ class EventStore:
         runs permission maintenance after commit. Callers must re-read the
         task before treating a failure as "not completed".
         """
+        if expected_attempt is None:
+            raise TypeError("complete_with_memory_candidate() 必须传入 expected_attempt")
         self._require_staged_evidence(staged_path, evidence_sha256)
         result_sha256 = hashlib.sha256(result.encode()).hexdigest()
         provenance = {
@@ -2069,7 +2126,7 @@ class EventStore:
         try:
             return self._complete_with_memory_candidate_tx(
                 task_id, result, staged_path, evidence_sha256, source_task_ids,
-                provenance, result_sha256, now,
+                provenance, result_sha256, now, expected_attempt=expected_attempt,
             )
         except Exception:
             self._restore_sidecar_unless_committed(task_id, staged_path, evidence_sha256, previous_sidecar)
@@ -2085,12 +2142,17 @@ class EventStore:
         provenance: Dict[str, Any],
         result_sha256: str,
         now: float,
+        expected_attempt: Optional[int] = None,
     ) -> bool:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+            row = conn.execute("SELECT status,attempts FROM tasks WHERE id=?", (task_id,)).fetchone()
             if row is None:
                 raise KeyError(task_id)
+            if expected_attempt is None:
+                raise TypeError("complete_with_memory_candidate() 必须传入 expected_attempt")
+            if row["status"] not in {"completed"} and int(row["attempts"]) != int(expected_attempt):
+                raise ValueError(f"task {task_id!r} 旧尝试不能结算任务")
             if conn.execute(
                 "SELECT 1 FROM constraint_holds WHERE task_id=? AND status='pending'",
                 (task_id,),
@@ -2309,7 +2371,33 @@ class EventStore:
             self._append_event_tx(conn, task["id"], f"task.{status}", {"delay_seconds": 0 if exhausted else delay_seconds, "error": error[:500]})
         return status
 
-    def fail(self, task_id: str, error: str) -> str:
+    def fail(self, task_id: str, error: str, expected_attempt: Optional[int] = None) -> str:
+        if expected_attempt is None:
+            raise TypeError("fail() 必须传入 expected_attempt；手动结算请用 fail_manually()")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = conn.execute("SELECT status,attempts FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if current is None:
+                raise KeyError(task_id)
+            if int(current["attempts"]) != int(expected_attempt):
+                raise ValueError(f"task {task_id!r} 旧尝试不能结算任务")
+            if current["status"] not in TASK_SETTLEMENT_SOURCE_STATES:
+                raise ValueError(
+                    f"task {task_id!r} cannot fail from status {current['status']!r}"
+                )
+            now = time.time()
+            changed = conn.execute(
+                "UPDATE tasks SET status='failed',run_after=?,lease_until=NULL,last_error=?,updated_at=? "
+                "WHERE id=? AND status IN ('pending','running')",
+                (now, error[:4000], now, task_id),
+            ).rowcount
+            if changed != 1:
+                raise RuntimeError(f"task {task_id!r} failure update affected {changed} rows")
+            self._append_event_tx(conn, task_id, "task.failed", {"delay_seconds": 0, "error": error[:500]})
+        return "failed"
+
+    def fail_manually(self, task_id: str, error: str) -> str:
+        """User or host settlement. Does not check expected_attempt."""
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -2327,7 +2415,7 @@ class EventStore:
             ).rowcount
             if changed != 1:
                 raise RuntimeError(f"task {task_id!r} failure update affected {changed} rows")
-            self._append_event_tx(conn, task_id, "task.failed", {"delay_seconds": 0, "error": error[:500]})
+            self._append_event_tx(conn, task_id, "task.failed", {"delay_seconds": 0, "error": error[:500], "manual": True})
         return "failed"
 
     def record_agent_health(
