@@ -324,6 +324,7 @@ class CliFailureTests(CliFixture,unittest.TestCase):
 
     def test_stdout_flood_hits_the_output_limit(self):
         (self.root/'stdout-flood').touch();node=self.add();adapter=self.adapter(node)
+        adapter.output_limit=1024*1024
         with self.assertRaises(InteractiveError) as error:adapter.test_resource({},'TEST-challenge')
         self.assertEqual(error.exception.code,'cli_output_limit')
         self.assertEqual(len(self.starts()),1)

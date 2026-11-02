@@ -13,6 +13,7 @@ from unittest import mock
 
 import test_agy_cli
 from xiaoba_review.agent_workspace import WorkspaceError
+from xiaoba_review.resource_agy import InteractiveError
 
 
 def _digest(path):
@@ -330,6 +331,16 @@ class MaterialReviewPassTests(Card41Fixture, unittest.TestCase):
         second = adapter._stage_materials(record, materials)
         self.assertEqual(first, second)
         self.assertEqual(first[0].read_text(), '原文')
+
+    def test_output_over_one_mib_is_not_stopped_by_default_limit(self):
+        # 流式 CLI 会带上读过的文件内容。假 CLI 输出约 2 MiB 后不再有进展：
+        # 默认上限下应由无进展时限结束；test_stdout_flood 用 1 MiB 上限证明同样输出会撞线。
+        (self.root / 'stdout-flood').touch()
+        adapter = self.adapter(self.add())
+        adapter.no_progress_seconds = 1
+        with self.assertRaises(InteractiveError) as error:
+            adapter.test_resource({}, 'TEST-challenge')
+        self.assertEqual(error.exception.code, 'cli_no_progress')
 
     def test_ticket_lists_only_local_copy_not_external_path(self):
         source = self.material('材料.txt', '原文')

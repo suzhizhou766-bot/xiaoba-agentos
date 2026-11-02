@@ -62,7 +62,8 @@ class CliWorklogResource:
     # values stay 300 s of no progress and a 30 s receipt grace window.
     no_progress_seconds = 300
     receipt_grace_seconds = 30
-    output_limit = 1024 * 1024
+    # 只防失控刷屏。流式输出会带上读过的文件内容，审查大材料时远超 1 MiB；业务结果只看文件回执。
+    output_limit = 64 * 1024 * 1024
     # 材料上限取模块常量；测试可在实例上调低，出厂值不变。
     material_file_limit = MATERIAL_FILE_LIMIT
     material_byte_limit = MATERIAL_BYTE_LIMIT
