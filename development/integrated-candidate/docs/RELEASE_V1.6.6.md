@@ -43,7 +43,7 @@
 - 提交入口先挡：`intake --submit` 走 `execution_blockers` → `intake_blockers`，池里凑不出两份独立审查结论时返回 `status: blocked_local_health`、`submission: not_submitted_execution_blocked`，任务**没有入队**，退出码 1，并在 `hint` 里写明可以修好后重提，或加 `--queue-when-blocked` 明确要求先入队等待。
 - 已入队的任务也不会被硬跑：Worker 扫描到期任务时跳过当前节点不足或正在等宿主的任务，不领租约、不耗 `attempts`，跳过原因写进 `last_error` 和去重审计事件，Agent 池管理页的“待处理任务”能看到。
 - 所以切换后的第一件事是在池里建节点并测试运行，凑够两个彼此独立（入口程序或模型不同）且开启、测试通过的审查节点。`doctor` 的 `ok` 只看本地完整性，审查节点不足写在单独的 `review_nodes` 里，不会把 `ok` 打成假——别拿 `ok: true` 当作可以派审查的依据。
-- 协作任务同理：没有可用的协作节点时消息是“没有协作节点，这次不排队”。
+- 协作任务不在提交入口挡：入队后由 Worker 跳过，不领租约、不耗次数，消息“没有协作节点，这次不排队”写进任务的 `last_error`。
 
 ## 三、切换前不需要改配置
 
@@ -120,6 +120,8 @@
 
 ## 九、本版没做
 
+- **发布验收不接受宿主补票，排到 v1.6.7。** 普通审查任务可以由宿主补一票；构包从验收数据库取证时只认两个池节点。任务由宿主结算时，构包直接报明原因。
+- **内置 WorkBuddy 引擎的事件流上限仍是 1 MiB。** 只有 CLI 通道放宽到 64 MiB；这个引擎排到 v1.6.7 退役，新节点请用 WorkBuddy CLI（CodeBuddy）。
 - **不退役内置 WorkBuddy 引擎**，排到 v1.6.7。
 - 不加新功能，不改线上、发布目录、`monitor.json` 和正式 8799，不调用真实模型，不新建备份。
 - WorkBuddy 的 CLI 就是 CodeBuddy：新建节点只有“WorkBuddy CLI（CodeBuddy）”一个选项，判独立时两种类型算同一来源。
