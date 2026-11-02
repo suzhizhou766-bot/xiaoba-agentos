@@ -76,7 +76,7 @@ class WorkdayReceipts:
         if staged:
             # 外部原路径节点读不到，只列本地副本，免得节点去读而被权限系统拒绝。
             shown = {key: value for key, value in context.items() if key != 'material_files'}
-            staged_block = ('\n\n## 材料副本（只读）\n只读这里列出的材料；不得修改这些副本或源文件。\n'
+            staged_block = ('\n\n## 材料副本（只读）\n只读这里列出的材料；不得修改这些副本或源文件。只用文件读取工具：无人值守下运行命令或读工作区外的文件会被权限系统拒绝，本轮随即结束。\n'
                 + '\n'.join('- ' + str(path) for path in staged))
         text = ('# 本次工作任务卡\n\n任务ID: '+task_id+'\n步骤码: '+step_code+
             '\n工作回执文件: '+str(log)+'\n本轮标识: '+nonce+'\n\n## 工作要求\n'+instruction+
