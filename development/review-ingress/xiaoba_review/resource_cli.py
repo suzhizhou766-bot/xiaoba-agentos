@@ -294,8 +294,13 @@ class CliWorklogResource:
             receipt = self.workday.read(ticket)
             if receipt is not None:
                 self._drain()
+                _, terminated = self._settle(receipt, process)
+                # 进程可能在 done 行之后又改回执：等它结束再读，证据绑定最终内容。
+                receipt = self.workday.read(ticket)
                 self._refresh_preview(ticket, self._log_size(ticket))
-                return self._settle(receipt, process)
+                if receipt is None:
+                    raise WorkspaceError('worklog_receipt_invalid', '节点写完回执后又把它改坏了；原文件保留。')
+                return receipt, terminated
             current = self._log_size(ticket)
             if current != size:
                 size = current; last_progress = time.monotonic()

@@ -78,6 +78,12 @@ class Card41Fixture(test_agy_cli.CliFixture):
             '__SUMMARY_B_ERROR__', repr(SUMMARY_B_ERROR))
         anchor = "if flag('long-reply'):"
         assert anchor in script, '假 agy 锚点变了'
+        linger = "if flag('linger-after-receipt'):"
+        assert linger in script, '假 agy 锚点变了'
+        script = script.replace(linger, "if flag('rewrite-after-done'):\n"
+            "    time.sleep(.3)\n"
+            "    text=logpath.read_text()\n"
+            "    logpath.write_text(text.replace('\\n<!-- done:','\\nTEST 补充说明\\n<!-- done:',1))\n" + linger, 1)
         self.entry.write_text(script.replace(anchor, extra + anchor, 1))
         self.materials = self.root / 'materials'
         self.materials.mkdir()
@@ -341,6 +347,32 @@ class MaterialReviewPassTests(Card41Fixture, unittest.TestCase):
         with self.assertRaises(InteractiveError) as error:
             adapter.test_resource({}, 'TEST-challenge')
         self.assertEqual(error.exception.code, 'cli_no_progress')
+
+    def test_node_rewriting_its_receipt_before_exit_does_not_brick_workspace(self):
+        # 第八轮：Qoder 写完 done 行后又改了回执正文，下一次派活整个节点被判记录链损坏。
+        (self.root / 'rewrite-after-done').touch()
+        adapter = self.adapter(self.add())
+        result = adapter.run_task('TASK-C41', 'WORK-01', 'TEST 回执重写', {'goal': 'TEST card41'})
+        self.assertIn('TEST 补充说明', result['body'])
+        adapter.workspace.verify()
+
+    def test_health_probe_with_rewritten_body_fails_without_bricking_workspace(self):
+        (self.root / 'rewrite-after-done').touch()
+        adapter = self.adapter(self.add())
+        with self.assertRaises(InteractiveError) as error:
+            adapter.test_resource({}, 'TEST-challenge')
+        self.assertEqual(error.exception.code, 'challenge_mismatch')
+        adapter.workspace.verify()
+
+    def test_ticket_tells_node_commands_will_end_the_turn(self):
+        source = self.material('材料.txt', '原文')
+        self.run_task(self.add(), self.declared(source))
+        tickets = [path.read_text() for path in self.root.rglob('*') if path.is_file()
+                   and path.suffix == '.md' and path.read_text(errors='replace').startswith('# 本次工作任务卡')
+                   and '## 材料副本（只读）' in path.read_text(errors='replace')]
+        self.assertTrue(tickets)
+        for text in tickets:
+            self.assertIn('只用文件读取工具', text)
 
     def test_ticket_lists_only_local_copy_not_external_path(self):
         source = self.material('材料.txt', '原文')
