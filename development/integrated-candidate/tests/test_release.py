@@ -449,13 +449,7 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
                 1,
             ),
         )
-        connection.executemany(
-            "INSERT INTO agent_health VALUES (?,?,?,?,?)",
-            [
-                ("south-node", "healthy", "福利 gpt", "test-model", 1.0),
-                ("north-node", "healthy", "福利 gpt", "test-model", 1.0),
-            ],
-        )
+        # 真实流程不写健康行：节点资格只看 Agent 池的测试记录。
         for node_id, entry, model in (
             ("south-node", "cli:codex", "alpha"),
             ("north-node", "cli:claude", "beta"),
@@ -478,7 +472,20 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
         self.assertEqual("a" * 64, result["candidate_sha256"])
         self.assertEqual(["north-node", "south-node"], result["successful_agents"])
 
+        # 任务记录里干过活的节点不能计票，门禁自己查，不靠派工时排除过。
         connection = sqlite3.connect(database)
+        connection.execute(
+            "INSERT INTO events(task_id,event_type,payload_json,sequence) VALUES (?,?,?,?)",
+            ("task-1", "task.participant_recorded",
+             json.dumps({"actor_id": "south-node", "role": "executor"}), 2),
+        )
+        connection.commit()
+        connection.close()
+        with self.assertRaisesRegex(RuntimeError, "干过这次发布"):
+            BUILD_RELEASE_MODULE.validate_acceptance_database(database, "task-1", self.root)
+
+        connection = sqlite3.connect(database)
+        connection.execute("DELETE FROM events WHERE event_type='task.participant_recorded'")
         connection.execute("DELETE FROM events WHERE event_type='judge.decided'")
         connection.commit()
         connection.close()

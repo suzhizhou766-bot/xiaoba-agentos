@@ -99,7 +99,7 @@
 - 版本升到 v1.6.6：`pyproject.toml`（唯一声明点）、`config/agentos.json` 的 `release.expected_version`、README 与 ACCEPTANCE、ARCHITECTURE、COLLABORATION、OPERATIONS 的版本头、两份入口 SKILL.md（包内 `.agents/skills/xiaoba-agentos/SKILL.md` 与包外 `development/interface/SKILL.md`，逐字节相同）、`docs/VERSIONING.md`，以及本文件和历史版本记录里追加的 v1.6.6 一条。历史发布记录（v1.4.2 至 v1.6.5）一字未动。
 - `tests/test_card37.py` 的配置夹具现在把技能索引指到临时目录下的空索引。原先它沿用配置模板里的线上技能索引路径，审计类任务不读索引所以一直没暴露；本版第一次提交非审计任务，就会去读线上技能索引并因其审查任务核对不过而报错。测试只用隔离临时目录和夹具。
 
-## 八、任务材料进节点工作区（卡 41）
+## 七、任务材料进节点工作区（卡 41）
 
 卡 40 实测：AGY 在 headless 模式下读工作区外的文件会被权限系统自动拒绝，还以退出码 0、result=SUCCESS 收尾，看起来像“没写回执”（报告：`私人助理/工作区/小八AgentOS-v1.6.6-发版/reports/card40/诊断报告.md`）。本版修掉这个发版阻断项，不用 `--add-dir`（它把目录加进工作区，accept-edits 下节点可能也能写，审查员不该能改待审材料）。
 
@@ -110,7 +110,13 @@
 
 反例与端到端：`tests/test_card41_submit_material.py`（核心：CLI `submit --material` → `run_once` 全链路，材料进节点工作区、回执来自文件）、`review-ingress/tests/test_card41_materials.py`（材料 staging、目录上限、只读副本、双节点隔离、work 重放、SIGTERM/SIGKILL 分类、summary-B 夹具分类）。
 
-## 七、本版没做
+## 八、卡 39 第三轮发现的真实路径问题
+
+- **构包门禁不再要健康行。** 本版上班不发探针，节点测试也不写 `agent_health`，原来的检查在真实路径上永远过不了。节点资格改看 Agent 池的开启和测试记录，门禁还从任务记录读出作者和执行者，干过活的节点不能计票。
+- **冻结任务可以恢复。** 失败的节点在冻结之后重新测试通过，`task-resume` 才放行；冻结前的测试和已关闭的节点不算。旧的健康行规则保留给 mock 夹具。
+- **没有节点也能装服务。** `install-service` 只看本地完整性，节点在服务装好后再建；审查任务仍被单独挡住。
+
+## 九、本版没做
 
 - **不退役内置 WorkBuddy 引擎**，排到 v1.6.7。
 - 不加新功能，不改线上、发布目录、`monitor.json` 和正式 8799，不调用真实模型，不新建备份。
