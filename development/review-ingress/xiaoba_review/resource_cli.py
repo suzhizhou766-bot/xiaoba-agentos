@@ -6,12 +6,15 @@ counts. A validated task-card file receipt is the only business result.
 import json
 import os
 import queue
+import re
+import shutil
 import signal
 import subprocess
 import tempfile
 import threading
 import time
 import uuid
+from pathlib import Path
 
 from .agent_workspace import AgentWorkspace, WorkspaceError
 from .resource_agy import (
@@ -29,6 +32,22 @@ WORK_DISPATCH = '读取并执行这张任务卡，在卡内指定的当日Markdo
 STDERR_LIMIT = 64 * 1024
 PREVIEW_LINES = 40
 PREVIEW_BYTES = 64 * 1024
+# 材料总量上限（常量）：单任务最多 10000 个文件、200 MB。
+MATERIAL_FILE_LIMIT = 10000
+MATERIAL_BYTE_LIMIT = 200 * 1024 * 1024
+MATERIAL_SKIP_DIRS = ('.git', '__pycache__')
+# 凭据文件的文件名特征：只认真正存放凭据的文件，workbuddy_login.py 这类源码不算。
+MATERIAL_SENSITIVE_NAME = re.compile(
+    r'(?i)^(?:\.env(?:\..+)?|\.netrc|\.npmrc|\.pgpass|id_(?:rsa|dsa|ecdsa|ed25519)|'
+    r'credentials?(?:\.(?:json|ya?ml|toml|txt|ini))?|secrets?\.(?:json|ya?ml|toml|txt|ini)|'
+    r'auth\.json|cookies?(?:\.(?:json|txt|sqlite))?)$'
+    r'|\.(?:pem|key|p12|pfx|kdbx)$'
+    r'|凭据|密码|密钥|口令')
+# 代码和差异文件里常有假密钥夹具和字段名，内容只拦私钥；其它文本按 _sensitive_reason 全量检查。
+MATERIAL_CODE_SUFFIXES = frozenset(('.py', '.pyi', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx',
+    '.html', '.css', '.sh', '.zsh', '.bash', '.swift', '.c', '.h', '.go', '.rs', '.java',
+    '.diff', '.patch'))
+MATERIAL_PRIVATE_KEY = re.compile(r'-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----')
 
 
 class CliWorklogResource:
@@ -44,6 +63,9 @@ class CliWorklogResource:
     no_progress_seconds = 300
     receipt_grace_seconds = 30
     output_limit = 1024 * 1024
+    # 材料上限取模块常量；测试可在实例上调低，出厂值不变。
+    material_file_limit = MATERIAL_FILE_LIMIT
+    material_byte_limit = MATERIAL_BYTE_LIMIT
 
     def __init__(self, source, workspace_root=None):
         self.kind, self.source_ref = source['kind'], source['source_ref']
@@ -354,6 +376,141 @@ class CliWorklogResource:
         if failure_class: evidence['failure_class'] = failure_class
         return evidence
 
+    # -- material staging: every CLI reads copies in its own workspace -------
+
+    @staticmethod
+    def declared_materials(materials):
+        """冻结声明里的文件材料：material_files 全部；evidence_refs 只认绝对路径 ref。
+
+        标签或 URI 形式的 ref（如 test://、task:）不是文件，不当材料处理。
+        """
+        found, seen = [], set()
+        if not isinstance(materials, dict): return found
+
+        def add(path, sha256):
+            if not isinstance(path, str) or not path or path in seen: return
+            seen.add(path)
+            found.append({'path': path, 'sha256': sha256})
+
+        for item in materials.get('material_files') or []:
+            if isinstance(item, dict): add(item.get('path'), item.get('sha256'))
+        for item in materials.get('evidence_refs') or []:
+            if isinstance(item, dict) and isinstance(item.get('ref'), str) and os.path.isabs(item['ref']):
+                add(item['ref'], item.get('sha256'))
+        return found
+
+    def _material_refused(self, source):
+        """凭据类材料拒绝派发，不是静默跳过。"""
+        from xiaoba_agentos.memory import MemoryBridge
+        if MATERIAL_SENSITIVE_NAME.search(source.name):
+            raise WorkspaceError('material_sensitive',
+                '任务材料“%s”是凭据类文件，本次不派活。' % source)
+        try:
+            with source.open('rb') as stream:
+                content = stream.read()
+        except OSError:
+            raise WorkspaceError('material_missing',
+                '任务材料“%s”读不到，本次不派活。' % source) from None
+        if b'\0' in content[:65536]: return
+        text = content.decode('utf-8', 'replace')
+        found = (MATERIAL_PRIVATE_KEY.search(text) if source.suffix.lower() in MATERIAL_CODE_SUFFIXES
+                 else MemoryBridge._sensitive_reason(text))
+        if found:
+            raise WorkspaceError('material_sensitive',
+                '任务材料“%s”包含凭据或登录资料，本次不派活。' % source)
+
+    @staticmethod
+    def _readonly_tree(target):
+        for dirpath, dirnames, filenames in os.walk(target):
+            for name in filenames:
+                os.chmod(Path(dirpath) / name, 0o444)
+            for name in dirnames:
+                os.chmod(Path(dirpath) / name, 0o555)
+
+    def _stage_materials(self, record, materials):
+        """派活前把声明材料复制进 任务记录/<记录>/材料/，副本只读。
+
+        每份材料都要过：符号链接拒绝、目录跳过 .git/__pycache__、总量上限、
+        凭据类拒绝、复制前后 SHA-256 都与冻结值比对。任何一项不过就拒绝派活并写明原因，
+        CLI 不会被调用。同一记录重新派发时复用校验过的副本。
+        """
+        from xiaoba_agentos.task_context import material_digest
+        declared = self.declared_materials(materials)
+        if not declared: return []
+        directory = self.workspace.ensure() / '任务记录' / record / '材料'
+        directory.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(directory, 0o700)
+        staged, names = [], set()
+        total_files, total_bytes = 0, 0
+        for item in declared:
+            source = Path(item['path'])
+            if source.is_symlink():
+                raise WorkspaceError('material_symlink',
+                    '任务材料“%s”是符号链接，本次不派活。' % item['path'])
+            if not source.exists():
+                raise WorkspaceError('material_missing',
+                    '任务材料“%s”不存在，本次不派活。' % item['path'])
+            files = []
+            if source.is_dir():
+                for dirpath, dirnames, filenames in os.walk(source, followlinks=False):
+                    for name in list(dirnames):
+                        if name in MATERIAL_SKIP_DIRS:
+                            dirnames.remove(name)
+                        elif (Path(dirpath) / name).is_symlink():
+                            raise WorkspaceError('material_symlink',
+                                '任务材料“%s”内含符号链接，本次不派活。' % item['path'])
+                    files.extend(Path(dirpath) / name for name in sorted(filenames))
+            elif source.is_file():
+                files.append(source)
+            else:
+                raise WorkspaceError('material_missing',
+                    '任务材料“%s”不是普通文件或目录，本次不派活。' % item['path'])
+            for path in files:
+                if path.is_symlink():
+                    raise WorkspaceError('material_symlink',
+                        '任务材料“%s”内含符号链接，本次不派活。' % item['path'])
+            total_files += len(files)
+            total_bytes += sum(path.stat().st_size for path in files)
+            if total_files > self.material_file_limit or total_bytes > self.material_byte_limit:
+                raise WorkspaceError('material_limit',
+                    '任务材料总量超过上限（最多 %d 个文件、%d 字节），本次不派活。'
+                    % (self.material_file_limit, self.material_byte_limit))
+            for path in files:
+                self._material_refused(path)
+            if not item.get('sha256') or material_digest(source) != item['sha256']:
+                raise WorkspaceError('material_hash_mismatch',
+                    '任务材料“%s”与冻结时的 SHA-256 不符，本次不派活。' % item['path'])
+            name = source.name
+            while name in names:
+                name += '-2'
+            names.add(name)
+            target = directory / name
+            if target.exists():
+                if material_digest(target) != item['sha256']:
+                    raise WorkspaceError('material_hash_mismatch',
+                        '任务记录里已有的材料副本“%s”与冻结时的 SHA-256 不符，本次不派活。' % name)
+                staged.append(target)
+                continue
+            # 先复制到临时名，校验通过才换成正式名，中断时不留半份副本。
+            temporary = directory / ('.staging-' + uuid.uuid4().hex)
+            if source.is_dir():
+                shutil.copytree(source, temporary,
+                    ignore=shutil.ignore_patterns(*MATERIAL_SKIP_DIRS), symlinks=False)
+            else:
+                shutil.copy2(source, temporary)
+            if material_digest(temporary) != item['sha256']:
+                raise WorkspaceError('material_hash_mismatch',
+                    '任务材料“%s”复制后与冻结时的 SHA-256 不符，本次不派活。' % item['path'])
+            if source.is_dir():
+                self._readonly_tree(temporary)
+                os.chmod(temporary, 0o555)
+            else:
+                os.chmod(temporary, 0o444)
+            os.rename(temporary, target)
+            staged.append(target)
+        os.chmod(directory, 0o555)
+        return staged
+
     def _turn(self, instruction, context, timeout=None, kind='review', record_id=None,
               step_code=None, task_id=None, health_only=False):
         with self._serial:
@@ -380,8 +537,9 @@ class CliWorklogResource:
                 directory = self.workspace.ensure()
                 self.workspace.verify()
                 record = self.workspace.begin(kind, record_id or task_id, payload)
+                staged = self._stage_materials(record, materials)
                 ticket = self.workday.prepare(record, task_id, step_code, instruction, materials,
-                    review=kind == 'review', health_only=health_only)
+                    review=kind == 'review', health_only=health_only, staged=staged)
                 self._call_id = call_id
                 self._state = 'running'
                 self._start(directory, ticket, timeout, health_only)

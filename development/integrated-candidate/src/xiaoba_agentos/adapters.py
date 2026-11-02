@@ -1076,9 +1076,14 @@ class PoolCliAdapter(BaseAdapter):
             raise PermanentAdapterError("节点入口接不上")
         task_id = str(self.config.raw.get("task_id") or "worker-task")
         step = str(self.config.raw.get("step_code") or "REVIEW-01")
+        materials = {"prompt": prompt, "context": context}
+        # 冻结材料声明随任务注入；键只在非空时写入，不改无材料任务的重放载荷。
+        declared = self.config.raw.get("material_files")
+        if declared:
+            materials["material_files"] = list(declared)
         started = time.monotonic()
         try:
-            result = resource.run_task(task_id, step, prompt, {"prompt": prompt, "context": context})
+            result = resource.run_task(task_id, step, prompt, materials)
         except Exception as exc:
             raise PermanentAdapterError("节点调用未写出合格回执：" + str(exc)) from exc
         body = str((result or {}).get("body") or "").strip()

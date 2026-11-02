@@ -40,7 +40,7 @@ from .review_flow import (
 from .routing import AGENTOS_MULTI, DIRECT, REVIEW, ASK_USER, decide_route, adjudicated_label
 from .recovery import start_session_health
 from .skills import SkillRegistry, SkillRegistryError
-from .task_context import freeze_context, read_context_file
+from .task_context import freeze_context, freeze_materials, read_context_file
 from .store import EventStore, MEMORY_TERMINAL_STATES, terminal_reregistration_error
 
 
@@ -390,6 +390,7 @@ def _submit_task(
     required_capabilities: tuple = (),
     needs_web: bool = False,
     task_context: str = "",
+    material_files: tuple = (),
     workflow: Optional[dict] = None,
     experience_kind: Optional[str] = None,
     problem_key: str = "",
@@ -403,6 +404,7 @@ def _submit_task(
     if kind not in KINDS:
         raise ValueError("invalid experience kind")
     frozen_context = freeze_context(task_context)
+    frozen_materials = freeze_materials(material_files)
     enabled_names = [agent.name for agent in config.agents if agent.enabled]
     if kind == "audit":
         assignment = {"hits": [], "contexts": {}, "receipt": None}
@@ -436,6 +438,8 @@ def _submit_task(
             "minimum_successful_agents": int(config.worker["minimum_successful_agents"]),
         },
     }
+    if frozen_materials:
+        snapshot["material_files"] = frozen_materials
     if host is not None and (set(host) != {'id','entry','model'} or any(not isinstance(v,str) or not v.strip() for v in host.values())):
         raise ValueError('宿主身份需要 id、entry、model；不能自述未干活')
     if work_task_id and not store.get_task(work_task_id):
@@ -1324,6 +1328,8 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--requires-capability", action="append", default=[])
         command.add_argument("--needs-web", action="store_true")
         command.add_argument("--context-file", help="UTF-8 task summary and sourced evidence, max 64 KiB")
+    submit.add_argument("--material", action="append", default=[], metavar="PATH",
+        help="任务材料文件或目录；冻结 SHA-256 后派发进节点工作区（可重复给出）")
     run = sub.add_parser("run")
     run.add_argument("--once", action="store_true")
     run.add_argument("--max-idle-polls", type=int, default=0)
@@ -2039,6 +2045,7 @@ def main(argv: Optional[list] = None) -> int:
                 route_decision_id=str(route["id"]),
                 required_capabilities=tuple(args.requires_capability), needs_web=args.needs_web,
                 task_context=read_context_file(args.context_file),
+                material_files=tuple(args.material),
                 experience_kind=args.memory_kind, problem_key=args.problem_key,
                 work_task_id=args.work_task,
                 host=({'id': args.host_id, 'entry': args.host_entry, 'model': args.host_model}

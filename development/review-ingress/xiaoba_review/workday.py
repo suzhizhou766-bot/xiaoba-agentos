@@ -39,7 +39,7 @@ class WorkdayReceipts:
     def __init__(self, workspace):
         self.workspace = workspace
 
-    def prepare(self, record, task_id, step_code, instruction, context, *, day=None, review=False, health_only=False):
+    def prepare(self, record, task_id, step_code, instruction, context, *, day=None, review=False, health_only=False, staged=()):
         if not isinstance(task_id,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}',task_id):
             raise ValueError('任务ID格式异常')
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',step_code):raise ValueError('步骤码格式异常')
@@ -71,11 +71,19 @@ class WorkdayReceipts:
         if health_only and (not isinstance(context,dict) or not isinstance(context.get('challenge'),str) or not context['challenge']):
             raise ValueError('文件探针缺少主入口给定的回执正文')
         body_template = context['challenge'] if health_only else '在此写完整工作正文；若受阻或失败，将状态改为blocked或failed并写明原因。'
+        staged_block = ''
+        shown = context
+        if staged:
+            # 外部原路径节点读不到，只列本地副本，免得节点去读而被权限系统拒绝。
+            shown = {key: value for key, value in context.items() if key != 'material_files'}
+            staged_block = ('\n\n## 材料副本（只读）\n只读这里列出的材料；不得修改这些副本或源文件。\n'
+                + '\n'.join('- ' + str(path) for path in staged))
         text = ('# 本次工作任务卡\n\n任务ID: '+task_id+'\n步骤码: '+step_code+
             '\n工作回执文件: '+str(log)+'\n本轮标识: '+nonce+'\n\n## 工作要求\n'+instruction+
-            '\n\n## 材料\n'+json.dumps(context,ensure_ascii=False,indent=2)+
+            '\n\n## 材料\n'+json.dumps(shown,ensure_ascii=False,indent=2)+
             '\n\n## 范围与回执\n'+scope+
-            '不得修改登录、配置、规则、其它任务记录或先前日志；不得替用户批准经验。'
+            '不得修改登录、配置、规则、其它任务记录或先前日志；不得替用户批准经验。'+
+            staged_block+
             '\n'+create_label+'\n\n'+header+
             '\n文件已存在时完整保留原文，只在末尾追加。'+details+
             '\n回执按下面最小格式写入文件，正文用自然语言或Markdown，不要求JSON：\n\n'+marker+
