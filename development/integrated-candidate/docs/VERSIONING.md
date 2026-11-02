@@ -9,7 +9,7 @@
 | 软件版本 | `v1.6.6`（候选） | `pyproject.toml` 的 `[project] version` | `scripts/agentos_version.py` 的 `software_version()` |
 | 发布标识 | `v1.6.6`（目标；活动索引仍为 `v1.6.5`） | `.runtime/releases/index.json` 的 `current_release` | `src/xiaoba_agentos/release.py` |
 | 知识协议 / 树格式族 | `v1.4` | `scripts/build_second_brain.py` 生成的树结构 | `build_second_brain.py --verify` |
-| 历史版本记录 | `v1.4.2`、`v1.4.3`、`v1.4.6`、`v1.4.9`、`v1.4.10`、`v1.5.0`、`v1.5.1` | `docs/HISTORY_VERSIONS.json`（只追加） | `tests/test_release_version_contract.py` |
+| 历史版本记录 | 从 `v1.4.2` 起，完整清单看右边的文件 | `docs/HISTORY_VERSIONS.json`（只追加） | `tests/test_release_version_contract.py` |
 
 软件版本是唯一可以随发布递增的层次。其余三层只有在存在独立格式迁移证据时才变化，本仓库当前没有这类迁移。策略进化 2026-10-11 退役，6 张表只读保留，结构版本仍为 7。
 
