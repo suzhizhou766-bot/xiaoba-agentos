@@ -7,6 +7,20 @@ from pathlib import Path
 
 from xiaoba_agentos.content_index import review_problems
 from xiaoba_agentos.memory import MemoryBridge
+from xiaoba_agentos.task_context import freeze_materials
+
+
+class DeclaredSymlinkTests(unittest.TestCase):
+    # 第十一轮：提交时先解析路径，声明的符号链接被换成目标，“符号链接拒绝”没有生效。
+    def test_declared_symlink_is_refused_at_submit(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = Path(root) / 'target.txt'
+            target.write_text('TEST')
+            link = Path(root) / 'link.txt'
+            link.symlink_to(target)
+            with self.assertRaisesRegex(ValueError, '符号链接'):
+                freeze_materials([str(link)])
+            self.assertEqual(1, len(freeze_materials([str(target)])))
 
 
 class PrivateKeyRuleTests(unittest.TestCase):

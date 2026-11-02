@@ -74,6 +74,8 @@ def freeze_materials(paths):
     for value in paths or ():
         if not isinstance(value, str) or not value.strip():
             raise ValueError("材料路径异常")
+        if Path(value).is_symlink():
+            raise ValueError("材料不能是符号链接")
         path = Path(value).resolve(strict=True)
         manifest.append({"path": str(path), "sha256": material_digest(path)})
     return manifest
