@@ -451,6 +451,7 @@ def validate_acceptance_database(
                 (task_id,),
             ).fetchone()
             audit_row = connection.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='audit.settled' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
+            host_settled = connection.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='host.receipt_accepted' LIMIT 1", (task_id,)).fetchone()
             sub_row = connection.execute("SELECT sequence,payload_json FROM events WHERE task_id=? AND event_type='standby.substituted' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
             # The replaced side's own health history, read independently of the
             # substitution event: the last health record written before it.
@@ -484,6 +485,8 @@ def validate_acceptance_database(
             connection.close()
     except sqlite3.Error as exc:
         raise RuntimeError(f"cannot read acceptance database: {exc}") from exc
+    if host_settled:
+        raise RuntimeError("发布验收只认两个池节点的结论，这个任务由宿主结算，本版不能用于构包")
     if not judge_row:
         raise RuntimeError("acceptance database has no judge decision")
     try:

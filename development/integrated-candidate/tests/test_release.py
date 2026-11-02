@@ -486,6 +486,17 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
 
         connection = sqlite3.connect(database)
         connection.execute("DELETE FROM events WHERE event_type='task.participant_recorded'")
+        connection.execute(
+            "INSERT INTO events(task_id,event_type,payload_json,sequence) VALUES (?,?,?,?)",
+            ("task-1", "host.receipt_accepted", "{}", 3),
+        )
+        connection.commit()
+        connection.close()
+        with self.assertRaisesRegex(RuntimeError, "宿主结算"):
+            BUILD_RELEASE_MODULE.validate_acceptance_database(database, "task-1", self.root)
+
+        connection = sqlite3.connect(database)
+        connection.execute("DELETE FROM events WHERE event_type='host.receipt_accepted'")
         connection.execute("DELETE FROM events WHERE event_type='judge.decided'")
         connection.commit()
         connection.close()

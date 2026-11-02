@@ -86,7 +86,7 @@ xiaoba task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json
 
 ### 工作区、资格与队列
 
-- Agent 工作区根目录沿用 run.py 的 `--agent-workspace-root`，通过同一数据库的 `agent_pool.workspace_bound` 审计事件绑定；Worker、ReviewStore 与页面适配器共享该路径，不增加配置字段。重启沿用原绑定；传入不同根目录拒绝启动，不复制或搬迁既有材料。未绑定且没有有效测试资格的真实节点不派活。
+- Agent 工作区根目录沿用 run.py 的 `--agent-workspace-root`，通过同一数据库的 `agent_pool.workspace_bound` 审计事件绑定；Worker、ReviewStore 与页面适配器共享该路径，不增加配置字段。重启沿用原绑定；传入不同根目录拒绝启动，不复制或搬迁既有材料。未绑定且没有有效测试资格的真实节点不派活；tmux 在场通道是例外，它只协作，不进审查和独立性计票。
 - 页面和 Worker 共用 `node_runtime.readiness`，比较 spec_digest、runner_digest、证据摘要与测试完成事件。适配器更新后须重测，不发模型探针。RELEASE.json 的节点证据只保留 node_id、enabled、test_passed、independence。
 - Worker 扫描全部到期任务，跳过等宿主或当前节点不足的任务，不领租约、不耗次数；跳过原因写入 `last_error` 和去重审计事件，Agent 池管理页的“待处理任务”显示这些记录。
 
