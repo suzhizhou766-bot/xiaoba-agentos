@@ -155,7 +155,7 @@ def baseline_lines(project_dir: Path) -> Optional[Dict[str, List[str]]]:
 
 
 def publication_problems(index: Dict[str, Any], project_dir: Path, skills_root: Path, database: Path,
-                         reviewers: List[str]) -> List[str]:
+                         ) -> List[str]:
     """索引里的每个技能必须有来历：要么与随包基线逐行相同，要么带着一条核对得过的审查任务。
 
     索引文件在包外，谁都能改；只比对文件哈希的话，手改索引就能让没审过的内容被采用。
@@ -186,7 +186,7 @@ def publication_problems(index: Dict[str, Any], project_dir: Path, skills_root: 
         except (OSError, KeyError) as exc:
             problems.append(f"技能 {entry['id']} 的文件读不出来，无法核对来历：{exc}")
             continue
-        found = review_problems(database, task, expected, reviewers)
+        found = review_problems(database, task, expected)
         if found:
             problems.append(f"技能 {entry['id']} 所记的审查任务核对不过：{found[0]}")
     return problems
@@ -218,12 +218,14 @@ def review_prompt(entry: Dict[str, Any], directory: Path) -> str:
     return "\n\n".join(parts).strip() + "\n"
 
 
-def review_problems(database: Path, task_id: str, expected_prompt: str, reviewers: List[str]) -> List[str]:
+def review_problems(database: Path, task_id: str, expected_prompt: str, reviewers: Optional[List[str]] = None) -> List[str]:
     """核对一条审查任务是否足以发布这份内容；返回问题清单，空表示可以。只读数据库。
 
     任务里存的说明必须与 expected_prompt 逐字节相同（只忽略首尾空白，命令行传参会去掉末尾换行）。
+    新发布时 reviewers 是现在可用的审查节点，只有它们的结论算数。核对已发布内容时不传：
+    审查发生在过去，节点后来改了不该让它失效，看任务里实际跑过的记录。
     """
-    if len(set(reviewers)) < 2:
+    if reviewers is not None and len(set(reviewers)) < 2:
         return ["启用的审查后台不足两个"]
     try:
         connection = sqlite3.connect(f"file:{Path(database).resolve()}?mode=ro", uri=True, timeout=2)
@@ -243,11 +245,13 @@ def review_problems(database: Path, task_id: str, expected_prompt: str, reviewer
         problems.append("审查任务的说明与这份内容生成的审查说明不是同一份（内容在审查之后变了，或说明不是工具生成的）")
     verdicts = {}
     for agent, status, output in runs:
-        if status == "completed" and agent in reviewers:
+        if status == "completed" and (reviewers is None or agent in reviewers):
             verdicts.setdefault(agent, []).append(_VERDICT.findall(str(output or "")))
-    for agent in sorted(set(reviewers)):
-        if verdicts.get(agent) != [["PASS"]]:
+    for agent in sorted(verdicts):
+        if verdicts[agent] != [["PASS"]]:
             problems.append(f"后台 {agent} 没有给出唯一的通过结论")
+    if len(verdicts) < 2:
+        problems.append("通过审查的后台不足两个")
     return problems
 
 
