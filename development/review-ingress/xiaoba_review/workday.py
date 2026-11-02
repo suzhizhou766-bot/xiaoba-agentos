@@ -76,7 +76,7 @@ class WorkdayReceipts:
         if staged:
             # 外部原路径节点读不到，只列本地副本，免得节点去读而被权限系统拒绝。
             shown = {key: value for key, value in context.items() if key != 'material_files'}
-            staged_block = ('\n\n## 材料副本（只读）\n只读这里列出的材料；不得修改这些副本或源文件。只用文件读取工具：无人值守下运行命令或读工作区外的文件会被权限系统拒绝，本轮随即结束。\n'
+            staged_block = ('\n\n## 材料副本（只读）\n只读这里列出的材料；不得修改这些副本或源文件。只用文件读取工具：无人值守下运行命令或读工作区外的文件会被权限系统拒绝，本轮随即结束。回执里不要抄录密钥或令牌样例，写文件和行号即可。\n'
                 + '\n'.join('- ' + str(path) for path in staged))
         text = ('# 本次工作任务卡\n\n任务ID: '+task_id+'\n步骤码: '+step_code+
             '\n工作回执文件: '+str(log)+'\n本轮标识: '+nonce+'\n\n## 工作要求\n'+instruction+
@@ -132,8 +132,9 @@ class WorkdayReceipts:
             raise WorkspaceError('worklog_receipt_invalid', '文件回执缺少任务ID、步骤码、状态或完整正文；原文件保留。') from None
         from xiaoba_agentos.memory import MemoryBridge
         from xiaoba_agentos.output_hygiene import contains_non_answer_markers,detect_reasoning_leak
-        if MemoryBridge._sensitive_reason(text) or contains_non_answer_markers(body) or detect_reasoning_leak(body):
-            raise WorkspaceError('worklog_non_answer', '文件回执含敏感资料或非答案内容，不能交付或用于评分。')
+        rule = MemoryBridge._sensitive_reason(text)
+        if rule or contains_non_answer_markers(body) or detect_reasoning_leak(body):
+            raise WorkspaceError('worklog_non_answer', '文件回执含敏感资料或非答案内容，不能交付或用于评分（'+(rule or 'non_answer')+'）。')
         through=end+len(done)
         return {'body':body.strip(),'status':metadata['状态'],'metadata':metadata,'evidence_refs':refs,
                 'worklog':{'path':str(ticket['log'].relative_to(root)),'through_bytes':through,

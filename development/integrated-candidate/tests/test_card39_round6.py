@@ -6,6 +6,20 @@ import unittest
 from pathlib import Path
 
 from xiaoba_agentos.content_index import review_problems
+from xiaoba_agentos.memory import MemoryBridge
+
+
+class PrivateKeyRuleTests(unittest.TestCase):
+    # 第十轮：AGY 审查正文引用了规则里的 PEM 头，整票被当成泄露私钥拒收。
+    HEADER = '-----BEGIN ' + 'PRIVATE KEY-----'
+
+    def test_quoting_the_header_is_not_a_leak(self):
+        self.assertIsNone(MemoryBridge._sensitive_reason('代码严格拦截私钥（`' + self.HEADER + '`）。'))
+
+    def test_header_with_key_body_is_refused(self):
+        body = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7'
+        self.assertEqual('private_key', MemoryBridge._sensitive_reason(self.HEADER + '\n' + body + '\n'))
+        self.assertEqual('private_key', MemoryBridge._sensitive_reason(self.HEADER + '\r\n' + body))
 
 
 class PublishedSkillReviewTests(unittest.TestCase):
