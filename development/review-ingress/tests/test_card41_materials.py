@@ -84,6 +84,13 @@ class Card41Fixture(test_agy_cli.CliFixture):
             "    time.sleep(.3)\n"
             "    text=logpath.read_text()\n"
             "    logpath.write_text(text.replace('\\n<!-- done:','\\nTEST 补充说明\\n<!-- done:',1))\n" + linger, 1)
+        append = "with logpath.open('a') as out:"
+        assert script.count(append) == 1, '假 agy 锚点变了'
+        script = script.replace(append, "if flag('progress-in-block') or flag('progress-then-exit'):\n"
+            "    base=logpath.read_text()\n"
+            "    logpath.write_text(base+'\\n<!-- task:'+nonce+' -->\\nTEST 进度\\n<!-- done:'+nonce+' -->\\n')\n"
+            "    if flag('progress-then-exit'):sys.exit(0)\n"
+            "    time.sleep(.3);logpath.write_text(base)\n" + append, 1)
         self.entry.write_text(script.replace(anchor, extra + anchor, 1))
         self.materials = self.root / 'materials'
         self.materials.mkdir()
@@ -363,6 +370,29 @@ class MaterialReviewPassTests(Card41Fixture, unittest.TestCase):
             adapter.test_resource({}, 'TEST-challenge')
         self.assertEqual(error.exception.code, 'challenge_mismatch')
         adapter.workspace.verify()
+
+    def test_malformed_block_while_running_is_not_final(self):
+        # 第九轮：Qoder 把进度写进回执块并写了 done，小八当场判回执无效，审查还没开始就结束。
+        (self.root / 'progress-in-block').touch()
+        adapter = self.adapter(self.add())
+        result = adapter.run_task('TASK-C41', 'WORK-01', 'TEST 进度块', {'goal': 'TEST card41'})
+        self.assertEqual(result['status'], 'completed')
+        adapter.workspace.verify()
+
+    def test_malformed_block_left_at_exit_is_still_refused(self):
+        (self.root / 'progress-then-exit').touch()
+        adapter = self.adapter(self.add())
+        with self.assertRaises(WorkspaceError) as error:
+            adapter.run_task('TASK-C41', 'WORK-01', 'TEST 进度块', {'goal': 'TEST card41'})
+        self.assertEqual(error.exception.code, 'worklog_receipt_invalid')
+
+    def test_ticket_says_progress_stays_outside_receipt_block(self):
+        self.run_task(self.add(), [])
+        tickets = [path.read_text() for path in self.root.rglob('*.md')
+                   if path.read_text(errors='replace').startswith('# 本次工作任务卡')]
+        self.assertTrue(tickets)
+        for text in tickets:
+            self.assertIn('进度写在回执块之外', text)
 
     def test_ticket_tells_node_commands_will_end_the_turn(self):
         source = self.material('材料.txt', '原文')
