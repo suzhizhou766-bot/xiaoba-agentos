@@ -466,10 +466,14 @@ def validate_acceptance_database(
                         "AND json_extract(payload_json,'$.agent')=? ORDER BY sequence DESC LIMIT 1",
                         (sub_row["sequence"], replaced_name),
                     ).fetchone()
-            health_rows = connection.execute(
-                """SELECT agent_name,status,provider,model,last_probe_at FROM agent_health
-                   WHERE status='healthy' ORDER BY agent_name"""
-            ).fetchall()
+            # 节点资格看 Agent 池的测试记录，干过活的节点由任务记录排除。
+            from xiaoba_agentos.task_participants import execution_context
+            execution = {"author_ids": [], "executor_ids": [], "checked_idle_ids": []}
+            if task_row:
+                context = execution_context(None, dict(task_row), connection)
+                execution = {"author_ids": context["author_ids"],
+                             "executor_ids": sorted(set(context["executor_ids"]) | set(context["collaborator_ids"])),
+                             "checked_idle_ids": []}
             source_rows = []
             found_sources = connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ri_sources'"
@@ -504,6 +508,7 @@ def validate_acceptance_database(
         "judge": judge,
         "audit_settlement": json.loads(audit_row["payload_json"]) if audit_row else None,
         "pool_nodes": pool_nodes,
+        "execution": execution,
     }
     if sub_row:
         try:
@@ -515,14 +520,6 @@ def validate_acceptance_database(
         except (TypeError, ValueError):
             payload["replaced_health"] = None
     result = _validate_acceptance_payload(payload, source_root)
-    healthy_agents = {
-        str(row["agent_name"])
-        for row in health_rows
-        if row["provider"] and row["model"] and float(row["last_probe_at"] or 0) > 0
-    }
-    if not result["successful_agents"] or not set(result["successful_agents"]).issubset(healthy_agents):
-        raise RuntimeError("acceptance database has no current real multi-Agent health evidence")
-    result["live_probe_agents"] = sorted(healthy_agents)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     result["database_record_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return result

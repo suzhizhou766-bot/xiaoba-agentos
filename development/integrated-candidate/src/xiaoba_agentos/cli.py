@@ -1006,6 +1006,14 @@ def _doctor_failure_reason(result: Dict[str, Any]) -> str:
     return "；".join(reasons) if reasons else "原因未知"
 
 
+def _service_ready(config: AppConfig, report: Dict[str, Any]) -> bool:
+    """装服务只看本地完整性：节点要在服务装好后才能建，审查任务会被单独挡住。"""
+    from .pool_dispatch import _mock_agents
+    if _mock_agents(config):
+        return bool(report.get("ready_for_external_tasks"))
+    return bool(report.get("ok") or report.get("ready_for_external_tasks"))
+
+
 def _install_service(config: AppConfig, store: EventStore, backup_database: bool = False) -> Dict[str, Any]:
     preflight = doctor(config, store)
     from .pool_dispatch import _mock_agents
@@ -1013,7 +1021,7 @@ def _install_service(config: AppConfig, store: EventStore, backup_database: bool
         primaries = preflight.get("primary_agents", preflight.get("enabled_agents", []))
         enough_agents = len(primaries) >= int(preflight.get("minimum_successful_agents", 0)) > 0
     else:
-        enough_agents = bool((preflight.get("review_nodes") or {}).get("enough"))
+        enough_agents = True
     paths = preflight.get("paths")
     base_ready = (
         # Fail closed like the other checks: a missing or empty paths report is
@@ -1095,7 +1103,7 @@ def _install_service(config: AppConfig, store: EventStore, backup_database: bool
     try:
         store.initialize()
         migrated = doctor(config, store)
-        if not migrated.get("ready_for_external_tasks"):
+        if not _service_ready(config, migrated):
             # Only an authorized migration (it always leaves a backup) may be
             # called one; a current database was just initialized (round-42 review).
             stage = "迁移后" if database_backup else "初始化后（数据库无需迁移）"
@@ -1687,6 +1695,7 @@ def main(argv: Optional[list] = None) -> int:
         )
         return 0 if probe["ok"] else 1
     if args.command == "task-resume":
+        from .pool_dispatch import retested_nodes
         try:
             result = store.resume_task(
                 args.task_id,
@@ -1696,6 +1705,7 @@ def main(argv: Optional[list] = None) -> int:
                 health_max_age_seconds=float(
                     config.worker.get("health_max_age_seconds", 86400)
                 ),
+                retested_nodes=retested_nodes(store),
             )
         except (KeyError, ValueError) as exc:
             _print({"status": "blocked", "error": str(exc), "task_id": args.task_id}, True)

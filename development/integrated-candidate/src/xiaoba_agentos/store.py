@@ -2583,6 +2583,7 @@ class EventStore:
         *,
         enabled_names: Iterable[str],
         health_max_age_seconds: float,
+        retested_nodes: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         """Resume a frozen task on the user's explicit instruction, and only then.
 
@@ -2593,7 +2594,8 @@ class EventStore:
         the failed side must hold a real `healthy` probe that is still enabled and
         still inside the configured window: an old healthy row is not capacity
         that exists now. `enabled_names` and `health_max_age_seconds` are required
-        so no caller can get the looser check by omitting them.
+        so no caller can get the looser check by omitting them. An Agent-pool node
+        has no probe row; it counts only when retested after this freeze.
         """
         now = time.time()
         allowed = {str(name) for name in enabled_names}
@@ -2682,9 +2684,13 @@ class EventStore:
                     (cutoff, *sorted(allowed)),
                 )
             } if allowed else {}
-            if failed_agents and any(current.get(name) != "healthy" for name in failed_agents):
+            frozen_at = float(task["updated_at"])
+            retested = {str(name) for name, at in (retested_nodes or {}).items() if float(at) >= frozen_at}
+            if failed_agents and any(
+                current.get(name) != "healthy" and name not in retested for name in failed_agents
+            ):
                 raise ValueError(
-                    "failed Agent has no current healthy probe; run session-start first"
+                    "failed Agent has no current healthy probe; 请先在 Agent 池重新测试失败的节点"
                 )
             generation = int(task["resume_generation"] or 0) + 1
             max_attempts = max(int(task["max_attempts"]), int(task["attempts"]) + 1)

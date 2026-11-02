@@ -211,6 +211,17 @@ def load_nodes(store: Any) -> List[Dict[str, Any]]:
     return [node_view(source, store) for source in load_sources(store)]
 
 
+def retested_nodes(store: Any) -> Dict[str, float]:
+    """已开启且测试通过的节点及其最近测试时间，供冻结任务恢复判断。"""
+    found: Dict[str, float] = {}
+    for source in load_sources(store):
+        view = node_view(source, store)
+        test = (source.get("node") or {}).get("test") or {}
+        if view["enabled"] and view["test_passed"] and test.get("finished_at"):
+            found[str(view["node_id"])] = float(test["finished_at"])
+    return found
+
+
 def _distinct(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     chosen: List[Dict[str, Any]] = []
     seen = set()
