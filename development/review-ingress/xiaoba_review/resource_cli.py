@@ -291,7 +291,12 @@ class CliWorklogResource:
                 if found:
                     self._events += found
             # stdout never supplies a business result; only the file does.
-            receipt = self.workday.read(ticket)
+            try:
+                receipt = self.workday.read(ticket)
+            except WorkspaceError as error:
+                # 进程还在跑时，写坏的回执块不算结论，节点可能还在写；退出时仍判无效。
+                if error.code != 'worklog_receipt_invalid' or process.poll() is not None: raise
+                receipt = None
             if receipt is not None:
                 self._drain()
                 _, terminated = self._settle(receipt, process)
