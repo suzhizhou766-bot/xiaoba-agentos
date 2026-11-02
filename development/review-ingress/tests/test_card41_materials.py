@@ -403,6 +403,7 @@ class MaterialReviewPassTests(Card41Fixture, unittest.TestCase):
         self.assertTrue(tickets)
         for text in tickets:
             self.assertIn('只用文件读取工具', text)
+            self.assertIn('不要抄录密钥', text)
 
     def test_ticket_lists_only_local_copy_not_external_path(self):
         source = self.material('材料.txt', '原文')

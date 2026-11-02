@@ -550,7 +550,8 @@ class MemoryBridge:
     @staticmethod
     def _sensitive_reason(text: str) -> Optional[str]:
         patterns = {
-            "private_key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+            # 只有头不算泄露：审查正文可能引用规则本身，要跟着密钥正文才拦。
+            "private_key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s*[A-Za-z0-9+/=]{16,}",
             "authorization": r"(?i)authorization\s*[:=]\s*[^\n]{8,}",
             "oauth_token": r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|oauth[_-]?token)\s*[:=]\s*[\"']?[^\s\"']{8,}",
             "secret_field": r"(?i)(?:api[_-]?key|secret[_-]?key|client[_-]?secret|password|passwd)\s*[:=]\s*[\"']?[^\s\"']{8,}",
