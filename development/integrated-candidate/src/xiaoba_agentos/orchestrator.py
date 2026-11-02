@@ -340,11 +340,27 @@ class Orchestrator:
     def _fail_task(self, task: Dict[str, Any], error: str) -> str:
         return self.store.fail(task["id"], error, expected_attempt=int(task["attempts"]))
 
+    def _material_files(self, task_id: str) -> list:
+        """冻结的任务材料声明：submit --material 的 material_files，
+        复用协作审查 --artifact 的 artifacts 清单（同为 [{path, sha256}]）。"""
+        from .pool_dispatch import snapshot_of
+        task = self.store.get_task(task_id)
+        snapshot = snapshot_of(task) if task else {}
+        files = [item for item in (snapshot.get("material_files") or []) if isinstance(item, dict)]
+        workflow = snapshot.get("workflow") or {}
+        if workflow.get("phase") == "review":
+            files += [item for item in (workflow.get("artifacts") or []) if isinstance(item, dict)]
+        return files
+
     def _run_agent(self, task_id: str, agent_config: Any, prompt: str, context: str,
                    lease_attempt: Optional[int] = None, is_workflow_work: bool = False) -> AgentResult:
         if agent_config.raw.get("pool_node"):
             step = "WORK-01" if is_workflow_work else "REVIEW-01"
-            agent_config = replace(agent_config, raw={**agent_config.raw, "task_id": task_id, "step_code": step})
+            raw = {**agent_config.raw, "task_id": task_id, "step_code": step}
+            material_files = self._material_files(task_id)
+            if material_files:
+                raw["material_files"] = material_files
+            agent_config = replace(agent_config, raw=raw)
         run_id = self.store.start_agent_run(
             task_id,
             agent_config.name,

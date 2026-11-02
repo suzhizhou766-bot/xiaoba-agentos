@@ -99,6 +99,17 @@
 - 版本升到 v1.6.6：`pyproject.toml`（唯一声明点）、`config/agentos.json` 的 `release.expected_version`、README 与 ACCEPTANCE、ARCHITECTURE、COLLABORATION、OPERATIONS 的版本头、两份入口 SKILL.md（包内 `.agents/skills/xiaoba-agentos/SKILL.md` 与包外 `development/interface/SKILL.md`，逐字节相同）、`docs/VERSIONING.md`，以及本文件和历史版本记录里追加的 v1.6.6 一条。历史发布记录（v1.4.2 至 v1.6.5）一字未动。
 - `tests/test_card37.py` 的配置夹具现在把技能索引指到临时目录下的空索引。原先它沿用配置模板里的线上技能索引路径，审计类任务不读索引所以一直没暴露；本版第一次提交非审计任务，就会去读线上技能索引并因其审查任务核对不过而报错。测试只用隔离临时目录和夹具。
 
+## 八、任务材料进节点工作区（卡 41）
+
+卡 40 实测：AGY 在 headless 模式下读工作区外的文件会被权限系统自动拒绝，还以退出码 0、result=SUCCESS 收尾，看起来像“没写回执”（报告：`私人助理/工作区/小八AgentOS-v1.6.6-发版/reports/card40/诊断报告.md`）。本版修掉这个发版阻断项，不用 `--add-dir`（它把目录加进工作区，accept-edits 下节点可能也能写，审查员不该能改待审材料）。
+
+- **材料要声明。** `submit` 新增 `--material PATH`（可重复，文件或目录），语义与 `collaborate-review --artifact` 一致：提交时冻结绝对路径和 SHA-256 进快照 `material_files`；协作审查 `--artifact` 的 `artifacts` 清单同形状，派发时一并当材料。接入口任务卡 `evidence_refs` 里的**绝对路径** ref 也算文件材料（`test://`、`task:` 等标签 ref 不是文件，不进材料）。
+- **派活前复制进节点工作区**（共用基类 `xiaoba_review/resource_cli.py`，所有 CLI 一致）：复制到 `任务记录/<记录>/材料/`，副本只读（文件 0444），派工卡列出本地路径并写明“只读这里列出的材料”。复制后比对冻结时的 SHA-256，对不上就拒绝派活并写明原因；符号链接（含目录内）拒绝；目录递归跳过 `.git`、`__pycache__`；总量上限 10000 个文件、200 MB（常量）；凭据文件按文件名拒绝，文档和配置全文按 `MemoryBridge._sensitive_reason` 检查，代码和差异文件内容只拦私钥（否则候选源码目录因假密钥夹具无法审查）；被拒绝就不派活，不是静默跳过。同一记录重新派发时复用校验过的副本。任务卡载荷不改，`previous_work` 重放比对不受影响；同一任务两个节点各拿一份独立副本。
+- **未声明的工作区外路径会被拒绝**：输出里出现 `permission check failed`、`auto-denied`、`cannot prompt` 时归为 `permission_denied`，**优先于** `receipt_missing`（`resource_agy_cli._settle_exit` 原先先判 SUCCESS 无回执，卡 40 用例 B 正是被误归），提示“节点读工作区外的文件或要跑命令被权限系统拒绝，请把文件作为材料提交，或走 tmux 在场通道”，不返回原始输出；同样规则进 `cli_identity.specific_failure`，所有 CLI 共用。
+- **被结束的进程不显示成“被系统拒绝执行”**：SIGTERM、SIGKILL 退出单独归为 `call_terminated`，提示“调用被结束”。
+
+反例与端到端：`tests/test_card41_submit_material.py`（核心：CLI `submit --material` → `run_once` 全链路，材料进节点工作区、回执来自文件）、`review-ingress/tests/test_card41_materials.py`（材料 staging、目录上限、只读副本、双节点隔离、work 重放、SIGTERM/SIGKILL 分类、summary-B 夹具分类）。
+
 ## 七、本版没做
 
 - **不退役内置 WorkBuddy 引擎**，排到 v1.6.7。

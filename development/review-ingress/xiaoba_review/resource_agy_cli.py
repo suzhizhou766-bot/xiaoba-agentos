@@ -43,9 +43,12 @@ class AgyCliResource(CliWorklogResource):
         returncode = process.returncode if process is not None else None
         stdout = bytes(self._stdout).decode('utf-8', 'replace')
         stderr = self._stderr_text()
-        if returncode == 0 and self._result_status() == 'SUCCESS':
-            raise InteractiveError('receipt_missing',
-                'AGY本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
+        from .cli_identity import specific_failure
+        # 被 SIGTERM/SIGKILL 结束的进程单独归类，绝不显示成“被系统拒绝执行”。
+        terminated = specific_failure('agy', 'AGY', self.model, stdout, stderr,
+            check_model=False, returncode=returncode)
+        if terminated is not None and terminated.code == 'call_terminated':
+            raise terminated
         if TRUST_PROMPT in stdout or TRUST_PROMPT in stderr:
             raise NativeWorkspaceConsent()
         if self._model_rejected(stderr, stdout):
@@ -56,9 +59,13 @@ class AgyCliResource(CliWorklogResource):
                 '不自动重试、不换模型、不换后台。' % self.model)
             failure.failure_class = 'permanent'
             raise failure
-        from .cli_identity import specific_failure
-        specific = specific_failure('agy', 'AGY', self.model, stdout, stderr, check_model=False)
+        # permission_denied（权限系统拒绝读文件/跑命令）优先于 receipt_missing。
+        specific = specific_failure('agy', 'AGY', self.model, stdout, stderr,
+            check_model=False, returncode=returncode)
         if specific: raise specific
+        if returncode == 0 and self._result_status() == 'SUCCESS':
+            raise InteractiveError('receipt_missing',
+                'AGY本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
         # Only a short class survives; the raw text is never returned or stored.
         detail = _redact_error(stderr or stdout or 'agy cli failed')
         failure = InteractiveError('cli_failed',

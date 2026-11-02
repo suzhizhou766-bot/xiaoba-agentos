@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import sys
 from types import SimpleNamespace
 
@@ -15,6 +16,13 @@ ENTRY_TYPES = {'agy':'agy', 'antigravity':'agy', 'dsh':'dsh', 'qoder':'qoder',
                'codex':'codex', 'codex.js':'codex', 'claude':'claude'}
 SESSION_VARIABLES = ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CODEX_THREAD_ID',
                      'CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'AGY_SESSION_ID')
+# 被结束的进程（含小八自己发出的 SIGTERM/SIGKILL）：单独归类，绝不显示成“被系统拒绝执行”。
+TERMINATED_RETURNCODES = (-signal.SIGTERM, -signal.SIGKILL,
+                          128 + signal.SIGTERM, 128 + signal.SIGKILL)
+# 无人值守下权限系统拒绝读文件/跑命令的原文标记（卡 40 summary-B 逐字取用）。
+PERMISSION_MARKERS = ('permission check failed', 'auto-denied', 'cannot prompt')
+PERMISSION_MESSAGE = ('节点读工作区外的文件或要跑命令被权限系统拒绝，'
+    '请把文件作为材料提交，或走 tmux 在场通道。')
 
 
 def agent_type(node):
@@ -74,9 +82,22 @@ def cli_environment(entry, kind):
     return env
 
 
-def specific_failure(kind, label, model, stdout, stderr, check_model=True):
+def specific_failure(kind, label, model, stdout, stderr, check_model=True, returncode=None):
     from .resource_agy import InteractiveError
     text = (stderr+'\n'+stdout).casefold()
+    # 被 SIGTERM/SIGKILL 结束的进程最先归类：提示是“调用被结束”。
+    if returncode in TERMINATED_RETURNCODES:
+        failure = InteractiveError('call_terminated',
+            label+'调用被结束；不自动重试、不换模型、不换后台。')
+        failure.failure_class = 'permanent'
+        failure.preserve_node_health = True
+        return failure
+    # 无人值守下被权限系统拒绝读文件/跑命令：优先于 receipt_missing。
+    if any(marker in text for marker in PERMISSION_MARKERS):
+        failure = InteractiveError('permission_denied', PERMISSION_MESSAGE)
+        failure.failure_class = 'permission_denied'
+        failure.preserve_node_health = True
+        return failure
     # Do not return any excerpt, even when it looks harmless.
     code = message = None
     if any(s in text for s in ('cannot find module', 'unknown option', 'unrecognized option',
@@ -114,7 +135,7 @@ def specific_failure(kind, label, model, stdout, stderr, check_model=True):
 def cli_failure(kind, label, model, returncode, stdout, stderr):
     from .resource_agy import InteractiveError
     from xiaoba_agentos.adapters import _is_transient_cli_error, _redact_error
-    specific = specific_failure(kind, label, model, stdout, stderr)
+    specific = specific_failure(kind, label, model, stdout, stderr, returncode=returncode)
     if specific:return specific
     if returncode == 0:
         return InteractiveError('receipt_missing', label+'本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
