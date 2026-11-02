@@ -285,11 +285,9 @@ class SkillRegistry:
         if project_dir is None:
             return []
         try:
-            from .pool_dispatch import active_names
-            reviewers = active_names(self.config, purpose="review")
             return content_index.publication_problems(
                 index, project_dir, self.config.skills_root,
-                getattr(self.config, "database_path", Path("/nonexistent")), reviewers)
+                getattr(self.config, "database_path", Path("/nonexistent")))
         except content_index.ContentIndexError as exc:
             return [str(exc)]
 

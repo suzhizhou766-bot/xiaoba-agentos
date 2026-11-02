@@ -490,7 +490,8 @@ def doctor_check(layout: Layout, system: System, allow_route_outage: bool) -> di
                         if isinstance(report.get(name), dict) and report[name].get('ok') is False)
     if returncode == 0 and report.get('ok') is True:
         return {'doctor_ok': True, 'old_non_gating_failures': non_gating}
-    require(allow_route_outage, f'external verification failed: returncode={returncode}')
+    failed = sorted(name for name in DOCTOR_GATES if isinstance(report.get(name), dict) and report[name].get('ok') is False)
+    require(allow_route_outage, f'external verification failed: returncode={returncode}; doctor gates failed: {failed}')
     # The exception needs positive evidence, not an absence of complaints: an
     # explicit failing report, every path present and true, and every gating
     # check present and passing except the route check (round-47 review).
