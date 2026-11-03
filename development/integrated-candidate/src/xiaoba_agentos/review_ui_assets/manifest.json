@@ -20,7 +20,7 @@
       "base": "assistant",
       "relative": "\u5de5\u5177/\u5c0f\u516b\u76d1\u770b/xiaoba-monitor.html",
       "before_sha256": "eab64b26fca9300cff20af24ba08666abf096879531b0bcd0a69c903d730d21f",
-      "after_sha256": "005c841fb88f94bb21d525e3e1d9111fc78924ec8a5021d9773d207213813b77"
+      "after_sha256": "c79938b3fce86622083e8d2e4bee2c7472866d77da45594894f28646b25571db"
     },
     {
       "asset": "server.py",

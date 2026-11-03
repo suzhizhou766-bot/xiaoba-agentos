@@ -3042,8 +3042,8 @@ const ReviewCenter = (() => {
     try{
       const res = await fetch(abandon? "api/review/frozen/abandon" : "api/review/frozen/resume", {method:"POST", cache:"no-store",
         headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN}, body:JSON.stringify({taskId:fzJob.taskId, freezeHash:fzJob.freezeHash})});
-      try{ data = await res.json(); }catch(e){ text = "返回内容无法解析（HTTP "+res.status+"）。请刷新清单确认这个任务现在的状态，不要直接重复恢复。"; }
-    }catch(e){ text = "没有收到回执："+e.message+"。请刷新清单确认这个任务现在的状态，不要直接重复恢复。"; }
+      try{ data = await res.json(); }catch(e){ text = "返回内容无法解析（HTTP "+res.status+"）。请刷新清单确认这个任务现在的状态，不要直接重复"+verb+"。"; }
+    }catch(e){ text = "没有收到回执："+e.message+"。请刷新清单确认这个任务现在的状态，不要直接重复"+verb+"。"; }
     if(data && data.ok && abandon){
       $("fzTitle").textContent = "已放弃";
       text = "任务已结束，不会再运行；记录都保留着。";
