@@ -47,7 +47,7 @@ MATERIAL_SENSITIVE_NAME = re.compile(
 MATERIAL_CODE_SUFFIXES = frozenset(('.py', '.pyi', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx',
     '.html', '.css', '.sh', '.zsh', '.bash', '.swift', '.c', '.h', '.go', '.rs', '.java',
     '.diff', '.patch'))
-MATERIAL_PRIVATE_KEY = re.compile(r'-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----')
+MATERIAL_PRIVATE_KEY = re.compile(r'-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----\s*[A-Za-z0-9+/=]{16,}')
 
 
 class CliWorklogResource:

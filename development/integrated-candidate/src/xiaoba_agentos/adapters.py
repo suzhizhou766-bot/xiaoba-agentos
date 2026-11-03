@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -1082,10 +1083,38 @@ class PoolCliAdapter(BaseAdapter):
         if declared:
             materials["material_files"] = list(declared)
         started = time.monotonic()
+        # 回执只看文件，CLI 没有流式进度可报；这里定时报告，审查再长也能续租。
+        stop = threading.Event()
+        lost = []
+
+        def heartbeat():
+            while not stop.wait(self.progress_interval):
+                try:
+                    self.progress_callback({"stage": "running", "activity_events": 0,
+                                            "elapsed_seconds": round(time.monotonic() - started, 3)})
+                except Exception as exc:
+                    lost.append(exc)
+                    try:
+                        resource.close()
+                    except Exception:
+                        pass
+                    return
+
+        beat = threading.Thread(target=heartbeat, daemon=True) if self.progress_callback else None
+        if beat:
+            beat.start()
         try:
             result = resource.run_task(task_id, step, prompt, materials)
         except Exception as exc:
+            if lost:
+                raise lost[0] from exc
             raise PermanentAdapterError("节点调用未写出合格回执：" + str(exc)) from exc
+        finally:
+            stop.set()
+            if beat:
+                beat.join()
+        if lost:
+            raise lost[0]
         body = str((result or {}).get("body") or "").strip()
         if not isinstance(result, dict) or result.get("status") != "completed" or not body:
             raise PermanentAdapterError("没有写出合格回执，任务不算完成")

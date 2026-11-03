@@ -306,7 +306,7 @@ class MaterialReviewPassTests(Card41Fixture, unittest.TestCase):
         self.assertTrue(self.starts())
 
     def test_private_key_inside_code_file_is_still_refused(self):
-        source = self.material('leak.py', '-----BEGIN ' + 'PRIVATE KEY-----\n')
+        source = self.material('leak.py', '-----BEGIN ' + 'PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEF\n')
         node = self.add()
         with self.assertRaises(WorkspaceError) as error:
             self.run_task(node, self.declared(source))
