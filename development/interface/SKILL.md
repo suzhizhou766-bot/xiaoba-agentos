@@ -28,7 +28,7 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 ## 上下班和消息路由
 
 - “上班了小八助理”：`session-start`。只查本地 doctor、节点是否开启、测试是否通过、入口是否还在，不发真实探针。审查节点不足单独报告，不把 doctor 的 ok 打成假。要审查的任务在池里凑不够两份独立结论之前不入队。本地检查不等于实时模型可用。
-- 工作会话的新消息：调用 `intake "消息" --message-id 唯一消息ID`；有动作需求加 `--requires-action`，用户明确要求小八加 `--explicit-agentos`；需要任务时同一次调用加 `--submit`，不重复提交。返回 `blocked_local_health` 表示后台当前无法执行、任务未入队：按 `blockers` 向用户说明原因并先恢复（通常是重新“上班”，或者在对应 CLI 里登录、选好模型），不要自行加 `--queue-when-blocked`，除非用户明确要求先排队。
+- 工作会话的新消息：调用 `intake "消息" --message-id 唯一消息ID`；有动作需求加 `--requires-action`，用户明确要求小八加 `--explicit-agentos`；需要任务时同一次调用加 `--submit`，不重复提交。返回 `blocked_local_health` 表示后台当前无法执行、任务未入队：按 `blockers` 向用户说明原因并先恢复（通常是在 Agent 池建好或重新测试节点，或者在对应 CLI 里登录、选好模型），不要自行加 `--queue-when-blocked`，除非用户明确要求先排队。
 - `direct`：会话模型直接回答；`agentos_multi`：跟踪同一个任务等待两个后台合格结果；`review`：进入用户审核；`ask_user`：只问必要边界。不能把后台文字当已执行补丁。
 - 可拆分实现走 `collaborate`，为 AGY/DSH 分别分工；宿主集成后，冻结新证据走 `collaborate-review`。两阶段都必须两者成功，审核不得复用工作阶段输出。参数见当前 `docs/COLLABORATION.md`。
 - “下班”：`session-close`，展示待终审清单；下班不代表批量批准。
