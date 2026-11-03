@@ -6,7 +6,7 @@
   if(!parent)return;
   const panel=document.createElement('section');
   panel.style.cssText='margin:18px;padding:18px;border:1px solid #64748b;border-radius:10px;overflow-wrap:anywhere';
-  const heading=document.createElement('h2');heading.textContent='DSH＋开放第二方 · 独立审查材料';panel.append(heading);
+  const heading=document.createElement('h2');heading.textContent='Agent 池 · 独立审查材料';panel.append(heading);
   const link=document.createElement('a');link.href='/open-review';link.textContent='打开任务卡、回执与运行时间线';panel.append(link);
   const content=document.createElement('div');panel.append(content);parent.prepend(panel);
   async function refresh(){

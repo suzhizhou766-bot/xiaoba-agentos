@@ -1104,7 +1104,10 @@ class PoolCliAdapter(BaseAdapter):
         if beat:
             beat.start()
         try:
-            result = resource.run_task(task_id, step, prompt, materials)
+            attempt = int(self.config.raw.get("resume_generation") or 0)
+            # 只在恢复后才传，老的资源实现不受影响。
+            result = (resource.run_task(task_id, step, prompt, materials, attempt=attempt) if attempt
+                      else resource.run_task(task_id, step, prompt, materials))
         except Exception as exc:
             if lost:
                 raise lost[0] from exc

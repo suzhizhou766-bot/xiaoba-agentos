@@ -618,10 +618,12 @@ class CliWorklogResource:
             step_code=card.get('step_code'))
         return parse_review_receipt(value, card, evidence)
 
-    def run_task(self, task_id, step_code, instruction, materials):
+    def run_task(self, task_id, step_code, instruction, materials, attempt=0):
         if not isinstance(instruction, str) or not instruction.strip():
             raise ValueError('需要明确授权的工作内容和范围')
+        # 用户恢复冻结任务后，失败那一侧要重跑：每次恢复开一条新记录，不复用失败记录。
+        record_id = task_id + '-' + step_code + ('-resume%d' % attempt if attempt else '')
         value, evidence = self._turn(instruction, json.dumps(materials, ensure_ascii=False),
-            kind='work', task_id=task_id, step_code=step_code, record_id=task_id + '-' + step_code)
+            kind='work', task_id=task_id, step_code=step_code, record_id=record_id)
         return {'task_id': task_id, 'step_code': step_code, 'status': value['status'],
                 'body': value['body'], 'execution_evidence': evidence, 'score_assigned': False}

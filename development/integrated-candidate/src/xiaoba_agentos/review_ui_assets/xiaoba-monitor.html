@@ -223,7 +223,7 @@ dialog.rc-dialog::backdrop{background:rgba(10,16,26,.55)}
 .rc-frozen .where,.fz-facts dd{font-family:var(--font-data);font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
 .rc-frozen .where{margin:6px 0 0}
 .rc-frozen .where b{font-family:var(--font-ui);font-weight:500;color:var(--ink)}
-.rc-frozen .go{display:flex;justify-content:flex-end}
+.rc-frozen .go{display:flex;justify-content:flex-end;gap:8px}
 .fz-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;font-size:13px}
 .fz-facts dt{color:var(--muted)}
 .fz-facts dd{margin:0;color:var(--ink)}
@@ -2970,7 +2970,7 @@ const ReviewCenter = (() => {
 
   /* ---- 冻结任务：只列出；恢复必须由用户逐个点选，并在确认框里核对任务编号与冻结哈希。不重试，不批量 ---- */
   let frozen=null, fzAt=0, fzBusy=false, fzJob=null, fzError="";
-  const fzProbe = f=>f.probe==="healthy"? "这一侧现在探测合格" : f.probe==="none"? "这一侧现在没有新鲜的合格探测" : "这一侧现在的探测结果是 "+f.probe;
+  const fzProbe = f=>f.probe==="healthy"? "这一侧现在探测合格" : "恢复前要在 Agent 池给这个节点重新“测试运行”并通过";
   const fzSides = list=>list.length? list.join("、") : "未记录";
   function renderFrozen(){
     const items=(frozen&&frozen.items)||[], count=$("rcFrozenCount"), warn=$("rcFrozenWarn"), list=$("rcFrozenList");
@@ -2989,7 +2989,8 @@ const ReviewCenter = (() => {
       return `<li><div><div class="name">${esc(it.title)}</div><p class="why">${fails}</p>`+
         `<p class="where"><b>任务编号</b> ${esc(it.id)}<br><b>冻结时间</b> ${esc(when(it.frozenAt))}${it.failureClass? " · 失败类型 "+esc(it.failureClass) : ""}`+
         `<br><b>成功侧</b> ${kept}<br><b>冻结哈希</b> ${esc(it.freezeHash||"—")}${notes? "<br>"+esc(notes) : ""}</p></div>`+
-        `<div class="go"><button class="btn" type="button" data-fz="${i}" ${it.freezeHash? "" : "disabled"}>恢复</button></div></li>`;
+        `<div class="go"><button class="btn" type="button" data-fz="${i}" ${it.freezeHash? "" : "disabled"}>恢复</button>`+
+        `<button class="btn" type="button" data-fza="${i}" ${it.freezeHash? "" : "disabled"}>放弃</button></div></li>`;
     }).join("");
   }
   async function loadFrozen(force){
@@ -3002,9 +3003,23 @@ const ReviewCenter = (() => {
   function fzPhase(done){ $("fzCancel").hidden=done; $("fzGo").hidden=done; $("fzDone").hidden=!done; $("fzGo").disabled=fzBusy; $("fzCancel").disabled=fzBusy; $("fzClose").disabled=fzBusy; }
   function fzClose(){ if(fzBusy) return; $("fzDialog").close(); fzJob=null; loadFrozen(true); }
   $("rcFrozenList").addEventListener("click", ev=>{
-    const b = ev.target.closest("button[data-fz]"); if(!b || fzBusy || !frozen) return;
-    const it = frozen.items[+b.dataset.fz]; if(!it || !it.freezeHash) return;
-    fzJob = {taskId:it.id, freezeHash:it.freezeHash};
+    const b = ev.target.closest("button[data-fz],button[data-fza]"); if(!b || fzBusy || !frozen) return;
+    const abandon = b.hasAttribute("data-fza");
+    const it = frozen.items[+(abandon? b.dataset.fza : b.dataset.fz)]; if(!it || !it.freezeHash) return;
+    fzJob = {taskId:it.id, freezeHash:it.freezeHash, mode: abandon? "abandon" : "resume"};
+    if(abandon){
+      $("fzTitle").textContent = "放弃这个冻结任务？";
+      $("fzFacts").innerHTML = [["任务编号", it.id], ["任务", it.title], ["冻结哈希", it.freezeHash], ["冻结时间", when(it.frozenAt)]]
+        .map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+      $("fzOnly").textContent = "任务结束，不再运行。已有的结论、回执和冻结记录都保留；以后还要做，就重新提交一个任务。";
+      $("fzCaution").hidden = true; $("fzCaution").textContent = "";
+      $("fzFeedback").textContent = "放弃前由小八复核冻结哈希，与页面上显示的不一致就会拒绝。";
+      $("fzRaw").hidden = true; $("fzRaw").textContent = "";
+      $("fzGo").textContent = "确认放弃这一个";
+      fzPhase(false); $("fzDialog").showModal();
+      return;
+    }
+    $("fzGo").textContent = "确认恢复这一个";
     const failed = it.failures.map(f=>f.agent);
     $("fzTitle").textContent = "恢复这个冻结任务？";
     $("fzFacts").innerHTML = [["任务编号", it.id], ["任务", it.title], ["冻结哈希", it.freezeHash], ["冻结时间", when(it.frozenAt)]]
@@ -3012,7 +3027,7 @@ const ReviewCenter = (() => {
     $("fzOnly").textContent = `只补跑失败侧（${fzSides(failed)}）。成功侧（${fzSides(it.succeeded)}）的结果与回执保持不变，不会重跑。`;
     const cautions = [];
     if(it.failures.some(f=>f.outputBudget)) cautions.push("这次失败是单轮输出预算耗尽：原样恢复会把同一个过大的任务再发一次，很可能再次超限，建议拆小后重新提交。");
-    if(it.failures.some(f=>!f.outputBudget && f.probe!=="healthy")) cautions.push("失败侧现在没有新鲜的合格探测，这次恢复多半会被拒绝；先重新“上班”探测后台再来。");
+    if(it.failures.some(f=>!f.outputBudget && f.probe!=="healthy")) cautions.push("失败的节点要在冻结之后重新测试通过，否则这次恢复会被拒绝；先到 Agent 池点“测试运行”。");
     if(it.problem) cautions.push(it.problem+"。");
     $("fzCaution").hidden = !cautions.length; $("fzCaution").textContent = cautions.join(" ");
     $("fzFeedback").textContent = "恢复前由小八复核冻结哈希、成功侧执行回执与失败侧健康，缺任何一项都会拒绝并说明原因。";
@@ -3021,24 +3036,28 @@ const ReviewCenter = (() => {
   });
   $("fzGo").addEventListener("click", async ()=>{
     if(fzBusy || !fzJob) return;
-    fzBusy=true; fzPhase(false); $("fzGo").textContent="正在恢复…";
+    const abandon = fzJob.mode === "abandon", verb = abandon? "放弃" : "恢复";
+    fzBusy=true; fzPhase(false); $("fzGo").textContent="正在"+verb+"…";
     let data=null, text="";
     try{
-      const res = await fetch("api/review/frozen/resume", {method:"POST", cache:"no-store",
-        headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN}, body:JSON.stringify(fzJob)});
+      const res = await fetch(abandon? "api/review/frozen/abandon" : "api/review/frozen/resume", {method:"POST", cache:"no-store",
+        headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN}, body:JSON.stringify({taskId:fzJob.taskId, freezeHash:fzJob.freezeHash})});
       try{ data = await res.json(); }catch(e){ text = "返回内容无法解析（HTTP "+res.status+"）。请刷新清单确认这个任务现在的状态，不要直接重复恢复。"; }
     }catch(e){ text = "没有收到回执："+e.message+"。请刷新清单确认这个任务现在的状态，不要直接重复恢复。"; }
-    if(data && data.ok){
+    if(data && data.ok && abandon){
+      $("fzTitle").textContent = "已放弃";
+      text = "任务已结束，不会再运行；记录都保留着。";
+    }else if(data && data.ok){
       $("fzTitle").textContent = "已恢复";
       text = "任务已回到队列，等待 Worker 补跑失败侧"+(data.resumeGeneration? "（第 "+data.resumeGeneration+" 次恢复）" : "")+"。"+(data.warning? "\n"+data.warning : "");
     }else if(data){
-      $("fzTitle").textContent = "没有恢复";
-      text = (data.error||"命令行拒绝了这次恢复")+(data.detail? "\n"+data.detail : "");
+      $("fzTitle").textContent = "没有"+verb;
+      text = (data.error||"命令行拒绝了这次"+verb)+(data.detail? "\n"+data.detail : "");
     }else $("fzTitle").textContent = "结果不确定";
     $("fzFeedback").textContent = text;
     const raw = data && (data.result || (data.ok? data : null));   // 命令行返回的内容原样显示
     $("fzRaw").hidden = !raw; $("fzRaw").textContent = raw? JSON.stringify(raw, null, 2) : "";
-    fzBusy=false; $("fzGo").textContent="确认恢复这一个"; fzPhase(true);
+    fzBusy=false; $("fzGo").textContent="确认"+verb+"这一个"; fzPhase(true);
   });
   ["fzCancel","fzClose","fzDone"].forEach(id=>$(id).addEventListener("click", fzClose));
   $("fzDialog").addEventListener("cancel", ev=>{ ev.preventDefault(); fzClose(); });
