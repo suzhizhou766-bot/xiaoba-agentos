@@ -275,6 +275,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.5；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.7",
+      "release_date": "2026-11-03",
+      "status": "candidate",
+      "summary": "修 v1.6.6 上线后真实使用中发现的问题：冻结任务恢复后失败那一侧能重跑（每次恢复开新记录）；冻结任务可以放弃（task-abandon，页面有放弃按钮），排队任务可以取消（task-cancel）；监看中心页面文字跟上 Agent 池的做法。发布声明的前置源码清单哈希改为已上线 v1.6.6 的值；本版不新增切换步骤。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.6；不创建备份，用户终端切换。"
     }
   ]
 }

@@ -405,6 +405,19 @@ class MaterialReviewPassTests(Card41Fixture, unittest.TestCase):
             self.assertIn('只用文件读取工具', text)
             self.assertIn('不要抄录密钥', text)
 
+    def test_resumed_task_gets_a_fresh_record_for_the_failed_step(self):
+        # 上线后发现：冻结任务恢复后，失败那一侧被“原任务步骤已失败并留有记录”拦住，不能重跑。
+        adapter = self.adapter(self.add())
+        (self.root / 'fail-status').touch()
+        with self.assertRaises(Exception):
+            adapter.run_task('TASK-R', 'REVIEW-01', 'TEST 恢复后重跑', {'goal': 'TEST'})
+        (self.root / 'fail-status').unlink()
+        with self.assertRaises(InteractiveError) as error:
+            adapter.run_task('TASK-R', 'REVIEW-01', 'TEST 恢复后重跑', {'goal': 'TEST'})
+        self.assertEqual('work_step_failed', error.exception.code)
+        result = adapter.run_task('TASK-R', 'REVIEW-01', 'TEST 恢复后重跑', {'goal': 'TEST'}, attempt=1)
+        self.assertEqual('completed', result['status'])
+
     def test_ticket_lists_only_local_copy_not_external_path(self):
         source = self.material('材料.txt', '原文')
         node = self.add()

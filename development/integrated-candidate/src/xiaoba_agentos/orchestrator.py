@@ -357,6 +357,9 @@ class Orchestrator:
         if agent_config.raw.get("pool_node"):
             step = "WORK-01" if is_workflow_work else "REVIEW-01"
             raw = {**agent_config.raw, "task_id": task_id, "step_code": step}
+            current = self.store.get_task(task_id) or {}
+            if int(current.get("resume_generation") or 0):
+                raw["resume_generation"] = int(current["resume_generation"])
             material_files = self._material_files(task_id)
             if material_files:
                 raw["material_files"] = material_files

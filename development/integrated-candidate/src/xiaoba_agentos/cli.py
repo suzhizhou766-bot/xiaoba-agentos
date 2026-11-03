@@ -1246,6 +1246,11 @@ def build_parser() -> argparse.ArgumentParser:
     task_resume = sub.add_parser("task-resume")
     task_resume.add_argument("task_id")
     task_resume.add_argument("--freeze-hash", required=True)
+    task_abandon = sub.add_parser("task-abandon", help="放弃一个冻结任务：结束任务，记录保留，不再运行")
+    task_abandon.add_argument("task_id")
+    task_abandon.add_argument("--freeze-hash", required=True)
+    task_cancel = sub.add_parser("task-cancel", help="取消一个还在排队、没有开始的任务")
+    task_cancel.add_argument("task_id")
     repair_status = sub.add_parser("repair-status")
     repair_status.add_argument("--limit", type=int, default=50)
     session_close = sub.add_parser("session-close")
@@ -1707,6 +1712,15 @@ def main(argv: Optional[list] = None) -> int:
                 ),
                 retested_nodes=retested_nodes(store),
             )
+        except (KeyError, ValueError) as exc:
+            _print({"status": "blocked", "error": str(exc), "task_id": args.task_id}, True)
+            return 1
+        _print(result, True)
+        return 0
+    if args.command in ("task-abandon", "task-cancel"):
+        try:
+            result = (store.abandon_task(args.task_id, args.freeze_hash) if args.command == "task-abandon"
+                      else store.cancel_task(args.task_id))
         except (KeyError, ValueError) as exc:
             _print({"status": "blocked", "error": str(exc), "task_id": args.task_id}, True)
             return 1

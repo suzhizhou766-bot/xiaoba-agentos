@@ -2731,6 +2731,49 @@ class EventStore:
                 )
             return result
 
+    def abandon_task(self, task_id: str, expected_freeze_hash: Optional[str]) -> Dict[str, Any]:
+        """用户放弃一个冻结任务：结束为 failed，冻结记录和已有结论原样保留，不再运行。"""
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if not task:
+                raise KeyError(task_id)
+            if task["status"] not in {"frozen_paused", "resume_ready"}:
+                raise ValueError("task is not frozen")
+            if not expected_freeze_hash:
+                raise ValueError("explicit freeze hash is required")
+            if task["freeze_hash"] != expected_freeze_hash:
+                raise ValueError("freeze hash mismatch")
+            now = time.time()
+            conn.execute(
+                "UPDATE tasks SET status='failed',lease_until=NULL,last_error=?,updated_at=? WHERE id=?",
+                ("用户放弃：冻结后不再恢复", now, task_id),
+            )
+            self._append_event_tx(conn, task_id, "task.abandoned", {
+                "freeze_hash": task["freeze_hash"], "abandoned_from": str(task["status"]),
+                "abandoned_by": "explicit_user_command",
+            })
+            return {"task_id": task_id, "status": "failed", "abandoned": True,
+                    "freeze_hash": task["freeze_hash"], "abandoned_from": str(task["status"])}
+
+    def cancel_task(self, task_id: str) -> Dict[str, Any]:
+        """用户取消一个还在排队、没有开始的任务；正在跑的不取消。"""
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if not task:
+                raise KeyError(task_id)
+            if task["status"] not in {"pending", "retry"}:
+                raise ValueError("only a queued task can be cancelled; this one is " + str(task["status"]))
+            now = time.time()
+            conn.execute(
+                "UPDATE tasks SET status='failed',lease_until=NULL,last_error=?,updated_at=? WHERE id=?",
+                ("用户取消：排队中，没有开始", now, task_id),
+            )
+            self._append_event_tx(conn, task_id, "task.cancelled", {
+                "cancelled_from": str(task["status"]), "cancelled_by": "explicit_user_command"})
+            return {"task_id": task_id, "status": "failed", "cancelled": True, "cancelled_from": str(task["status"])}
+
     def repair_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Historical peer-repair rows, read-only.
 
