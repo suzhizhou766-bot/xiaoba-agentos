@@ -657,7 +657,7 @@ class AestheticsSecondBrainTest(unittest.TestCase):
         )
         rendered = self._build(self._make_root(template=self.real_template))
         recovery = rendered["10_治理与裁决/故障自愈与任务恢复.md"]
-        self.assertIn("不能用缓存健康代替", recovery)
+        self.assertIn("上班不发真实探针，节点要由用户在 Agent 池手动测试", recovery)
         self.assertIn(template_body, recovery)
         self.assertIn('last_verified: "2026-09-26"', recovery)
 

@@ -40,6 +40,19 @@ class ReleaseDocsContractTest(unittest.TestCase):
         self.assertNotIn("两个后台真实探针均通过，才报告可接单", skill)
         self.assertIn("不发真实探针", skill)
 
+    def test_recovery_note_and_generator_use_manual_pool_testing(self):
+        expected = "上班不发真实探针，节点要由用户在 Agent 池手动测试"
+        for relative in ("docs/second_brain/v152_extra_nodes.json", "scripts/build_second_brain.py"):
+            with self.subTest(document=relative):
+                text = read(relative)
+                self.assertIn(expected, text)
+                self.assertNotIn("真实健康标记" + "探针", text)
+
+    def test_release_note_uses_history_release_date_and_scope(self):
+        text = read("docs/RELEASE_V1.6.7.md")
+        self.assertIn("基线为已上线 v1.6.6（2026-11-02）", text)
+        self.assertIn("只修 v1.6.6 发现的问题，并补上冻结任务放弃和排队取消的收口操作", text)
+
 
 if __name__ == "__main__":
     unittest.main()
