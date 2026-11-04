@@ -2575,6 +2575,28 @@ class EventStore:
             )
             return {"task_id": task_id, "status": "frozen_paused", "freeze_hash": freeze_hash, **payload}
 
+    @staticmethod
+    def _verify_frozen_record_integrity(task: sqlite3.Row) -> Dict[str, Any]:
+        """Parse and verify the immutable parts shared by resume and abandon."""
+        try:
+            frozen = json.loads(task["freeze_json"] or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("invalid frozen task record") from exc
+        if not isinstance(frozen, dict):
+            raise ValueError("invalid frozen task record")
+        actual_snapshot_hash = hashlib.sha256(
+            str(task["execution_snapshot_json"] or "").encode("utf-8")
+        ).hexdigest()
+        if (
+            frozen.get("execution_snapshot_hash") != task["execution_snapshot_hash"]
+            or actual_snapshot_hash != task["execution_snapshot_hash"]
+        ):
+            raise ValueError("execution snapshot changed while task was frozen")
+        calculated_freeze_hash = hashlib.sha256(_canonical(frozen).encode()).hexdigest()
+        if calculated_freeze_hash != task["freeze_hash"]:
+            raise ValueError("frozen task record hash mismatch")
+        return frozen
+
     def resume_task(
         self,
         task_id: str,
@@ -2611,23 +2633,7 @@ class EventStore:
                 raise ValueError("explicit freeze hash is required")
             if task["freeze_hash"] != expected_freeze_hash:
                 raise ValueError("freeze hash mismatch")
-            try:
-                frozen = json.loads(task["freeze_json"] or "{}")
-            except json.JSONDecodeError as exc:
-                raise ValueError("invalid frozen task record") from exc
-            if not isinstance(frozen, dict):
-                raise ValueError("invalid frozen task record")
-            actual_snapshot_hash = hashlib.sha256(
-                str(task["execution_snapshot_json"] or "").encode("utf-8")
-            ).hexdigest()
-            if (
-                frozen.get("execution_snapshot_hash") != task["execution_snapshot_hash"]
-                or actual_snapshot_hash != task["execution_snapshot_hash"]
-            ):
-                raise ValueError("execution snapshot changed while task was frozen")
-            calculated_freeze_hash = hashlib.sha256(_canonical(frozen).encode()).hexdigest()
-            if calculated_freeze_hash != task["freeze_hash"]:
-                raise ValueError("frozen task record hash mismatch")
+            frozen = self._verify_frozen_record_integrity(task)
             completed = {str(item.get("run_id")): item for item in frozen.get("completed_runs", [])}
             for run_id, item in completed.items():
                 run = conn.execute(
@@ -2744,6 +2750,7 @@ class EventStore:
                 raise ValueError("explicit freeze hash is required")
             if task["freeze_hash"] != expected_freeze_hash:
                 raise ValueError("freeze hash mismatch")
+            self._verify_frozen_record_integrity(task)
             now = time.time()
             conn.execute(
                 "UPDATE tasks SET status='failed',lease_until=NULL,last_error=?,updated_at=? WHERE id=?",

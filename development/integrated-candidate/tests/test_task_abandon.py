@@ -54,6 +54,19 @@ class AbandonAndCancelTests(unittest.TestCase):
         self.assertIn('freeze hash mismatch', result['error'])
         self.assertEqual('frozen_paused', self.store.get_task(task)['status'])
 
+    def test_abandon_rechecks_freeze_record_when_column_hash_is_unchanged(self):
+        task, freeze = self.frozen()
+        row = self.store.get_task(task)
+        frozen = json.loads(row['freeze_json'])
+        frozen['failures'][0]['error'] = 'tampered after freeze'
+        with self.store.connect() as db:
+            db.execute('UPDATE tasks SET freeze_json=? WHERE id=?', (json.dumps(frozen), task))
+        code, result = self.cli('task-abandon', task, '--freeze-hash', freeze)
+        self.assertEqual(1, code)
+        self.assertIn('frozen task record hash mismatch', result['error'])
+        self.assertEqual('frozen_paused', self.store.get_task(task)['status'])
+        self.assertEqual([], self.events(task, 'task.abandoned'))
+
     def test_abandon_refuses_a_task_that_is_not_frozen(self):
         task = self.store.submit('TEST 没冻结', 3)
         code, result = self.cli('task-abandon', task, '--freeze-hash', 'f' * 64)
