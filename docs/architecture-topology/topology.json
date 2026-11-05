@@ -768,11 +768,20 @@
           },
           "by": "agent",
           "text": "v1.6.6 于 2026-11-03 切换上线，按实际情况更新问题与待办"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793796131588,
+          "before": {
+            "issues": "已安装入口和 session-start 已是 v1.6.6（2026-11-03）；上班不再发真实探针，只报告 Agent 池节点是否够用"
+          },
+          "by": "agent",
+          "text": "v1.6.7 于 2026-11-04 切换上线，按实际情况更新问题与待办"
         }
       ],
       "id": "entry",
       "intent": "上班和派后台任务时必须过的大门，日常任务不需要过；进门前核对已安装版本、配置与源码是同一套，对得上才放行。用户决定：把 v1.6.5 正式接到统一入口上，替换现在装着的 v1.6.4 启动环节，让实际运行和图上的 v1.6.5 流程一致；完成后核实新会话启动走的确实是 v1.6.5。",
-      "issues": "已安装入口和 session-start 已是 v1.6.6（2026-11-03）；上班不再发真实探针，只报告 Agent 池节点是否够用",
+      "issues": "已安装入口和 session-start 已是 v1.6.7（2026-11-04）；上班不再发真实探针，只报告 Agent 池节点是否够用",
       "note": "",
       "pending": false,
       "refs": "~/.agents/skills/xiaoba-agentos/scripts/xiaoba",
@@ -1036,16 +1045,25 @@
           "agent": "Claude",
           "at": 1793674057307,
           "before": {
-            "status": "todo",
-            "issues": "排期：放在「恢复每步一次 CLI 调用＋保留回执卡」完成之后再改\n现状：orchestrator 仍读旧 Worker 后台名单；Agent 池派活只覆盖开放审查与工作卡接口"
+            "issues": "排期：放在「恢复每步一次 CLI 调用＋保留回执卡」完成之后再改\n现状：orchestrator 仍读旧 Worker 后台名单；Agent 池派活只覆盖开放审查与工作卡接口",
+            "status": "todo"
           },
           "by": "agent",
           "text": "v1.6.6 于 2026-11-03 切换上线，按实际情况更新问题与待办"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793796131588,
+          "before": {
+            "issues": "v1.6.6（2026-11-03）起 Worker 只从 Agent 池派活，旧固定后台名单和备用补位退役；真实小审查任务（AGY-Flash＋DSH）已走通\n池节点调用期间定时续租，长审查不再丢执行权\n已知问题：冻结任务 task-resume 后，失败节点因工作区留有失败记录不能重跑，排 v1.6.7；之前冻结了就重新提交\n发布验收只认两个池节点，宿主补票排 v1.6.7"
+          },
+          "by": "agent",
+          "text": "v1.6.7 于 2026-11-04 切换上线，按实际情况更新问题与待办"
         }
       ],
       "id": "worker",
       "intent": "保留编排器，但不再读旧的 AGY＋DSH 固定后台名单，改成按角色从 Agent 池里挑已开启、已测试通过的节点派活。",
-      "issues": "v1.6.6（2026-11-03）起 Worker 只从 Agent 池派活，旧固定后台名单和备用补位退役；真实小审查任务（AGY-Flash＋DSH）已走通\n池节点调用期间定时续租，长审查不再丢执行权\n已知问题：冻结任务 task-resume 后，失败节点因工作区留有失败记录不能重跑，排 v1.6.7；之前冻结了就重新提交\n发布验收只认两个池节点，宿主补票排 v1.6.7",
+      "issues": "v1.6.6（2026-11-03）起 Worker 只从 Agent 池派活，旧固定后台名单和备用补位退役；真实小审查任务（AGY-Flash＋DSH）已走通\n池节点调用期间定时续租，长审查不再丢执行权\nv1.6.7（2026-11-04）起：冻结任务 task-resume 后失败节点能重跑（每次恢复开新记录）；冻结任务可以 task-abandon 放弃，排队任务可以 task-cancel 取消，监看中心冻结任务卡有“放弃”按钮\n发布验收只认两个池节点，宿主补票排 v1.6.8",
       "note": "",
       "pending": false,
       "refs": "integrated-candidate/src/xiaoba_agentos/orchestrator.py",
@@ -1197,11 +1215,20 @@
           },
           "by": "agent",
           "text": "v1.6.6 于 2026-11-03 切换上线，按实际情况更新问题与待办"
+        },
+        {
+          "agent": "Claude",
+          "at": 1793796131588,
+          "before": {
+            "issues": "代码现状：随 v1.6.6 上线（2026-11-03）：节点可修改，入口不锁版本，角色分审查 / 协作 / 两者；任务材料复制进节点工作区并校验哈希\nQoder、CodeBuddy、AGY、DSH 都在验收中真实审过；DSH 默认掉线时限 300 秒不够读材料，节点上要设为 1800\nCLI 用户在场通道（tmux）正式 8799 上还没真实派过卡，见「用户在场通道」\n内置 WorkBuddy 引擎排 v1.6.7 退役，新节点用 WorkBuddy CLI（CodeBuddy）"
+          },
+          "by": "agent",
+          "text": "v1.6.7 于 2026-11-04 切换上线，按实际情况更新问题与待办"
         }
       ],
       "id": "backends",
       "intent": "后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可随时添加、删除、开启、关闭；每个节点单独设角色：审查、分工协作，或两样都做。旧的 AGY＋DSH 固定名单退役。",
-      "issues": "代码现状：随 v1.6.6 上线（2026-11-03）：节点可修改，入口不锁版本，角色分审查 / 协作 / 两者；任务材料复制进节点工作区并校验哈希\nQoder、CodeBuddy、AGY、DSH 都在验收中真实审过；DSH 默认掉线时限 300 秒不够读材料，节点上要设为 1800\nCLI 用户在场通道（tmux）正式 8799 上还没真实派过卡，见「用户在场通道」\n内置 WorkBuddy 引擎排 v1.6.7 退役，新节点用 WorkBuddy CLI（CodeBuddy）",
+      "issues": "代码现状：随 v1.6.6 上线（2026-11-03）：节点可修改，入口不锁版本，角色分审查 / 协作 / 两者；任务材料复制进节点工作区并校验哈希\nQoder、CodeBuddy、AGY、DSH 都在验收中真实审过；DSH 默认掉线时限 300 秒不够读材料，节点上要设为 1800\nCLI 用户在场通道（tmux）正式 8799 上还没真实派过卡，见「用户在场通道」\n内置 WorkBuddy 引擎排 v1.6.8 退役，新节点用 WorkBuddy CLI（CodeBuddy）\n换版本后节点调用摘要会变，所有节点要在 Agent 池重新“测试运行”才派活；节点测试固定 90 秒期限，CodeBuddy 冷启动偶尔超时；失败分类会被读过的源码误导，排 v1.6.8",
       "note": "",
       "pending": false,
       "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py\nreview-ingress/xiaoba_review/agent_pool.py\nreview-ingress/AGENT_POOL.md\nreview-ingress/xiaoba_review/resource_tmux.py",
@@ -4140,6 +4167,6 @@
       "y": 1403
     }
   ],
-  "savedAt": 1793674057307,
+  "savedAt": 1793796131588,
   "version": 1
 }
