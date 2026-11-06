@@ -352,6 +352,17 @@ class Orchestrator:
             files += [item for item in (workflow.get("artifacts") or []) if isinstance(item, dict)]
         return files
 
+    def _review_votes(self, task_id: str) -> Dict[str, Dict[str, Any]]:
+        """本任务的审查票，按节点取该节点最后一次审查用途运行。
+
+        用途写在 `agent.started` 的 execution.purpose 里（页面协作运行写
+        collaboration，Worker 审查运行写 review）。节点测试运行不是这一票，所以等宿主
+        补票期间点一次“测试运行”不会让已跑完的审查票作废。
+        """
+        from .pool_dispatch import review_vote_runs
+        with self.store.read_only() as db:
+            return review_vote_runs(db, task_id)
+
     def _run_agent(self, task_id: str, agent_config: Any, prompt: str, context: str,
                    lease_attempt: Optional[int] = None, is_workflow_work: bool = False) -> AgentResult:
         if agent_config.raw.get("pool_node"):
@@ -371,6 +382,8 @@ class Orchestrator:
                 "driver": str(agent_config.raw.get("driver", agent_config.type)),
                 "gateway_route": agent_config.raw.get("gateway_route"),
                 "cli_route": agent_config.raw.get("cli_route"),
+                # 这一行的用途：等宿主补票时按用途取那一票，节点测试运行不算审查票。
+                "purpose": "work" if is_workflow_work else "review",
             },
         )
         receipt = ExecutionReceiptStore(self.config.runtime_dir / "receipts" / task_id / (str(run_id) + ".json"))
@@ -712,9 +725,11 @@ class Orchestrator:
                 candidate_roster = worker_roster(self.config, self.store, task=candidate)
                 mode = candidate_roster["mode"]
                 if mode in {"pool", "mock"}:
-                    # A pool vote awaiting its host is not rerun on each poll.
+                    # A pool vote awaiting its host is not rerun on each poll. The
+                    # vote is looked up by this task's review run, so a test run of
+                    # the same node (or any other purpose) cannot void it.
                     if candidate_roster.get("host") and all(
-                        _reusable_run(self.store.latest_agent_runs(candidate["id"]).get(a.name))
+                        _reusable_run(self._review_votes(candidate["id"]).get(a.name))
                         for a in candidate_roster["agents"]
                     ):
                         hold = {"status": "awaiting_host", "task_id": candidate["id"], "host": True,

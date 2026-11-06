@@ -1,4 +1,4 @@
-# v1.6.7 运维
+# v1.6.8 运维
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
@@ -22,6 +22,8 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 - 切换成功后会把新发布目录封成只读（文件 0444，可执行文件与目录 0555），结果记在切换返回的 `release_sealed` 里；封不上只报告，不退回已成功的切换。`doctor` 的 `release_read_only` 只报告当前发布目录是否仍是只读，不影响 `ok`。不要手工在发布目录里以会写字节码缓存的方式运行或导入 Python：多出一个字节码缓存文件就会让入口的发布校验失败，小八拒绝运行（v1.6.5 起把发布目录封成只读，正是为了防这一件事）。Worker 服务照常运行发布内的代码，它以不写字节码的方式启动，不受影响。
 - 裁决后端由小八监看中心（`http://127.0.0.1:8799/`，「裁决中心」标签）按需拉起并看护：监看中心开启时运行，关闭时一并停止，没有独立网页，原 `127.0.0.1:8797` 地址与 `com.xiaoba.review-center` LaunchAgent 已停用。监看中心没开时不能在浏览器里裁决，待审队列也不会同步到第二大脑；重新开启后补同步。CLI 的 `review-list`/`review` 不受影响。
 - 裁决后端必须与 Worker 使用同一份 `XIAOBA_CONFIG`。监看中心默认读取 Worker LaunchAgent 里的配置路径；裁决后端运行时把自己实际使用的配置记录在 `<runtime_dir>/review-center/backend-state.json`，`doctor` 的 `config_consistency` 据此把它列为 `review_backend` 一并比对：内容不一致判失败，路径不同但内容相同给警告。后端没在运行（或记录已过期）时跳过，不算失败。旧的 `com.xiaoba.review-center` LaunchAgent 若被重新启用，仍按原规则比对。
+- 裁决中心列表的序号角标（v1.6.8 卡 47）：序号是该条在**全部待审队列**里的位置，后端按登记时间排序；页面搜索或过滤时不重排、序号不变；某条被处理离开队列后，剩下的条目按新队列重新编号。序号只取完整队列快照，不是搜索结果的下标。
+- **已退回的条目不能重复退回**：`revision_requested` 的条目仍留在待审队列里，列表和详情显示「已退回，等作者修改」及上次退回时间、上次意见；「需要修改」按钮置灰并写明「正文未改动，不能重复退回」，**驳回仍可点**，批准路径不变。后端在该条候选正文哈希与上次退回相同时，再提交「需要修改」返回 `already_revision_requested`（带上一次退回时间和意见），不新增裁决、不新增审计记录；作者改过正文（候选正文哈希变化）后再退回照常写入。
 - `intake --submit` 返回 `blocked_local_health` 时任务未入队，按 `blockers` 处理后重新提交。
 - `install-service` 不会自行备份（v1.6.5 起）：服务配置的原内容只留在内存里，安装失败时写回并重启原服务（按 launchctl 的实际结果报告，重启失败会写明）；数据库已是当前结构时不碰；只有数据库确实需要迁移时，命令会停下说明，用户明确同意备份后再加 `--backup-database` 重跑。安装中途失败时，错误信息会写明是否创建过数据库备份，没有创建就明说“本次未创建数据库备份”，不会误报“已恢复备份”；回滚留下的失败副本位置、以及旧 Runner 留在了哪里，也会写进错误信息。重建 Runner 时被替换下来的旧 Runner 移进废纸篓（可恢复），不再留在 `.runtime/backups/runner/`；移不进废纸篓时（比如废纸篓目录不可用），旧 Runner 会留在运行目录里，命令结果会写明它的位置并提示用户处理，绝不会悄悄删掉。`agent-enable` / `agent-disable` 也不再复制配置文件，新配置先写临时文件再整体替换。日志轮转与安装失败的新配置文件仍移到 `.runtime/backups/` 下（是移动现有文件，不是复制备份）。
 - 策略进化已于 2026-10-11 退役（v1.6.4 起代码移除）：`evolve`、`eval`、`replay`、`regression`、`judge-baseline`、`promote`、`rollback` 七个命令只打印“已退役”并以 2 退出，什么都不做；`status` 不再有 `active_strategy`。原 24 个评估用例改为离线测试 `tests/test_offline_judge_cases.py`，每次全量测试都跑。数据库里的 6 张策略表只读保留，不要手动删除，删了旧版就无法退回。
@@ -84,6 +86,34 @@ xiaoba task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json
 
 无需审查的任务使用同一入口，JSON 只需 task_id、snapshot_sha256、reviewer_id、result，result 是宿主实际结果，不加结论抬头。接收回执、最终结果和完成事件在同一事务写入；相同回执可重放、不重复结算，不同回执拒绝覆盖。这里不批准或发布经验，也不调用确定性裁判。
 
+### 发布验收的宿主补票
+
+软件发版门禁至少要 2 份合格结论，可以是“1 份池节点 ＋ 1 份宿主”。门禁函数 `release_acceptance` 一直认这种组合，v1.6.8 起构包从验收数据库取证也照这个收（此前只认两个池节点，宿主结算的任务直接报错）。
+
+**什么时候可以补。** 验收任务由 `task-host-complete` 结算（`provenance_json.kind` 是 `host_review`）、宿主这一票结论是 PASS、任务里至少有 1 份池节点结论时，才谈得上补票。至少 1 份来自池节点、入口程序与模型彼此独立、不恢复固定后台名字和备用补位这几条一条没放宽；两票都是宿主直接拒收。
+
+**怎么补。** 提交验收任务时就声明来源工作任务：
+
+```sh
+xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
+  --host-id ID --host-entry ENTRY --host-model MODEL
+```
+
+这次发版确实没有来源工作任务时，用 `--no-work-task` 明确写明没有。两个都不写，构包看不出谁干过活，拒收。工作做完按上一节的回执格式 `task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json` 结算。
+
+宿主这一票的证据只从 `host.receipt_accepted` 结算记录读：回执正文、回执哈希、`host_id`、模型、`verdict`、`pool_run_ids`；手写进证据 JSON 的结论不算。
+
+**什么情况会被拒（原因各不相同）。**
+
+- 两票都是宿主：`至少 1 份结论来自池节点，不能两票都是宿主`。
+- 宿主是这次的作者或执行者（作者和执行者从声明的来源工作任务的参与记录查，不看宿主自述）：`宿主是作者或执行者，不能计票`。
+- 宿主票没绑同一份冻结题面和源码清单：`宿主回执没有绑定同一份冻结题面与源码清单`。
+- 宿主结论是 FAIL 或 NEEDS_INFO：`宿主结论是 FAIL，不能算通过，构包拒收`（结论照实留在库里，不改写成 PASS）。
+- 验收任务没有声明来源工作任务：`验收任务没有声明来源工作任务…`。
+- 池节点那一票的正文缺审查结论字段、不在这个任务的运行记录里、或节点没开启／没测试通过：分别拒收并写明是哪一份。
+
+等宿主补票期间对池节点点一次“测试运行”不影响已经跑完的这一票：复用按本任务审查用途的那次运行（run_id）取，测试运行和其他用途的运行不参与，也不会让节点重新派活、不增加 `agent_runs` 预算。
+
 ### 工作区、资格与队列
 
 - Agent 工作区根目录沿用 run.py 的 `--agent-workspace-root`，通过同一数据库的 `agent_pool.workspace_bound` 审计事件绑定；Worker、ReviewStore 与页面适配器共享该路径，不增加配置字段。重启沿用原绑定；传入不同根目录拒绝启动，不复制或搬迁既有材料。未绑定且没有有效测试资格的真实节点不派活；tmux 在场通道是例外，它只协作，不进审查和独立性计票。
@@ -115,3 +145,18 @@ xiaoba task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json
 
 
 新增经验分类与受控验证的运行契约及验收条件见 docs/EXPERIENCE_TRIALS.md；技术审计仅结算审计回执，方法必须真实新执行与独立双审后用户终审。历史候选不批量迁移。
+
+## 节点测试期限与失败诊断（v1.6.8 卡 43）
+
+- **测试期限怎么算**：节点测试（健康检查、上班初始化）的运行期限取该节点已设的掉线时限（`no_progress_seconds`），上限 300 秒；节点没设掉线时限时仍是 90 秒。所有 CLI 类型（含 AGY 交互与 AGY CLI 两种）走同一个函数取值，不再各自写死常量；工作调用不受影响（AGY 工作调用不向 CLI 传期限，仍为 0 秒）。掉线时限只在 Agent 池编辑节点处修改，不新增节点配置字段。
+- **错误尾部在哪看**：节点测试失败时，测试记录新增 `error_tail`：stderr 最后 2 KB 经 `_redact_error` 脱敏后的文字；stderr 为空时取 stdout 最后 2 KB 中不是结构化事件（不能解析成 JSON 的行）的文字，同样脱敏。Agent 池节点卡片显示“错误尾部（已脱敏 · 仅末段）”；`doctor` 结果的 `review_node_error_tails` 列出同样的内容。原始 stdout 不保存、不落盘。
+- **失败分类只看诊断文字**：分类匹配只读 stderr 全文，加上 stdout 最后 4 KB 里不是结构化事件的文字；读过的源码、工具结果都在结构化事件里，不参与匹配。`call_terminated`、`permission_denied` 的判定顺序不变，既有分类测试全部照旧。
+
+## 内置 WorkBuddy 引擎退役（v1.6.8 卡 45）
+
+- **退役了什么**：Agent 池的 `workbuddy` 类型（WorkBuddy 桌面附带的内置精简引擎，原生 `--serve` + ACP HTTP/SSE、事件流上限 1 MiB）不再维护。`resource_workbuddy.py`、`workbuddy_login.py` 已移出仓库（移入私人助理 `_待删/内置WorkBuddy引擎-20261106`，由用户清空）；`RESOURCES` 表、身份摘要名单、登录提示、类型推断里的对应分支一并清掉。CodeBuddy CLI（`codebuddy` 类型，入口 `~/.local/bin/codebuddy`）不受影响，调用方式、参数与行为与改动前一致。
+- **新建节点**：Agent 池页面类型下拉和接口都不再提供 `workbuddy`，提交会被拒绝并给出迁移办法。`workbuddy` 仍留在类型清单里，只用于识别旧数据，不当作可选项。
+- **已有旧节点**：数据不动、类型不自动改。测试运行与派活直接返回错误码 `engine_retired`（HTTP 400 的 `error` 文本带迁移提示），不起进程、不写测试记录、不动 `revision`；`doctor` 在 `warnings` 里按现有警告格式列出这些节点（不参与 `ok`），Agent 池节点卡片也标出退役。
+- **迁移办法**：编辑该节点，把类型改成 WorkBuddy CLI（CodeBuddy），入口填本机 `codebuddy` 的可执行路径，模型按需填写，再点测试运行。旧节点改名称、掉线时限等其它字段仍可编辑。
+- **入口名 `codebuddy` 的推断**：v1.6.8 起入口名 `codebuddy` 判成 `codebuddy` 类型（原来归到 `workbuddy`）；判独立仍把两类算同一个来源，`workbuddy` 只由显式类型或 `workbuddy` 入口名留给旧节点。线上 v1.6.7 池的 CodeBuddy 节点已显式存 `agent_type=codebuddy`，切换后行为不变；线上池只读盘点（2026-11-06）没有 `workbuddy` 类型节点，不需要迁移。
+- **ACP**：Agent 池退役内置引擎后就没有 ACP 通道了，ACP 另走卡 48 实测。`implementation_sha256` 随本次改动变化，池里已有节点要重新测试运行才算通过。

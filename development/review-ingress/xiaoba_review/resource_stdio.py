@@ -7,6 +7,8 @@ import signal
 import subprocess
 import tempfile
 
+from xiaoba_agentos.pool_dispatch import WORKBUDDY_RETIRED_CODE, WORKBUDDY_RETIRED_MESSAGE
+
 
 class JsonStdioResource:
     supports_resource_plan = True
@@ -69,6 +71,39 @@ class JsonStdioResource:
         return result
 
 
+class RetiredEngineResource:
+    """卡 45：内置 WorkBuddy 引擎已退役。
+
+    旧节点不自动改类型、数据不动；这里只回固定错误，绝不起进程、不读入口、
+    不碰桌面登录材料。`retired_message` 是给 Agent 池认的标记。
+    """
+    supports_resource_plan = False
+    retired_message = WORKBUDDY_RETIRED_MESSAGE
+
+    def __init__(self, source):
+        self.kind, self.source_ref = source['kind'], source['source_ref']
+
+    @staticmethod
+    def _error():
+        from .resource_agy import InteractiveError
+        return InteractiveError(WORKBUDDY_RETIRED_CODE, WORKBUDDY_RETIRED_MESSAGE)
+
+    def resource_identity(self):
+        raise self._error()
+
+    def test_resource(self, plan, challenge):
+        raise self._error()
+
+    def run(self, card):
+        raise self._error()
+
+    def run_task(self, *args, **kwargs):
+        raise self._error()
+
+    def close(self):
+        return None
+
+
 def json_stdio_factory(source, workspace_root=None, agy_mode='cli'):
     # agy_mode is for tests and a future explicit setting only; it is never
     # accepted from the page or an HTTP body.  The default is one CLI call per
@@ -76,6 +111,9 @@ def json_stdio_factory(source, workspace_root=None, agy_mode='cli'):
     node=source.get('node',{})
     from .cli_identity import agent_type
     kind = agent_type(node)
+    # 卡 45：内置 WorkBuddy 引擎退役。旧节点仍按 workbuddy 识别，但一律回退役错误。
+    if node.get('interface')=='cli' and kind == 'workbuddy':
+        return RetiredEngineResource(source)
     if node.get('interface')=='cli' and kind == 'agy':
         if agy_mode=='interactive':
             from .resource_agy import AgyInteractiveResource

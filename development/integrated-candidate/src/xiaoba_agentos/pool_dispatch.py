@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -38,10 +39,21 @@ NO_INDEPENDENT = "无独立审查"
 NO_COLLAB = "没有协作节点，这次不排队"
 AWAITING_HOST = "这次没有需要审查的经验，留给宿主完成。"
 DEFAULT_NO_PROGRESS_SECONDS = 300
+# 卡 45（v1.6.8）：内置 WorkBuddy 引擎退役。类型 "workbuddy" 只保留用于识别旧节点
+# 数据；新建节点不再提供该类型，旧节点的测试运行与派活一律返回这个错误码与提示。
+# CodeBuddy CLI（"codebuddy"）不受影响，调用方式与参数保持原样。
+WORKBUDDY_RETIRED_CODE = "engine_retired"
+WORKBUDDY_RETIRED_MESSAGE = (
+    "内置 WorkBuddy 引擎已退役，请把这个节点的类型改成 WorkBuddy CLI（CodeBuddy），"
+    "入口填 codebuddy 的路径，再测试运行。"
+)
 _CLI_TYPES = ("agy", "dsh", "qoder", "workbuddy", "codebuddy", "codex", "claude", "other")
 _ENTRY_TYPES = {
     "agy": "agy", "antigravity": "agy", "dsh": "dsh", "qoder": "qoder",
-    "qodercli": "qoder", "codebuddy": "workbuddy", "workbuddy": "workbuddy",
+    "qodercli": "qoder",
+    # 卡 45：入口名 codebuddy 判成 codebuddy（CLI），不再当 workbuddy 的别名；
+    # 入口名 workbuddy 的旧内置引擎条目仍判 workbuddy 以识别旧节点。
+    "codebuddy": "codebuddy", "workbuddy": "workbuddy",
     "codex": "codex", "codex.js": "codex", "claude": "claude",
 }
 
@@ -209,6 +221,21 @@ def node_view(source: Dict[str, Any], store: Any = None) -> Dict[str, Any]:
 
 def load_nodes(store: Any) -> List[Dict[str, Any]]:
     return [node_view(source, store) for source in load_sources(store)]
+
+
+def retired_engine_warnings(nodes: Iterable[Dict[str, Any]]) -> List[str]:
+    """卡 45：把已退役的内置 WorkBuddy 引擎节点写进现有警告格式。
+
+    只读：不改节点数据，也不参与 doctor 的 ok 判定。没有退役节点时返回空列表。
+    """
+    retired = [view for view in nodes if view.get("agent_type") == "workbuddy"]
+    if not retired:
+        return []
+    names = "、".join(str(view.get("name") or view.get("node_id")) for view in retired)
+    return [
+        "Agent 池里有 " + str(len(retired)) + " 个内置 WorkBuddy 引擎节点已退役，"
+        "测试运行和派活都会被拒绝：" + names + "；" + WORKBUDDY_RETIRED_MESSAGE
+    ]
 
 
 def retested_nodes(store: Any) -> Dict[str, float]:
@@ -491,6 +518,65 @@ def intake_blockers(store: Any, *, needs_review: bool = True, needs_collab: bool
     return blockers
 
 
+# 运行用途：`agent.started` 的 execution.purpose 已经有两个值（页面的协作运行写
+# `collaboration`，Worker 的审查运行写 `review`）。没有写 purpose 的是旧记录，按审查票
+# 处理；显式写了别的用途（节点测试运行、协作运行）的运行不是这一票。
+REVIEW_RUN_PURPOSES = (None, "", "review")
+
+
+def review_vote_runs(db: Any, task_id: str) -> Dict[str, Dict[str, Any]]:
+    """本任务的审查票按节点取最后一次，取的是那次运行的 run_id，不是“最新一行”。
+
+    节点测试运行、协作运行即使写了同一个 agent_name，也不参与这一票：等宿主补票期间
+    点一次“测试运行”不会让已跑完的审查票作废，也不会让节点被重新派活。
+    """
+    runs = [dict(row) for row in db.execute(
+        "SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at", (task_id,))]
+    purposes: Dict[str, Any] = {}
+    for row in db.execute(
+        "SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.started'", (task_id,)
+    ):
+        try:
+            payload = json.loads(str(row[0]))
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        run_id = str(payload.get("run_id") or "")
+        if not run_id:
+            continue
+        execution = payload.get("execution") if isinstance(payload.get("execution"), dict) else {}
+        purposes[run_id] = execution.get("purpose")
+    votes: Dict[str, Dict[str, Any]] = {}
+    for run in runs:
+        if purposes.get(str(run.get("id"))) not in REVIEW_RUN_PURPOSES:
+            continue
+        votes[str(run.get("agent_name"))] = run
+    return votes
+
+
+REVIEW_VERDICT_FIELD = re.compile(
+    r"(?:审查结论|结论|verdict|FINAL_ACCEPTANCE)\s*[:：]\s*(?:\*\*)?\s*(PASS|FAIL|NEEDS_INFO)")
+
+
+def review_vote_problem(text: Any) -> str:
+    """池节点这一票的正文必须能当审查回执用：非空、过 B19、写明审查结论字段。
+
+    缺结论字段的正文（例如节点测试运行回显的挑战原文）不是审查回执，不能算这一票。
+    """
+    from .output_hygiene import contains_non_answer_markers, detect_reasoning_leak
+    if not isinstance(text, str) or not text.strip():
+        return "正文为空"
+    if contains_non_answer_markers(text) or detect_reasoning_leak(text):
+        return "正文违反 B19"
+    verdicts = set(REVIEW_VERDICT_FIELD.findall(text))
+    if not verdicts:
+        return "缺少审查结论字段（PASS / FAIL / NEEDS_INFO）"
+    if len(verdicts) > 1:
+        return "审查结论自相矛盾"
+    return ""
+
+
 def runnable_tasks(store: Any) -> List[Dict[str, Any]]:
     import time
     with store.read_only() as conn:
@@ -529,6 +615,25 @@ def needs_review(task: Dict[str, Any]) -> bool:
 
 def legacy_names(names: Iterable[str]) -> bool:
     return bool(set(names) & LEGACY_AGENT_NAMES)
+
+
+def declared_work_tasks(snapshot: Dict[str, Any]) -> Tuple[List[str], bool]:
+    """任务自己声明的来源工作任务，以及有没有明确写“没有来源工作任务”。
+
+    发布验收要从来源任务读出作者和执行者，所以验收任务必须声明来源（`--work-task`），
+    或者明确写明没有（`--no-work-task`）。什么都不写不算声明，构包拒收。
+    """
+    context = snapshot.get("review_context") if isinstance(snapshot.get("review_context"), dict) else {}
+    workflow = snapshot.get("workflow") if isinstance(snapshot.get("workflow"), dict) else {}
+    declared = []
+    for value in (context.get("work_task_id"), workflow.get("work_task_id")):
+        if isinstance(value, str) and value.strip():
+            declared.append(value.strip())
+    for value in snapshot.get("source_task_ids") or []:
+        if isinstance(value, str) and value.strip():
+            declared.append(value.strip())
+    explicit_none = bool(context.get("no_work_task") or snapshot.get("no_work_task"))
+    return sorted(set(declared)), explicit_none
 
 
 def _bound(item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:

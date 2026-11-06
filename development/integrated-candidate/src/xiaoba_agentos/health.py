@@ -459,8 +459,27 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
     # Reviewer shortage is reported on its own. It does not flip doctor.ok:
     # nodes are created in the new page, and the new doctor must already pass
     # before that page exists. Tasks that need review stay blocked until then.
-    from .pool_dispatch import _mock_agents, load_nodes, review_report
-    checks["review_nodes"] = review_report(load_nodes(store))
+    from .pool_dispatch import _mock_agents, load_nodes, retired_engine_warnings, review_report
+    nodes = load_nodes(store)
+    checks["review_nodes"] = review_report(nodes)
+    # 卡 45：内置 WorkBuddy 引擎已退役。旧节点数据保留，这里只按现有警告格式标出来，
+    # 不改节点数据、不参与 ok 判定；测试运行与派活由 Agent 池自己拒绝。
+    checks["warnings"].extend(retired_engine_warnings(nodes))
+    # 卡 43：doctor 只读展示节点测试失败时已脱敏的错误尾部（review-ingress 在
+    # 测试记录里写好 error_tail，这里只读取既有字段）；不参与 ok 判定，不改变
+    # 其它 doctor 语义。
+    checks["review_node_error_tails"] = []
+    for view in nodes:
+        test = ((view.get("_source") or {}).get("node") or {}).get("test") or {}
+        tail = test.get("error_tail")
+        if isinstance(tail, str) and tail.strip():
+            checks["review_node_error_tails"].append({
+                "node_id": view.get("node_id"),
+                "test_id": test.get("test_id"),
+                "status": test.get("status"),
+                "reason": test.get("reason"),
+                "error_tail": tail,
+            })
     if _mock_agents(config):
         enough_agents = len(config.primary_agents) >= checks["minimum_successful_agents"] > 0
     else:

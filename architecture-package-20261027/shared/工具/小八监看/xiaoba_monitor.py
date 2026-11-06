@@ -32,11 +32,12 @@ from monitor_core.modules.overview import OverviewModule
 from monitor_core.modules.review import ReviewModule
 from monitor_core.modules.stage import StageModule
 from monitor_core.modules.system import SystemModule
+from monitor_core.modules.taskcards import TaskCardsModule
 from monitor_core.supervise import Backoff, Breaker, ManagedProcess
 from monitor_core.web import App, Context
 
 # 模块注册表：顺序即启动顺序。
-MODULES = [SystemModule, ReviewModule, FrozenModule, OverviewModule, DirectorModule, LocalToolsModule, StageModule, KeyPoolModule, BackendsModule]
+MODULES = [SystemModule, ReviewModule, FrozenModule, OverviewModule, DirectorModule, LocalToolsModule, StageModule, KeyPoolModule, BackendsModule, TaskCardsModule]
 
 ROOT = Path(__file__).resolve().parent
 RUN_DIR = ROOT / "run"

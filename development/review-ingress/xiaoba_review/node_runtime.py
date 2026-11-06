@@ -7,6 +7,7 @@ import time
 from .agent_pool import independence, node_state, require_enabled, resource_plan
 from .store import Conflict, canonical, digest, identifier
 from xiaoba_agentos.output_hygiene import contains_non_answer_markers, detect_reasoning_leak
+from xiaoba_agentos.pool_dispatch import WORKBUDDY_RETIRED_CODE, WORKBUDDY_RETIRED_MESSAGE
 
 
 FIELDS = {'name':'Agent 如何命名？', 'interface':'使用哪种调用方式：CLI、桌面端还是 Web？',
@@ -26,6 +27,12 @@ def spec(source):
             **({'agent_type':node['agent_type']} if 'agent_type' in node else {})}
 
 
+def retired_error():
+    """卡 45：内置 WorkBuddy 引擎已退役；测试运行与派活都用这个错误码和提示。"""
+    from .resource_agy import InteractiveError
+    return InteractiveError(WORKBUDDY_RETIRED_CODE, WORKBUDDY_RETIRED_MESSAGE)
+
+
 def missing_fields(node):
     return [k for k in FIELDS if not node.get(k) and not (k == 'model' and node.get('interface') == 'cli')]
 
@@ -38,6 +45,8 @@ def readiness(db, source, adapter_for):
     if node.get('interface') == 'tmux':return {'ready':False,'reason':'tmux_collaborator_only'}
     if node.get('test_running'):return {'ready':False,'reason':'testing'}
     adapter=adapter_for(source)
+    # 卡 45：内置 WorkBuddy 引擎已退役。旧节点数据不动，这里只报退役原因。
+    if getattr(adapter,'retired_message',None):return {'ready':False,'reason':WORKBUDDY_RETIRED_CODE}
     if not adapter or not getattr(adapter,'supports_resource_plan',False):
         return {'ready':False,'reason':'adapter_required'}
     if getattr(adapter,'pending_action',None):return {'ready':False,'reason':'native_confirmation_required'}
@@ -132,7 +141,11 @@ class NodeRuntime:
                 # Attended work bypasses automated health probes, never review gates.
                 attended = source
             else:attended = None
-            if attended is None and not self.readiness(db,source)['ready']:raise ValueError('节点尚未通过当前配置健康检测，未派发工作')
+            if attended is None:
+                check=self.readiness(db,source)
+                if not check['ready']:
+                    if check.get('reason')==WORKBUDDY_RETIRED_CODE:raise retired_error()
+                    raise ValueError('节点尚未通过当前配置健康检测，未派发工作')
             adapter=None if attended is not None else self.backends.adapter_for(source)
             if attended is None and not callable(getattr(adapter,'run_task',None)):raise ValueError('该节点尚未接入工作文件回执')
         if attended is not None:
@@ -199,6 +212,8 @@ class NodeRuntime:
             if node.get('test_running') and node.get('test_deadline',0)>time.time():raise Conflict('该节点正在测试，请等待原测试结果')
             if node['revision']!=expected_revision:raise Conflict('节点已变化，请刷新后测试')
             adapter=self.backends.adapter_for(source)
+            retired=getattr(adapter,'retired_message',None)
+            if retired:return {'status':'blocked','reason':WORKBUDDY_RETIRED_CODE,'message':retired}
             if not adapter or not getattr(adapter,'supports_resource_plan',False) or not callable(getattr(adapter,'test_resource',None)):
                 return {'status':'blocked','reason':'adapter_required','message':'此调用方式尚未接入受信调用器；不会把配置登记当成测试通过。'}
             try:identity=adapter.resource_identity()
@@ -210,7 +225,7 @@ class NodeRuntime:
             node['test_running']=test_id;node['test_deadline']=time.time()+getattr(adapter,'test_budget_seconds',60);node['test']={'status':'running','test_id':test_id};source['node']=node
             db.execute('UPDATE ri_sources SET data=? WHERE id=?',(canonical(source),node_id))
             self.store.native._append_event_tx(db,None,'agent_pool.test_started',{'node_id':node_id,'test_id':test_id,'spec_digest':plan_digest})
-        challenge=identifier();status='failed';reason='execution_failed';proof=None;evidence=None;message=None;model_tasks_sent=None
+        challenge=identifier();status='failed';reason='execution_failed';proof=None;evidence=None;message=None;model_tasks_sent=None;error_tail=None
         try:
             result=adapter.test_resource(plan,challenge)
             text=result.get('output')
@@ -240,6 +255,9 @@ class NodeRuntime:
                 message='入口未按节点协议或本次挑战返回；请核对 Agent 类型、调用入口、登录和模型配置。未标记测试通过，不自动重试。'
             if getattr(exc,'occupant',None):message=self.occupied_message(exc)
             model_tasks_sent=getattr(exc,'model_tasks_sent',None)
+            # 卡 43：失败记录保留脱敏后的错误尾部（适配器在异常上挂好，这里只取）。
+            tail=getattr(exc,'error_tail',None)
+            if isinstance(tail,str) and tail.strip():error_tail=tail
             if reason in {'native_workspace_trust_required', 'permission_denied'}:status='blocked'
         with self.store.transaction() as db:
             current=self.store.source(db,node_id);node=node_state(current)
@@ -249,6 +267,7 @@ class NodeRuntime:
             test={'status':status,'reason':reason,'test_id':test_id,'spec_digest':plan_digest,
                   'runner_digest':digest(identity),'evidence_digest':proof,'execution_evidence':evidence if status=='passed' else None,'finished_at':time.time()}
             if message:test['message']=message
+            if error_tail:test['error_tail']=error_tail
             if model_tasks_sent is not None:test['model_tasks_sent']=model_tasks_sent
             event=self.store.native._append_event_tx(db,None,'agent_pool.test_finished',{'node_id':node_id,'test':test})
             node['test']={**test,'event_id':event};node.pop('test_running',None);node.pop('test_deadline',None);node['revision']+=1;current['node']=node

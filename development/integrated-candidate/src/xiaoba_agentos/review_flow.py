@@ -119,14 +119,58 @@ def publish_approved_candidate(
     return result, published
 
 
+def conclusion_cites_source(store: EventStore, task_id: str, reuse: Dict[str, Any]) -> bool:
+    """这次任务真的用到这条经验了吗？
+
+    只按现有证据判：任务的结论（tasks.result）里必须出现这条经验的笔记名或任务编号。
+    只被检索命中、结论里没引用的，不算一次使用，也就不能因为任务失败把它降级。
+    """
+    task = store.get_task(task_id) or {}
+    conclusion = str(task.get("result") or "")
+    if not conclusion.strip():
+        return False
+    source_task_id = str(reuse.get("source_task_id") or "")
+    source = store.get_memory_candidate(source_task_id) if source_task_id else None
+    identifiers = {source_task_id}
+    for raw in (reuse.get("source_path"), (source or {}).get("published_path")):
+        if raw:
+            identifiers.add(Path(str(raw)).stem)
+    return any(identifier and identifier in conclusion for identifier in identifiers)
+
+
+def _archive_rejected_note(
+    config: AppConfig, store: EventStore, task_id: str, candidate: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """驳回待复验经验后归档：走现有 retire_candidate，和第二轮试验失败同一条路径。
+
+    笔记移出活动目录、索引里不留链接、留一份归档；正文状态改回
+    revalidation_required 由 retire_candidate 自己完成。没发布过笔记的候选不需要归档。
+    """
+    published_path = (candidate or {}).get("published_path")
+    if not published_path:
+        return None
+    try:
+        return MemoryBridge(config).retire_candidate(task_id, str(published_path))
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        return {"error": str(exc)}
+
+
+def cited_source_ids(store: EventStore, task_id: str) -> list:
+    """这次任务真正用到的来源（结论里有引用的）。只命中不算。"""
+    return [str(item["source_task_id"]) for item in store.memory_reuses(task_id, "pending")
+            if conclusion_cites_source(store, task_id, item)]
+
+
 def quarantine_pending_reuses(
-    config: AppConfig, store: EventStore, task_id: str
+    config: AppConfig, store: EventStore, task_id: str, only: Optional[set] = None
 ) -> list:
     """Fail closed before committing a negative reuse outcome in SQLite."""
     bridge = MemoryBridge(config)
     errors = []
     for reuse in store.memory_reuses(task_id, "pending"):
         source_task_id = str(reuse["source_task_id"])
+        if only is not None and source_task_id not in only:
+            continue
         source = store.get_memory_candidate(source_task_id)
         if not source:
             errors.append({"task_id": source_task_id, "error": "source memory database row is missing"})
@@ -147,12 +191,23 @@ def quarantine_pending_reuses(
 def reconcile_failed_reuses(
     config: AppConfig, store: EventStore, task_id: str
 ) -> tuple[list, list, list]:
-    """Quarantine, settle, and if necessary retire failed source memories."""
-    errors = quarantine_pending_reuses(config, store, task_id)
+    """Quarantine, settle, and if necessary retire failed source memories.
+
+    只有“真的被这次任务结论引用”的命中才算一次失败复用。只是检索命中的，
+    留一条 memory.reuse_uncited 事件、保持 pending，既不隔离也不降级。
+    """
+    pending = store.memory_reuses(task_id, "pending")
+    cited = cited_source_ids(store, task_id)
+    uncited = [str(item["source_task_id"]) for item in pending
+               if str(item["source_task_id"]) not in cited]
+    if uncited:
+        store.record_uncited_reuses(task_id, uncited)
+    cited_sources = set(cited)
+    errors = quarantine_pending_reuses(config, store, task_id, only=cited_sources)
     if errors:
         return [], [], errors
     try:
-        store.decide_reuse_outcomes(task_id, False)
+        store.decide_reuse_outcomes(task_id, False, sources=cited_sources)
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         return [], [], [{"task_id": task_id, "error": f"reuse database settlement failed: {exc}"}]
 
@@ -201,10 +256,21 @@ def reconcile_failed_reuses(
 def reconcile_validated_reuses(
     config: AppConfig, store: EventStore, task_id: str
 ) -> tuple[list, list, list]:
-    """Settle successful reuse and restore every validated source to the active tree."""
+    """Settle successful reuse and restore every validated source to the active tree.
+
+    和失败侧一样：只有这次任务结论真的引用到的经验才算一次使用。只被检索
+    命中的留一条 memory.reuse_uncited 事件、保持 pending，既不加成功复用分，
+    也不会把待复验的经验误判成已复活。
+    """
     errors = []
+    pending = store.memory_reuses(task_id, "pending")
+    cited = set(cited_source_ids(store, task_id))
+    uncited = [str(item["source_task_id"]) for item in pending
+               if str(item["source_task_id"]) not in cited]
+    if uncited:
+        store.record_uncited_reuses(task_id, uncited)
     try:
-        store.decide_reuse_outcomes(task_id, True)
+        store.decide_reuse_outcomes(task_id, True, sources=cited)
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         return [], [], [{"task_id": task_id, "error": f"reuse database settlement failed: {exc}"}]
     records = store.memory_reuses(task_id, "validated")
@@ -266,7 +332,9 @@ def execute_review(
                 return 1, {"status": "blocked", "error": f"经验终审门禁拒绝: {reasons}"}
     if stage == "final" and decision == "reject":
         try:
-            quarantine_errors = quarantine_pending_reuses(config, store, task_id)
+            quarantine_errors = quarantine_pending_reuses(
+                config, store, task_id, only=set(cited_source_ids(store, task_id))
+            )
         except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
             quarantine_errors = [{"task_id": task_id, "error": str(exc)}]
         if quarantine_errors:
@@ -422,6 +490,22 @@ def execute_review(
                 }
             )
     elif stage == "final" and decision == "reject":
+        archive = _archive_rejected_note(config, store, task_id, candidate)
+        if archive is not None:
+            result["rejected_note_archive"] = archive
+            if archive.get("error"):
+                return 1, (
+                    {
+                        **reconciliation_payload(
+                            task_id,
+                            "rejected_note_archive",
+                            [{"task_id": task_id, "error": archive["error"]}],
+                            f"agentos memory-retire {task_id} --reason <reason>",
+                        ),
+                        **result,
+                        "status": "reconciliation_required",
+                    }
+                )
         try:
             affected, automatic_retirements, retirement_errors = reconcile_failed_reuses(
                 config, store, task_id

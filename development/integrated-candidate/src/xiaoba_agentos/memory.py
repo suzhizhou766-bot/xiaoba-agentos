@@ -160,7 +160,7 @@ class MemoryBridge:
         checked = 0
         for candidate in candidates:
             status = str(candidate.get("status") or "")
-            if status not in {"published", "revalidation_required", "retired"}:
+            if status not in {"published", "revalidation_required", "retired", "final_rejected"}:
                 continue
             checked += 1
             task_id = str(candidate.get("task_id") or "")
@@ -178,6 +178,15 @@ class MemoryBridge:
             link_count = sum(
                 1 for line in catalog_text.splitlines() if line.strip() == link_line
             )
+            if status == "final_rejected":
+                # 被驳回的经验应当已经归档：活动目录里还留着笔记、或索引里还有链接，
+                # 都要报出来，否则用户以为驳回生效了，检索却还能碰到它。
+                if active_target.exists():
+                    problems.append(f"{task_id}:final_rejected_note_still_active")
+                if link_count:
+                    problems.append(f"{task_id}:final_rejected_catalog_link_present")
+                continue
+
             if status == "retired":
                 archive = Path(str(candidate.get("published_path") or "")).expanduser()
                 if not archive.is_file() or archive.is_symlink():
@@ -1255,6 +1264,126 @@ class MemoryBridge:
             line for line in text.splitlines() if line.strip() != link_line
         ).rstrip() + "\n"
 
+    @staticmethod
+    def _note_status(text: str) -> str:
+        """笔记 frontmatter 里的 status；没有就返回空串。"""
+        head = re.search(r"\A---[ \t]*\n.*?\n---[ \t]*\n", text, re.DOTALL)
+        body = text[:head.end()] if head else text
+        match = re.search(r'^status:\s*["\']?([^"\'\n]+)', body, re.MULTILINE)
+        return match.group(1).strip() if match else ""
+
+    @classmethod
+    def _experience_body(cls, text: str) -> str:
+        """去掉 frontmatter 和首个一级标题后的正文；重命名标题不算改动，正文字动才算。"""
+        head = re.search(r"\A---[ \t]*\n.*?\n---[ \t]*\n", text, re.DOTALL)
+        body = text[head.end():] if head else text
+        lines = body.strip().splitlines()
+        for index, line in enumerate(lines):
+            if line.strip():
+                if line.lstrip().startswith("# "):
+                    lines = lines[index + 1:]
+                break
+        return "\n".join(lines).strip()
+
+    @classmethod
+    def _recovery_note_matches(cls, existing: str, published_text: str) -> bool:
+        """恢复前核对正文：只比去掉标题的正文，frontmatter 日期与标题重命名不算改动。"""
+        return cls._experience_body(existing) == cls._experience_body(published_text)
+
+    @classmethod
+    def _recovery_mismatch_reason(cls, existing: str, published_text: str) -> str:
+        left, right = cls._experience_body(existing), cls._experience_body(published_text)
+        if len(left) != len(right):
+            return f"正文字节数不同（笔记 {len(left)}，已批准 {len(right)}）"
+        first = next((index for index, pair in enumerate(zip(left, right)) if pair[0] != pair[1]), 0)
+        return f"正文内容逐字不同，首个差异在第 {first + 1} 个字符"
+
+    def _recover_revalidation_unlocked(
+        self,
+        task_id: str,
+        target: Path,
+        existing: str,
+        catalog: Path,
+        original_catalog: str,
+        link: str,
+        journal_path: Path,
+        source_sha256: str,
+    ) -> Dict[str, Any]:
+        """把被标成待复验、链接被摘的经验恢复回可检索状态。
+
+        只做三件可撤回的事：加回经验索引链接、把笔记 status 改回 active、重建并校验检索索引。
+        正文核对由调用方先做；这里另写一份恢复日志，崩溃后重跑能续上或回滚，不留半成品。
+        """
+        vault = Path(self.config.memory["obsidian_vault"]).expanduser().resolve()
+        recovery_journal = self.outbox / f"{task_id}.revalidation-recovery.json"
+        intent = {
+            "task_id": task_id,
+            "target": str(target),
+            "source_sha256": source_sha256,
+            "note_body_sha256": hashlib.sha256(self._experience_body(existing).encode("utf-8")).hexdigest(),
+            "catalog_before": hashlib.sha256(original_catalog.encode("utf-8")).hexdigest(),
+            "phase": "prepared",
+            "started_at": time.time(),
+        }
+        self._atomic_write_text(recovery_journal, json.dumps(intent, ensure_ascii=False))
+        updated = existing
+        if self._note_status(existing) != "active":
+            updated, status_count = re.subn(
+                r'^status:\s*"(?:active|revalidation_required)"\s*$',
+                'status: "active"',
+                existing,
+                count=1,
+                flags=re.MULTILINE,
+            )
+            if status_count != 1:
+                raise RuntimeError("published memory status field is invalid")
+        link_added = link not in original_catalog
+        written_catalog = written_note = False
+        try:
+            # 链接先回、状态后改：与 set_validation_status 的重新激活顺序一致，
+            # 链接回来时笔记还没标回 active，不会先被检索到。
+            if link_added:
+                self._atomic_write_text(catalog, original_catalog.rstrip() + f"\n- {link}\n")
+                written_catalog = True
+                intent["phase"] = "catalog_installed"
+                self._atomic_write_text(recovery_journal, json.dumps(intent, ensure_ascii=False))
+            if updated != existing:
+                self._atomic_write_text(target, updated)
+                written_note = True
+                intent["phase"] = "note_reactivated"
+                self._atomic_write_text(recovery_journal, json.dumps(intent, ensure_ascii=False))
+            index_evidence = self._rebuild_and_verify_index(vault)
+        except Exception:
+            if written_catalog:
+                self._atomic_write_text(catalog, original_catalog)
+            if written_note and target.is_file():
+                self._atomic_write_text(target, existing)
+            intent["phase"] = "rolled_back"
+            self._atomic_write_text(recovery_journal, json.dumps(intent, ensure_ascii=False))
+            raise
+        intent["phase"] = "complete"
+        intent["completed_at"] = time.time()
+        self._atomic_write_text(recovery_journal, json.dumps(intent, ensure_ascii=False))
+        # 首次发布那份日志记的是隔离前的笔记哈希：恢复成功后一并更新，
+        # 这样下次重试走幂等分支，不会把这次合法恢复读成“笔记被改过”。
+        if journal_path.is_file():
+            journal = json.loads(journal_path.read_text())
+            journal["note_sha256"] = hashlib.sha256(updated.encode("utf-8")).hexdigest()
+            journal["phase"] = "complete"
+            self._atomic_write_text(journal_path, json.dumps(journal, ensure_ascii=False))
+        pending_source = self.staged_path(task_id)
+        if pending_source.is_file():
+            os.replace(pending_source, self.outbox / f"{task_id}.published")
+        return {
+            "published": 1,
+            "task_id": task_id,
+            "path": str(target),
+            "sha256": hashlib.sha256(updated.encode("utf-8")).hexdigest(),
+            "recovered": 1,
+            "link_restored": link_added,
+            "index": index_evidence,
+        }
+
     def publish_candidate(self, task_id: str, expected_sha256: Optional[str] = None) -> Dict[str, Any]:
         with self._publication_lock():
             return self._publish_candidate_unlocked(task_id, expected_sha256)
@@ -1332,6 +1461,20 @@ class MemoryBridge:
             original_catalog_mode = None
         if target.exists():
             existing = target.read_text(encoding="utf-8")
+            # 待复验的笔记：链接被摘、status 被改成 revalidation_required。
+            # 再批准它不是一次全新发布，要走专门的恢复路径；正文对不上就拒绝并说清哪里对不上。
+            quarantined = (f'source_task_id: "{task_id}"' in existing
+                           and self._note_status(existing) == "revalidation_required")
+            if quarantined:
+                if not self._recovery_note_matches(existing, published_text):
+                    raise RuntimeError(
+                        "待复验笔记与已批准证据不一致，拒绝恢复："
+                        + self._recovery_mismatch_reason(existing, published_text)
+                    )
+                return self._recover_revalidation_unlocked(
+                    task_id, target, existing, catalog, original_catalog,
+                    link, journal_path, source_sha256,
+                )
             if journal and (journal.get('target') != str(target)
                             or hashlib.sha256(existing.encode()).hexdigest() != journal.get('note_sha256')):
                 raise MemoryRecoveryError('publication recovery conflicts with changed note')

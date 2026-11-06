@@ -287,6 +287,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.6；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.8",
+      "release_date": "2026-11-06",
+      "status": "candidate",
+      "summary": "Agent 池遗留问题收尾，裁决中心补缺口：节点测试期限取掉线时限（上限 300 秒）、失败保留脱敏错误尾部、失败分类只看诊断文字；发布验收接受“1 个池节点＋1 个宿主”补票；退役内置 WorkBuddy 引擎；经验待复验能恢复、驳回后归档、只检索命中不再连带降级；裁决中心序号角标、已退回的不能重复退回；监看中心加任务卡页。发布声明的前置源码清单哈希改为已上线 v1.6.7 的值；本版不新增切换步骤。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.7；不创建备份，用户终端切换。"
     }
   ]
 }

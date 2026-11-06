@@ -187,3 +187,14 @@ Key 池页下方「后台并发」：DSH、AGY、Qoder 三个后台此刻各开�
   恢复请求必须带页面令牌；任务必须是清单里此刻冻结着的那一个，哈希必须与此刻的记录一致。哈希、回执与健康的复核由命令行完成。
 - 进入裁决中心时读一次清单，之后每 30 秒读一次。读不到清单时保持上一次显示的内容，不当成“没有冻结任务”。
 - 实现在 `monitor_core/modules/frozen.py` 和页面里的 `rcFrozen` 一段；测试在 `tests/test_frozen.py`。
+
+## 任务卡页（2026-11-06 新增，随 v1.6.8）
+
+监看中心多了“任务卡”标签：列出任务卡目录里的每张卡，显示它待发、已发给谁、回执到了没有、核对了没有，点开能看卡片原文、经过和回执原文。页面只读，每 10 秒刷新；有回执待核对时标签上出红点。
+
+- 新卡：放进任务卡目录就会出现（文件名 `卡N-标题.md`，第一行 `# 小八修复任务卡 N：标题`，第三、四行是“开始条件：”“适合谁接：”）。没登记过的卡按开始条件推断状态：写“现在可发”算待发，写“已完成”算历史，其它算等待条件。
+- 登记：宿主 Agent 发卡、收回执、核对时在本目录运行 `/usr/bin/python3 tools/taskcard.py …`（`issue`、`receipt`、`returned`、`verified`、`done`、`note`、`list`，用法见文件开头）。台账是 JSONL，只追加不改写，最新一条为准。
+- 自动发现回执：工作区三层以内，文件名同时带“回执”和“卡N”的 .md/.txt 会挂到卡 N 上；比最近一次发卡和核对都新时，状态提示“回执待核对”。
+- 位置在 `monitor.json` 的 `taskcards` 一节（`dirs`、`ledger`、`receipt_root`、`receipt_depth`），默认是 `工作区/小八架构修复-20261030/任务卡` 和 `工作区/任务卡台账.jsonl`。
+- 页面只能读任务卡目录里的卡、台账登记的回执和自动发现的回执，别的路径一律拒绝（不跟随符号链接）。
+- 模块：`monitor_core/modules/taskcards.py`（接口）、`monitor_core/taskcards.py`（扫描与台账）；测试 `tests/test_taskcards.py`。页面在 AgentOS 候选的 `review_ui_assets/xiaoba-monitor.html` 里，发版后用 `review-ui-install` 安装。

@@ -36,7 +36,7 @@ PREVIEW_BYTES = 64 * 1024
 MATERIAL_FILE_LIMIT = 10000
 MATERIAL_BYTE_LIMIT = 200 * 1024 * 1024
 MATERIAL_SKIP_DIRS = ('.git', '__pycache__')
-# 凭据文件的文件名特征：只认真正存放凭据的文件，workbuddy_login.py 这类源码不算。
+# 凭据文件的文件名特征：只认真正存放凭据的文件，名字里带 login 的源码不算。
 MATERIAL_SENSITIVE_NAME = re.compile(
     r'(?i)^(?:\.env(?:\..+)?|\.netrc|\.npmrc|\.pgpass|id_(?:rsa|dsa|ecdsa|ed25519)|'
     r'credentials?(?:\.(?:json|ya?ml|toml|txt|ini))?|secrets?\.(?:json|ya?ml|toml|txt|ini)|'
@@ -74,6 +74,9 @@ class CliWorklogResource:
         limit = source['node'].get('no_progress_seconds', self.no_progress_seconds)
         if type(limit) is int and limit >= 1:
             self.no_progress_seconds = limit
+        # 卡 43：测试运行期限跟节点掉线时限走（上限 300 秒），没设掉线时限仍是 90 秒。
+        from .cli_identity import test_timeout_seconds
+        self._test_timeout_seconds = test_timeout_seconds(source['node'])
         self._serial = threading.Lock()
         self._process = None
         self._workspace_lock = None
@@ -387,6 +390,22 @@ class CliWorklogResource:
         if failure_class: evidence['failure_class'] = failure_class
         return evidence
 
+    def _error_tail(self):
+        """卡 43：失败记录用的脱敏错误尾部；stdout 原文不返回、不落盘。"""
+        from .cli_identity import error_tail
+        try:
+            stdout = bytes(self._stdout).decode('utf-8', 'replace') if self._stdout else ''
+            stderr = self._stderr_text() if self._stderr is not None else ''
+            return error_tail(stdout, stderr)
+        except (OSError, ValueError):
+            return ''
+
+    def _keep_failure_tail(self, exc):
+        """把脱敏错误尾部挂到失败异常上，供节点测试结果记录（不保存原始输出）。"""
+        if getattr(exc, 'error_tail', None): return
+        tail = self._error_tail()
+        if tail: exc.error_tail = tail
+
     # -- material staging: every CLI reads copies in its own workspace -------
 
     @staticmethod
@@ -570,6 +589,7 @@ class CliWorklogResource:
                 self._state = 'failed'
                 raise
             except BaseException as exc:
+                self._keep_failure_tail(exc)
                 try:
                     if record and (not isinstance(exc, WorkspaceError) or exc.code in {
                             'worklog_receipt_invalid', 'worklog_task_mismatch', 'worklog_non_answer',
@@ -592,8 +612,8 @@ class CliWorklogResource:
             '步骤码只是关联编号，不需要查找其实现，不查历史任务或小八源码。'
             '既有治理要求保持；不为本卡运行命令、不联网、不做额外诊断，只写指定回执文件，不新建当日台账。'
             '回执正文只写材料中的challenge原文，不要JSON或代码围栏。',
-            json.dumps({'challenge': challenge}, ensure_ascii=False), timeout=90, kind='test',
-            record_id=challenge, health_only=True)
+            json.dumps({'challenge': challenge}, ensure_ascii=False), timeout=self._test_timeout_seconds,
+            kind='test', record_id=challenge, health_only=True)
         if value['status'] != 'completed' or value['body'] != challenge:
             self.close()
             raise InteractiveError('challenge_mismatch', '文件回执未完成本次健康挑战；没有标记可用。')
@@ -603,8 +623,8 @@ class CliWorklogResource:
         value, evidence = self._turn('主入口已核验前一步健康检测通过。由你新建或沿用当日工作Markdown，'
             '只追加本次开工记录，保留原记录。回执正文只写材料中的challenge原文，不用JSON。',
             json.dumps({'challenge': 'WORKDAY_READY', 'health_check': health_evidence},
-                       ensure_ascii=False), timeout=90, kind='test', record_id=task_id,
-            step_code='WORKDAY-INIT')
+                       ensure_ascii=False), timeout=self._test_timeout_seconds, kind='test',
+            record_id=task_id, step_code='WORKDAY-INIT')
         if value['status'] != 'completed' or value['body'] != 'WORKDAY_READY':
             self.close()
             raise InteractiveError('workday_initialization_failed',

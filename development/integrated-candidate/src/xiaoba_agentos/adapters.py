@@ -1075,6 +1075,11 @@ class PoolCliAdapter(BaseAdapter):
             raise PermanentAdapterError("节点入口接不上：" + str(exc)) from exc
         if resource is None:
             raise PermanentAdapterError("节点入口接不上")
+        # 卡 45：内置 WorkBuddy 引擎已退役；旧节点不自动改类型，派活直接拒绝。
+        retired = getattr(resource, "retired_message", None)
+        if retired:
+            from .pool_dispatch import WORKBUDDY_RETIRED_CODE
+            raise PermanentAdapterError(WORKBUDDY_RETIRED_CODE + "：" + str(retired))
         task_id = str(self.config.raw.get("task_id") or "worker-task")
         step = str(self.config.raw.get("step_code") or "REVIEW-01")
         materials = {"prompt": prompt, "context": context}
