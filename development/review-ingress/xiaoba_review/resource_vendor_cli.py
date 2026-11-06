@@ -2,7 +2,6 @@
 import os
 from pathlib import Path
 from .resource_cli import CliWorklogResource
-from .resource_workbuddy import WorkBuddyCliResource
 
 # Restrict tool-capable print CLIs to file I/O. No shell, network or subagent
 # tool is offered; permission hooks and normal client authentication stay active.
@@ -72,5 +71,6 @@ class ClaudeCliResource(CliWorklogResource):
                 '--mcp-config', '{"mcpServers":{}}', '--output-format', 'stream-json', '--verbose']
 
 
-RESOURCES = {'dsh':DshCliResource, 'qoder':QoderCliResource, 'workbuddy':WorkBuddyCliResource,
+# 卡 45：内置 WorkBuddy 引擎（workbuddy 类型）已退役，见 resource_stdio.RetiredEngineResource。
+RESOURCES = {'dsh':DshCliResource, 'qoder':QoderCliResource,
              'codebuddy':CodeBuddyCliResource, 'codex':CodexCliResource, 'claude':ClaudeCliResource}

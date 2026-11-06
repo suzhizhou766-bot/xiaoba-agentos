@@ -396,6 +396,7 @@ def _submit_task(
     problem_key: str = "",
     experience_trial: Optional[dict] = None,
     work_task_id: Optional[str] = None,
+    no_work_task: bool = False,
     host: Optional[dict] = None,
     needs_review: bool = True,
 ) -> str:
@@ -444,8 +445,14 @@ def _submit_task(
         raise ValueError('宿主身份需要 id、entry、model；不能自述未干活')
     if work_task_id and not store.get_task(work_task_id):
         raise ValueError('来源工作任务不存在')
+    if work_task_id and no_work_task:
+        raise ValueError('来源工作任务和“没有来源工作任务”只能声明一个')
     snapshot['needs_review'] = needs_review
     snapshot['review_context'] = {'work_task_id': work_task_id, 'host': host, 'needs_review': needs_review}
+    if no_work_task:
+        # 发布验收要从来源任务读出作者和执行者，所以“没有来源任务”也得显式声明一次；
+        # 什么都不写不算声明，构包拒收。
+        snapshot['review_context']['no_work_task'] = True
     if workflow:
         snapshot["workflow"] = workflow
         snapshot["agent_memory_contexts"] = {}
@@ -1278,6 +1285,8 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--memory-kind", choices=("audit", "rule", "method"))
     submit.add_argument("--problem-key", default="")
     submit.add_argument('--work-task', help='待审查产物的来源工作任务；从记录和agent_runs推导参与者')
+    submit.add_argument('--no-work-task', action='store_true',
+                        help='明确声明没有来源工作任务；发布验收取证要求二者声明其一')
     submit.add_argument('--host-id')
     submit.add_argument('--host-entry')
     submit.add_argument('--host-model')
@@ -2072,6 +2081,7 @@ def main(argv: Optional[list] = None) -> int:
                 material_files=tuple(args.material),
                 experience_kind=args.memory_kind, problem_key=args.problem_key,
                 work_task_id=args.work_task,
+                no_work_task=getattr(args, 'no_work_task', False),
                 host=({'id': args.host_id, 'entry': args.host_entry, 'model': args.host_model}
                       if any((args.host_id,args.host_entry,args.host_model)) else None),
                 needs_review=not args.no_review,

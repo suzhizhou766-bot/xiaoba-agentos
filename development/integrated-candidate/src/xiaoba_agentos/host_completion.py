@@ -5,7 +5,8 @@ import math
 import time
 
 from .output_hygiene import contains_non_answer_markers, detect_reasoning_leak
-from .pool_dispatch import needs_review, select_reviewers, load_nodes, task_exclude_ids
+from .pool_dispatch import (needs_review, review_vote_problem, review_vote_runs, select_reviewers,
+                            load_nodes, task_exclude_ids)
 from .task_participants import execution_context
 from .workflow import verified_snapshot
 
@@ -76,11 +77,16 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                                         host=host, user_chose_host=user_chose_host)
             if not decision.get('host') or decision['route'] not in {'run','host_fallback'}:
                 raise ValueError('当前不需要宿主补票，或尚未由用户选定宿主兜底')
-            latest = store.latest_agent_runs(task_id)
+            # 这一票按本任务的审查运行（run_id）取，不取“该节点最新一行”：
+            # 等宿主补票期间点一次“测试运行”或别的用途运行，都不会让审查票作废。
+            votes = review_vote_runs(db, task_id)
             for node in decision['reviewers']:
-                run = latest.get(node['node_id'])
+                run = votes.get(node['node_id'])
                 if not run or run['status'] != 'completed' or not _text(run['output']):
                     raise ValueError('池节点还没有交合格结论')
+                problem = review_vote_problem(run['output'])
+                if problem:
+                    raise ValueError('池节点这一票不能当审查回执：' + problem)
                 pool_runs.append(run)
             if decision['route'] != 'host_fallback' and len(pool_runs) < 1:raise ValueError('至少需要一份池节点结论')
             from .adapters import AgentResult

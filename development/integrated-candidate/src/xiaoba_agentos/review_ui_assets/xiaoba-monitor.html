@@ -989,6 +989,37 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
  .wrap>.tabs::before{top:4px;height:calc(100% - 8px)}
 }
 
+/* 裁决中心：每条待审左上角的序号角标（2026-11-05 用户选定 A 方案） */
+.rc-item{position:relative;padding-top:32px}
+.rc-seq{position:absolute;top:9px;left:12px;font-size:12px;font-weight:700;line-height:18px;letter-spacing:.04em;font-variant-numeric:tabular-nums;
+ padding:1px 9px;border-radius:999px;background:var(--accent);color:var(--bg);box-shadow:0 4px 10px -4px var(--drop);pointer-events:none}
+/* 已退回条目的提示：正文未改动时「需要修改」不可点，深浅两色用同一组变量 */
+.rc-returned{margin:10px 0 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);color:var(--ink);font-size:12px;line-height:1.6}
+
+
+/* 任务卡页 */
+.tc-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px}
+.tc-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tc-title span{font-size:12px;color:var(--muted)}
+.tc-search{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:3px 10px;font-size:12.5px;min-width:0;width:min(220px,100%)}
+.tc-warn{margin:0;padding:8px 14px;border-radius:8px;border:1px solid var(--warn);color:var(--warn);font-size:12.5px}
+.tc-table td .t{display:block;font-weight:500}
+.tc-table td .sub{display:block;font-size:12px;color:var(--muted);max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tc-table td.num{white-space:nowrap}
+.tc-new{display:inline-block;margin-left:6px;padding:0 6px;border-radius:999px;font-size:11px;background:var(--accent);color:#fff;vertical-align:1px}
+.tc-help code{font-family:var(--font-data);font-size:.92em}
+.tc-help{padding:8px 14px 12px;margin:0}
+.tc-dialog{width:min(920px,calc(100vw - 32px))}
+.tc-detail{overflow:auto;max-height:calc(100vh - 160px);min-width:0}
+.tc-detail h4{margin:14px 0 6px;font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.06em}
+.tc-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin:6px 0 0;font-size:13px}
+.tc-facts dt{color:var(--muted)} .tc-facts dd{margin:0;overflow-wrap:anywhere}
+.tc-events,.tc-receipts{margin:0;padding-left:20px;font-size:13px;display:grid;gap:4px}
+.tc-events .when,.tc-receipts .when{font-family:var(--font-data);color:var(--muted);font-size:12px;margin-right:6px}
+.tc-receipts button{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;text-align:left;overflow-wrap:anywhere}
+.tc-docbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 6px;padding-top:12px;border-top:1px solid var(--line)}
+.tc-doc{border:1px solid var(--line);border-radius:8px;padding:4px 16px;background:var(--panel-2)}
+@media (max-width:640px){.tc-facts{grid-template-columns:minmax(0,1fr)} .tc-facts dt{margin-top:6px}}
 </style>
 
 <div class="wrap">
@@ -1042,6 +1073,7 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     <button class="tab" type="button" role="tab" id="tabDirector" data-view="director" aria-selected="false" aria-controls="viewDirector">导演台</button>
     <button class="tab" type="button" role="tab" id="tabStage" data-view="stage" aria-selected="false" aria-controls="viewStage">3D 导演台</button>
     <button class="tab" type="button" role="tab" id="tabKeypool" data-view="keypool" aria-selected="false" aria-controls="viewKeypool">Key 池</button>
+    <button class="tab" type="button" role="tab" id="tabTaskcards" data-view="taskcards" aria-selected="false" aria-controls="viewTaskcards">任务卡 <span class="badge" id="tcBadge" hidden>0</span></button>
   </nav>
 
   <p class="rc-notice crit" id="pageWarn" role="alert" hidden></p>
@@ -1194,6 +1226,7 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
               <button class="choice" type="button" data-decision="revise" aria-pressed="false" disabled><strong>需要修改</strong><small>提出具体意见，修改后重新审核</small></button>
               <button class="choice" type="button" data-decision="reject" aria-pressed="false" disabled><strong>不予采用</strong><small>拒绝这份候选，保留审核记录</small></button>
             </div>
+            <p class="rc-returned" id="rcReturned" role="status" hidden></p>
             <label class="rc-note">裁决意见（需要修改或不予采用时必填）
               <textarea id="rcNote" maxlength="3500" placeholder="写下你的具体意见…"></textarea>
               <span class="under"><span>“需要修改”会把意见写入 AgentOS 待修改记录，具体修改由 Agent 主入口接续处理。</span><span class="num" id="rcNoteCount">0 / 3500</span></span>
@@ -1261,6 +1294,41 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     <section class="panel dir-frame stage-frame"><iframe id="stageFrame" title="小八 3D 导演台" allow="clipboard-read; clipboard-write; fullscreen"></iframe></section>
   </div>
 
+  <div class="view" id="viewTaskcards" role="tabpanel" aria-labelledby="tabTaskcards" hidden>
+    <section class="panel tc-bar">
+      <div class="tc-title"><b>任务卡</b><span>宿主 Agent 发的卡、发给了谁、回执到了没有 · 每 10 秒刷新 · 只读</span></div>
+      <div class="spacer"></div>
+      <span class="chip num" id="tcUpdated">—</span>
+    </section>
+    <section class="kpis" id="tcKpis" aria-label="任务卡状态统计"></section>
+    <p class="tc-warn" id="tcWarn" role="status" hidden></p>
+    <section class="panel" aria-label="任务卡列表">
+      <div class="panel-head"><h2>全部任务卡</h2><span class="foot" id="tcSummary"></span><div class="spacer"></div>
+        <input class="tc-search" id="tcSearch" type="search" placeholder="搜卡号、标题、版本、Agent" aria-label="搜索任务卡">
+        <div class="kpn-filter" id="tcFilter" role="group" aria-label="筛选任务卡">
+          <button class="seg" type="button" data-f="open" aria-pressed="true">进行中</button>
+          <button class="seg" type="button" data-f="all" aria-pressed="false">全部</button>
+          <button class="seg" type="button" data-f="closed" aria-pressed="false">已完成</button></div></div>
+      <div class="table-scroll"><table class="tc-table"><thead><tr><th class="num">卡</th><th>标题</th><th>状态</th><th>发给</th><th>发卡时间</th><th>回执</th><th>最近更新</th></tr></thead><tbody id="tcBody"></tbody></table></div>
+      <p class="foot tc-help">登记发卡、回执、核对：宿主 Agent 在监看中心目录用统一解释器运行 <code>tools/taskcard.py issue 43 --to Codex</code>（完整命令和用法见该文件开头）。新卡放进任务卡目录就会出现。</p>
+    </section>
+    <dialog class="rc-dialog tc-dialog" id="tcDialog" aria-labelledby="tcDialogTitle">
+      <form method="dialog" onsubmit="return false">
+      <div class="rc-dialog-head">
+        <h3 id="tcDialogTitle">任务卡</h3>
+        <button class="rc-close" type="button" id="tcClose" aria-label="关闭" title="关闭（Esc）">×</button>
+      </div>
+      <div class="tc-detail">
+        <dl class="tc-facts" id="tcFacts"></dl>
+        <h4>经过</h4><ol class="tc-events" id="tcEvents"></ol>
+        <h4>回执</h4><ul class="tc-receipts" id="tcReceipts"></ul>
+        <div class="tc-docbar"><b id="tcDocTitle">卡片原文</b><span class="foot num" id="tcDocMeta"></span><div class="spacer"></div>
+          <button class="btn" type="button" id="tcShowCard">看卡片原文</button></div>
+        <div class="rc-body tc-doc" id="tcDoc"></div>
+      </div>
+      </form>
+    </dialog>
+  </div>
   <div class="view" id="viewKeypool" role="tabpanel" aria-labelledby="tabKeypool" hidden>
     <section class="panel kp-bar">
       <div class="kp-title"><b>Key 池</b><span>多个中转站合并成一个 Key · 只在本机 · 随监看中心启停</span></div>
@@ -2847,7 +2915,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
    裁决逻辑沿用本机裁决中心：这里只负责展示、起草与提交确认。
    ========================================================= */
 const Tabs = (() => {
-  const views = {overview:$("viewOverview"), review:$("viewReview"), director:$("viewDirector"), stage:$("viewStage"), keypool:$("viewKeypool")};
+  const views = {overview:$("viewOverview"), review:$("viewReview"), director:$("viewDirector"), stage:$("viewStage"), keypool:$("viewKeypool"), taskcards:$("viewTaskcards")};
   const listeners = [];
   let current = "overview";
   function show(name, push=true){
@@ -3085,10 +3153,15 @@ const ReviewCenter = (() => {
     if(!state) return;
     const q=$("rcSearch").value.trim().toLowerCase();
     const items=state.items.filter(x=>(x.title+x.task_id+x.status_label).toLowerCase().includes(q));
-    $("rcList").innerHTML = items.map(x=>`<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}">
+    // 序号是在全部待审队列里的位置（后端按登记时间排序），搜索过滤时不变。
+    const seq=new Map(state.items.map((x,i)=>[x.task_id,i+1])), width=String(state.items.length).length;
+    // 上次退回时间取本轮队列快照里的审核记录；没有记录时仍显示提示，时间留空由详情补足。
+    const revTimes={}; (state.reviews||[]).forEach(r=>{ if(r.decision==="revise") revTimes[r.task_id]=r.created_at; });
+    $("rcList").innerHTML = items.map(x=>{ const n=seq.get(x.task_id), returned=x.status==="revision_requested", rt=returned? revTimes[x.task_id] : null; return `<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}" aria-label="第 ${n} 条：${esc(x.title)}">
+        <span class="rc-seq" aria-hidden="true">#${String(n).padStart(width,"0")}</span>
         <strong>${esc(x.title)}</strong>
-        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(DECISION[saved[x.task_id].decision])}</span>` : ""}</span>
-      </button></li>`).join("") || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
+        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${returned? `<span class="pill busy">已退回，等作者修改${rt? " · "+esc(day(rt)) : ""}</span>` : ""}${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(DECISION[saved[x.task_id].decision])}</span>` : ""}</span>
+      </button></li>`; }).join("") || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
   }
   function counts(){
     const n=Object.keys(saved).length;
@@ -3102,6 +3175,8 @@ const ReviewCenter = (() => {
     $("rcPrompt").textContent=""; $("rcIdentity").textContent=""; $("rcRaw").textContent=""; $("rcHistory").textContent="";
     $("rcEvidence").className="pill idle"; $("rcEvidence").textContent="尚未读取证据"; $("rcBrain").hidden=true;
     document.querySelectorAll(".choice").forEach(b=>{ b.disabled=true; b.setAttribute("aria-pressed","false"); });
+    $("rcReturned").hidden=true;
+    document.querySelector('.choice[data-decision="revise"] small').textContent="提出具体意见，修改后重新审核";
     $("rcNote").value=""; $("rcNote").disabled=true; $("rcNoteCount").textContent="0 / "+NOTE_MAX; $("rcSave").disabled=true; $("rcSaveHint").textContent="尚未提交";
   }
   function draftUI(){
@@ -3132,7 +3207,13 @@ const ReviewCenter = (() => {
       $("rcTitle").textContent = x.title;
       $("rcStage").textContent = STAGE[x.stage]||x.stage;
       $("rcCategory").textContent = "候选 "+id.slice(0,8);
-      $("rcSubtitle").textContent = x.status_label||"";
+      const returned = x.status==="revision_requested";
+      const revRows = (x.reviews||[]).filter(r=>r.decision==="revise");
+      const lastRev = revRows.length? revRows[revRows.length-1] : null;
+      const revWhen = lastRev? "上次退回 "+when(lastRev.created_at) : "";
+      $("rcSubtitle").textContent = returned? "已退回，等作者修改"+(revWhen? " · "+revWhen : "") : (x.status_label||"");
+      $("rcReturned").hidden = !returned;
+      if(returned) $("rcReturned").textContent = "已退回，等作者修改："+(revWhen? revWhen+"。" : "")+"这份正文和上次退回时相同，不能重复退回；仍然可以驳回。"+(lastRev&&lastRev.note? " 上次意见："+lastRev.note : "");
       const trial=x.experience_validation||{};
       if(trial.required&&!trial.ready&&x.status==="delivery_approved") $("rcStage").textContent="隔离验证";
       $("rcTrialPanel").hidden=!trial.kind;
@@ -3158,7 +3239,13 @@ const ReviewCenter = (() => {
       approve.querySelector("strong").textContent = x.stage==="delivery"? "初审通过" : "终审通过并发布";
       approve.querySelector("small").textContent = x.stage==="delivery"? (trial.required?"进入受控验证，尚不发布经验":"进入终审，尚不发布经验") : (trial.required&&!trial.ready?"须先完成真实执行与独立双审":"执行敏感检查、发布与索引验证");
       const open = x.hash_matches && x.allowed_decisions.length>0;
-      document.querySelectorAll(".choice").forEach(b=>{ b.disabled = !open || !x.allowed_decisions.includes(b.dataset.decision); b.setAttribute("aria-pressed", String(d.decision===b.dataset.decision)); });
+      document.querySelectorAll(".choice").forEach(b=>{
+        const blocked = returned && b.dataset.decision==="revise";
+        b.disabled = blocked || !open || !x.allowed_decisions.includes(b.dataset.decision);
+        b.setAttribute("aria-pressed", String(!blocked && d.decision===b.dataset.decision));
+      });
+      document.querySelector('.choice[data-decision="revise"] small').textContent = returned
+        ? "已退回，等作者修改：正文未改动，不能重复退回" : "提出具体意见，修改后重新审核";
       $("rcNote").disabled = !open; $("rcNote").value = d.note;
       draftUI(); counts(); renderList();
     }catch(e){
@@ -3377,7 +3464,117 @@ const ReviewCenter = (() => {
   document.addEventListener("visibilitychange",()=>{ if(active()) refresh(true); });
   setInterval(()=>{ if(active()) refresh(); }, 5000);
   blank("请选择一条待审内容","—");
-  return {open, refresh, badge};
+  return {open, refresh, badge, markdown};
+})();
+
+/* =========================================================
+   8b. 任务卡页：只读。数据来自 /api/taskcards（任务卡目录＋发卡台账＋自动发现的回执）
+   ========================================================= */
+const TaskCards = (() => {
+  const SEEN_KEY = "xiaoba-monitor-taskcards-seen-v1";
+  const OPEN = new Set(["ready","waiting","issued","receipt","returned","verified"]);
+  const TONE = {ready:"busy", waiting:"idle", issued:"busy", receipt:"warn", returned:"down", verified:"ok", done:"ok", history:"idle"};
+  const EV = {issue:"发卡", receipt:"回执", returned:"退回返工", verified:"核对通过", done:"完成", note:"备注"};
+  const esc = s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const when = sec=>{ if(!sec) return "—"; const d=new Date(sec*1000); return isNaN(d)? "—" : d.toLocaleString("zh-CN",{hour12:false,month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); };
+  const base = p=>String(p||"").split("/").pop();
+  let data=null, filter="open", query="", seen={}, current=null, timer=null, error="";
+  try{ seen = JSON.parse(localStorage.getItem(SEEN_KEY)||"{}") || {}; }catch(e){ seen={}; }
+  const stash = ()=>{ try{ localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); }catch(e){} };
+  const isNew = row=>seen[row.id]!==undefined ? row.updated>seen[row.id]+0.5 : false;
+
+  async function get(path){
+    const res = await fetch(path, {cache:"no-store"});
+    let body; try{ body = await res.json(); }catch(e){ throw new Error("返回内容无法解析（HTTP "+res.status+"）"); }
+    if(!res.ok) throw new Error(body && body.error || "连接失败（HTTP "+res.status+"）");
+    return body;
+  }
+
+  function badge(){
+    const n = data ? (data.counts.receipt||0) : 0, el=$("tcBadge");
+    el.textContent = n; el.hidden = !n; el.title = n? n+" 张卡的回执待核对" : "";
+  }
+
+  function render(){
+    const body=$("tcBody");
+    if(error && !data){ body.innerHTML = `<tr><td colspan="7" class="foot">读不到任务卡：${esc(error)}</td></tr>`; return; }
+    if(!data) return;
+    const c=data.counts;
+    const kpis=[["待发",c.ready,""],["已发卡",c.issued,""],["回执待核对",c.receipt,c.receipt?"warn":""],["退回返工",c.returned,c.returned?"crit":""],["已核对",c.verified,""],["已完成",(c.done||0)+(c.history||0),""]];
+    $("tcKpis").innerHTML = kpis.map(([l,v,t])=>`<div class="kpi ${t}"><span class="label">${l}</span><span class="val num">${v||0}</span></div>`).join("");
+    const warn=$("tcWarn"), warnings=(data.warnings||[]).concat(error? ["刷新失败："+error] : []);
+    warn.hidden=!warnings.length; warn.textContent=warnings.join("；");
+    $("tcUpdated").textContent = "更新于 "+new Date(data.generated_at*1000).toLocaleTimeString("zh-CN",{hour12:false});
+    const q=query.trim().toLowerCase();
+    const rows=data.cards.filter(r=>filter==="all" || (filter==="open")===OPEN.has(r.state))
+      .filter(r=>!q || [r.id, r.title, r.version, r.to, r.who, r.state_text].join(" ").toLowerCase().includes(q));
+    $("tcSummary").textContent = `显示 ${rows.length} 张 · 共 ${data.cards.length} 张`;
+    body.innerHTML = rows.length ? rows.map(r=>{
+      const rec = r.receipt_count ? `${r.receipt_count} 份<span class="sub">最新 ${esc(when(r.latest_receipt))}</span>` : "—";
+      return `<tr class="click" data-id="${r.id}" tabindex="0"><td class="num">${r.id}</td>
+        <td><span class="t">${esc(r.title)}${isNew(r)?'<span class="tc-new">新</span>':""}</span><span class="sub" title="${esc(r.who||"")}">${esc(r.version||"")}${r.who? " · "+esc(r.who.replace(/（具体谁接[^）]*）$/,"")):""}</span></td>
+        <td><span class="pill ${TONE[r.state]||"idle"}" title="${r.state_source==="inferred"?"没登记过，按卡里的开始条件推断":r.state_source==="found"?"自动发现了新的回执文件":"来自发卡台账"}">${esc(r.state_text)}</span></td>
+        <td>${esc(r.to||"—")}</td><td class="num">${esc(when(r.issued_at))}</td><td class="num">${rec}</td><td class="num">${esc(when(r.updated))}</td></tr>`;
+    }).join("") : `<tr><td colspan="7" class="foot">没有符合条件的任务卡</td></tr>`;
+    badge();
+    if(current && $("tcDialog").open){ const row=data.cards.find(r=>r.id===current.id); if(row){ current=row; facts(row); } }
+  }
+
+  async function load(){
+    try{ data = await get("api/taskcards"); error=""; }
+    catch(e){ error = e.message; }
+    // 第一次打开时把现有的卡都记为看过，之后有变化的才标“新”
+    if(data && !Object.keys(seen).length){ data.cards.forEach(r=>seen[r.id]=r.updated); stash(); }
+    render();
+  }
+
+  function facts(row){
+    const dl=[["状态", row.state_text+(row.state_source==="inferred"?"（未登记，按开始条件推断）":"")],["发给",row.to||"—"],["发卡时间",when(row.issued_at)],
+      ["开始条件",row.start||"—"],["适合谁接",row.who||"—"],["卡文件",row.path]];
+    $("tcFacts").innerHTML = dl.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+    $("tcEvents").innerHTML = row.events.length ? row.events.slice().reverse().map(e=>
+      `<li><span class="when">${esc(when(e.at))}</span><b>${esc(EV[e.event]||e.event)}</b>${e.to?" → "+esc(e.to):""}${e.by?` <span class="foot">（${esc(e.by)}）</span>`:""}${e.note?"<br>"+esc(e.note):""}${e.path?`<br><span class="foot">${esc(base(e.path))}</span>`:""}</li>`).join("")
+      : `<li class="foot">台账里还没有这张卡的记录</li>`;
+    const list=[];
+    row.events.filter(e=>e.event==="receipt").forEach(e=>list.push({at:e.at, path:e.path, label:e.path? base(e.path) : (e.note||"回执（贴在对话里）"), kind:"登记"}));
+    row.receipts_found.filter(f=>!f.registered).forEach(f=>list.push({at:f.mtime, path:f.path, label:f.name, kind:"自动发现"}));
+    list.sort((a,b)=>b.at-a.at);
+    $("tcReceipts").innerHTML = list.length ? list.map(x=>`<li><span class="when">${esc(when(x.at))}</span>${x.path?`<button type="button" data-path="${esc(x.path)}">${esc(x.label)}</button>`:esc(x.label)} <span class="foot">${x.kind}</span></li>`).join("")
+      : `<li class="foot">还没有回执</li>`;
+  }
+
+  async function showDoc(path, title){
+    $("tcDocTitle").textContent = title; $("tcDocMeta").textContent = "读取中…"; $("tcDoc").innerHTML = "";
+    try{
+      const f = await get("api/taskcards/file?path="+encodeURIComponent(path));
+      $("tcDocMeta").textContent = base(f.path)+" · sha256 "+f.sha256.slice(0,12)+(f.truncated?" · 太长，只显示前 256 KB":"");
+      $("tcDoc").innerHTML = ReviewCenter.markdown(f.text);
+    }catch(e){ $("tcDocMeta").textContent = ""; $("tcDoc").innerHTML = `<p class="foot">${esc(e.message)}</p>`; }
+  }
+
+  function open(id){
+    const row = data && data.cards.find(r=>r.id===id); if(!row) return;
+    current=row; seen[row.id]=row.updated; stash();
+    $("tcDialogTitle").textContent = `卡 ${row.id}：${row.title}`;
+    facts(row); showDoc(row.path, "卡片原文");
+    if(!$("tcDialog").open) $("tcDialog").showModal();
+    render();
+  }
+
+  $("tcBody").addEventListener("click", e=>{ const tr=e.target.closest("tr[data-id]"); if(tr) open(Number(tr.dataset.id)); });
+  $("tcBody").addEventListener("keydown", e=>{ if(e.key!=="Enter") return; const tr=e.target.closest("tr[data-id]"); if(tr) open(Number(tr.dataset.id)); });
+  $("tcReceipts").addEventListener("click", e=>{ const b=e.target.closest("button[data-path]"); if(b) showDoc(b.dataset.path, "回执原文"); });
+  $("tcShowCard").addEventListener("click", ()=>{ if(current) showDoc(current.path, "卡片原文"); });
+  $("tcClose").addEventListener("click", ()=>$("tcDialog").close());
+  $("tcFilter").addEventListener("click", e=>{ const b=e.target.closest("button[data-f]"); if(!b) return; filter=b.dataset.f;
+    $("tcFilter").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); render(); });
+  $("tcSearch").addEventListener("input", e=>{ query=e.target.value; render(); });
+  // 不在这一页时也低频刷新，让标签上的“回执待核对”数字跟上
+  const tick = ()=>{ if(!document.hidden) load(); };
+  Tabs.onChange(name=>{ clearInterval(timer); if(name==="taskcards"){ load(); timer=setInterval(tick, 10000); } else timer=setInterval(tick, 60000); });
+  timer=setInterval(tick, 60000);
+  load();
+  return {load, open};
 })();
 
 Tabs.show(location.hash.slice(1).split("=")[0] || (new URLSearchParams(location.search).get("candidate")? "review" : "overview"), false);

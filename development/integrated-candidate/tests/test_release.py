@@ -259,7 +259,8 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
                     {"kind": "agentos_multi_adjudicated", "minimum_successful_agents": 2}
                 ),
                 "execution_snapshot_json": json.dumps(
-                    {"source_manifest_sha256": self.source_manifest_sha256}
+                    {"source_manifest_sha256": self.source_manifest_sha256,
+                     "review_context": {"work_task_id": "work-1"}}
                 ),
             },
             "runs": [
@@ -279,6 +280,7 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
     def audit_payload(self):
         payload = self.payload()
         snapshot = {"source_manifest_sha256": self.source_manifest_sha256,
+                    "review_context": {"work_task_id": "work-1"},
                     "experience_policy": {"version": 1, "kind": "audit"}}
         canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         payload["task"]["execution_snapshot_json"] = canonical
@@ -429,6 +431,15 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
             (
                 task["id"], task["status"], task["execution_mode"], task["result"],
                 task["provenance_json"], task["execution_snapshot_json"],
+            ),
+        )
+        # 验收任务声明的来源工作任务：参与者从这一行读，缺失会被拒收。
+        connection.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?)",
+            (
+                "work-1", "completed", "production", "工作结果", "{}",
+                json.dumps({"prompt": "工作", "needs_review": False,
+                            "review_context": {"needs_review": False}}),
             ),
         )
         for index, run in enumerate(payload["runs"]):

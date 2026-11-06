@@ -10,7 +10,9 @@ MODEL_REJECTED = ('invalid model selection', 'not recognized')
 
 class AgyCliResource(CliWorklogResource):
     def _command(self, entry, timeout):
-        seconds = 90 if timeout else 0
+        # 卡 43：测试调用传来的期限已经按节点掉线时限算好（上限 300 秒，没设仍 90 秒）；
+        # 工作调用不传期限，AGY 自己不限单步打印时间。
+        seconds = timeout if timeout else 0
         return [entry, '--input-format', 'stream-json', '--output-format', 'stream-json',
                 *(['--model', self.model] if self.model else []), '--mode', 'accept-edits', '--sandbox',
                 '--print-timeout', '%ds' % seconds]

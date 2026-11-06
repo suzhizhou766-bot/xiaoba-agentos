@@ -13,7 +13,7 @@ import test_review as fixtures
 from xiaoba_review.agent_pool import AgentPool, independence
 from xiaoba_review.agent_workspace import AgentWorkspace
 from xiaoba_review.backends import BackendRegistry
-from xiaoba_review.cli_identity import agent_type, cli_environment, entry_warning, specific_failure
+from xiaoba_review.cli_identity import agent_type, cli_environment, entry_warning, source_family, specific_failure
 from xiaoba_review.resource_cli import CliWorklogResource
 from xiaoba_review.resource_stdio import JsonStdioResource, json_stdio_factory
 
@@ -32,99 +32,6 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
             import json,os,re,sys,time
             from pathlib import Path
             root=Path(ROOT)
-            if '--serve' in sys.argv and not os.environ.get('TEST_WB_SERVER_CHILD'):
-                import http.server,subprocess,queue
-                notifications=queue.Queue()
-                (root/'server.pid').write_text(str(os.getpid()))
-                class Handler(http.server.BaseHTTPRequestHandler):
-                    def log_message(self,*args):pass
-                    def reply(self,value,sse=False):
-                        self.send_response(200)
-                        self.send_header('Content-Type','text/event-stream' if sse else 'application/json')
-                        self.end_headers()
-                        body=json.dumps(value).encode()
-                        self.wfile.write(b'data: '+body+b'\n\n' if sse else body)
-                    def authorized(self):
-                        assert self.headers.get('Authorization')=='Bearer '+os.environ['CODEBUDDY_GATEWAY_PASSWORD']
-                        assert self.headers.get('X-CodeBuddy-Request')=='1'
-                        assert not self.headers.get('Origin')
-                    def do_GET(self):
-                        self.authorized()
-                        if self.path=='/api/v1/health':self.reply({'ok':True});return
-                        if self.path=='/api/v1/auth/account/status':
-                            mode=(root/'mode').read_text() if (root/'mode').exists() else ''
-                            self.reply({'authenticated':mode!='wb-login'});return
-                        assert self.path=='/api/v1/acp'
-                        self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
-                        self.wfile.write(b': ready\n\n');self.wfile.flush()
-                        while True:
-                            try:event=notifications.get(timeout=1)
-                            except queue.Empty:continue
-                            self.wfile.write(b'data: '+json.dumps(event).encode()+b'\n\n');self.wfile.flush()
-                    def do_POST(self):
-                        self.authorized()
-                        request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                        if self.path=='/api/v1/acp/connect':
-                            self.reply({'connectionId':'TEST-connection','sessionToken':'TEST-session-secret'});return
-                        assert self.path=='/api/v1/acp'
-                        assert self.headers.get('acp-connection-id')=='TEST-connection'
-                        assert self.headers.get('acp-session-token')=='TEST-session-secret'
-                        method=request['method'];params=request['params']
-                        with (root/'rpc-methods').open('a') as out:out.write(method+'\n')
-                        mode=(root/'mode').read_text() if (root/'mode').exists() else ''
-                        result={}
-                        if method=='initialize':
-                            assert params['clientCapabilities']=={}
-                            result={'protocolVersion':1}
-                        elif method=='session/new':
-                            assert params=={'cwd':os.getcwd(),'mcpServers':[]}
-                            if mode=='wb-login':
-                                self.reply({'jsonrpc':'2.0','id':request['id'],'error':
-                                    {'code':-32000,'message':'Authentication required TEST_PRIVATE_RAW'}},True);return
-                            result={'sessionId':'TEST-session'}
-                        elif method=='session/prompt':
-                            assert params['sessionId']=='TEST-session'
-                            if mode=='wb-permission':
-                                self.reply({'jsonrpc':'2.0','id':'approval','method':'session/request_permission',
-                                    'params':{'secret':'TEST_PRIVATE_RAW'}},True);return
-                            if mode=='wb-missing':
-                                result={'stopReason':'end_turn'}
-                            elif mode=='wb-result-login':
-                                result={'stopReason':'end_turn','_meta':
-                                    {'codebuddy.ai/errorMessage':'Authentication required TEST_PRIVATE_RAW'}}
-                            elif mode=='wb-notify-permission':
-                                notifications.put({'jsonrpc':'2.0','id':'approval',
-                                    'method':'session/request_permission','params':{'secret':'TEST_PRIVATE_RAW'}})
-                                time.sleep(30);return
-                            elif mode=='wb-stall':
-                                time.sleep(30);return
-                            else:
-                                prompt=params['prompt'][0]['text']
-                                subprocess.run([sys.executable,sys.argv[0],*sys.argv[1:]],
-                                    input=prompt.encode(),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-                                    env=dict(os.environ,TEST_WB_SERVER_CHILD='1'),check=True)
-                                result={'stopReason':'end_turn'}
-                        elif method=='authenticate':
-                            assert params=={'methodId':'external'}
-                            # Native streamable HTTP can send notifications on
-                            # the active POST stream instead of the GET stream.
-                            self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
-                            for event in ({'jsonrpc':'2.0','method':'_codebuddy.ai/authUrl',
-                                'params':{'authUrl':'https://www.workbuddy.ai/TEST-login?state=TEST_PRIVATE_RAW'}},
-                                {'jsonrpc':'2.0','id':request['id'],'result':
-                                    {'_meta':{'userinfo':{'token':'TEST_PRIVATE_RAW'}}}}):
-                                self.wfile.write(b'data: '+json.dumps(event).encode()+b'\n\n');self.wfile.flush()
-                            return
-                        else:raise AssertionError(method)
-                        self.reply({'jsonrpc':'2.0','id':request['id'],'result':result},True)
-                # The fixture uses exactly the selected loopback port, with the
-                # same password/request guard as the real bundled CLI.
-                assert sys.argv[sys.argv.index('--host')+1]=='127.0.0.1'
-                assert sys.argv[sys.argv.index('--auth')+1]=='password'
-                print('TEST_PRIVATE_RAW '+os.environ['CODEBUDDY_GATEWAY_PASSWORD'],flush=True)
-                print('TEST_PRIVATE_RAW '+os.environ['CODEBUDDY_GATEWAY_PASSWORD'],file=sys.stderr,flush=True)
-                http.server.ThreadingHTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),Handler).serve_forever()
-                sys.exit(0)
             stdin=sys.stdin.read()
             prompt=json.loads(stdin)['message']['content'] if '--input-format' in sys.argv else stdin
             with (root/'calls').open('a') as out:
@@ -183,16 +90,13 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
           'qoder':['-p','--model','TEST explicit model','--permission-mode','accept_edits','--tools',
                  'Read,Write,Edit,Glob,Grep','--no-session-persistence','--strict-mcp-config','--mcp-config','{"mcpServers":{}}',
                  '--output-format','stream-json'],
-          'workbuddy':['--serve','--host','127.0.0.1','--port','TEST-port','--auth','password',
-                 '--model','TEST explicit model','--permission-mode','acceptEdits','--no-session-persistence',
-                 '--tools','Read,Write,Edit,Glob,Grep','--strict-mcp-config','--mcp-config','{"mcpServers":{}}'],
           'codebuddy':['-p','--model','TEST explicit model','--permission-mode','acceptEdits','--tools',
                  'Read,Write,Edit,Glob,Grep','--allowedTools','Read,Write,Edit,Glob,Grep','--no-session-persistence',
                  '--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--output-format','stream-json','--verbose'],
           'claude':['-p','--model','TEST explicit model','--permission-mode','acceptEdits','--tools',
                  'Read,Write,Edit,Glob,Grep','--no-session-persistence','--strict-mcp-config','--mcp-config','{"mcpServers":{}}',
                  '--output-format','stream-json','--verbose']}
-        for kind in ('agy','dsh','qoder','workbuddy','codebuddy','codex','claude'):
+        for kind in ('agy','dsh','qoder','codebuddy','codex','claude'):
             with self.subTest(kind=kind):
                 node=self.add(kind);self.assertEqual(self.probe(node)['status'],'passed')
                 record=self.pool.runtime.execute_work(node,self.node(node)['revision'], 'TASK-'+kind,'STEP',
@@ -201,10 +105,6 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
                 calls=self.calls()[-2:]
                 if kind=='codex':expected[kind]=['exec','-m','TEST explicit model','-s','workspace-write','-C',
                     str((self.workspaces/node).resolve()),'--skip-git-repo-check','--ephemeral','--json','-']
-                if kind=='workbuddy':
-                    for call in calls:
-                        self.assertGreater(int(call['argv'][4]),0)
-                        call['argv'][4]='TEST-port'
                 self.assertEqual(calls[0]['argv'],expected[kind])
                 self.assertEqual(calls[1]['argv'],expected[kind][:-1]+['0s'] if kind=='agy' else expected[kind])
                 for call in calls:
@@ -214,7 +114,7 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
                 self.assertTrue(self.node(node)['readiness']['ready'])
 
     def test_symlink_upgrade_and_service_restart_keep_qualification_for_seven_types(self):
-        for kind in ('agy','dsh','qoder','workbuddy','codebuddy','codex','claude'):
+        for kind in ('agy','dsh','qoder','codebuddy','codex','claude'):
             with self.subTest(kind=kind):
                 one=self.fake(kind+'-v1', 'first');two=self.fake(kind+'-v2','second')
                 link=self.root/('stable-'+kind);link.symlink_to(one)
@@ -252,7 +152,7 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
         self.assertNotEqual(independence(source),independence(self.source(b)))
 
     def test_legacy_inference_and_explicit_other_are_distinct(self):
-        for entry,kind in [('agy','agy'),('antigravity','agy'),('qodercli','qoder'),('codebuddy','workbuddy'),
+        for entry,kind in [('agy','agy'),('antigravity','agy'),('qodercli','qoder'),('codebuddy','codebuddy'),('workbuddy','workbuddy'),
             ('codex.js','codex'),('claude','claude'),('/x/current/apps/cli/lib/bin.js','dsh'),('unknown','other')]:
             self.assertEqual(agent_type({'entry':entry}),kind)
         # JSON stdout instead of a file result demonstrates explicit "other".
@@ -278,7 +178,7 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
             self.assertEqual(self.node(node)['readiness']['reason'],'test_required')
 
     def test_blank_model_uses_cli_default_without_model_arguments(self):
-        for kind in ('agy','dsh','qoder','workbuddy','codebuddy','codex','claude'):
+        for kind in ('agy','dsh','qoder','codebuddy','codex','claude'):
             with self.subTest(kind=kind):
                 node=self.add(kind,model='');self.assertEqual(self.probe(node)['status'],'passed')
                 self.assertNotIn('--model',self.calls()[-1]['argv']);self.assertNotIn('-m',self.calls()[-1]['argv'])
@@ -336,9 +236,19 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
                 result=self.probe(node);self.assertEqual(result['reason'],reason,result)
                 self.assertTrue(result['message'])
                 with self.native.read_only() as db:
-                    stored=' '.join(r[0] for r in db.execute('SELECT payload_json FROM events'))
-                stored+=''.join(p.read_text() for p in self.workspaces.rglob('*') if p.is_file())
-                self.assertNotIn('TEST_PRIVATE_RAW',stored)
+                    rows=[json.loads(r[0]) for r in db.execute('SELECT payload_json FROM events')]
+                files=''.join(p.read_text() for p in self.workspaces.rglob('*') if p.is_file())
+                self.assertNotIn('TEST_PRIVATE_RAW',files)
+                # 卡 43：失败记录新增脱敏错误尾部（stderr 末 2 KB）；除该字段外
+                # 事件与工作区都不得携带原始输出。
+                tails=[row['test']['error_tail'] for row in rows
+                       if isinstance(row.get('test'),dict) and row['test'].get('error_tail')]
+                self.assertTrue(tails)
+                for tail in tails:self.assertLessEqual(len(tail),2048)
+                for row in rows:
+                    if isinstance(row.get('test'),dict):
+                        row=json.loads(json.dumps(row));row['test'].pop('error_tail',None)
+                    self.assertNotIn('TEST_PRIVATE_RAW',json.dumps(row,ensure_ascii=False))
                 self.assertEqual(len(self.calls()),len([p for p in self.workspaces.iterdir()]))
 
     def test_stdout_events_do_not_reset_300_second_worklog_deadline(self):
@@ -368,127 +278,42 @@ class CliPoolTests(fixtures.FixtureMixin, unittest.TestCase):
         self.assertEqual(error.exception.code,'cli_no_progress')
         self.assertIn('300秒',error.exception.user_message);kill.assert_called_once()
 
-    def test_workbuddy_loads_its_bundled_lite_variant_without_installing_modules(self):
-        entry=self.fake('workbuddy-bundled-cli')
-        entry.write_text(entry.read_text().replace('root=Path(ROOT)',
-            "assert os.environ.get('CODEBUDDY_FORCE_LITE_WB_BUNDLE') == '1'\nroot=Path(ROOT)"))
-        node=self.add('workbuddy',entry)
-        self.assertEqual(self.probe(node)['status'],'passed')
-        result=self.pool.runtime.execute_work(node,self.node(node)['revision'],
-            'WORKBUDDY-LITE','STEP','TEST file work',{})
-        self.assertEqual(result['status'],'completed')
-        self.assertEqual(len(self.calls()),2)
+    def test_retired_builtin_engine_cannot_be_picked_for_a_new_node(self):
+        # 卡 45：内置 WorkBuddy 引擎退役。旧节点数据保留，新建不再提供这个类型。
+        with self.assertRaises(ValueError) as error:
+            self.add('workbuddy')
+        self.assertIn('退役',str(error.exception))
+        self.assertIn('CodeBuddy',str(error.exception))
+        self.assertEqual([n for n in self.pool.state()['nodes'] if n['agent_type']=='workbuddy'],[])
 
-    def test_workbuddy_cli_and_codebuddy_are_one_source_with_separate_adapters(self):
-        from xiaoba_review.resource_vendor_cli import CodeBuddyCliResource
-        from xiaoba_review.resource_workbuddy import WorkBuddyCliResource
-        cli=self.add('codebuddy',node_id='CB');desktop=self.add('workbuddy',node_id='WB')
-        adapter=self.registry.adapter_for(self.source(cli))
-        self.assertIsInstance(adapter,CodeBuddyCliResource)
-        self.assertIsInstance(self.registry.adapter_for(self.source(desktop)),WorkBuddyCliResource)
-        # 用户 2026-11-02：WorkBuddy 的 CLI 就是 CodeBuddy，不能凑成两票。
-        self.assertEqual(independence(self.source(cli)),independence(self.source(desktop)))
-        from xiaoba_agentos.pool_dispatch import independence_pair
-        pairs=[independence_pair({'interface':'cli','agent_type':kind,'model':'TEST explicit model'}) for kind in ('codebuddy','workbuddy')]
-        self.assertEqual(*pairs)
-        self.assertEqual(agent_type({'entry':'codebuddy'}),'workbuddy')  # Preserve old nodes.
-        with patch.dict(os.environ,{'CODEBUDDY_FORCE_LITE_WB_BUNDLE':'1',
-            'CODEBUDDY_HOST':'workbuddy-desktop','CODEBUDDY_AUTH_TOKEN':'TEST_PRIVATE_RAW',
-            'CODEBUDDY_CONFIG_DIR':'/TEST/private','WORKBUDDY_CONFIG_DIR':'/TEST/private',
-            'ACC_PRODUCT_CONFIG_PATH':'/TEST/private','SERVER__PORT':'9999'}):
-            env=adapter._environment()
-        self.assertFalse(any(k.startswith(('CODEBUDDY_','WORKBUDDY_','ACC_PRODUCT_CONFIG')) for k in env))
-        self.assertNotIn('SERVER__PORT',env)
-        self.assertEqual(env['DISABLE_AUTOUPDATER'],'1')
+    def test_retired_builtin_engine_still_identifies_old_nodes_but_never_runs(self):
+        # 原来的内置引擎行为（自带精简包、原生 ACP RPC、登录引导、事件流上限、
+        # 不继承桌面凭据）随引擎文件一起移入待删；这里只保留识别与拒绝。
+        from xiaoba_review.store import canonical
+        entry=self.fake('workbuddy-legacy')
+        source=self.pool.add({'node_id':'WB','name':'WB','agent':'workbuddy','agent_type':'codebuddy',
+            'kind':'peer','interface':'cli','entry':str(entry),'model':'TEST explicit model'})
+        source['node']['agent_type']='workbuddy'
+        with self.store.transaction() as db:
+            db.execute('UPDATE ri_sources SET data=? WHERE id=?',(canonical(source),'WB'))
+        self.pool.change('WB',source['node']['revision'],'toggle',True)
+        self.assertEqual('workbuddy',agent_type(self.source('WB')['node']))
+        blocked=self.probe('WB')
+        self.assertEqual(('blocked','engine_retired'),(blocked['status'],blocked['reason']),blocked)
+        self.assertEqual([],self.calls())
+        with self.assertRaises(ValueError):
+            self.pool.runtime.execute_work('WB',self.node('WB')['revision'],'TEST-task','STEP','TEST work',{})
 
-    def test_workbuddy_native_rpc_failures_do_not_leak_or_approve_or_retry(self):
-        for mode,reason in [('wb-login','cli_not_logged_in'),('wb-permission','native_permission_required'),
-                            ('wb-missing','receipt_missing'),('wb-stall','cli_no_progress'),
-                            ('wb-notify-permission','native_permission_required'),
-                            ('wb-result-login','workbuddy_execution_auth_rejected')]:
-            with self.subTest(mode=mode):
-                (self.root/'mode').write_text(mode)
-                node=self.add('workbuddy',node_id=mode)
-                adapter=self.registry.adapter_for(self.source(node))
-                if mode=='wb-stall':adapter.no_progress_seconds=1
-                result=self.probe(node)
-                self.assertEqual(result['reason'],reason,result)
-                journal=self.root/'rpc-methods'
-                methods=journal.read_text().splitlines() if journal.exists() else []
-                self.assertEqual(methods.count('session/new'),0 if mode=='wb-login' else 1)
-                self.assertNotIn('authenticate',methods)
-                self.assertIsNone(adapter._process)
-                self.assertIsNone(adapter._password)
-                self.assertEqual(adapter._stdout,b'')
-                with self.native.read_only() as db:
-                    stored=' '.join(r[0] for r in db.execute('SELECT payload_json FROM events'))
-                stored+=''.join(p.read_text() for p in self.workspaces.rglob('*') if p.is_file())
-                for value in ('TEST_PRIVATE_RAW','TEST-session-secret'):
-                    self.assertNotIn(value,stored)
-                if mode=='wb-login':self.assertIn('不能据此判断桌面端',result['message'])
-                # Reset the small fixture journal between independent cases.
-                (self.root/'rpc-methods').write_text('')
-
-    def test_workbuddy_attended_login_opens_native_url_without_task_or_secret_logging(self):
-        from xiaoba_review.workbuddy_login import login
-        entry=self.fake('workbuddy-login')
-        opened=[];messages=[]
-        login(str(entry),self.root,open_browser=lambda url,**kw:opened.append(url) or True,
-              announce=messages.append)
-        self.assertEqual(len(opened),1)
-        self.assertTrue(opened[0].startswith('https://www.workbuddy.ai/TEST-login'))
-        self.assertEqual((self.root/'rpc-methods').read_text().splitlines(),['initialize','authenticate'])
-        self.assertEqual(self.calls(),[])
-        self.assertNotIn('TEST_PRIVATE_RAW',' '.join(messages))
-        self.assertIn('认证完成',messages[-1])
-
-    def test_workbuddy_transport_bounds_events_and_checks_response_identity(self):
-        import io
-        from xiaoba_review.resource_workbuddy import AcpClient
-        from xiaoba_review.resource_agy import InteractiveError
-        client=AcpClient(1,'TEST-own-password',1)
-        client.limit=128
-        with self.assertRaises(InteractiveError) as error:
-            list(client.events(io.BytesIO(b'data: '+b'X'*1000)))
-        self.assertEqual(error.exception.code,'workbuddy_protocol_error')
-        with patch.object(client,'request',return_value={'jsonrpc':'2.0','id':999,'result':{}}):
-            with self.assertRaises(InteractiveError):client.rpc('initialize',{})
-
-    def test_workbuddy_transport_refuses_redirects_instead_of_forwarding_bearer(self):
-        import http.server
-        import threading
-        from xiaoba_review.resource_agy import InteractiveError
-        from xiaoba_review.resource_workbuddy import AcpClient
-        seen=[]
-        class Redirect(http.server.BaseHTTPRequestHandler):
-            def log_message(self,*args):pass
-            def do_GET(self):
-                seen.append(self.path)
-                self.send_response(302);self.send_header('Location','/TEST-other-destination');self.end_headers()
-        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Redirect)
-        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
-        try:
-            client=AcpClient(server.server_port,'TEST-own-password',1)
-            with self.assertRaises(InteractiveError):client.request('/api/v1/health')
-            self.assertEqual(seen,['/api/v1/health'])
-        finally:
-            server.shutdown();server.server_close();thread.join(timeout=2)
-
-    def test_workbuddy_does_not_inherit_a_desktop_credential_bootstrap_or_gateway(self):
-        node=self.add('workbuddy')
-        adapter=self.registry.adapter_for(self.source(node))
-        with patch.dict(os.environ,{'CODEBUDDY_GATEWAY_PASSWORD':'TEST_PRIVATE_RAW',
-            'CODEBUDDY_DISABLE_REQUEST_VALIDATION':'1','CODEBUDDY_SIDECAR_CREDENTIAL_BOOTSTRAP_SOCKET':'/TEST/private',
-            'CODEBUDDY_CONFIG_DIR':'/TEST/private','WORKBUDDY_AT_REST_ENCRYPTION':'off'}):
-            env=adapter._environment()
-        self.assertEqual(env['CODEBUDDY_FORCE_LITE_WB_BUNDLE'],'1')
-        self.assertEqual(env['CODEBUDDY_HOST'],'workbuddy-desktop')
-        self.assertEqual(env['CODEBUDDY_DISABLE_PRODUCT_CACHE'],'1')
-        self.assertEqual(env['CODEBUDDY_GATEWAY_AUTH'],'password')
-        for key in ('CODEBUDDY_GATEWAY_PASSWORD','CODEBUDDY_DISABLE_REQUEST_VALIDATION',
-                    'CODEBUDDY_SIDECAR_CREDENTIAL_BOOTSTRAP_SOCKET','CODEBUDDY_CONFIG_DIR',
-                    'WORKBUDDY_AT_REST_ENCRYPTION'):
-            self.assertNotIn(key,env)
+    def test_retired_engine_module_and_vendor_resource_are_gone(self):
+        import importlib.util
+        self.assertIsNone(importlib.util.find_spec('xiaoba_review.resource_workbuddy'))
+        self.assertIsNone(importlib.util.find_spec('xiaoba_review.workbuddy_login'))
+        from xiaoba_review.resource_vendor_cli import RESOURCES
+        self.assertNotIn('workbuddy',RESOURCES)
+        self.assertIn('codebuddy',RESOURCES)
+        # CodeBuddy CLI 照旧：入口名 codebuddy 判成 codebuddy，独立性仍与旧类型同源。
+        self.assertEqual('codebuddy',agent_type({'entry':'codebuddy'}))
+        self.assertEqual('codebuddy',source_family('workbuddy'))
 
     def test_old_node_without_type_and_with_old_source_ref_loads_and_runs(self):
         entry=self.fake('qodercli')

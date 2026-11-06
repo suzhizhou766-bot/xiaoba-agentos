@@ -1,5 +1,6 @@
 """CLI type, availability and stable code identity. Never open client settings."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -9,10 +10,16 @@ import sys
 from types import SimpleNamespace
 
 from xiaoba_agentos.gateway import command_environment
+from xiaoba_agentos.pool_dispatch import WORKBUDDY_RETIRED_CODE, WORKBUDDY_RETIRED_MESSAGE
 
+# 卡 45：内置 WorkBuddy 引擎已退役。'workbuddy' 仍在这里，只为识别旧节点数据；
+# 新建节点不再提供这个类型（Agent 池页面与 add 都会拒绝）。
 TYPES = ('agy', 'dsh', 'qoder', 'workbuddy', 'codebuddy', 'codex', 'claude', 'other')
 ENTRY_TYPES = {'agy':'agy', 'antigravity':'agy', 'dsh':'dsh', 'qoder':'qoder',
-               'qodercli':'qoder', 'codebuddy':'workbuddy', 'workbuddy':'workbuddy',
+               'qodercli':'qoder',
+               # 入口名 codebuddy 是 WorkBuddy CLI（CodeBuddy），判成 codebuddy；
+               # 入口名 workbuddy 的旧内置引擎条目仍判 workbuddy。
+               'codebuddy':'codebuddy', 'workbuddy':'workbuddy',
                'codex':'codex', 'codex.js':'codex', 'claude':'claude'}
 SESSION_VARIABLES = ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CODEX_THREAD_ID',
                      'CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'AGY_SESSION_ID')
@@ -63,8 +70,7 @@ def cli_identity(entry, workspace, kind):
     return {'protocol':'cli-worklog-v1', 'agent_type':kind,
             'implementation_sha256':implementation_digest((
                 'cli_identity.py', 'resource_cli.py', 'resource_agy_cli.py', 'resource_vendor_cli.py',
-                'resource_stdio.py', 'resource_agy.py', 'agent_workspace.py', 'workday.py',
-                'resource_workbuddy.py')),
+                'resource_stdio.py', 'resource_agy.py', 'agent_workspace.py', 'workday.py')),
             'workspace':str(workspace.path)}
 
 
@@ -82,9 +88,71 @@ def cli_environment(entry, kind):
     return env
 
 
+# 卡 43：节点测试运行期限不再散落常量。取节点已设的掉线时限（上限 300 秒）；节点
+# 没设掉线时限时仍是 90 秒。所有 CLI 类型的测试调用（健康检查、上班初始化）都从这里取。
+TEST_TIMEOUT_SECONDS = 90
+TEST_TIMEOUT_CAP_SECONDS = 300
+# 卡 43：失败分类只看诊断文字；失败记录只留脱敏后的错误尾部，原始输出不保存。
+DIAGNOSTIC_SCOPE_BYTES = 4096
+ERROR_TAIL_BYTES = 2048
+
+
+def test_timeout_seconds(node):
+    """测试运行期限：跟节点掉线时限走（上限 300 秒）；没设掉线时限仍是 90 秒。"""
+    limit = node.get('no_progress_seconds') if isinstance(node, dict) else None
+    if type(limit) is int and limit >= 1:
+        return min(limit, TEST_TIMEOUT_CAP_SECONDS)
+    return TEST_TIMEOUT_SECONDS
+
+
+def _last_bytes(text, limit):
+    """text 的最后 limit 字节，按 UTF-8 截断（切坏的多字节序列按 replace 显示）。"""
+    return (text or '').encode('utf-8', 'replace')[-limit:].decode('utf-8', 'replace')
+
+
+def non_event_lines(text, limit=DIAGNOSTIC_SCOPE_BYTES):
+    """text 末尾 limit 字节里不是结构化事件（不能解析成 JSON 的行）的文字。
+
+    流式 CLI 把读过的源码和工具结果都装在 JSON 事件里，这些内容整体丢弃，不参与
+    匹配；只有 CLI 自己打的普通文字（横幅、报错）算诊断材料。被截断的 JSON 行解析
+    不了，也按普通文字留下。
+    """
+    kept = []
+    for line in _last_bytes(text, limit).splitlines():
+        if not line.strip():
+            continue
+        try:
+            if isinstance(json.loads(line.strip()), dict):
+                continue
+        except ValueError:
+            pass
+        kept.append(line)
+    return '\n'.join(kept)
+
+
+def diagnostic_text(stdout, stderr):
+    """失败分类用的诊断文字：stderr 全文，加上 stdout 末 4 KB 的非事件行。
+
+    读过的源码和工具结果都在结构化事件里，不参与匹配（卡 42 第七次发卡：源码里的
+    `unknown option` 曾把超时退出误判成 unsupported_entry）。
+    """
+    return (stderr or '') + '\n' + non_event_lines(stdout)
+
+
+def error_tail(stdout, stderr):
+    """失败记录保留的脱敏错误尾部：stderr 末 2 KB；stderr 为空时取 stdout 末 2 KB
+    的非事件行。只返回经 `_redact_error` 处理后的文字，原始输出不返回、不保存。
+    """
+    from xiaoba_agentos.adapters import _redact_error
+    tail = _last_bytes(stderr, ERROR_TAIL_BYTES)
+    if not tail.strip():
+        tail = non_event_lines(stdout, ERROR_TAIL_BYTES)
+    return _redact_error(tail).strip()
+
+
 def specific_failure(kind, label, model, stdout, stderr, check_model=True, returncode=None):
     from .resource_agy import InteractiveError
-    text = (stderr+'\n'+stdout).casefold()
+    text = diagnostic_text(stdout, stderr).casefold()
     # 被 SIGTERM/SIGKILL 结束的进程最先归类：提示是“调用被结束”。
     if returncode in TERMINATED_RETURNCODES:
         failure = InteractiveError('call_terminated',
@@ -110,8 +178,6 @@ def specific_failure(kind, label, model, stdout, stderr, check_model=True, retur
                                   'please login', 'please sign in', 'unauthorized',
                                   'invalid api key', 'invalid authentication', '未登录', '请先登录')):
         code, message = 'cli_not_logged_in', label+'尚未登录或登录已失效；请你在该 CLI 中处理登录，再手动测试运行。'
-        if kind == 'workbuddy':
-            message = 'WorkBuddy CLI认证上下文未就绪；不能据此判断桌面端已退出登录。请在原生CLI中完成认证，再手动测试运行。'
     elif check_model and any(re.search(p, text) for p in (
             r'(?:unknown|invalid|unsupported|unrecognized) model',
             r'model[^\n]{0,160}(?:not found|not recognized|does not exist|not supported|not available)',
@@ -140,5 +206,9 @@ def cli_failure(kind, label, model, returncode, stdout, stderr):
     if returncode == 0:
         return InteractiveError('receipt_missing', label+'本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
     failure = InteractiveError('cli_failed', label+'调用异常退出，未完成任务卡回执；不自动重试、不换模型、不换后台。')
-    failure.failure_class = 'transient' if _is_transient_cli_error(_redact_error(stderr or stdout)) else 'permanent'
+    # 卡 43：瞬态/永久判定也只看诊断文字；stdout 里的结构化事件（读过的源码、工具
+    # 结果）不参与匹配。
+    failure.failure_class = 'transient' if _is_transient_cli_error(
+        _redact_error(diagnostic_text(stdout, stderr))) else 'permanent'
+    failure.error_tail = error_tail(stdout, stderr) or None
     return failure

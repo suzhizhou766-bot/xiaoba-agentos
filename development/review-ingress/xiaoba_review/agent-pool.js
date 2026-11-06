@@ -77,11 +77,18 @@
     el('p',node.backend_available?'已接入本机调用器，按节点填写的入口与模型配置派发任务。':'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
     if(node.execution_mode==='native_interactive_serial')el('p','同一交互会话逐条执行任务卡，过程与回执写入当日Markdown；终端只供查看进度。',root).className='ap-note';
     const actions=el('div',undefined,root);actions.className='ap-actions';
-    const readiness=node.readiness||{},labels={disabled:'已关闭',removed:'已移除',missing_configuration:'资料待补齐',adapter_required:'调用器待接入',entry_changed_or_unavailable:'入口待核对',entry_unavailable:'入口不存在或不可执行',test_required:'尚未通过当前配置的测试',test_evidence_invalid:'测试证据无效',native_confirmation_required:'等待你确认AGY原生工作区',testing:'正在测试',tested:'测试通过，可直接运行'};
+    const readiness=node.readiness||{},labels={disabled:'已关闭',removed:'已移除',missing_configuration:'资料待补齐',adapter_required:'调用器待接入',entry_changed_or_unavailable:'入口待核对',entry_unavailable:'入口不存在或不可执行',test_required:'尚未通过当前配置的测试',test_evidence_invalid:'测试证据无效',native_confirmation_required:'等待你确认AGY原生工作区',testing:'正在测试',tested:'测试通过，可直接运行',engine_retired:'内置引擎已退役，请改成 WorkBuddy CLI（CodeBuddy）'};
     const status=el('p','运行资格：'+(labels[readiness.reason]||'待测试'),root);status.className='ap-note';root.insertBefore(status,actions);
     if(node.test?.test_id){const last=el('p','最近测试：'+node.test.test_id+' · '+node.test.status,root);last.className='ap-note';root.insertBefore(last,actions);}
+    if(node.agent_type==='workbuddy')el('p','内置 WorkBuddy 引擎已退役：测试运行和派活都会被拒绝；请把这个节点的类型改成 WorkBuddy CLI（CodeBuddy），入口填 codebuddy 的路径，再测试运行。',root).className='ap-note';
     if(node.entry_warning)el('p',node.entry_warning,root).className='ap-note';
     if(node.test?.message&&!node.pending_action)el('p',node.test.message,root).className='ap-note';
+    if(node.test?.error_tail&&!node.pending_action){
+      // 卡 43：失败记录里的脱敏错误尾部，只用于诊断；原始输出不显示。
+      const tailTitle=el('p','错误尾部（已脱敏 · 仅末段）',root);tailTitle.className='ap-note';root.insertBefore(tailTitle,actions);
+      const tail=el('pre',node.test.error_tail,root);tail.className='ap-terminal-output';tail.tabIndex=0;
+      tail.setAttribute('aria-label',node.name+' 上次测试的错误尾部（已脱敏）');root.insertBefore(tail,actions);
+    }
     if(node.test?.reason==='interactive_result_invalid')el('p','上面的失败来自先前的终端结果读取。新的文件回执方式尚未在此节点实测。',root).className='ap-note';
     if(node.pending_action?.type==='native_workspace_trust'){
       const pending=node.pending_action,consent=el('div');consent.className='ap-consent';root.insertBefore(consent,root.firstChild);

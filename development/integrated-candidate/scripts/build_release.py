@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -194,6 +195,199 @@ def run_verify(command: list[str], cwd: Path) -> None:
         raise RuntimeError((completed.stderr or completed.stdout)[-4000:])
 
 
+HOST_REVIEW_TYPES = ("new_experience", "revalidation", "reuse_change")
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def host_vote_conclusion(
+    settlement: dict[str, Any], task: dict[str, Any], snapshot: dict[str, Any], frozen_prompt: str
+) -> dict[str, Any]:
+    """宿主补的这一票只认 `complete_host` 留下的结算记录，手写结论进不来。
+
+    回执哈希、host_id、模型、结论都从记录里取；FAIL、NEEDS_INFO 照实保留，不当成通过。
+    """
+    receipt = settlement.get("receipt")
+    event_sha = str(settlement.get("receipt_sha256") or "")
+    if not isinstance(receipt, dict):
+        raise RuntimeError("宿主结算记录里没有回执正文，拒绝没有记录的宿主票")
+    if hashlib.sha256(_canonical(receipt).encode("utf-8")).hexdigest() != event_sha:
+        raise RuntimeError("宿主回执哈希和结算记录对不上，拒绝手写的宿主票")
+    provenance = settlement.get("provenance") if isinstance(settlement.get("provenance"), dict) else {}
+    if provenance.get("kind") != "host_review":
+        raise RuntimeError("宿主票不是从宿主审查结算记录来的")
+    verdict = str(provenance.get("verdict") or "")
+    if verdict not in ("PASS", "FAIL", "NEEDS_INFO"):
+        raise RuntimeError("宿主结算记录里没有审查结论")
+    host_id = str(provenance.get("host_id") or "")
+    if not host_id or str(receipt.get("reviewer_id") or "") != host_id:
+        raise RuntimeError("宿主回执的审查人和结算记录不一致")
+    if str(receipt.get("task_id") or "") != str(task.get("id") or ""):
+        raise RuntimeError("宿主回执不是这个验收任务的")
+    snapshot_sha = str(task.get("execution_snapshot_hash")
+                       or hashlib.sha256(_canonical(snapshot).encode("utf-8")).hexdigest())
+    if str(receipt.get("snapshot_sha256") or "") != snapshot_sha:
+        raise RuntimeError("宿主回执没有绑定同一份冻结题面与源码清单")
+    if str(receipt.get("verdict") or "") != verdict:
+        raise RuntimeError("宿主回执的结论和结算记录不一致")
+    findings = receipt.get("findings")
+    if not isinstance(findings, str) or not findings.strip() or contains_non_answer_markers(findings):
+        raise RuntimeError("宿主回执没有合格的审查正文")
+    refs = receipt.get("evidence_refs")
+    if not isinstance(refs, list) or not refs or any(not isinstance(ref, str) or not ref.strip() for ref in refs):
+        raise RuntimeError("宿主回执没有证据引用")
+    if receipt.get("review_type") not in HOST_REVIEW_TYPES:
+        raise RuntimeError("宿主回执没有审查类型")
+    score = receipt.get("score")
+    if type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 10:
+        raise RuntimeError("宿主回执的评分无效")
+    applicability = receipt.get("applicability")
+    if not isinstance(applicability, str) or not applicability.strip():
+        raise RuntimeError("宿主回执没有适用条件与限制")
+    for key in ("started_at", "finished_at"):
+        value = receipt.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            raise RuntimeError("宿主回执的执行时间无效")
+    if float(receipt["started_at"]) > float(receipt["finished_at"]):
+        raise RuntimeError("宿主回执的执行时间无效")
+    if verdict != "PASS":
+        raise RuntimeError(f"宿主结论是 {verdict}，不能算通过，构包拒收")
+    result = str(task.get("result") or "")
+    if not result.startswith("宿主审查结论：PASS"):
+        raise RuntimeError("宿主结算结果没有标出 PASS 结论")
+    if str(provenance.get("result_sha256") or "") != hashlib.sha256(result.encode()).hexdigest():
+        raise RuntimeError("宿主结算结果和任务结果对不上")
+    context = snapshot.get("review_context") if isinstance(snapshot.get("review_context"), dict) else {}
+    identity = context.get("host") if isinstance(context.get("host"), dict) else {}
+    model = str(identity.get("model") or "")
+    if not model:
+        raise RuntimeError("宿主身份没有记录模型，不能算一票")
+    return {"source": "host", "host_id": host_id, "model": model, "passed": True,
+            "receipt_sha256": event_sha, "prompt_sha256": frozen_prompt,
+            "manifest_sha256": str(snapshot.get("source_manifest_sha256") or "")}
+
+
+def pool_vote_conclusions(
+    runs: Iterable[dict[str, Any]], frozen_prompt: str, manifest_sha256: str
+) -> list[dict[str, Any]]:
+    """池节点这几票按 run_id 记下来源，测试运行不在里面。"""
+    return [
+        {"source": "pool", "node_id": str(item.get("agent_name")), "passed": True,
+         "prompt_sha256": frozen_prompt, "manifest_sha256": manifest_sha256,
+         "run_id": str(item.get("id") or "")}
+        for item in runs
+    ]
+
+
+def _passed_verdict(text: str) -> bool:
+    """这一票必须是恰好一处 FINAL_ACCEPTANCE: PASS，别处不能出现 FAIL。"""
+    verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", text, re.MULTILINE)
+    return (verdicts == ["PASS"] and not re.search(r"FINAL_ACCEPTANCE:\s*FAIL", text)
+            and not contains_non_answer_markers(text))
+
+
+def _acceptance_candidate_binding(
+    payload: dict[str, Any], task: dict[str, Any], snapshot: dict[str, Any],
+    provenance: dict[str, Any],
+) -> tuple[bool, str]:
+    """候选绑定与审计结算绑定；池节点路径和宿主补票路径用同一套判定。"""
+    audit_only = snapshot.get("experience_policy", {}).get("kind") == "audit"
+    if audit_only:
+        result_sha = hashlib.sha256(str(task.get("result") or "").encode()).hexdigest()
+        snapshot_sha = hashlib.sha256(_canonical(snapshot).encode()).hexdigest()
+        settlement = payload.get("audit_settlement") or {}
+        if (payload.get("memory_candidate") is not None
+                or provenance.get("memory_disposition") != "audit_only"
+                or provenance.get("result_sha256") != result_sha
+                or settlement.get("result_sha256") != result_sha
+                or snapshot.get("experience_policy", {}).get("version") != 1
+                or task.get("execution_snapshot_hash") != snapshot_sha):
+            raise RuntimeError("acceptance audit settlement is missing or not bound to the frozen task/result")
+        return True, "audit_only"
+    candidate = payload.get("memory_candidate")
+    if not isinstance(candidate, dict) or candidate.get("status") != "pending_delivery_review":
+        raise RuntimeError("acceptance task did not stage a delivery-review candidate")
+    return False, str(candidate.get("status"))
+
+
+def _validate_host_acceptance(
+    payload: dict[str, Any], source_root: Path, task: dict[str, Any], snapshot: dict[str, Any],
+    runs: list[dict[str, Any]], settlement: dict[str, Any], source_manifest_sha256: str,
+) -> dict[str, Any]:
+    """1 个池节点 PASS ＋ 1 个宿主 PASS（用户 2026-11-02 裁决）。
+
+    宿主那一票只从 `complete_host` 的结算记录取；池节点那一票按 run_id 取，测试运行不参与。
+    """
+    from xiaoba_agentos.pool_dispatch import LEGACY_AGENT_NAMES, gate_node, release_acceptance
+    config = json.loads((source_root / "config" / "agentos.json").read_text(encoding="utf-8"))
+    if int(config.get("worker", {}).get("minimum_successful_agents", 0)) < 2:
+        raise RuntimeError("acceptance provenance does not match the release policy")
+    provenance = settlement.get("provenance") if isinstance(settlement.get("provenance"), dict) else {}
+    if not provenance:
+        # 从库里读时 provenance 就在任务行上；只给结算记录时也能核对。
+        try:
+            parsed = json.loads(str(task.get("provenance_json") or "{}"))
+        except json.JSONDecodeError:
+            parsed = {}
+        provenance = parsed if isinstance(parsed, dict) else {}
+    frozen_prompt = hashlib.sha256(str(task.get("prompt") or task.get("id") or "").encode()).hexdigest()
+    host_conclusion = host_vote_conclusion(settlement, task, snapshot, frozen_prompt)
+    pool_run_ids = [str(value) for value in
+                    (settlement.get("pool_run_ids") or provenance.get("pool_run_ids") or [])]
+    if not pool_run_ids:
+        raise RuntimeError("宿主补票至少要有一份池节点结论，构包拒收")
+    by_id = {str(item.get("id")): item for item in runs if isinstance(item, dict) and item.get("id")}
+    votes: list[dict[str, Any]] = []
+    for run_id in pool_run_ids:
+        run = by_id.get(run_id)
+        if run is None or run.get("status") != "completed" or not str(run.get("output") or "").strip():
+            raise RuntimeError(f"池节点结论 {run_id} 不在这个任务的运行记录里，或没有完成")
+        if str(run.get("agent_name")) in LEGACY_AGENT_NAMES:
+            raise RuntimeError("验收不再接受固定后台名字或备用补位")
+        votes.append(run)
+    pool_nodes = ([gate_node(node) for node in payload.get("pool_nodes", []) if isinstance(node, dict)]
+                  if isinstance(payload.get("pool_nodes"), list) else [])
+    known = {str(node.get("node_id")) for node in pool_nodes}
+    for run in votes:
+        if str(run.get("agent_name")) not in known:
+            raise RuntimeError("池节点不在 Agent 池记录里，不能计票")
+    conclusions = pool_vote_conclusions(votes, frozen_prompt, source_manifest_sha256) + [host_conclusion]
+    raw_execution = payload.get("execution") if isinstance(payload.get("execution"), dict) else {}
+    authors = [str(value) for value in raw_execution.get("author_ids") or []]
+    executors = [str(value) for value in raw_execution.get("executor_ids") or []]
+    host_id = host_conclusion["host_id"]
+    # 宿主“没干活”要对着任务记录核对过，不是一个自述字段。
+    checked_idle = [] if host_id in authors or host_id in executors else [host_id]
+    execution = {"author_ids": authors, "executor_ids": executors, "checked_idle_ids": checked_idle}
+    gate_payload = {**payload, "frozen_prompt_sha256": frozen_prompt,
+                    "source_manifest_sha256": source_manifest_sha256,
+                    "conclusions": conclusions, "pool_nodes": pool_nodes, "execution": execution}
+    accepted, reason = release_acceptance(gate_payload, pool_nodes)
+    if not accepted:
+        raise RuntimeError(reason or "acceptance evidence has insufficient independent successful Agents")
+    audit_only, candidate_status = _acceptance_candidate_binding(payload, task, snapshot, provenance)
+    return {
+        "task_id": str(task.get("id")),
+        "successful_agents": sorted({str(item.get("agent_name")) for item in votes}),
+        "minimum_successful_agents": int(config.get("worker", {}).get("minimum_successful_agents", 0)),
+        "candidate_status": "audit_only" if audit_only else candidate_status,
+        "candidate_sha256": "" if audit_only else str((payload.get("memory_candidate") or {}).get("evidence_sha256") or ""),
+        "source_manifest_sha256": source_manifest_sha256,
+        "standby_substituted": False,
+        "replaced": None,
+        "reason": None,
+        "conclusions": conclusions,
+        "pool_nodes": pool_nodes,
+        "execution": execution,
+        "frozen_prompt_sha256": frozen_prompt,
+        "host_vote": {"host_id": host_id, "model": host_conclusion["model"],
+                      "receipt_sha256": host_conclusion["receipt_sha256"],
+                      "pool_run_ids": [str(item.get("id")) for item in votes]},
+    }
+
+
 def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> dict[str, Any]:
     task = payload.get("task") if isinstance(payload, dict) else None
     runs = payload.get("runs") if isinstance(payload, dict) else None
@@ -203,11 +397,6 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
         raise RuntimeError("acceptance task is not completed")
     if task.get("execution_mode") != "production":
         raise RuntimeError("acceptance task did not use the production loop")
-    result = str(task.get("result") or "")
-    if not re.match(r"^本回答：小八 AgentOS (?:双|三|多) Agent 裁判(?:\n|$)", result):
-        raise RuntimeError("acceptance result has no adjudicated provenance label")
-    if contains_non_answer_markers(result):
-        raise RuntimeError("acceptance result contains unexecuted tool-call markup")
     try:
         provenance = json.loads(str(task.get("provenance_json") or "{}"))
     except json.JSONDecodeError as exc:
@@ -219,6 +408,21 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
     source_manifest_sha256 = sha256(source_root / "SOURCE_MANIFEST.json")
     if snapshot.get("source_manifest_sha256") != source_manifest_sha256:
         raise RuntimeError("acceptance task is not bound to the current source manifest")
+    # 发布验收要从来源工作任务读出作者和执行者，所以任务必须声明来源（或明确写明没有）。
+    from xiaoba_agentos.pool_dispatch import declared_work_tasks
+    declared_ids, explicit_none = declared_work_tasks(snapshot if isinstance(snapshot, dict) else {})
+    if not declared_ids and not explicit_none:
+        raise RuntimeError(
+            "验收任务没有声明来源工作任务，构包不能核对作者和执行者；"
+            "提交时用 --work-task 链上工作任务，或明确声明 --no-work-task")
+    if isinstance(payload.get("host_settlement"), dict):
+        return _validate_host_acceptance(payload, source_root, task, snapshot, list(runs or []),
+                                         payload["host_settlement"], source_manifest_sha256)
+    result = str(task.get("result") or "")
+    if not re.match(r"^本回答：小八 AgentOS (?:双|三|多) Agent 裁判(?:\n|$)", result):
+        raise RuntimeError("acceptance result has no adjudicated provenance label")
+    if contains_non_answer_markers(result):
+        raise RuntimeError("acceptance result contains unexecuted tool-call markup")
     config = json.loads((source_root / "config" / "agentos.json").read_text(encoding="utf-8"))
     enabled_agents = {
         str(item.get("name"))
@@ -333,18 +537,7 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
             raise RuntimeError("every successful acceptance Agent must explicitly return one FINAL_ACCEPTANCE: PASS")
         if contains_non_answer_markers(output):
             raise RuntimeError("acceptance Agent output contains unexecuted tool-call markup")
-    audit_only = snapshot.get("experience_policy", {}).get("kind") == "audit"
-    if audit_only:
-        result_sha = hashlib.sha256(result.encode()).hexdigest()
-        snapshot_sha = hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        settlement = payload.get("audit_settlement") or {}
-        if (candidate is not None or provenance.get("memory_disposition") != "audit_only"
-                or provenance.get("result_sha256") != result_sha or settlement.get("result_sha256") != result_sha
-                or snapshot.get("experience_policy", {}).get("version") != 1
-                or task.get("execution_snapshot_hash") != snapshot_sha):
-            raise RuntimeError("acceptance audit settlement is missing or not bound to the frozen task/result")
-    elif not isinstance(candidate, dict) or candidate.get("status") != "pending_delivery_review":
-        raise RuntimeError("acceptance task did not stage a delivery-review candidate")
+    audit_only, candidate_status = _acceptance_candidate_binding(payload, task, snapshot, provenance)
     from xiaoba_agentos.pool_dispatch import LEGACY_AGENT_NAMES, gate_node, release_acceptance
     if completed_agents & LEGACY_AGENT_NAMES:
         raise RuntimeError("验收不再接受固定后台名字或备用补位")
@@ -438,8 +631,10 @@ def validate_acceptance_database(
                 "FROM tasks WHERE id=?",
                 (task_id,),
             ).fetchone()
+            run_columns = {row[1] for row in connection.execute("PRAGMA table_info(agent_runs)")}
+            run_id_column = "id" if "id" in run_columns else "NULL AS id"
             run_rows = connection.execute(
-                "SELECT agent_name,status,output,failure_class FROM agent_runs WHERE task_id=? ORDER BY created_at",
+                "SELECT " + run_id_column + ",agent_name,status,output,failure_class FROM agent_runs WHERE task_id=? ORDER BY created_at",
                 (task_id,),
             ).fetchall()
             candidate_row = connection.execute(
@@ -451,7 +646,7 @@ def validate_acceptance_database(
                 (task_id,),
             ).fetchone()
             audit_row = connection.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='audit.settled' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
-            host_settled = connection.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='host.receipt_accepted' LIMIT 1", (task_id,)).fetchone()
+            host_row = connection.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='host.receipt_accepted' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
             sub_row = connection.execute("SELECT sequence,payload_json FROM events WHERE task_id=? AND event_type='standby.substituted' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
             # The replaced side's own health history, read independently of the
             # substitution event: the last health record written before it.
@@ -485,16 +680,32 @@ def validate_acceptance_database(
             connection.close()
     except sqlite3.Error as exc:
         raise RuntimeError(f"cannot read acceptance database: {exc}") from exc
-    if host_settled:
-        raise RuntimeError("发布验收只认两个池节点的结论，这个任务由宿主结算，本版不能用于构包")
-    if not judge_row:
+    # 宿主补票（用户 2026-11-02 裁决）：结算记录存在就按宿主票取证，
+    # 记录本身要能核对回执哈希、结论与池节点 run_id，不能只凭“有这条事件”放行。
+    host_event = None
+    if host_row:
+        try:
+            host_event = json.loads(str(host_row["payload_json"]))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("宿主结算记录无效") from exc
+        if not isinstance(host_event, dict) or not isinstance(host_event.get("receipt"), dict):
+            raise RuntimeError("宿主结算记录里没有回执正文")
+    if not host_row and not judge_row:
         raise RuntimeError("acceptance database has no judge decision")
-    try:
-        judge = json.loads(str(judge_row["payload_json"]))
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError("acceptance judge decision is invalid") from exc
-    if not isinstance(judge, dict):
-        raise RuntimeError("acceptance judge decision must be an object")
+    judge = None
+    if judge_row:
+        try:
+            judge = json.loads(str(judge_row["payload_json"]))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("acceptance judge decision is invalid") from exc
+        if not isinstance(judge, dict):
+            raise RuntimeError("acceptance judge decision must be an object")
+    task_provenance = {}
+    if task_row:
+        try:
+            task_provenance = json.loads(str(task_row["provenance_json"] or "{}"))
+        except (TypeError, ValueError):
+            task_provenance = {}
     from xiaoba_agentos.pool_dispatch import _loads_source, node_view, gate_node
     pool_nodes = []
     for row in source_rows:
@@ -513,6 +724,15 @@ def validate_acceptance_database(
         "pool_nodes": pool_nodes,
         "execution": execution,
     }
+    if host_event is not None:
+        # 宿主那一票的证据只从结算记录取：回执正文、哈希、结论、池节点 run_id。
+        payload["host_settlement"] = {
+            "receipt_sha256": str(host_event.get("receipt_sha256") or ""),
+            "receipt": host_event["receipt"],
+            "pool_run_ids": [str(value) for value in host_event.get("pool_run_ids") or []],
+            "provenance": task_provenance,
+            "user_chose_host": bool(host_event.get("user_chose_host")),
+        }
     if sub_row:
         try:
             payload["standby_event"] = json.loads(str(sub_row["payload_json"]))

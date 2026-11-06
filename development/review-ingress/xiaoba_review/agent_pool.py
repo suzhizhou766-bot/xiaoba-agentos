@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from .store import Conflict, canonical, digest
 from .cli_identity import TYPES, agent_type, entry_warning, source_family
+from xiaoba_agentos.pool_dispatch import WORKBUDDY_RETIRED_MESSAGE
 from xiaoba_agentos.validation_evidence import independence_key
 
 
@@ -111,7 +112,8 @@ def validate_node(value):
     if limit is not None and (type(limit) is not int or not 1 <= limit <= MAX_NO_PROGRESS_SECONDS):
         raise ValueError('掉线时限要填 1 到 86400 之间的整数秒')
     if 'agent_type' in value and value['agent_type'] not in TYPES:
-        raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、WorkBuddy、CodeBuddy Code、Codex、Claude 或其它')
+        # 卡 45：内置 WorkBuddy 引擎已退役，'workbuddy' 只为识别旧节点保留，不再列出。
+        raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、CodeBuddy（WorkBuddy CLI）、Codex、Claude 或其它')
     clean = {k:v.strip() if isinstance(v,str) and k != 'entry' else v for k,v in value.items()}
     if tmux:
         from .resource_tmux import validate_session, validate_directory
@@ -161,6 +163,9 @@ class AgentPool:
 
     def add(self, value):
         clean, identity, tmux = validate_node(value)
+        if clean.get('agent_type') == 'workbuddy':
+            # 卡 45：内置 WorkBuddy 引擎已退役。旧节点数据保留，新建不再提供这个类型。
+            raise ValueError(WORKBUDDY_RETIRED_MESSAGE)
         source = {'reviewer_id':clean['node_id'],'kind':clean['kind'],
             'source_ref':entry_ref(clean['interface'],identity),
             'provenance':'用户在Agent池登记的调用资源；未探测或核实客户端设置',
@@ -238,6 +243,9 @@ class AgentPool:
             fields = {'node_id':node_id,'kind':source['kind'],'interface':state['interface'],
                       **{k:changes[k] if k in changes else state.get(k) for k in allowed}}
             clean, identity, _ = validate_node(fields)
+            if clean.get('agent_type') == 'workbuddy' and state.get('agent_type') != 'workbuddy':
+                # 卡 45：已退役的内置引擎不能再被选上；旧节点本身仍可改其它字段。
+                raise ValueError(WORKBUDDY_RETIRED_MESSAGE)
             changed_entry = clean['entry'] != state['entry'] or clean.get('agent_type') != state.get('agent_type')
             after = {'source_ref':entry_ref(clean['interface'],identity) if changed_entry else source['source_ref'],
                      **{k:clean[k] for k in allowed}}

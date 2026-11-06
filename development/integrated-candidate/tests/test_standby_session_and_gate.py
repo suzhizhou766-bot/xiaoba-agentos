@@ -378,7 +378,8 @@ class StandbyReleaseGateTest(unittest.TestCase):
         provenance = json.dumps(
             {"kind": "agentos_multi_adjudicated", "minimum_successful_agents": 2}
         )
-        snapshot = json.dumps({"source_manifest_sha256": self.source_manifest_sha256})
+        snapshot = json.dumps({"source_manifest_sha256": self.source_manifest_sha256,
+                               "review_context": {"no_work_task": True}})
 
         connection.execute(
             "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?)",

@@ -125,6 +125,9 @@ class AgyInteractiveResource:
         self.entry, self.model = source['node']['entry'], source['node']['model']
         limit = source['node'].get('no_progress_seconds', 300)
         self.no_progress_seconds = limit if type(limit) is int and limit >= 1 else 300
+        # 卡 43：测试运行期限跟节点掉线时限走（上限 300 秒），没设掉线时限仍是 90 秒。
+        from .cli_identity import test_timeout_seconds
+        self._test_timeout_seconds = test_timeout_seconds(source['node'])
         self._serial = threading.Lock()
         self._process = self._master = self._workspace_lock = None
         self.workspace = AgentWorkspace(workspace_root, source)
@@ -364,7 +367,8 @@ class AgyInteractiveResource:
             '步骤码只是关联编号，不需要查找其实现，不查历史任务或小八源码。'
             '既有治理要求保持；不为本卡运行命令、不联网、不做额外诊断，只写指定回执文件，不新建当日台账。'
             '回执正文只写材料中的challenge原文，不要JSON或代码围栏。',
-            json.dumps({'challenge':challenge},ensure_ascii=False), timeout=90,kind='test',record_id=challenge,health_only=True)
+            json.dumps({'challenge':challenge},ensure_ascii=False), timeout=self._test_timeout_seconds,
+            kind='test',record_id=challenge,health_only=True)
         if value['status']!='completed' or value['body'] != challenge:
             self.close()
             raise InteractiveError('challenge_mismatch', '文件回执未完成本次健康挑战；没有标记可用。')
@@ -374,7 +378,7 @@ class AgyInteractiveResource:
         value,evidence=self._turn('主入口已核验前一步健康检测通过。由你新建或沿用当日工作Markdown，'
             '只追加本次开工记录，保留原记录。回执正文只写材料中的challenge原文，不用JSON。',
             json.dumps({'challenge':'WORKDAY_READY','health_check':health_evidence},ensure_ascii=False),
-            timeout=90,kind='test',record_id=task_id,step_code='WORKDAY-INIT')
+            timeout=self._test_timeout_seconds,kind='test',record_id=task_id,step_code='WORKDAY-INIT')
         if value['status']!='completed' or value['body']!='WORKDAY_READY':
             self.close();raise InteractiveError('workday_initialization_failed','健康检测通过，但当日工作台账初始化未完成。')
         return evidence

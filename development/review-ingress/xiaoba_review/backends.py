@@ -9,6 +9,7 @@ import hashlib
 import time
 import threading
 from .store import Conflict, canonical, identifier
+from xiaoba_agentos.pool_dispatch import WORKBUDDY_RETIRED_CODE
 
 
 class BackendRegistry:
@@ -78,7 +79,12 @@ class BackendRegistry:
             gated = require_test or bool(card.get('resource_plan'))
             if gated:
                 from .agent_pool import AgentPool
-                if not AgentPool(self.store,self).runtime.readiness(db,source)['ready']:
+                check = AgentPool(self.store,self).runtime.readiness(db,source)
+                if not check['ready']:
+                    # 卡 45：内置 WorkBuddy 引擎已退役的旧节点先回明确的错误码。
+                    if check.get('reason') == WORKBUDDY_RETIRED_CODE:
+                        from .node_runtime import retired_error
+                        raise retired_error()
                     raise ValueError('节点尚未通过当前入口和模型的测试，不能直接运行')
                 from .node_runtime import spec
                 current_spec=spec(source)

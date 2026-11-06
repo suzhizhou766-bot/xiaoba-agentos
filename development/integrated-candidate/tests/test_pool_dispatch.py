@@ -69,7 +69,9 @@ class _FakePoolResource:
                 return {"status": "running", "body": ""}
         return {
             "status": "completed",
-            "body": "RECEIPT_BODY_FROM_" + name,
+            # 审查票正文要能当回执用：写明结论字段；回执正文本身用固定标记便于断言。
+            "body": "证据引用：task:" + str(task_id) + "\n审查结论：PASS\n"
+                    "FINAL_ACCEPTANCE: PASS\nRECEIPT_BODY_FROM_" + name,
             "execution_evidence": {"provider": "fake", "route_source": "test"},
         }
 
@@ -479,7 +481,9 @@ class Card36Counterexamples(unittest.TestCase):
                     "result": "本回答：小八 AgentOS 双 Agent 裁判\n\n有效结论",
                     "provenance_json": json.dumps({"kind": "agentos_multi_adjudicated",
                                                    "minimum_successful_agents": 2}),
-                    "execution_snapshot_json": json.dumps({"source_manifest_sha256": manifest}),
+                    "execution_snapshot_json": json.dumps(
+                        {"source_manifest_sha256": manifest,
+                         "review_context": {"no_work_task": True}}),
                 },
                 "runs": [
                     {"agent_name": "south-node", "status": "completed", "output": "FINAL_ACCEPTANCE: PASS\nA"},

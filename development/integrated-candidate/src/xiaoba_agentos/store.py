@@ -1259,6 +1259,30 @@ class EventStore:
             trial_task_id = require_final_trial(conn, candidate) if stage == "final" and decision == "approve" else None
             from .experience_loop import final_binding
             loop_sha256 = final_binding(conn, candidate) if stage == "final" and decision == "approve" else None
+            # 已经退回的条目，作者还没改正文时再点「需要修改」：不新增裁决、
+            # 也不新增审计记录，只回报上次退回的时间和意见。哈希绑定、
+            # 状态机和终审绑定校验都在上面完成；批准、驳回不受影响。
+            if decision == "revise" and current == "revision_requested":
+                previous_revision = conn.execute(
+                    """SELECT id,note,candidate_sha256,created_at FROM memory_reviews
+                       WHERE task_id=? AND decision='revise'
+                       ORDER BY created_at DESC, rowid DESC LIMIT 1""",
+                    (task_id,),
+                ).fetchone()
+                if previous_revision is not None and previous_revision["candidate_sha256"] == candidate_sha256:
+                    return {
+                        "task_id": task_id,
+                        "status": "already_revision_requested",
+                        "stage": stage,
+                        "decision": decision,
+                        "candidate_sha256": candidate_sha256,
+                        "previous_status": current,
+                        "reviewed_status": current,
+                        "review_id": None,
+                        "revision_requested_review_id": previous_revision["id"],
+                        "revision_requested_at": previous_revision["created_at"],
+                        "revision_note": previous_revision["note"],
+                    }
             status = MEMORY_REVIEW_STATUS_MAP[(stage, decision)]
             review_id = str(uuid.uuid4())
             conn.execute(
@@ -1597,7 +1621,29 @@ class EventStore:
         with self.read_only() as conn:
             return [dict(row) for row in conn.execute(query, parameters)]
 
-    def decide_reuse_outcomes(self, task_id: str, successful: bool) -> List[str]:
+    def record_uncited_reuses(self, task_id: str, source_task_ids: List[str]) -> None:
+        """只是检索命中、没被这次任务结论引用的经验：留痕，但不当作一次使用。
+
+        不建新的 outcome 值（表上有 CHECK 约束），只记一条事件：
+        命中本身不是使用，所以不改来源记忆的状态，也不累加失败次数。
+        """
+        ids = [str(item) for item in source_task_ids if str(item)]
+        if not ids:
+            return
+        with self.connect() as conn:
+            self._append_event_tx(
+                conn, task_id, "memory.reuse_uncited", {"source_task_ids": ids},
+            )
+
+    def decide_reuse_outcomes(
+        self, task_id: str, successful: bool, sources: Optional[Iterable[str]] = None
+    ) -> List[str]:
+        """Settle pending reuses for this task.
+
+        `sources` narrows the settlement to the given source task ids: a hit the
+        task's conclusion never cited stays pending instead of being counted as
+        a failed (or successful) use.
+        """
         outcome = "validated" if successful else "failed"
         now = time.time()
         affected: List[str] = []
@@ -1607,6 +1653,8 @@ class EventStore:
             ).fetchall()
             for row in rows:
                 source_task_id = str(row["source_task_id"])
+                if sources is not None and source_task_id not in sources:
+                    continue
                 candidate = conn.execute(
                     "SELECT task_id,staged_path,evidence_sha256,status FROM memory_candidates WHERE task_id=?",
                     (source_task_id,),
