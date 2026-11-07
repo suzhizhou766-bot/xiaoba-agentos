@@ -24,7 +24,7 @@
 - 验收任务必须声明来源工作任务（`--work-task`），确实没有时用 `--no-work-task` 写明。两个都不写，构包拒收。
 - 等宿主补票期间，如果对池节点点了一次“测试运行”，已经跑完的审查票不受影响：系统按本任务审查用途的那次运行（run_id）取票，不会把节点重新派一遍。
 
-用法和拒收原因见 `docs/OPERATIONS.md`“发布验收的宿主补票”。实现：`scripts/build_release.py`、`host_completion.py`、`pool_dispatch.py`、`orchestrator.py`、`cli.py`。反例：`tests/test_card44_host_vote.py`。
+用法和拒收原因见 `docs/OPERATIONS.md`“发布验收的宿主补票”。工作入口技能卡、`README.md`、`docs/STANDBY_POLICY.md` 里“发布验收只认两个池节点”的旧说法已一并改掉（卡 49 第一轮验收时 CodeBuddy 指出）。实现：`scripts/build_release.py`、`host_completion.py`、`pool_dispatch.py`、`orchestrator.py`、`cli.py`。反例：`tests/test_card44_host_vote.py`。
 
 ## 三、退役内置 WorkBuddy 引擎（卡 45）
 

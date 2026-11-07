@@ -207,7 +207,7 @@ def host_vote_conclusion(
 ) -> dict[str, Any]:
     """宿主补的这一票只认 `complete_host` 留下的结算记录，手写结论进不来。
 
-    回执哈希、host_id、模型、结论都从记录里取；FAIL、NEEDS_INFO 照实保留，不当成通过。
+    回执哈希、host_id、结论从记录里取，模型取自回执绑定的冻结快照；FAIL、NEEDS_INFO 照实保留，不当成通过。
     """
     receipt = settlement.get("receipt")
     event_sha = str(settlement.get("receipt_sha256") or "")
