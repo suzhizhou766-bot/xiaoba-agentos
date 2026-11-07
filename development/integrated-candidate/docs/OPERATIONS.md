@@ -101,7 +101,7 @@ xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
 
 这次发版确实没有来源工作任务时，用 `--no-work-task` 明确写明没有。两个都不写，构包看不出谁干过活，拒收。工作做完按上一节的回执格式 `task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json` 结算。
 
-宿主这一票的证据只从 `host.receipt_accepted` 结算记录读：回执正文、回执哈希、`host_id`、模型、`verdict`、`pool_run_ids`；手写进证据 JSON 的结论不算。
+宿主这一票的回执正文、回执哈希、`host_id`、`verdict`、`pool_run_ids` 只从 `host.receipt_accepted` 结算记录读；模型取自冻结题面里登记的宿主信息，冻结题面由回执里的 `snapshot_sha256` 绑定。手写进证据 JSON 的结论不算。
 
 **什么情况会被拒（原因各不相同）。**
 
