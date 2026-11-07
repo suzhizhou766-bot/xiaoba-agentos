@@ -272,9 +272,13 @@ def host_vote_conclusion(
 def pool_vote_conclusions(
     runs: Iterable[dict[str, Any]], frozen_prompt: str, manifest_sha256: str
 ) -> list[dict[str, Any]]:
-    """池节点这几票按 run_id 记下来源，测试运行不在里面。"""
+    """池节点这几票按 run_id 记下来源，测试运行不在里面。
+
+    passed 照正文里的 FINAL_ACCEPTANCE 算，不默认成通过（卡 49 第二轮 CodeBuddy 指出）。
+    """
     return [
-        {"source": "pool", "node_id": str(item.get("agent_name")), "passed": True,
+        {"source": "pool", "node_id": str(item.get("agent_name")),
+         "passed": _passed_verdict(str(item.get("output") or "")),
          "prompt_sha256": frozen_prompt, "manifest_sha256": manifest_sha256,
          "run_id": str(item.get("id") or "")}
         for item in runs
@@ -346,6 +350,11 @@ def _validate_host_acceptance(
             raise RuntimeError(f"池节点结论 {run_id} 不在这个任务的运行记录里，或没有完成")
         if str(run.get("agent_name")) in LEGACY_AGENT_NAMES:
             raise RuntimeError("验收不再接受固定后台名字或备用补位")
+        # 和两个池节点的路径同一条规则：这一票必须恰好一处 FINAL_ACCEPTANCE: PASS。
+        if not _passed_verdict(str(run.get("output") or "")):
+            raise RuntimeError(
+                f"池节点结论 {run_id}（{run.get('agent_name')}）不是 FINAL_ACCEPTANCE: PASS，"
+                "宿主补票不能替它算通过，构包拒收")
         votes.append(run)
     pool_nodes = ([gate_node(node) for node in payload.get("pool_nodes", []) if isinstance(node, dict)]
                   if isinstance(payload.get("pool_nodes"), list) else [])

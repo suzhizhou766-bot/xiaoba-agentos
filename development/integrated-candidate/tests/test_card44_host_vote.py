@@ -71,10 +71,10 @@ class _AcceptanceDatabaseFixture(unittest.TestCase):
 
     def database(self, *, declare=True, host_settled=True, host_verdict="PASS",
                  host_role=None, receipt_snapshot=None, pool_run_ids=("run-pool-1",),
-                 host_kind=None):
+                 host_kind=None, pool_body=None):
         snapshot = self.snapshot(declare=declare)
         snapshot_sha = hashlib.sha256(_canonical(snapshot).encode()).hexdigest()
-        pool_body = POOL_BODY
+        pool_body = POOL_BODY if pool_body is None else pool_body
         result = (
             "宿主审查结论：" + ("PASS" if host_verdict == "PASS" else "FAIL（未通过）")
             + "\n\nTEST 宿主实际审查正文\n\n池节点审查结论：\nsouth-node: " + pool_body
@@ -229,6 +229,29 @@ class ReleaseAcceptanceHostVoteTests(_AcceptanceDatabaseFixture):
         # “两票都是宿主”在构包这一层的形态：结算记录里没有任何池节点结论。
         with self.assertRaisesRegex(RuntimeError, "至少要有一份池节点结论"):
             self.validate(self.database(pool_run_ids=()))
+
+    def test_pool_vote_that_says_fail_is_refused_even_with_a_host_pass(self):
+        # 卡 49 第二轮 CodeBuddy：池节点写明 FAIL 时，宿主 PASS 不能把它凑成通过。
+        body = "证据引用：task:task-1\n审查结论：FAIL\nFINAL_ACCEPTANCE: FAIL\nTEST 池节点发现阻断缺陷"
+        with self.assertRaisesRegex(RuntimeError, "不是 FINAL_ACCEPTANCE: PASS"):
+            self.validate(self.database(pool_body=body))
+
+    def test_pool_vote_that_needs_info_is_refused_even_with_a_host_pass(self):
+        body = "证据引用：task:task-1\n审查结论：NEEDS_INFO\nTEST 池节点缺材料"
+        with self.assertRaisesRegex(RuntimeError, "不是 FINAL_ACCEPTANCE: PASS"):
+            self.validate(self.database(pool_body=body))
+
+    def test_pool_vote_with_pass_and_fail_lines_is_refused(self):
+        body = POOL_BODY + "\nFINAL_ACCEPTANCE: FAIL"
+        with self.assertRaisesRegex(RuntimeError, "不是 FINAL_ACCEPTANCE: PASS"):
+            self.validate(self.database(pool_body=body))
+
+    def test_pool_vote_conclusions_follow_the_written_verdict(self):
+        votes = self.build_release.pool_vote_conclusions(
+            [{"id": "r1", "agent_name": "a", "output": POOL_BODY},
+             {"id": "r2", "agent_name": "b", "output": "审查结论：FAIL\nFINAL_ACCEPTANCE: FAIL"}],
+            "p" * 64, "m" * 64)
+        self.assertEqual([True, False], [item["passed"] for item in votes])
 
     def test_a_non_review_host_settlement_is_not_an_acceptance_vote(self):
         # 宿主直接干完活（host_manual）没有审查结论，不是验收的一票。
