@@ -5,28 +5,28 @@
       "asset": "workflow_query.py",
       "base": "project",
       "relative": "integrations/review-center/workflow_query.py",
-      "before_sha256": null,
+      "before_sha256": "b6cb826085a77ee943d752b60577902d894ecf025525ad2d771ba4a95b03da37",
       "after_sha256": "b6cb826085a77ee943d752b60577902d894ecf025525ad2d771ba4a95b03da37"
     },
     {
       "asset": "review_action.py",
       "base": "project",
       "relative": "integrations/review-center/review_action.py",
-      "before_sha256": "8a5c1f54ed25a48d50cbc681c48a91414ccd4d6fbc80e045b5cca18a31e67e9f",
+      "before_sha256": "b6faaa2ba37c744aa60eb73da34099697f9429ef346821c63d2001623d0be088",
       "after_sha256": "b6faaa2ba37c744aa60eb73da34099697f9429ef346821c63d2001623d0be088"
     },
     {
       "asset": "xiaoba-monitor.html",
       "base": "assistant",
       "relative": "工具/小八监看/xiaoba-monitor.html",
-      "before_sha256": "c79938b3fce86622083e8d2e4bee2c7472866d77da45594894f28646b25571db",
+      "before_sha256": "506f113864a9e90f3a4e45f16cdf56b0db525cb389518735a83e01ffa9538b24",
       "after_sha256": "506f113864a9e90f3a4e45f16cdf56b0db525cb389518735a83e01ffa9538b24"
     },
     {
       "asset": "server.py",
       "base": "project",
       "relative": "integrations/review-center/server.py",
-      "before_sha256": "3bdab32519c4c6a1b2ec84522757ab70c5ce038c0987cb090e58d9c6669a9c03",
+      "before_sha256": "9a62b2bbfc774c9ae689634f561d8e7b516c1c81b00812c84e81bcc4b6829375",
       "after_sha256": "9a62b2bbfc774c9ae689634f561d8e7b516c1c81b00812c84e81bcc4b6829375"
     }
   ]

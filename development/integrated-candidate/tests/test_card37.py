@@ -256,7 +256,7 @@ class Card37Tests(unittest.TestCase):
                      'result': '本回答：小八 AgentOS 双 Agent 裁判\n\nTEST result',
                      'provenance_json': json.dumps({'kind': 'agentos_multi_adjudicated', 'minimum_successful_agents': 2}),
                      'execution_snapshot_json': json.dumps({'source_manifest_sha256': manifest,
-                                                             'review_context': {'no_work_task': True}})},
+                                                             'review_context': {'no_work_task': True, 'release_acceptance': True}})},
             'runs': [{'agent_name': n, 'status': 'completed', 'output': 'FINAL_ACCEPTANCE: PASS\nTEST'} for n in ('a', 'b')],
             'memory_candidate': {'status': 'pending_delivery_review'},
             'pool_nodes': [{'node_id': n, 'enabled': True, 'test_passed': True, 'independence': [n, 'm'],

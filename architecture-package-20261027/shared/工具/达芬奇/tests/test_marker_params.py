@@ -372,8 +372,6 @@ class TimelineMarkerParamTest(unittest.TestCase):
         self.assertEqual(target.add_calls, [(12, "Blue", "Fallback", "", 1)])
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class CrossLanguageTimecodePinsTest(unittest.TestCase):
@@ -405,3 +403,7 @@ class CrossLanguageTimecodePinsTest(unittest.TestCase):
         from src.utils.multicam import timecode_to_frames
         self.assertEqual(timecode_to_frames("01:00:00:00", 29.97), 108000)
         self.assertEqual(timecode_to_frames("01:00:00;00", 29.97, drop_frame=True), 107892)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,4 +1,5 @@
 """系统模块：主页面、存活探针、各模块健康状况。"""
+import html
 import subprocess
 import time
 
@@ -14,6 +15,7 @@ class SystemModule(Module):
         super().__init__(ctx)
         self.page = cfg.resolve(ctx.config, ctx.config["page_file"])
         self.revision = self._revision()
+        self.warnings = []   # 最近一次读到的模块警告，正文提示条用它（不是只在标签悬浮提示里）
 
     def _revision(self):
         try:
@@ -38,13 +40,22 @@ class SystemModule(Module):
             # 统一用 127.0.0.1 这一个地址：浏览器按地址分开保存数据，导演台的方案库才不会分成两份
             return Response(302, b"", headers={"Location": "http://127.0.0.1:%d/" % ctx.port})
         try:
-            html = self.page.read_text(encoding="utf-8")
+            page = self.page.read_text(encoding="utf-8")
         except OSError:
             return Response(404, ("找不到页面文件：%s" % self.page).encode("utf-8"), "text/plain; charset=utf-8")
         doc = ('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
-               '<meta name="xiaoba-page-token" content="%s"></head><body>' % ctx.page_token + html + "</body></html>")
+               '<meta name="xiaoba-page-token" content="%s"></head><body>' % ctx.page_token
+               + self._banner() + page + "</body></html>")
         return Response(200, doc.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _banner(self):
+        """模块自己报的警告（例如端口监听检测不可用）写进正文里的一条提示：光有标签上的悬浮提示不够。
+        还没读到过警告时也留好这个位置，页面脚本会接着更新它。"""
+        if not self.warnings:
+            return '<p class="rc-notice crit" id="pageWarn" role="alert" hidden></p>'
+        text = "；".join("%s：%s" % (html.escape(w["title"]), html.escape(w["text"])) for w in self.warnings)
+        return '<p class="rc-notice crit" id="pageWarn" role="alert">⚠️ %s</p>' % text
 
     def healthz(self, req):
         # 看护进程用它判断监看中心是否还在响应；不含任何业务数据
@@ -65,6 +76,8 @@ class SystemModule(Module):
 
     def api_health(self, req):
         modules = self._modules()
+        self.warnings = [{"id": m["id"], "title": m.get("title") or m["id"], "text": m["warning"]}
+                         for m in modules if m.get("warning")]
         worst = "ok"
         for item in modules:
             status = item.get("status")

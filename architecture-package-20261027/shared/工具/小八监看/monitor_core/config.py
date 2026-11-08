@@ -48,9 +48,10 @@ DEFAULTS = {
     "taskcards": {
         # 任务卡页：扫描这些目录里的“卡N-标题.md”；发卡、回执、核对登记在 ledger（JSONL，只追加）里。
         # 宿主 Agent 用 tools/taskcard.py 登记。receipt_root 下文件名带“回执”和“卡N”的 .md/.txt 会被自动发现。
-        "dirs": ["/Users/suzhizhou/Documents/私人助理/工作区/小八架构修复-20261030/任务卡"],
-        "ledger": "/Users/suzhizhou/Documents/私人助理/工作区/任务卡台账.jsonl",
-        "receipt_root": "/Users/suzhizhou/Documents/私人助理/工作区",
+        # 默认用相对监看中心根目录的路径（resolve 后落到私人助理/工作区/…）；monitor.json 可写绝对路径覆盖，线上行为不变。
+        "dirs": ["../../工作区/小八架构修复-20261030/任务卡"],
+        "ledger": "../../工作区/任务卡台账.jsonl",
+        "receipt_root": "../../工作区",
         "receipt_depth": 3,
     },
     "watchdog": {

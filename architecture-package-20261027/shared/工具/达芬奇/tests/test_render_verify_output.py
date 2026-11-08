@@ -258,8 +258,6 @@ class GetTitleTextFusionFallbackTest(unittest.TestCase):
         tool.GetInput.assert_called_with("StyledText")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class SafeQuickExportOutputCheckTest(unittest.TestCase):
@@ -342,3 +340,7 @@ class VerifyOutputLocalizedStatusTest(unittest.TestCase):
         result = self._run({"JobStatus": "Annullato", "CompletionPercentage": 62})
         self.assertFalse(result["verified"], result)
         self.assertTrue(any("62" in w for w in result["warnings"]), result)
+
+
+if __name__ == "__main__":
+    unittest.main()

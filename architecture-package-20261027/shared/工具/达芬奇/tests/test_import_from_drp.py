@@ -289,8 +289,6 @@ class ImportFromDrpTests(unittest.TestCase):
         self.assertEqual(proj.GetTimelineCount(), 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class _NamedProject:
@@ -428,3 +426,7 @@ class OtioNoTimelineRemediationTests(unittest.TestCase):
             self.assertIn("sanitize_media=True", _remediation(res))
         finally:
             os.unlink(path)
+
+
+if __name__ == "__main__":
+    unittest.main()

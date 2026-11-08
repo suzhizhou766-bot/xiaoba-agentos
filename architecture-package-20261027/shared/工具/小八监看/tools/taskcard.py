@@ -29,8 +29,14 @@ from monitor_core import taskcards  # noqa: E402
 
 def board(config):
     settings = config.get("taskcards") or {}
-    return taskcards.Board(settings.get("dirs") or [], settings.get("ledger") or "",
-                           settings.get("receipt_root") or "", settings.get("receipt_depth", 3))
+    dirs = [str(cfg.resolve(config, item)) for item in (settings.get("dirs") or [])]
+    ledger = settings.get("ledger") or ""
+    receipt_root = settings.get("receipt_root") or ""
+    if ledger:
+        ledger = str(cfg.resolve(config, ledger))
+    if receipt_root:
+        receipt_root = str(cfg.resolve(config, receipt_root))
+    return taskcards.Board(dirs, ledger, receipt_root, settings.get("receipt_depth", 3))
 
 
 def when(value):

@@ -7,7 +7,7 @@
 import threading
 import time
 
-from .. import taskcards
+from .. import config as cfg, taskcards
 from ..web import Route, error, json_response
 from . import Module
 
@@ -20,8 +20,14 @@ class TaskCardsModule(Module):
     def __init__(self, ctx):
         super().__init__(ctx)
         settings = ctx.config.get("taskcards") or {}
-        self.board = taskcards.Board(settings.get("dirs") or [], settings.get("ledger") or "",
-                                     settings.get("receipt_root") or "", settings.get("receipt_depth", 3))
+        dirs = [str(cfg.resolve(ctx.config, item)) for item in (settings.get("dirs") or [])]
+        ledger = settings.get("ledger") or ""
+        receipt_root = settings.get("receipt_root") or ""
+        if ledger:
+            ledger = str(cfg.resolve(ctx.config, ledger))
+        if receipt_root:
+            receipt_root = str(cfg.resolve(ctx.config, receipt_root))
+        self.board = taskcards.Board(dirs, ledger, receipt_root, settings.get("receipt_depth", 3))
         self._lock = threading.Lock()
         self._cached = (0.0, None)
 

@@ -68,6 +68,10 @@ def requires_review_vote(db, task, snapshot):
         return True
     # The CLI adapters require this exact pair in the frozen task prompt before
     # enforcing FINAL_ACCEPTANCE; build_release subsequently validates the votes.
+    context = snapshot.get('review_context') or {}
+    if 'release_acceptance' in context:
+        return context['release_acceptance'] is True
+    # Legacy snapshots without the field retain the old frozen-prompt contract.
     prompt = task['prompt']
     return 'FINAL_ACCEPTANCE: PASS' in prompt and 'FINAL_ACCEPTANCE: FAIL' in prompt
 
@@ -179,8 +183,21 @@ def audit_ledger_tx(db, chain_ok=None):
         return {'ok': True, 'reason': None, 'valid_rows': [], 'dirty_rows': [], 'problems': []}
     stored = list(db.execute('SELECT * FROM ri_task_assessments'))
     latest = {}
+    invalid_transitions = set()
     for event in db.execute("SELECT payload_json FROM events WHERE event_type='task_scoring.assessed' ORDER BY sequence"):
-        value = json.loads(event[0]); latest[value['key']] = value
+        value = json.loads(event[0]); key = value['key']
+        current, previous = value.get('current') or {}, value.get('previous') or {}
+        prior = latest.get(key, {}).get('current') or {}
+        if prior.get('outcome') == 'void':
+            invalid_transitions.add(key)
+        if current.get('outcome') == 'void':
+            if (not previous or previous.get('outcome') == 'void' or not current.get('run_id')
+                    or not isinstance(current.get('void_reason'), str) or not current['void_reason'].strip()
+                    or not current.get('evidence_refs') or current.get('points') != 0 or current.get('tasks') != 0
+                    or current.get('success_rate') != 0 or value.get('delta') != -previous.get('points', 0)
+                    or value.get('void') is not True):
+                invalid_transitions.add(key)
+        latest[key] = value
 
     problems = []
     stored_ids = {r['id'] for r in stored}
@@ -193,6 +210,9 @@ def audit_ledger_tx(db, chain_ok=None):
     for row in stored:
         try:
             value = json.loads(row['data'])
+            if row['id'] in invalid_transitions:
+                dirty_rows.append((row, value, '作废评分转换无效'))
+                continue
             if row['id'] not in latest:
                 dirty_rows.append((row, value, '缺少审计事件'))
                 continue
@@ -248,6 +268,8 @@ def ledger_check(store_or_db):
 def weekly(rows, day, task_type=None):
     start, end = week_of(day); groups = {}
     for value in rows:
+        if value.get('outcome') == 'void':
+            continue
         if value['week_start'] != start or (task_type and value['task_type'] != task_type):
             continue
         role = value.get('role') or ''
@@ -287,6 +309,8 @@ def decorate_nodes(db, nodes, day=None, role='review', manual_inputs=None):
     else:
         valid_rows = []
         for value in audit['valid_rows']:
+            if value.get('outcome') == 'void':
+                continue
             if value.get('run_id') or value['week_start'] != start or not value.get('receipt_digests'):
                 valid_rows.append(value)
                 continue

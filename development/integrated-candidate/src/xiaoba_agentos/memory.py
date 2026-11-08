@@ -1390,7 +1390,7 @@ class MemoryBridge:
             )
             if status_count != 1:
                 raise RuntimeError("published memory status field is invalid")
-        link_added = link not in original_catalog
+        link_added = ("- " + link) not in original_catalog.splitlines()
         written_catalog = written_note = False
         try:
             # 链接先回、状态后改：与 set_validation_status 的重新激活顺序一致，

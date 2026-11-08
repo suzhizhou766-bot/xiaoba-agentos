@@ -60,7 +60,7 @@ class _AcceptanceDatabaseFixture(unittest.TestCase):
         if declare == "none":
             context["no_work_task"] = True
         return {"prompt": "TEST 发布验收", "source_manifest_sha256": self.manifest_sha,
-                "review_context": context, "needs_review": True}
+                "review_context": {**context, "release_acceptance": True}, "needs_review": True}
 
     def host_receipt(self, snapshot_sha, verdict="PASS"):
         return {"receipt_id": "host-receipt-1", "task_id": "task-1", "snapshot_sha256": snapshot_sha,

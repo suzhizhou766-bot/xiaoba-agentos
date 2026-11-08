@@ -153,17 +153,57 @@ class OpenReviewModule(Module):
             if item['entry_type']!='reuse_change' or item['status']!='awaiting_review' or not item['hash_matches']: continue
             rid=str(uuid.uuid5(uuid.NAMESPACE_URL,item['task_id']+item['evidence_sha256']))
             with self.store.native.read_only() as db:
-                if db.execute('SELECT 1 FROM ri_requests WHERE id=?',(rid,)).fetchone(): continue
-            planned=self.pool.runtime.prepare(['review','review_2'],candidate_id=item['task_id'])
-            if planned['route']!='run':
-                outcomes.append({'request_id':item['task_id'],**planned}); continue
-            pair=planned['selections']
-            request=self.store.create(item['task_id'],pair['review'],pair['review_2'],
-                '复用改动：核对完整修订稿、源版本、真实任务与改动三项；不代用户批准',
-                [{'ref':item['draft']['path'],'sha256':item['evidence_sha256']}],request_id=rid,
-                dsh_channel='backend_adapter',peer_channel='backend_adapter',review_type='reuse_change')
-            for assignment in request['assignments']: self.backends.execute(assignment['id'],require_test=True)
-            outcomes.append({'request_id':item['task_id'],'route':'dispatched'})
+                existing=db.execute('SELECT * FROM ri_requests WHERE id=?',(rid,)).fetchone()
+                assignments=[dict(v) for v in db.execute('SELECT * FROM ri_assignments WHERE request_id=? AND active=1',(rid,))] if existing else []
+            if not existing:
+                planned=self.pool.runtime.prepare(['review','review_2'],candidate_id=item['task_id'])
+                if planned['route']!='run':
+                    outcomes.append({'request_id':item['task_id'],**planned}); continue
+                pair=planned['selections']
+                request=self.store.create(item['task_id'],pair['review'],pair['review_2'],
+                    '复用改动：核对完整修订稿、源版本、真实任务与改动三项；不代用户批准',
+                    [{'ref':item['draft']['path'],'sha256':item['evidence_sha256']}],request_id=rid,
+                    dsh_channel='backend_adapter',peer_channel='backend_adapter',review_type='reuse_change')
+                assignments=request['assignments']
+            statuses=[]
+            for assignment in assignments:
+                aid=assignment['id']
+                with self.store.transaction() as db:
+                    latest=db.execute('SELECT status,attestation FROM ri_receipts WHERE assignment_id=? ORDER BY rowid DESC LIMIT 1',(aid,)).fetchone()
+                    if latest and latest['status']=='valid' and latest['attestation']:
+                        statuses.append('qualified'); continue
+                    history=[json.loads(v[0]) for v in db.execute("SELECT payload_json FROM events WHERE event_type='memory.formal_dispatch_attempt' AND json_extract(payload_json,'$.assignment_id')=? ORDER BY sequence",(aid,))]
+                    starts=[v for v in history if v['phase']=='started']
+                    # Old requests may already have a first backend attempt.
+                    old_attempts=db.execute("SELECT count(*) FROM events WHERE event_type='open_review.backend_started' AND json_extract(payload_json,'$.assignment_id')=?",(aid,)).fetchone()[0]
+                    attempts=max(len(starts),old_attempts)
+                    old_hard=db.execute("SELECT 1 FROM events WHERE event_type='open_review.backend_failed' AND json_extract(payload_json,'$.assignment_id')=? LIMIT 1",(aid,)).fetchone()
+                    legacy_unknown=existing and not history and (old_hard or not latest)
+                    if (legacy_unknown or attempts>=2 or (history and history[-1]['phase'] in {'started','hard_failure'})
+                            or db.execute('SELECT running FROM ri_assignments WHERE id=?',(aid,)).fetchone()[0]):
+                        statuses.append('manual_required'); continue
+                    attempt=attempts+1
+                    payload={'request_id':item['task_id'],'request_version':rid,'draft_sha256':item['evidence_sha256'],
+                             'assignment_id':aid,'attempt':attempt,'phase':'started'}
+                    self.store.native._append_event_tx(db,item['source_task_id'],'memory.formal_dispatch_attempt',payload)
+                try:
+                    self.backends.execute(aid,require_test=True)
+                except Exception as exc:
+                    phase='hard_failure'
+                else:
+                    with self.store.native.read_only() as db:
+                        latest=db.execute('SELECT status,attestation FROM ri_receipts WHERE assignment_id=? ORDER BY rowid DESC LIMIT 1',(aid,)).fetchone()
+                    phase='qualified' if latest and latest['status']=='valid' and latest['attestation'] else 'soft_failure'
+                with self.store.transaction() as db:
+                    self.store.native._append_event_tx(db,item['source_task_id'],'memory.formal_dispatch_attempt',dict(payload,phase=phase))
+                statuses.append('qualified' if phase=='qualified' else 'retry_pending' if phase=='soft_failure' and attempt<2 else 'manual_required')
+            status='manual_required' if 'manual_required' in statuses else 'retry_pending' if 'retry_pending' in statuses else 'qualified'
+            with self.store.transaction() as db:
+                previous=db.execute("SELECT payload_json FROM events WHERE event_type='memory.formal_dispatch_status' AND json_extract(payload_json,'$.request_version')=? ORDER BY sequence DESC LIMIT 1",(rid,)).fetchone()
+                payload={'request_id':item['task_id'],'request_version':rid,'draft_sha256':item['evidence_sha256'],'dispatch_status':status}
+                if not previous or json.loads(previous[0])!=payload:
+                    self.store.native._append_event_tx(db,item['source_task_id'],'memory.formal_dispatch_status',payload)
+            outcomes.append({'request_id':item['task_id'],'route':status})
         return outcomes
 
     def sources(self, req):

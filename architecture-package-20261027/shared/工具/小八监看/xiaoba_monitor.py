@@ -48,6 +48,10 @@ def build_app(config, logger):
     app = App(ctx)
     for module_class in MODULES:
         app.register(module_class(ctx))
+    from monitor_core.modules.agent_pool import AgentPoolModule
+    loader = AgentPoolModule(ctx)
+    app.register(loader)
+    loader.attach(app)
     return app
 
 

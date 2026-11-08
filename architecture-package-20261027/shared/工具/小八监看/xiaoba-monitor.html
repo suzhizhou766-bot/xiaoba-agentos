@@ -223,7 +223,7 @@ dialog.rc-dialog::backdrop{background:rgba(10,16,26,.55)}
 .rc-frozen .where,.fz-facts dd{font-family:var(--font-data);font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
 .rc-frozen .where{margin:6px 0 0}
 .rc-frozen .where b{font-family:var(--font-ui);font-weight:500;color:var(--ink)}
-.rc-frozen .go{display:flex;justify-content:flex-end}
+.rc-frozen .go{display:flex;justify-content:flex-end;gap:8px}
 .fz-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;font-size:13px}
 .fz-facts dt{color:var(--muted)}
 .fz-facts dd{margin:0;color:var(--ink)}
@@ -989,6 +989,37 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
  .wrap>.tabs::before{top:4px;height:calc(100% - 8px)}
 }
 
+/* 裁决中心：每条待审左上角的序号角标（2026-11-05 用户选定 A 方案） */
+.rc-item{position:relative;padding-top:32px}
+.rc-seq{position:absolute;top:9px;left:12px;font-size:12px;font-weight:700;line-height:18px;letter-spacing:.04em;font-variant-numeric:tabular-nums;
+ padding:1px 9px;border-radius:999px;background:var(--accent);color:var(--bg);box-shadow:0 4px 10px -4px var(--drop);pointer-events:none}
+/* 已退回条目的提示：正文未改动时「需要修改」不可点，深浅两色用同一组变量 */
+.rc-returned{margin:10px 0 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);color:var(--ink);font-size:12px;line-height:1.6}
+
+
+/* 任务卡页 */
+.tc-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px}
+.tc-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tc-title span{font-size:12px;color:var(--muted)}
+.tc-search{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:3px 10px;font-size:12.5px;min-width:0;width:min(220px,100%)}
+.tc-warn{margin:0;padding:8px 14px;border-radius:8px;border:1px solid var(--warn);color:var(--warn);font-size:12.5px}
+.tc-table td .t{display:block;font-weight:500}
+.tc-table td .sub{display:block;font-size:12px;color:var(--muted);max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tc-table td.num{white-space:nowrap}
+.tc-new{display:inline-block;margin-left:6px;padding:0 6px;border-radius:999px;font-size:11px;background:var(--accent);color:#fff;vertical-align:1px}
+.tc-help code{font-family:var(--font-data);font-size:.92em}
+.tc-help{padding:8px 14px 12px;margin:0}
+.tc-dialog{width:min(920px,calc(100vw - 32px))}
+.tc-detail{overflow:auto;max-height:calc(100vh - 160px);min-width:0}
+.tc-detail h4{margin:14px 0 6px;font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.06em}
+.tc-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin:6px 0 0;font-size:13px}
+.tc-facts dt{color:var(--muted)} .tc-facts dd{margin:0;overflow-wrap:anywhere}
+.tc-events,.tc-receipts{margin:0;padding-left:20px;font-size:13px;display:grid;gap:4px}
+.tc-events .when,.tc-receipts .when{font-family:var(--font-data);color:var(--muted);font-size:12px;margin-right:6px}
+.tc-receipts button{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;text-align:left;overflow-wrap:anywhere}
+.tc-docbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 6px;padding-top:12px;border-top:1px solid var(--line)}
+.tc-doc{border:1px solid var(--line);border-radius:8px;padding:4px 16px;background:var(--panel-2)}
+@media (max-width:640px){.tc-facts{grid-template-columns:minmax(0,1fr)} .tc-facts dt{margin-top:6px}}
 </style>
 
 <div class="wrap">
@@ -1042,7 +1073,10 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     <button class="tab" type="button" role="tab" id="tabDirector" data-view="director" aria-selected="false" aria-controls="viewDirector">导演台</button>
     <button class="tab" type="button" role="tab" id="tabStage" data-view="stage" aria-selected="false" aria-controls="viewStage">3D 导演台</button>
     <button class="tab" type="button" role="tab" id="tabKeypool" data-view="keypool" aria-selected="false" aria-controls="viewKeypool">Key 池</button>
+    <button class="tab" type="button" role="tab" id="tabTaskcards" data-view="taskcards" aria-selected="false" aria-controls="viewTaskcards">任务卡 <span class="badge" id="tcBadge" hidden>0</span></button>
   </nav>
+
+  <p class="rc-notice crit" id="pageWarn" role="alert" hidden></p>
 
   <div class="view" id="viewOverview" role="tabpanel" aria-labelledby="tabOverview">
   <section class="kpis" id="kpis" aria-label="核心指标"></section>
@@ -1192,6 +1226,7 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
               <button class="choice" type="button" data-decision="revise" aria-pressed="false" disabled><strong>需要修改</strong><small>提出具体意见，修改后重新审核</small></button>
               <button class="choice" type="button" data-decision="reject" aria-pressed="false" disabled><strong>不予采用</strong><small>拒绝这份候选，保留审核记录</small></button>
             </div>
+            <p class="rc-returned" id="rcReturned" role="status" hidden></p>
             <label class="rc-note">裁决意见（需要修改或不予采用时必填）
               <textarea id="rcNote" maxlength="3500" placeholder="写下你的具体意见…"></textarea>
               <span class="under"><span>“需要修改”会把意见写入 AgentOS 待修改记录，具体修改由 Agent 主入口接续处理。</span><span class="num" id="rcNoteCount">0 / 3500</span></span>
@@ -1259,6 +1294,41 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     <section class="panel dir-frame stage-frame"><iframe id="stageFrame" title="小八 3D 导演台" allow="clipboard-read; clipboard-write; fullscreen"></iframe></section>
   </div>
 
+  <div class="view" id="viewTaskcards" role="tabpanel" aria-labelledby="tabTaskcards" hidden>
+    <section class="panel tc-bar">
+      <div class="tc-title"><b>任务卡</b><span>宿主 Agent 发的卡、发给了谁、回执到了没有 · 每 10 秒刷新 · 只读</span></div>
+      <div class="spacer"></div>
+      <span class="chip num" id="tcUpdated">—</span>
+    </section>
+    <section class="kpis" id="tcKpis" aria-label="任务卡状态统计"></section>
+    <p class="tc-warn" id="tcWarn" role="status" hidden></p>
+    <section class="panel" aria-label="任务卡列表">
+      <div class="panel-head"><h2>全部任务卡</h2><span class="foot" id="tcSummary"></span><div class="spacer"></div>
+        <input class="tc-search" id="tcSearch" type="search" placeholder="搜卡号、标题、版本、Agent" aria-label="搜索任务卡">
+        <div class="kpn-filter" id="tcFilter" role="group" aria-label="筛选任务卡">
+          <button class="seg" type="button" data-f="open" aria-pressed="true">进行中</button>
+          <button class="seg" type="button" data-f="all" aria-pressed="false">全部</button>
+          <button class="seg" type="button" data-f="closed" aria-pressed="false">已完成</button></div></div>
+      <div class="table-scroll"><table class="tc-table"><thead><tr><th class="num">卡</th><th>标题</th><th>状态</th><th>发给</th><th>发卡时间</th><th>回执</th><th>最近更新</th></tr></thead><tbody id="tcBody"></tbody></table></div>
+      <p class="foot tc-help">登记发卡、回执、核对：宿主 Agent 在监看中心目录用统一解释器运行 <code>tools/taskcard.py issue 43 --to Codex</code>（完整命令和用法见该文件开头）。新卡放进任务卡目录就会出现。</p>
+    </section>
+    <dialog class="rc-dialog tc-dialog" id="tcDialog" aria-labelledby="tcDialogTitle">
+      <form method="dialog" onsubmit="return false">
+      <div class="rc-dialog-head">
+        <h3 id="tcDialogTitle">任务卡</h3>
+        <button class="rc-close" type="button" id="tcClose" aria-label="关闭" title="关闭（Esc）">×</button>
+      </div>
+      <div class="tc-detail">
+        <dl class="tc-facts" id="tcFacts"></dl>
+        <h4>经过</h4><ol class="tc-events" id="tcEvents"></ol>
+        <h4>回执</h4><ul class="tc-receipts" id="tcReceipts"></ul>
+        <div class="tc-docbar"><b id="tcDocTitle">卡片原文</b><span class="foot num" id="tcDocMeta"></span><div class="spacer"></div>
+          <button class="btn" type="button" id="tcShowCard">看卡片原文</button></div>
+        <div class="rc-body tc-doc" id="tcDoc"></div>
+      </div>
+      </form>
+    </dialog>
+  </div>
   <div class="view" id="viewKeypool" role="tabpanel" aria-labelledby="tabKeypool" hidden>
     <section class="panel kp-bar">
       <div class="kp-title"><b>Key 池</b><span>多个中转站合并成一个 Key · 只在本机 · 随监看中心启停</span></div>
@@ -1786,7 +1856,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
   const HUB = {w:196, h:150}, CLIENT = {w:148, h:76};
   const STATUS = {ok:["ok","正常"], idle:["ok","空闲"], busy:["busy","转发中"], cooling:["warn","冷却"],
                   down:["down","故障"], disabled:["disabled","停用"], unknown:["idle","未连接"],
-                  quarantined:["quar","已隔离"]};
+                  quarantined:["quar","已隔离"], reauth:["warn","等待重新授权"]};
   const reduce = matchMedia("(prefers-reduced-motion: reduce)");
   const el = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1821,6 +1891,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
   function nodeSub(n){
     const s = nodeStatus(n), L = n.live || {};
     if(s === "disabled") return "已停用";
+    if(s === "reauth") return "地址换了站点 · 旧 Key 已停用 · 重新填 Key 恢复";
     if(s === "quarantined") return `安全拦截 · ${L.quarantineReason || "危险操作"}`;
     if(s === "unknown") return "代理未连接";
     if(s === "cooling") return `${errCode(L.lastError)} · 冷却 ${left(L.cooldownLeft)}`;
@@ -2114,6 +2185,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
         </div>
       </div>
       <div class="kp-quar" id="kpQuar" hidden></div>
+      <div class="kp-quar" id="kpReauth" hidden></div>
       <ul class="kp-seclist" id="kpSecList"></ul>`;
     el("kpGuard").addEventListener("change", async e => {
       try{ await api("api/keypool/settings", {guardEnabled:e.target.checked}); flash(e.target.checked?"已开启安全检测":"已关闭安全检测（回复不再检查）", !e.target.checked); refresh(); }
@@ -2155,6 +2227,14 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
     qbox.hidden = !quar.length;
     if(quar.length) qbox.innerHTML = quar.map(n =>
       `<span>⚠️ <b>${esc(n.name)}</b> 因 ${esc((n.live&&n.live.quarantineReason)||"危险操作")} 被隔离，已停止分流。确认无害后可放行。</span><button class="btn" type="button" data-id="${esc(n.id)}">放行</button>`).join("");
+    // 地址换到别的站点、Key 还没重填：旧 Key 停用，不发请求（只影响这一个节点）
+    const hold = data.nodes.filter(n => nodeStatus(n) === "reauth");
+    const hbox = el("kpReauth");
+    if(hbox){
+      hbox.hidden = !hold.length;
+      if(hold.length) hbox.innerHTML = hold.map(n =>
+        `<span>🔒 <b>${esc(n.name)}</b> ${esc((n.live&&n.live.reauthReason)||"地址换了站点")}；重新填写 Key 才会恢复发请求。</span>`).join("");
+    }
     const list = secRecent.slice(-12).reverse();
     el("kpSecList").innerHTML = list.length ? list.map(e => { const [cls] = SEC_TAG[e.kind] || ["",""];
       return `<li><span class="t">${clock(e.t)}</span><span class="tag ${e.kind}">${(SEC_TAG[e.kind]||["","事件"])[1]}</span>
@@ -2528,7 +2608,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
         ? `<span style="color:var(--warn)">${L.buffered}/${L.streams} 次整段返回</span>` : `正常（${L.streams} 次）`}</dd>
       ${n.hasBalance ? `<dt>账户余额</dt><dd>${balanceText(n.balance)}</dd>` : ""}
       <dt>最近错误</dt><dd>${L.lastError ? esc((L.lastErrorAt ? clock(L.lastErrorAt) + " · " : "") + clip(L.lastError, 60)) : "无"}</dd>
-    </dl>${s === "quarantined" ? `<div class="kp-quar" style="margin-top:10px"><span>⚠️ 因 ${esc(L.quarantineReason||"危险操作")} 被安全检测隔离，已停止分流。</span><button class="btn" type="button" id="kpRelease">放行</button></div>` : ""}
+    </dl>${s === "quarantined" ? `<div class="kp-quar" style="margin-top:10px"><span>⚠️ 因 ${esc(L.quarantineReason||"危险操作")} 被安全检测隔离，已停止分流。</span><button class="btn" type="button" id="kpRelease">放行</button></div>` : ""}${s === "reauth" ? `<div class="kp-quar" style="margin-top:10px"><span>🔒 ${esc(L.reauthReason||"地址换了站点")}；重新填写 Key 才会恢复发请求。</span></div>` : ""}
     <p class="kp-hint" style="margin-top:8px">计数从代理本次启动开始。“整段返回”指流式请求的首字几乎等于总耗时：中转站等全部生成完才一次性发回，首字会很慢。</p>`;
     const rel = el("kpRelease");
     if(rel) rel.addEventListener("click", async () => {
@@ -2570,10 +2650,11 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
       cell("dot").className = "dot " + STATUS[s][0];
       const note = testNote[n.id] && testNote[n.id].until > now ? testNote[n.id] : null, sub = cell("sub");
       const text = note ? note.text : STATUS[s][1] + (L.cooldownLeft ? ` · 还要冷却 ${left(L.cooldownLeft)}` : "")
+        + (s === "reauth" && L.reauthReason ? " · " + clip(L.reauthReason, 44) : "")
         + (["cooling","down","quarantined"].includes(s) && L.lastError ? " · " + clip(L.lastError, 48) : "");
       if(sub.textContent !== text) sub.textContent = text;
-      sub.className = "kpn-sub " + (note ? note.cls : ["cooling","quarantined"].includes(s) ? "warn" : s === "down" ? "err" : "");
-      sub.title = L.lastError || "";
+      sub.className = "kpn-sub " + (note ? note.cls : ["cooling","quarantined","reauth"].includes(s) ? "warn" : s === "down" ? "err" : "");
+      sub.title = (s === "reauth" ? L.reauthReason : L.lastError) || "";
       const cur = routeNow(n);
       const routes = [n.hasKey && ["plan", n.hasPayKey ? "套餐" : "单 Key"], n.hasPayKey && ["pay", "余额"]].filter(Boolean)
         .map(([id, name]) => `<span class="kpn-badge${cur === id ? " now" : ""}"${cur === id ? ` title="现在走这一路"` : ""}>${name}</span>`).join("");
@@ -2834,7 +2915,7 @@ new MutationObserver(renderAll).observe(document.documentElement,{attributes:tru
    裁决逻辑沿用本机裁决中心：这里只负责展示、起草与提交确认。
    ========================================================= */
 const Tabs = (() => {
-  const views = {overview:$("viewOverview"), review:$("viewReview"), director:$("viewDirector"), stage:$("viewStage"), keypool:$("viewKeypool")};
+  const views = {overview:$("viewOverview"), review:$("viewReview"), director:$("viewDirector"), stage:$("viewStage"), keypool:$("viewKeypool"), taskcards:$("viewTaskcards")};
   const listeners = [];
   let current = "overview";
   function show(name, push=true){
@@ -2957,7 +3038,7 @@ const ReviewCenter = (() => {
 
   /* ---- 冻结任务：只列出；恢复必须由用户逐个点选，并在确认框里核对任务编号与冻结哈希。不重试，不批量 ---- */
   let frozen=null, fzAt=0, fzBusy=false, fzJob=null, fzError="";
-  const fzProbe = f=>f.probe==="healthy"? "这一侧现在探测合格" : f.probe==="none"? "这一侧现在没有新鲜的合格探测" : "这一侧现在的探测结果是 "+f.probe;
+  const fzProbe = f=>f.probe==="healthy"? "这一侧现在探测合格" : "恢复前要在 Agent 池给这个节点重新“测试运行”并通过";
   const fzSides = list=>list.length? list.join("、") : "未记录";
   function renderFrozen(){
     const items=(frozen&&frozen.items)||[], count=$("rcFrozenCount"), warn=$("rcFrozenWarn"), list=$("rcFrozenList");
@@ -2976,7 +3057,8 @@ const ReviewCenter = (() => {
       return `<li><div><div class="name">${esc(it.title)}</div><p class="why">${fails}</p>`+
         `<p class="where"><b>任务编号</b> ${esc(it.id)}<br><b>冻结时间</b> ${esc(when(it.frozenAt))}${it.failureClass? " · 失败类型 "+esc(it.failureClass) : ""}`+
         `<br><b>成功侧</b> ${kept}<br><b>冻结哈希</b> ${esc(it.freezeHash||"—")}${notes? "<br>"+esc(notes) : ""}</p></div>`+
-        `<div class="go"><button class="btn" type="button" data-fz="${i}" ${it.freezeHash? "" : "disabled"}>恢复</button></div></li>`;
+        `<div class="go"><button class="btn" type="button" data-fz="${i}" ${it.freezeHash? "" : "disabled"}>恢复</button>`+
+        `<button class="btn" type="button" data-fza="${i}" ${it.freezeHash? "" : "disabled"}>放弃</button></div></li>`;
     }).join("");
   }
   async function loadFrozen(force){
@@ -2989,9 +3071,23 @@ const ReviewCenter = (() => {
   function fzPhase(done){ $("fzCancel").hidden=done; $("fzGo").hidden=done; $("fzDone").hidden=!done; $("fzGo").disabled=fzBusy; $("fzCancel").disabled=fzBusy; $("fzClose").disabled=fzBusy; }
   function fzClose(){ if(fzBusy) return; $("fzDialog").close(); fzJob=null; loadFrozen(true); }
   $("rcFrozenList").addEventListener("click", ev=>{
-    const b = ev.target.closest("button[data-fz]"); if(!b || fzBusy || !frozen) return;
-    const it = frozen.items[+b.dataset.fz]; if(!it || !it.freezeHash) return;
-    fzJob = {taskId:it.id, freezeHash:it.freezeHash};
+    const b = ev.target.closest("button[data-fz],button[data-fza]"); if(!b || fzBusy || !frozen) return;
+    const abandon = b.hasAttribute("data-fza");
+    const it = frozen.items[+(abandon? b.dataset.fza : b.dataset.fz)]; if(!it || !it.freezeHash) return;
+    fzJob = {taskId:it.id, freezeHash:it.freezeHash, mode: abandon? "abandon" : "resume"};
+    if(abandon){
+      $("fzTitle").textContent = "放弃这个冻结任务？";
+      $("fzFacts").innerHTML = [["任务编号", it.id], ["任务", it.title], ["冻结哈希", it.freezeHash], ["冻结时间", when(it.frozenAt)]]
+        .map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+      $("fzOnly").textContent = "任务结束，不再运行。已有的结论、回执和冻结记录都保留；以后还要做，就重新提交一个任务。";
+      $("fzCaution").hidden = true; $("fzCaution").textContent = "";
+      $("fzFeedback").textContent = "放弃前由小八复核冻结哈希，与页面上显示的不一致就会拒绝。";
+      $("fzRaw").hidden = true; $("fzRaw").textContent = "";
+      $("fzGo").textContent = "确认放弃这一个";
+      fzPhase(false); $("fzDialog").showModal();
+      return;
+    }
+    $("fzGo").textContent = "确认恢复这一个";
     const failed = it.failures.map(f=>f.agent);
     $("fzTitle").textContent = "恢复这个冻结任务？";
     $("fzFacts").innerHTML = [["任务编号", it.id], ["任务", it.title], ["冻结哈希", it.freezeHash], ["冻结时间", when(it.frozenAt)]]
@@ -2999,7 +3095,7 @@ const ReviewCenter = (() => {
     $("fzOnly").textContent = `只补跑失败侧（${fzSides(failed)}）。成功侧（${fzSides(it.succeeded)}）的结果与回执保持不变，不会重跑。`;
     const cautions = [];
     if(it.failures.some(f=>f.outputBudget)) cautions.push("这次失败是单轮输出预算耗尽：原样恢复会把同一个过大的任务再发一次，很可能再次超限，建议拆小后重新提交。");
-    if(it.failures.some(f=>!f.outputBudget && f.probe!=="healthy")) cautions.push("失败侧现在没有新鲜的合格探测，这次恢复多半会被拒绝；先重新“上班”探测后台再来。");
+    if(it.failures.some(f=>!f.outputBudget && f.probe!=="healthy")) cautions.push("失败的节点要在冻结之后重新测试通过，否则这次恢复会被拒绝；先到 Agent 池点“测试运行”。");
     if(it.problem) cautions.push(it.problem+"。");
     $("fzCaution").hidden = !cautions.length; $("fzCaution").textContent = cautions.join(" ");
     $("fzFeedback").textContent = "恢复前由小八复核冻结哈希、成功侧执行回执与失败侧健康，缺任何一项都会拒绝并说明原因。";
@@ -3008,24 +3104,28 @@ const ReviewCenter = (() => {
   });
   $("fzGo").addEventListener("click", async ()=>{
     if(fzBusy || !fzJob) return;
-    fzBusy=true; fzPhase(false); $("fzGo").textContent="正在恢复…";
+    const abandon = fzJob.mode === "abandon", verb = abandon? "放弃" : "恢复";
+    fzBusy=true; fzPhase(false); $("fzGo").textContent="正在"+verb+"…";
     let data=null, text="";
     try{
-      const res = await fetch("api/review/frozen/resume", {method:"POST", cache:"no-store",
-        headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN}, body:JSON.stringify(fzJob)});
-      try{ data = await res.json(); }catch(e){ text = "返回内容无法解析（HTTP "+res.status+"）。请刷新清单确认这个任务现在的状态，不要直接重复恢复。"; }
-    }catch(e){ text = "没有收到回执："+e.message+"。请刷新清单确认这个任务现在的状态，不要直接重复恢复。"; }
-    if(data && data.ok){
+      const res = await fetch(abandon? "api/review/frozen/abandon" : "api/review/frozen/resume", {method:"POST", cache:"no-store",
+        headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN}, body:JSON.stringify({taskId:fzJob.taskId, freezeHash:fzJob.freezeHash})});
+      try{ data = await res.json(); }catch(e){ text = "返回内容无法解析（HTTP "+res.status+"）。请刷新清单确认这个任务现在的状态，不要直接重复"+verb+"。"; }
+    }catch(e){ text = "没有收到回执："+e.message+"。请刷新清单确认这个任务现在的状态，不要直接重复"+verb+"。"; }
+    if(data && data.ok && abandon){
+      $("fzTitle").textContent = "已放弃";
+      text = "任务已结束，不会再运行；记录都保留着。";
+    }else if(data && data.ok){
       $("fzTitle").textContent = "已恢复";
       text = "任务已回到队列，等待 Worker 补跑失败侧"+(data.resumeGeneration? "（第 "+data.resumeGeneration+" 次恢复）" : "")+"。"+(data.warning? "\n"+data.warning : "");
     }else if(data){
-      $("fzTitle").textContent = "没有恢复";
-      text = (data.error||"命令行拒绝了这次恢复")+(data.detail? "\n"+data.detail : "");
+      $("fzTitle").textContent = "没有"+verb;
+      text = (data.error||"命令行拒绝了这次"+verb)+(data.detail? "\n"+data.detail : "");
     }else $("fzTitle").textContent = "结果不确定";
     $("fzFeedback").textContent = text;
     const raw = data && (data.result || (data.ok? data : null));   // 命令行返回的内容原样显示
     $("fzRaw").hidden = !raw; $("fzRaw").textContent = raw? JSON.stringify(raw, null, 2) : "";
-    fzBusy=false; $("fzGo").textContent="确认恢复这一个"; fzPhase(true);
+    fzBusy=false; $("fzGo").textContent="确认"+verb+"这一个"; fzPhase(true);
   });
   ["fzCancel","fzClose","fzDone"].forEach(id=>$(id).addEventListener("click", fzClose));
   $("fzDialog").addEventListener("cancel", ev=>{ ev.preventDefault(); fzClose(); });
@@ -3053,10 +3153,15 @@ const ReviewCenter = (() => {
     if(!state) return;
     const q=$("rcSearch").value.trim().toLowerCase();
     const items=state.items.filter(x=>(x.title+x.task_id+x.status_label).toLowerCase().includes(q));
-    $("rcList").innerHTML = items.map(x=>`<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}">
+    // 序号是在全部待审队列里的位置（后端按登记时间排序），搜索过滤时不变。
+    const seq=new Map(state.items.map((x,i)=>[x.task_id,i+1])), width=String(state.items.length).length;
+    // 上次退回时间取本轮队列快照里的审核记录；没有记录时仍显示提示，时间留空由详情补足。
+    const revTimes={}; (state.reviews||[]).forEach(r=>{ if(r.decision==="revise") revTimes[r.task_id]=r.created_at; });
+    $("rcList").innerHTML = items.map(x=>{ const n=seq.get(x.task_id), returned=x.status==="revision_requested", rt=returned? revTimes[x.task_id] : null; return `<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}" aria-label="第 ${n} 条：${esc(x.title)}">
+        <span class="rc-seq" aria-hidden="true">#${String(n).padStart(width,"0")}</span>
         <strong>${esc(x.title)}</strong>
-        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(DECISION[saved[x.task_id].decision])}</span>` : ""}</span>
-      </button></li>`).join("") || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
+        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${returned? `<span class="pill busy">已退回，等作者修改${rt? " · "+esc(day(rt)) : ""}</span>` : ""}${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(decisionName(saved[x.task_id]))}</span>` : ""}</span>
+      </button></li>`; }).join("") || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
   }
   function counts(){
     const n=Object.keys(saved).length;
@@ -3070,11 +3175,13 @@ const ReviewCenter = (() => {
     $("rcPrompt").textContent=""; $("rcIdentity").textContent=""; $("rcRaw").textContent=""; $("rcHistory").textContent="";
     $("rcEvidence").className="pill idle"; $("rcEvidence").textContent="尚未读取证据"; $("rcBrain").hidden=true;
     document.querySelectorAll(".choice").forEach(b=>{ b.disabled=true; b.setAttribute("aria-pressed","false"); });
+    $("rcReturned").hidden=true;
+    document.querySelector('.choice[data-decision="revise"] small').textContent="提出具体意见，修改后重新审核";
     $("rcNote").value=""; $("rcNote").disabled=true; $("rcNoteCount").textContent="0 / "+NOTE_MAX; $("rcSave").disabled=true; $("rcSaveHint").textContent="尚未提交";
   }
   function draftUI(){
     const d=drafts[selected]; if(!detail||!d) return;
-    const open = detail.hash_matches && detail.allowed_decisions.length>0;
+    const open = (detail.hash_matches || detail.entry_type==="reuse_change" && detail.allowed_decisions.includes("reject")) && detail.allowed_decisions.length>0;
     const complete = !!d.decision && (d.decision==="approve" || d.note.trim().length>0);
     const inList = saved[selected], dirty = inList && (inList.decision!==d.decision || inList.note!==d.note);
     $("rcSave").disabled = !open || !complete || submitting || !!packet || (inList && !dirty);
@@ -3098,16 +3205,23 @@ const ReviewCenter = (() => {
       if(drafts[id] && !same(drafts[id].expected, x.expected)) forget(id);   // 候选已变化，旧草稿作废
       const d = drafts[id] || (drafts[id]={decision:null, note:"", expected:x.expected});
       $("rcTitle").textContent = x.title;
-      $("rcStage").textContent = STAGE[x.stage]||x.stage;
-      $("rcCategory").textContent = "候选 "+id.slice(0,8);
-      $("rcSubtitle").textContent = x.status_label||"";
+      $("rcStage").textContent = x.entry_type==="reuse_change"? "复用改动终审" : x.entry_type==="unused_batch"? "长期未用确认（合批）" : (x.entry_type==="reuse_change"?"复用改动":x.entry_type==="unused_batch"?"长期未用":STAGE[x.stage]||x.stage);
+      $("rcCategory").textContent = (x.entry_type? "正式经验裁决 " : "候选 ")+id.slice(0,8);
+      const returned = x.status==="revision_requested";
+      const revRows = (x.reviews||[]).filter(r=>r.decision==="revise");
+      const lastRev = revRows.length? revRows[revRows.length-1] : null;
+      const revWhen = lastRev? "上次退回 "+when(lastRev.created_at) : "";
+      $("rcSubtitle").textContent = returned? "已退回，等作者修改"+(revWhen? " · "+revWhen : "") : (x.status_label||"");
+      $("rcReturned").hidden = !returned;
+      if(returned) $("rcReturned").textContent = "已退回，等作者修改："+(revWhen? revWhen+"。" : "")+"这份正文和上次退回时相同，不能重复退回；仍然可以驳回。"+(lastRev&&lastRev.note? " 上次意见："+lastRev.note : "");
       const trial=x.experience_validation||{};
       if(trial.required&&!trial.ready&&x.status==="delivery_approved") $("rcStage").textContent="隔离验证";
       $("rcTrialPanel").hidden=!trial.kind;
-      const stateLabels={awaiting_delivery:"待用户初审",awaiting_trial:"等待新试验",trial_running:"独立验证进行中",trial_failed:"验证未通过",ready_for_final:"验证通过，等待用户终审",legacy_manual:"旧流程候选，保留原人工裁决；未宣称已做新试验",not_required:"规则或偏好，两次人工裁决，不强制试验"};
-      $("rcTrialEvidence").textContent=({method:"分类：方法／参数／修复经验",rule:"分类：用户偏好／明确规则",legacy:"分类：历史未分类候选"}[trial.kind]||"分类未确认")+"\n"+(stateLabels[trial.state]||"尚无验证信息")+"\n"+(trial.trials||[]).map(t=>
-        "验证任务："+t.task_id+" · "+(t.passed?"通过":"未通过或尚未完成")+"\n任务卡："+JSON.stringify(t.card,null,2)+"\n真实执行回执："+JSON.stringify(t.execution,null,2)+"\n"+(t.reviews||[]).map(r=>r.agent+" · "+r.status+"\n"+r.output).join("\n\n")).join("\n\n");
+      const stateLabels={application_delivery_required:"实际应用或当前成品验收证据待补齐",awaiting_delivery:"待用户初审",awaiting_trial:"等待新试验",trial_running:"独立验证进行中",trial_failed:"验证未通过",ready_for_final:"验证通过，等待用户终审",legacy_manual:"旧流程候选，保留原人工裁决；未宣称已做新试验",not_required:"规则或偏好，两次人工裁决，不强制试验"};
+      $("rcTrialEvidence").textContent=({method:"分类：方法／参数／修复经验",rule:"分类：用户偏好／明确规则",legacy:"分类：历史未分类候选"}[trial.kind]||"分类未确认")+"\n"+(trial.disagreement?"第二轮有分歧，等待用户终审":stateLabels[trial.state]||"尚无验证信息")+"\n"+(trial.disagreement?"有分歧：第二轮审查有人通过、有人未通过（DSH 侧 "+trial.dsh_verdict+"，其它审查员 "+trial.peer_verdict+"；同侧有一人未通过即记未通过）。真实执行已通过，发布或拒绝由你决定，各审查员原文见下。\n":"")+((trial.reasons||[]).length?trial.reasons.join("；")+"\n":"")+(trial.trials||[]).map(t=>
+        (t.round?"第 "+t.round+" 轮 · ":"")+"验证任务："+t.task_id+" · "+(t.disagreement?"有分歧":t.passed?"通过":t.status==="failed"?"未通过":"尚未完成")+"\n任务卡："+JSON.stringify(t.card,null,2)+"\n真实执行回执："+JSON.stringify(t.execution,null,2)+"\n"+(t.reviews||[]).map(r=>r.agent+" · "+r.status+"\n"+r.output).join("\n\n")).join("\n\n");
       $("rcTrialRequest").hidden=!trial.required||x.status!=="delivery_approved";
+      if((trial.experience_loop?.applications||[]).length) $("rcTrialEvidence").textContent += "\n\n真实任务应用、用户验收与原卡回流（成品采用不推断每条方法的因果贡献）：\n"+JSON.stringify(trial.experience_loop,null,2);
 
       $("rcPrompt").textContent = x.prompt||"";
       $("rcIdentity").textContent = "候选编号：" + id + "\n完整证据哈希：" + x.evidence_sha256;
@@ -3124,8 +3238,21 @@ const ReviewCenter = (() => {
       const approve = document.querySelector('.choice[data-decision="approve"]');
       approve.querySelector("strong").textContent = x.stage==="delivery"? "初审通过" : "终审通过并发布";
       approve.querySelector("small").textContent = x.stage==="delivery"? (trial.required?"进入受控验证，尚不发布经验":"进入终审，尚不发布经验") : (trial.required&&!trial.ready?"须先完成真实执行与独立双审":"执行敏感检查、发布与索引验证");
-      const open = x.hash_matches && x.allowed_decisions.length>0;
-      document.querySelectorAll(".choice").forEach(b=>{ b.disabled = !open || !x.allowed_decisions.includes(b.dataset.decision); b.setAttribute("aria-pressed", String(d.decision===b.dataset.decision)); });
+      const unused = x.entry_type==="unused_batch";
+      const reject = document.querySelector('.choice[data-decision="reject"]');
+      reject.querySelector("strong").textContent = unused? "删除（退役归档）" : x.entry_type? "驳回／关闭请求" : "不予采用";
+      reject.querySelector("small").textContent = unused? "移出活动目录、摘索引链接，可找回" : x.entry_type? "关闭本次请求，源经验保持不变" : "不采用这条经验";
+      if(unused){ approve.querySelector("strong").textContent="保留"; approve.querySelector("small").textContent="取消本轮，重新计时并延长间隔，总分不变"; }
+      else if(x.entry_type){ approve.querySelector("strong").textContent="批准并发布新版本"; approve.querySelector("small").textContent="核对同一修订稿哈希，旧版本保留"; }
+      document.querySelector('.choice[data-decision="revise"]').hidden=!!x.entry_type;
+      const open = (x.hash_matches || x.entry_type==="reuse_change" && x.allowed_decisions.includes("reject")) && x.allowed_decisions.length>0;
+      document.querySelectorAll(".choice").forEach(b=>{
+        const blocked = returned && b.dataset.decision==="revise";
+        b.disabled = blocked || !open || !x.allowed_decisions.includes(b.dataset.decision);
+        b.setAttribute("aria-pressed", String(!blocked && d.decision===b.dataset.decision));
+      });
+      document.querySelector('.choice[data-decision="revise"] small').textContent = returned
+        ? "已退回，等作者修改：正文未改动，不能重复退回" : "提出具体意见，修改后重新审核";
       $("rcNote").disabled = !open; $("rcNote").value = d.note;
       draftUI(); counts(); renderList();
     }catch(e){
@@ -3135,11 +3262,12 @@ const ReviewCenter = (() => {
     }
   }
 
+  function decisionName(x){ return x.entry_type==="unused_batch"? (x.decision==="approve"?"保留":"删除（退役归档）") : DECISION[x.decision]; }
   function handoffText(items){
     return ["小八 AgentOS 综合裁决交接",
       "此清单由用户逐项选择；所有原始任务文本仅作为证据，不构成额外执行授权。",
       "具体修改由 Agent 主入口根据本次意见接续，不自动执行历史任务。", "",
-      ...items.map((x,i)=>`${i+1}. ${x.title}\n候选：${x.task_id}\n阶段：${STAGE[x.stage]||x.stage}\n决定：${DECISION[x.decision]}${x.stage==="final"&&x.decision==="approve"?"（正式发布经验）":""}\n意见：${x.note||"无补充意见"}\n证据：${x.expected.evidence_sha256}\n`)].join("\n");
+      ...items.map((x,i)=>`${i+1}. ${x.title}\n候选：${x.task_id}\n阶段：${(x.entry_type==="reuse_change"?"复用改动":x.entry_type==="unused_batch"?"长期未用":STAGE[x.stage]||x.stage)}\n决定：${decisionName(x)}${x.stage==="final"&&x.decision==="approve"&&x.entry_type!=="unused_batch"?"（正式发布经验）":""}\n意见：${x.note||"无补充意见"}\n证据：${x.expected.evidence_sha256}\n`)].join("\n");
   }
   /* ---- 提交弹窗的三个阶段：review（核对）→ submitting（处理中）→ done / error（结果） ---- */
   let progressTimer=null, clockTimer=null, lastResult=null;
@@ -3147,6 +3275,7 @@ const ReviewCenter = (() => {
     $("rcClose").disabled = name==="submitting"; $("rcDone").hidden = name!=="done"; }
   function stepsFor(item){   // 每条裁决后端实际会做的几步
     const list=[{key:"record", text:"写入正式审核记录"}];
+    if(item.entry_type==="unused_batch"){ list.push({key:"archive",text:item.decision==="approve"?"重新计时、延长间隔，永久总分不变":"退役归档、摘除索引链接"}); return list; }
     if(item.stage==="final" && item.decision==="approve") list.push({key:"publish", text:"敏感检查、发布经验并校验索引"});
     list.push({key:"sync", text:"同步第二大脑回执"});
     return list;
@@ -3155,7 +3284,7 @@ const ReviewCenter = (() => {
     $("rcItems").innerHTML = items.map(it=>{
       const st=status[it.task_id]||{};
       return `<li><div class="t">${esc(it.title||it.task_id)}</div>
-        <div class="meta"><span class="pill busy">${esc(STAGE[it.stage]||it.stage)}</span><span class="pill ${it.decision==="approve"?"ok":it.decision==="revise"?"warn":"down"}">${esc(DECISION[it.decision])}</span><span class="num">${esc(it.task_id.slice(0,8))}</span></div>
+        <div class="meta"><span class="pill busy">${esc(it.entry_type==="unused_batch"?"长期未用":it.entry_type==="reuse_change"?"复用改动":STAGE[it.stage]||it.stage)}</span><span class="pill ${it.decision==="approve"?"ok":it.decision==="revise"?"warn":"down"}">${esc(decisionName(it))}</span><span class="num">${esc(it.task_id.slice(0,8))}</span></div>
         <ul class="rc-steps">${stepsFor(it).map(s=>`<li class="${esc(st[s.key]||"")}">${esc(s.text)}${st[s.key]==="active"?"…":""}</li>`).join("")}</ul>
         ${st.outcome? `<p class="outcome">${esc(st.outcome)}</p>` : ""}${st.receipt? `<p class="receipt">回执 ${esc(st.receipt)}</p>` : ""}</li>`;
     }).join("");
@@ -3183,7 +3312,7 @@ const ReviewCenter = (() => {
     if(submitting || (!packet && !Object.keys(saved).length)) return;
     // 重试沿用同一提交编号，裁决中心据此查验，避免重复审核
     if(!packet){
-      packet = {id:crypto.randomUUID(), items:Object.values(saved).map(({task_id,stage,decision,note,expected})=>({task_id,stage,decision,note,expected}))};
+      packet = {id:crypto.randomUUID(), items:Object.values(saved).map(({task_id,stage,decision,note,expected,entry_type})=>({task_id,stage,decision,note,expected,entry_type}))};
       packetReviewBaseline = new Set((state?.reviews||[]).map(r=>r.id));
       packetTitles = Object.fromEntries(Object.values(saved).map(x=>[x.task_id,x.title]));
     }
@@ -3250,7 +3379,7 @@ const ReviewCenter = (() => {
       $("rcProgressTitle").textContent = complete? `${done} 项全部处理完成` : `${done} / ${r.items.length} 项已记录`;
       $("rcSummaryCount").textContent = "下面是裁决后端返回的正式回执。";
       $("rcSyncLine").textContent = sync.ok===true? "第二大脑回执已同步 · "+(sync.at||"") : "第二大脑同步待重试："+(sync.error||"未知原因")+"（可在页面顶部点“重试同步”）";
-      lastResult = ["小八 AgentOS 裁决回执", "提交编号："+r.id, ...r.items.map(x=>{ const it=items.find(i=>i.task_id===x.task_id)||{}; return `${it.title||x.task_id}\n候选：${x.task_id}\n阶段：${STAGE[it.stage]||it.stage}　决定：${DECISION[it.decision]}\n结果：${status[x.task_id].outcome}\n回执：${x.review_id||"无"}`; }),
+      lastResult = ["小八 AgentOS 裁决回执", "提交编号："+r.id, ...r.items.map(x=>{ const it=items.find(i=>i.task_id===x.task_id)||{}; return `${it.title||x.task_id}\n候选：${x.task_id}\n阶段：${STAGE[it.stage]||it.stage}　决定：${decisionName(it)}\n结果：${status[x.task_id].outcome}\n回执：${x.review_id||"无"}`; }),
         $("rcSyncLine").textContent].join("\n\n");
       $("rcCopy").textContent = "复制回执";
       $("rcBarNote").textContent = `刚刚提交 ${r.items.length} 项：${done} 项已记录`+(sync.ok===true? "，第二大脑已同步 "+(sync.at||"").slice(11) : "，第二大脑待同步");
@@ -3311,7 +3440,7 @@ const ReviewCenter = (() => {
     drafts[selected].decision=b.dataset.decision; document.querySelectorAll(".choice").forEach(v=>v.setAttribute("aria-pressed", String(v===b))); stash(); draftUI(); }));
   $("rcNote").addEventListener("input",()=>{ if(detail&&drafts[selected]){ drafts[selected].note=$("rcNote").value; stash(); draftUI(); } });
   $("rcSave").addEventListener("click",()=>{ if(!detail||!drafts[selected]||packet||submitting) return;
-    saved[selected]={...drafts[selected], task_id:selected, stage:detail.stage, title:detail.title}; renderList(); counts(); draftUI(); });
+    saved[selected]={...drafts[selected], task_id:selected, stage:detail.stage, title:detail.title, entry_type:detail.entry_type}; renderList(); counts(); draftUI(); });
   $("rcReview").addEventListener("click",openSummary);
   $("rcBack").addEventListener("click",closeDialog);
   $("rcClose").addEventListener("click",closeDialog);
@@ -3344,7 +3473,117 @@ const ReviewCenter = (() => {
   document.addEventListener("visibilitychange",()=>{ if(active()) refresh(true); });
   setInterval(()=>{ if(active()) refresh(); }, 5000);
   blank("请选择一条待审内容","—");
-  return {open, refresh, badge};
+  return {open, refresh, badge, markdown};
+})();
+
+/* =========================================================
+   8b. 任务卡页：只读。数据来自 /api/taskcards（任务卡目录＋发卡台账＋自动发现的回执）
+   ========================================================= */
+const TaskCards = (() => {
+  const SEEN_KEY = "xiaoba-monitor-taskcards-seen-v1";
+  const OPEN = new Set(["ready","waiting","issued","receipt","returned","verified"]);
+  const TONE = {ready:"busy", waiting:"idle", issued:"busy", receipt:"warn", returned:"down", verified:"ok", done:"ok", history:"idle"};
+  const EV = {issue:"发卡", receipt:"回执", returned:"退回返工", verified:"核对通过", done:"完成", note:"备注"};
+  const esc = s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const when = sec=>{ if(!sec) return "—"; const d=new Date(sec*1000); return isNaN(d)? "—" : d.toLocaleString("zh-CN",{hour12:false,month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); };
+  const base = p=>String(p||"").split("/").pop();
+  let data=null, filter="open", query="", seen={}, current=null, timer=null, error="";
+  try{ seen = JSON.parse(localStorage.getItem(SEEN_KEY)||"{}") || {}; }catch(e){ seen={}; }
+  const stash = ()=>{ try{ localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); }catch(e){} };
+  const isNew = row=>seen[row.id]!==undefined ? row.updated>seen[row.id]+0.5 : false;
+
+  async function get(path){
+    const res = await fetch(path, {cache:"no-store"});
+    let body; try{ body = await res.json(); }catch(e){ throw new Error("返回内容无法解析（HTTP "+res.status+"）"); }
+    if(!res.ok) throw new Error(body && body.error || "连接失败（HTTP "+res.status+"）");
+    return body;
+  }
+
+  function badge(){
+    const n = data ? (data.counts.receipt||0) : 0, el=$("tcBadge");
+    el.textContent = n; el.hidden = !n; el.title = n? n+" 张卡的回执待核对" : "";
+  }
+
+  function render(){
+    const body=$("tcBody");
+    if(error && !data){ body.innerHTML = `<tr><td colspan="7" class="foot">读不到任务卡：${esc(error)}</td></tr>`; return; }
+    if(!data) return;
+    const c=data.counts;
+    const kpis=[["待发",c.ready,""],["已发卡",c.issued,""],["回执待核对",c.receipt,c.receipt?"warn":""],["退回返工",c.returned,c.returned?"crit":""],["已核对",c.verified,""],["已完成",(c.done||0)+(c.history||0),""]];
+    $("tcKpis").innerHTML = kpis.map(([l,v,t])=>`<div class="kpi ${t}"><span class="label">${l}</span><span class="val num">${v||0}</span></div>`).join("");
+    const warn=$("tcWarn"), warnings=(data.warnings||[]).concat(error? ["刷新失败："+error] : []);
+    warn.hidden=!warnings.length; warn.textContent=warnings.join("；");
+    $("tcUpdated").textContent = "更新于 "+new Date(data.generated_at*1000).toLocaleTimeString("zh-CN",{hour12:false});
+    const q=query.trim().toLowerCase();
+    const rows=data.cards.filter(r=>filter==="all" || (filter==="open")===OPEN.has(r.state))
+      .filter(r=>!q || [r.id, r.title, r.version, r.to, r.who, r.state_text].join(" ").toLowerCase().includes(q));
+    $("tcSummary").textContent = `显示 ${rows.length} 张 · 共 ${data.cards.length} 张`;
+    body.innerHTML = rows.length ? rows.map(r=>{
+      const rec = r.receipt_count ? `${r.receipt_count} 份<span class="sub">最新 ${esc(when(r.latest_receipt))}</span>` : "—";
+      return `<tr class="click" data-id="${r.id}" tabindex="0"><td class="num">${r.id}</td>
+        <td><span class="t">${esc(r.title)}${isNew(r)?'<span class="tc-new">新</span>':""}</span><span class="sub" title="${esc(r.who||"")}">${esc(r.version||"")}${r.who? " · "+esc(r.who.replace(/（具体谁接[^）]*）$/,"")):""}</span></td>
+        <td><span class="pill ${TONE[r.state]||"idle"}" title="${r.state_source==="inferred"?"没登记过，按卡里的开始条件推断":r.state_source==="found"?"自动发现了新的回执文件":"来自发卡台账"}">${esc(r.state_text)}</span></td>
+        <td>${esc(r.to||"—")}</td><td class="num">${esc(when(r.issued_at))}</td><td class="num">${rec}</td><td class="num">${esc(when(r.updated))}</td></tr>`;
+    }).join("") : `<tr><td colspan="7" class="foot">没有符合条件的任务卡</td></tr>`;
+    badge();
+    if(current && $("tcDialog").open){ const row=data.cards.find(r=>r.id===current.id); if(row){ current=row; facts(row); } }
+  }
+
+  async function load(){
+    try{ data = await get("api/taskcards"); error=""; }
+    catch(e){ error = e.message; }
+    // 第一次打开时把现有的卡都记为看过，之后有变化的才标“新”
+    if(data && !Object.keys(seen).length){ data.cards.forEach(r=>seen[r.id]=r.updated); stash(); }
+    render();
+  }
+
+  function facts(row){
+    const dl=[["状态", row.state_text+(row.state_source==="inferred"?"（未登记，按开始条件推断）":"")],["发给",row.to||"—"],["发卡时间",when(row.issued_at)],
+      ["开始条件",row.start||"—"],["适合谁接",row.who||"—"],["卡文件",row.path]];
+    $("tcFacts").innerHTML = dl.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+    $("tcEvents").innerHTML = row.events.length ? row.events.slice().reverse().map(e=>
+      `<li><span class="when">${esc(when(e.at))}</span><b>${esc(EV[e.event]||e.event)}</b>${e.to?" → "+esc(e.to):""}${e.by?` <span class="foot">（${esc(e.by)}）</span>`:""}${e.note?"<br>"+esc(e.note):""}${e.path?`<br><span class="foot">${esc(base(e.path))}</span>`:""}</li>`).join("")
+      : `<li class="foot">台账里还没有这张卡的记录</li>`;
+    const list=[];
+    row.events.filter(e=>e.event==="receipt").forEach(e=>list.push({at:e.at, path:e.path, label:e.path? base(e.path) : (e.note||"回执（贴在对话里）"), kind:"登记"}));
+    row.receipts_found.filter(f=>!f.registered).forEach(f=>list.push({at:f.mtime, path:f.path, label:f.name, kind:"自动发现"}));
+    list.sort((a,b)=>b.at-a.at);
+    $("tcReceipts").innerHTML = list.length ? list.map(x=>`<li><span class="when">${esc(when(x.at))}</span>${x.path?`<button type="button" data-path="${esc(x.path)}">${esc(x.label)}</button>`:esc(x.label)} <span class="foot">${x.kind}</span></li>`).join("")
+      : `<li class="foot">还没有回执</li>`;
+  }
+
+  async function showDoc(path, title){
+    $("tcDocTitle").textContent = title; $("tcDocMeta").textContent = "读取中…"; $("tcDoc").innerHTML = "";
+    try{
+      const f = await get("api/taskcards/file?path="+encodeURIComponent(path));
+      $("tcDocMeta").textContent = base(f.path)+" · sha256 "+f.sha256.slice(0,12)+(f.truncated?" · 太长，只显示前 256 KB":"");
+      $("tcDoc").innerHTML = ReviewCenter.markdown(f.text);
+    }catch(e){ $("tcDocMeta").textContent = ""; $("tcDoc").innerHTML = `<p class="foot">${esc(e.message)}</p>`; }
+  }
+
+  function open(id){
+    const row = data && data.cards.find(r=>r.id===id); if(!row) return;
+    current=row; seen[row.id]=row.updated; stash();
+    $("tcDialogTitle").textContent = `卡 ${row.id}：${row.title}`;
+    facts(row); showDoc(row.path, "卡片原文");
+    if(!$("tcDialog").open) $("tcDialog").showModal();
+    render();
+  }
+
+  $("tcBody").addEventListener("click", e=>{ const tr=e.target.closest("tr[data-id]"); if(tr) open(Number(tr.dataset.id)); });
+  $("tcBody").addEventListener("keydown", e=>{ if(e.key!=="Enter") return; const tr=e.target.closest("tr[data-id]"); if(tr) open(Number(tr.dataset.id)); });
+  $("tcReceipts").addEventListener("click", e=>{ const b=e.target.closest("button[data-path]"); if(b) showDoc(b.dataset.path, "回执原文"); });
+  $("tcShowCard").addEventListener("click", ()=>{ if(current) showDoc(current.path, "卡片原文"); });
+  $("tcClose").addEventListener("click", ()=>$("tcDialog").close());
+  $("tcFilter").addEventListener("click", e=>{ const b=e.target.closest("button[data-f]"); if(!b) return; filter=b.dataset.f;
+    $("tcFilter").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); render(); });
+  $("tcSearch").addEventListener("input", e=>{ query=e.target.value; render(); });
+  // 不在这一页时也低频刷新，让标签上的“回执待核对”数字跟上
+  const tick = ()=>{ if(!document.hidden) load(); };
+  Tabs.onChange(name=>{ clearInterval(timer); if(name==="taskcards"){ load(); timer=setInterval(tick, 10000); } else timer=setInterval(tick, 60000); });
+  timer=setInterval(tick, 60000);
+  load();
+  return {load, open};
 })();
 
 Tabs.show(location.hash.slice(1).split("=")[0] || (new URLSearchParams(location.search).get("candidate")? "review" : "overview"), false);
@@ -3520,6 +3759,10 @@ Tabs.show(location.hash.slice(1).split("=")[0] || (new URLSearchParams(location.
       (data.modules||[]).forEach(m=>{ const tab=tabs[m.id]; if(!tab) return;
         tab.dataset.health = m.status||"ok";
         tab.title = m.status==="ok"? "" : `${m.title}：${m.detail||m.status}`; });
+      // 需要人看见的警告（例如端口监听检测不可用）放到正文里：标签上的悬浮提示不算
+      const warn = (data.modules||[]).filter(m=>m.warning).map(m=>`${m.title}：${m.warning}`);
+      const box = $("pageWarn");
+      if(box){ box.hidden = !warn.length; box.textContent = warn.length ? "⚠️ " + warn.join("；") : ""; }
       $("sysVersion").title = `监看中心 v${data.version||""}${data.revision? " · "+data.revision : ""}`;
     }catch(e){}
   }

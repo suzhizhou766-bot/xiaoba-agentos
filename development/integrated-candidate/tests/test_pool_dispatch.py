@@ -483,7 +483,7 @@ class Card36Counterexamples(unittest.TestCase):
                                                    "minimum_successful_agents": 2}),
                     "execution_snapshot_json": json.dumps(
                         {"source_manifest_sha256": manifest,
-                         "review_context": {"no_work_task": True}}),
+                         "review_context": {"no_work_task": True, "release_acceptance": True}}),
                 },
                 "runs": [
                     {"agent_name": "south-node", "status": "completed", "output": "FINAL_ACCEPTANCE: PASS\nA"},
