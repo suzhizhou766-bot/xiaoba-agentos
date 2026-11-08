@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f8fc">
-  <meta name="description" content="小八 AgentOS 最新架构拓扑：任务前置绑定、自动择优、两轮经验核验、审查调用与回执归集。">
+  <meta name="description" content="小八 AgentOS 现行架构：53 节点、85 连线；线上 v1.6.7，v1.6.8 已合并未上线，2026-11-08 起暂停发版。">
   <title>小八 AgentOS · 架构拓扑</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./editor.css">
@@ -14,11 +14,14 @@
 </head>
 <body>
   <header class="header">
-    <div class="heading"><div class="brand-mark" aria-hidden="true">八</div><div><h1>小八 AgentOS <span>架构拓扑</span></h1><p>2026.10.27 · 最新设计口径</p></div></div>
-    <div class="header-actions"><button id="statusToggle" class="quiet">实现状态</button><button id="readingToggle" class="quiet" aria-pressed="false">阅读模式</button></div>
+    <div class="heading"><div class="brand-mark" aria-hidden="true">八</div><div><h1>小八 AgentOS <span>架构拓扑</span></h1><p class="version-line">线上 v1.6.7 · 清单 4f6da8d3…<br>v1.6.8 已合并未上线 · 2026-11-08 起暂停发版</p></div></div>
+    <div class="header-actions"><button id="statusToggle" class="quiet" aria-expanded="true" aria-controls="statusStrip">实现状态</button><button id="readingToggle" class="quiet" aria-pressed="false">阅读模式</button></div>
   </header>
-  <div id="statusStrip" class="status-strip" hidden>
-    <span>本机活动指针：v1.6.4（据既有材料）</span><span>v1.6.5：冻结候选</span><span>审查接入扩展已开发，需按新调用规范调整</span><span>自动择优、综合评分、两轮状态机及交付回流：待实现</span>
+  <div id="statusStrip" class="status-strip">
+    <span>依据：现行 topology.json，53 节点 / 85 连线；运行差异据卡 50（2026-11-08）</span>
+    <span>设计了未实现：共用工作日台账＋每日台账索引总目录、正式经验复用计分</span>
+    <span>线上评分无数据；择优仍按 dsh / peer 槽位</span>
+    <span>升级发布 8 节点、评分细分 5 节点独立保留，待用户定</span>
   </div>
   <nav id="viewTabs" class="tabs" aria-label="架构视图" role="tablist"></nav>
   <section class="toolbar" aria-label="拓扑控制">
@@ -39,7 +42,7 @@
       <h2 id="detailTitle"></h2><div id="detailStatus"></div><p id="detailDescription"></p><div id="detailSections"></div><div id="detailLinks"></div>
     </aside>
   </main>
-  <footer><div class="legend"><span><i class="dot current"></i>既有机制 / 接入基础</span><span><i class="dot planned"></i>已定稿 · 待实现</span><span><i class="dot success"></i>通过路径</span><span><i class="dot danger"></i>失败 / 终止</span></div><span id="hint">拖动画布 · 滚轮缩放 · 点击节点查看规则</span></footer>
+  <footer><div class="legend"><span><i class="dot current"></i>已上线（基础能力）</span><span><i class="dot developed"></i>候选已开发</span><span><i class="dot planned"></i>待实现</span><span><i class="dot pending"></i>待用户裁定 / 待用户定</span></div><span id="hint">拖动画布 · 滚轮缩放 · 点击节点查看规则</span></footer>
   <div id="announcement" class="sr-only" aria-live="polite"></div>
 </body>
 </html>
