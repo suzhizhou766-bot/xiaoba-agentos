@@ -40,6 +40,58 @@ class Card51ScoringTests(unittest.TestCase):
         self.store.complete_manually(task, 'TEST settled task')
         return task
 
+    def settle_card55_fixture(self, task, kind):
+        # Exercise the native terminal hook with synthetic evidence. A malformed
+        # host vote cannot pass complete_host; this does not weaken that gate.
+        with self.store.connect() as db:
+            db.execute("UPDATE tasks SET status='completed',provenance_json=? WHERE id=?",
+                       (json.dumps({'kind': kind}), task))
+            self.store._append_event_tx(db, task, 'task.completed', {'TEST': 'scoring fixture'})
+
+    def test_card55_plain_multi_receipts_each_earn_one(self):
+        task = self.store.submit('TEST ordinary multi adjudication', 2, snapshot={
+            'needs_review': True, 'review_context': {'host': None, 'needs_review': True},
+            'provenance': {'kind': 'agentos_multi_adjudicated'}})
+        for node in ('A', 'B'):
+            run = self.store.start_agent_run(task, node, {'purpose': 'review'})
+            self.store.finish_agent_run(run, 'completed', 'RECEIPT_BODY_FROM_' + node, None, 1)
+        self.settle_card55_fixture(task, 'agentos_multi_adjudicated')
+        self.assertEqual([1, 1], [r['points'] for r in self.rows()])
+        self.assertTrue(all(r['receipt_accepted'] for r in self.rows()))
+
+    def test_card55_vote_contexts_still_require_verdict(self):
+        cases = [
+            ({'review_context': {'host': {'id': 'TEST-host'}}}, None, False),
+            ({}, {'kind': 'host_review'}, False),
+            ({}, None, True),
+            ({}, None, False),
+        ]
+        for snapshot, provenance, bound in cases:
+            with self.subTest(snapshot=snapshot, provenance=provenance, bound=bound):
+                prompt = ('FINAL_ACCEPTANCE: PASS or FINAL_ACCEPTANCE: FAIL'
+                          if not snapshot and not provenance and not bound else 'TEST host vote')
+                task = self.store.submit(prompt, 2, snapshot=snapshot)
+                if bound:
+                    self.store.append_event(task, 'task.host_bound', {'host': {'id': 'TEST-host'}})
+                for node, body in [('A', 'TEST missing verdict'), ('B', '审查结论：FAIL\nTEST valid negative vote')]:
+                    run = self.store.start_agent_run(task, node, {'purpose': 'review'})
+                    self.store.finish_agent_run(run, 'completed', body, None, 1)
+                if provenance:
+                    with self.store.connect() as db:
+                        db.execute('UPDATE tasks SET provenance_json=? WHERE id=?', (json.dumps(provenance), task))
+                self.settle_card55_fixture(task, (provenance or {}).get('kind', 'agentos_multi_adjudicated'))
+                rows = {r['node_id']: r for r in self.rows() if r['task_id'] == task}
+                self.assertEqual(0, rows['A']['points'])
+                self.assertEqual(1, rows['B']['points'])
+
+    def test_card55_timeout_and_b19_rejection_zero(self):
+        task = self.store.submit('TEST timeout and rejected receipt', 2)
+        for node, status, body in [('A', 'timeout', None), ('B', 'completed', '<think>TEST reasoning</think>')]:
+            run = self.store.start_agent_run(task, node, {'purpose': 'review'})
+            self.store.finish_agent_run(run, status, body, None, 1)
+        self.store.complete_manually(task, 'TEST terminal')
+        self.assertEqual([0, 0], [r['points'] for r in self.rows()])
+
     def test_settlement_automatically_scores_once_without_user_delivery(self):
         task = self.settle()
         self.assertEqual([(task, 'A', 'review', 1)], [(r['task_id'], r['node_id'], r['role'], r['points']) for r in self.rows()])
@@ -63,7 +115,7 @@ class Card51ScoringTests(unittest.TestCase):
         self.settle(status='permanent_error')
         task = self.store.submit('TEST rejected body', 2)
         run = self.store.start_agent_run(task, 'B', {'purpose': 'review'})
-        self.store.finish_agent_run(run, 'completed', 'TEST missing review verdict', None, 1)
+        self.store.finish_agent_run(run, 'completed', '<think>TEST rejected reasoning</think>', None, 1)
         self.store.complete_manually(task, 'TEST settled with another reviewer')
         task = self.store.submit('TEST abandoned work', 2)
         self.run_node(task, role='collaboration'); self.store.cancel_task(task)
