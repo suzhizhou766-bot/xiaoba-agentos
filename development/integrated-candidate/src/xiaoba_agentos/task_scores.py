@@ -94,14 +94,10 @@ def settlement_tx(db, task_id, completed, now):
         return
 
     ensure_table(db)
-    # 2. 记分前提：账本一致性核验（共用同一个 chain_ok，不重复校验事件链）
+    # 2. 记分前提：账本一致性核验（共用同一个 chain_ok，不重复校验事件链）。
+    # 键集合不一致只把不一致的那几个 key 当脏行隔离，不再全局停记分：其余任务
+    # 照常记分；doctor 仍会报警（audit_ledger_tx 的 problems 保留告警）。
     audit = audit_ledger_tx(db, chain_ok=chain_ok)
-    if not audit['ok'] and any('评分表键集合与审计事件不一致' in p for p in audit['problems']):
-        for (node_id, role), (pool, run) in participants.items():
-            EventStore._append_event_tx(db, task_id, 'task_scoring.skipped', {
-                'task_id': task_id, 'node_id': node_id, 'role': role, 'reason': 'ledger_inconsistent'
-            })
-        return
 
     finishes = {}
     for event in db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.finished' ORDER BY sequence", (task_id,)):
@@ -115,7 +111,9 @@ def settlement_tx(db, task_id, completed, now):
         existing = db.execute("SELECT id, data FROM ri_task_assessments WHERE id=? OR (json_extract(data,'$.task_id')=? AND json_extract(data,'$.node_id')=? AND json_extract(data,'$.role')=?)",
                               (key, task_id, node_id, role)).fetchone()
         if existing:
-            if existing['id'] not in {r.get('id', digest([r.get('task_id'), r.get('node_id'), r.get('role')])) for r in audit['valid_rows']}:
+            # valid_rows 现带真实表主键 id：旧手动账本的物理键也能正确识别，
+            # 合法旧行不再误记 skipped，也不会记第二份分。
+            if existing['id'] not in {r['id'] for r in audit['valid_rows']}:
                 EventStore._append_event_tx(db, task_id, 'task_scoring.skipped', {
                     'task_id': task_id, 'node_id': node_id, 'role': role, 'reason': 'ledger_inconsistent'
                 })
@@ -186,7 +184,8 @@ def audit_ledger_tx(db, chain_ok=None):
                 if not run or digest(dict(run)) != value.get('receipt_sha256'):
                     dirty_rows.append((row, value, '历史评分的任务证据已失效'))
                     continue
-            valid_rows.append(value)
+            # 带上真实表主键，供 settlement_tx 判定旧手动账本的物理键是否合法。
+            valid_rows.append(dict(value, id=row['id']))
         except Exception as e:
             dirty_rows.append((row, None, str(e)))
 
@@ -259,8 +258,9 @@ def decorate_nodes(db, nodes, day=None, role='review', manual_inputs=None):
             last[(pool['node_id'], pool.get('model'))] = event['created_at']
 
     audit = audit_ledger_tx(db)
-    # 择优时账本不一致则不用分数（等同全部样本不足的规则选人）
-    if not audit['ok'] and (audit['reason'] == 'chain_invalid' or any('评分表键集合与审计事件不一致' in p for p in audit['problems'])):
+    # 仅事件链无效时清空全部分数降级；键集合不一致只丢掉不一致的那几行，
+    # 其余周分照常参与择优，不清空全部周分。
+    if not audit['ok'] and audit['reason'] == 'chain_invalid':
         rows = []
     else:
         valid_rows = []

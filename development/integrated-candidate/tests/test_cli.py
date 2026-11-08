@@ -188,7 +188,7 @@ class CLIRuntimeTest(unittest.TestCase):
         store.start_session.assert_not_called()
         probe.assert_not_called()
 
-    def test_settled_failed_reuse_can_retry_automatic_retirement(self):
+    def test_settled_failed_formal_reuse_does_not_retry_automatic_retirement(self):
         source_id = "11111111-1111-1111-1111-111111111111"
         store = MagicMock()
         store.memory_reuses.side_effect = lambda _task, outcome: (
@@ -205,10 +205,11 @@ class CLIRuntimeTest(unittest.TestCase):
         with patch("xiaoba_agentos.review_flow.MemoryBridge") as bridge_class:
             bridge_class.return_value.retire_candidate.return_value = retired
             affected, retirements, errors = _reconcile_failed_reuses(config, store, "task")
-        self.assertEqual([source_id], affected)
-        self.assertEqual([retired], retirements)
+        self.assertEqual([], affected)
+        self.assertEqual([], retirements)
         self.assertEqual([], errors)
-        store.mark_memory_retired.assert_called_once()
+        store.mark_memory_retired.assert_not_called()
+        bridge_class.return_value.retire_candidate.assert_not_called()
 
     def test_explicit_retirement_db_failure_returns_reconciliation_nonzero(self):
         store = MagicMock()

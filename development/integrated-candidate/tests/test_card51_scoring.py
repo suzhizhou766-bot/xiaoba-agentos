@@ -184,9 +184,11 @@ class Card51ScoringTests(unittest.TestCase):
         task = self.store.submit('TEST ledger inconsistent task', 2); self.run_node(task)
         self.store.complete_manually(task, 'TEST complete with inconsistent ledger')
         self.assertEqual('completed', self.store.get_task(task)['status'])
+        # 键集合不一致不再全局停记分：本任务照常记分，不写 skipped(ledger_inconsistent)。
         with self.store.read_only() as db:
             skipped = [json.loads(r[0]) for r in db.execute("SELECT payload_json FROM events WHERE event_type='task_scoring.skipped' ORDER BY sequence")]
-        self.assertTrue(any(s.get('reason') == 'ledger_inconsistent' for s in skipped))
+        self.assertFalse(any(s.get('reason') == 'ledger_inconsistent' for s in skipped))
+        self.assertTrue(any(r['task_id'] == task for r in self.rows()))
         # Selection does not fail, falls back to sample insufficient rules
         nodes = load_nodes(self.store)
         decision = select_reviewers(nodes)
@@ -217,6 +219,62 @@ class Card51ScoringTests(unittest.TestCase):
         self.assertEqual(0, by_id['C']['weekly_score']['tasks'])
         self.assertEqual(0, by_id['C']['recent_role_samples'])
         self.assertEqual(0, by_id['A']['recent_role_samples'])
+
+    def test_card53_r4_keyset_mismatch_isolates_only_dirty_rows(self):
+        """卡53 R4 反例：键集合不一致只隔离不一致行，不全局停记分、不清空周分。"""
+        from xiaoba_agentos.task_scores import ensure_table, canonical
+        # 先正常结算一个任务，让节点 A 有本周干活分。
+        task_a = self.settle('A')
+        self.assertEqual(1, len(self.rows()))
+        # 制造键集合不一致：插入一条没有审计事件的孤儿行，属于另一个 task。
+        with self.store.connect() as db:
+            ensure_table(db)
+            db.execute("INSERT INTO ri_task_assessments VALUES ('card53-orphan', ?, 1, 'assessment:card53-orphan', 0)",
+                       (canonical({'task_id': 'fake-card53', 'node_id': 'X', 'role': 'review', 'points': 1}),))
+        # 结算另一个新任务：不应被全局停记分，照常记分。
+        task_b = self.settle('B')
+        self.assertEqual('completed', self.store.get_task(task_b)['status'])
+        self.assertTrue(any(r['task_id'] == task_b and r['node_id'] == 'B' for r in self.rows()))
+        # 不再为无关任务写全局 skipped(ledger_inconsistent)。
+        with self.store.read_only() as db:
+            skipped = [json.loads(r[0]) for r in db.execute(
+                "SELECT payload_json FROM events WHERE event_type='task_scoring.skipped' ORDER BY sequence")]
+        self.assertFalse(any(s.get('reason') == 'ledger_inconsistent' for s in skipped))
+        # 择优只丢掉不一致的那几行，不清空全部周分：A 仍保留本周分。
+        nodes = load_nodes(self.store)
+        by_id = {n['node_id']: n for n in nodes}
+        self.assertGreater(by_id['A']['weekly_score']['points'], 0)
+        # doctor 照样报警。
+        from xiaoba_agentos.health import doctor
+        doc = doctor(self.config, self.store)
+        self.assertTrue(any('干活分' in w or '账本' in w for w in doc.get('warnings', [])))
+
+    def test_card53_r5_legacy_physical_key_row_has_no_spurious_skipped(self):
+        """卡53 R5 反例：旧手动物理键的合法评分行不再误写 skipped，也不记第二份分。"""
+        from xiaoba_agentos.task_scores import ensure_table, canonical, week_of
+        # 同 task/node/role 已有一条旧物理键的合法手动评分行 + 对应 assessed 事件。
+        task = self.store.submit('TEST card53 legacy manual key', 2)
+        self.run_node(task)
+        day = datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
+        value = {'task_id': task, 'node_id': 'A', 'role': 'review', 'model': 'TEST a',
+                 'source_ref': 'agent-entry:A', 'week_start': week_of(day)[0], 'date': day,
+                 'task_type': 'review', 'points': 1, 'outcome': 'good', 'receipt_digests': []}
+        with self.store.connect() as db:
+            ensure_table(db)
+            db.execute('INSERT INTO ri_task_assessments VALUES (?,?,?,?,?)',
+                       ('TEST-old-key-card53', canonical(value), 1, 'TEST-old-assessment-card53', 0))
+            self.store._append_event_tx(db, task, 'task_scoring.assessed',
+                {'key': 'TEST-old-key-card53', 'revision': 1,
+                 'assessment_id': 'TEST-old-assessment-card53', 'current': value,
+                 'previous': None, 'delta': 1})
+        self.store.complete_manually(task, 'TEST settled after legacy manual assessment')
+        # 合法旧行不记第二份分。
+        self.assertEqual(1, len(self.rows()))
+        # 合法旧行不再误写 skipped(ledger_inconsistent)。
+        with self.store.read_only() as db:
+            skipped = [json.loads(r[0]) for r in db.execute(
+                "SELECT payload_json FROM events WHERE event_type='task_scoring.skipped' ORDER BY sequence")]
+        self.assertFalse(any(s.get('reason') == 'ledger_inconsistent' for s in skipped))
 
 
 if __name__ == '__main__': unittest.main()

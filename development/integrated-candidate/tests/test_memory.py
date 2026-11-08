@@ -596,9 +596,10 @@ class MemoryRetrievalLifecycleGateTest(unittest.TestCase):
 
     def test_revalidation_required_memory_is_withheld(self):
         self._approve_and_publish()
-        reuse_task = self.store.submit("reuse", 1)
-        self.store.record_memory_reuse(reuse_task, self.task_id, str(self.note))
-        self.store.decide_reuse_outcomes(reuse_task, False)
+        # Card52 keeps old quarantined rows withheld, but no longer creates
+        # quarantine as a side effect of an ordinary failed formal reuse.
+        with self.store.connect() as conn:
+            conn.execute("UPDATE memory_candidates SET status='revalidation_required' WHERE task_id=?", (self.task_id,))
         self.assertEqual(
             "revalidation_required", self.store.get_memory_candidate(self.task_id)["status"]
         )
