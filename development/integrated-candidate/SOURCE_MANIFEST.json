@@ -189,7 +189,7 @@
     "tests/test_card51_value.py": "d2d2674ed2a502734a14ac7e8f23058f2107741ddba4a2ce103362f198b9089d",
     "tests/test_card52_reuse_scores.py": "3d54cd480474534b80daa82f3985d932d0b1b6ee39d2a0469a7963cf9f7c55f5",
     "tests/test_card52b_formal_review.py": "b3bd107329b04388dd40e56ad6436c8233f84fa9d50bd55b635fddf7628c677f",
-    "tests/test_card59.py": "83d7751dab2dfaefdb1dff1d7986e1b38c68036d85f72dfe5b6a9ed22603a006",
+    "tests/test_card59.py": "5ed62421500d37fddee3e74f2760ff4cccd379951e184092089f647a974ae4bc",
     "tests/test_circuit_breaker.py": "168fdde9b814e38789f5fc5f3cefe2f2295ec0163c8cd27c7c44f4c100665faf",
     "tests/test_cli.py": "101fb2623bd2d53af1d2e6063c10db9dbd2e25f8fc657c265e48899a4bed3066",
     "tests/test_cli_background.py": "621e683b65bb7cf9e7efbc59e2853b037761b8070582f376c0d4cd16819f7e04",
