@@ -700,8 +700,6 @@ class ModuleTests(unittest.TestCase):
         self.assertEqual(state["nodes"], [])
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class DualRouteTests(ProxyCase):
@@ -1297,3 +1295,7 @@ class StationSettingsTests(ModuleTests):
         self.assertEqual(self.post("/api/keypool/stations", {"station": name, "maxConcurrency": 1}, token=False)[0], 403)
         self.post("/api/keypool/stations", {"station": name, "maxConcurrency": 0, "minIntervalSeconds": 0})
         self.assertNotIn("stations", json.loads(Path(self.module.file).read_text(encoding="utf-8")))
+
+
+if __name__ == "__main__":
+    unittest.main()
