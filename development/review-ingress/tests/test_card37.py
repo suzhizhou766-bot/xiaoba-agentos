@@ -25,11 +25,13 @@ class Card37IngressTests(unittest.TestCase):
         self._add_ready('north', self._fake('codex'), 'alpha', 'codex')
         self._add_ready('south', self._fake('claude'), 'beta', 'claude')
 
-    def test_exactly_two_reviewers_run_three_without_scores_ask(self):
+    def test_two_reviewers_run_and_three_without_scores_use_reserved_seat(self):
         self.two_nodes()
         self.assertEqual('run', self.pool.runtime.prepare(['dsh', 'peer'])['route'])
         self._add_ready('third', self._fake('qoder'), 'gamma', 'qoder')
-        self.assertEqual('ask_user', self.pool.runtime.prepare(['dsh', 'peer'])['route'])
+        prepared=self.pool.runtime.prepare(['dsh','peer'])
+        self.assertEqual('run',prepared['route'])
+        self.assertEqual(2,len(set(prepared['selections'].values())))
 
     def test_worker_uses_page_workspace_and_workday_reads_worker_receipts(self):
         self.two_nodes()

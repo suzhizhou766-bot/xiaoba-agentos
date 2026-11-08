@@ -1,0 +1,57 @@
+"""价值分不是可靠性分：门槛必须影响候选准入。"""
+import json
+import unittest
+from unittest.mock import patch
+
+import test_card51_scoring as scoring_fixture
+from test_pool_dispatch import _patch_pool_cli
+from xiaoba_agentos.orchestrator import Orchestrator
+
+
+class Card51ValueTests(unittest.TestCase):
+    setUp = scoring_fixture.Card51ScoringTests.setUp
+    rows = scoring_fixture.Card51ScoringTests.rows
+    def value_task(self, scores, duplicate=False):
+        task = self.store.submit('TEST new reusable experience', 2,
+            snapshot={'needs_review': True, 'experience_policy': {'version': 1, 'kind': 'method'}})
+        for node, score in zip(('A', 'B'), scores):
+            run = self.store.start_agent_run(task, node, {'purpose': 'review'})
+            text = '审查结论：FAIL\n评分：'+str(score)+'\nTEST reviewed evidence'
+            if duplicate and node == 'B': text += '\n重复经验：TEST-existing'
+            self.store.finish_agent_run(run, 'completed', text, None, 1)
+        # Exercise exactly the Worker staging/settlement path with genuine scores.
+        from xiaoba_agentos.memory import MemoryBridge
+        import hashlib
+        path = MemoryBridge(self.config, self.store).stage_experience(task, 'TEST prompt', 'TEST full candidate body', self.store.task_runs(task))
+        self.store.complete_with_memory_candidate(task, 'TEST full candidate body', str(path), hashlib.sha256(path.read_bytes()).hexdigest(), [], expected_attempt=0)
+        return task, path
+
+    def test_below_six_is_not_in_user_initial_review_and_only_summary_is_staged(self):
+        task, path = self.value_task([5, 5])
+        self.assertIsNone(self.store.get_memory_candidate(task))
+        self.assertNotIn('TEST full candidate body', path.read_text())
+        self.assertIn('5', self.store.get_task(task)['result'])
+        self.assertEqual({1}, {r['points'] for r in self.rows()})
+
+    def test_average_six_inclusive_passes_even_with_fail_verdict(self):
+        task, _ = self.value_task([6, 6])
+        self.assertEqual('pending_delivery_review', self.store.get_memory_candidate(task)['status'])
+
+    def test_spread_four_overrides_low_average_and_preserves_disagreement(self):
+        task, _ = self.value_task([1, 5])
+        self.assertEqual('pending_delivery_review', self.store.get_memory_candidate(task)['status'])
+        with self.store.read_only() as db:
+            event = json.loads(db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed'", (task,)).fetchone()[0])
+        self.assertEqual('disagreement', event['reason'])
+        self.assertEqual(4, event['spread'])
+
+    def test_duplicate_overrides_low_average(self):
+        task, _ = self.value_task([1, 1], duplicate=True)
+        self.assertEqual('pending_delivery_review', self.store.get_memory_candidate(task)['status'])
+
+    def test_invalid_or_missing_score_never_silently_passes_new_pool_experience(self):
+        for score in (-1, 11, float('nan'), 'invalid'):
+            with self.subTest(score=score), self.assertRaises(ValueError): self.value_task([score, 6])
+
+
+if __name__ == '__main__': unittest.main()

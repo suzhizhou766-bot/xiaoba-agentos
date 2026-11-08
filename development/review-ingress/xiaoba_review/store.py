@@ -10,6 +10,7 @@ import math
 import re
 from pathlib import Path
 import sqlite3
+import threading
 import time
 import uuid
 
@@ -132,6 +133,7 @@ class ReviewStore:
         self.path = native_store.path
         self.outbox_root = Path(outbox_root).resolve()
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        self._file_state = threading.local()
         if self.workspace_root is not None:
             with self.native.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
@@ -179,6 +181,8 @@ class ReviewStore:
     def transaction(self):
         db = sqlite3.connect(str(self.path), timeout=30, isolation_level=None)
         db.row_factory = sqlite3.Row
+        previous_undo = getattr(self._file_state, 'undo', None)
+        self._file_state.undo = []
         try:
             db.execute('BEGIN IMMEDIATE')
             if not self.native.verify_event_chain().get('ok'):
@@ -187,9 +191,41 @@ class ReviewStore:
             db.commit()
         except BaseException:
             db.rollback()
+            for path, body in reversed(self._file_state.undo):
+                if body is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_bytes(body)
             raise
         finally:
+            self._file_state.undo = previous_undo
             db.close()
+
+    def discard_value(self, db, request, assessment):
+        """Retire an unapproved low-value draft, leaving its summary and scores.
+
+        In-memory undo is owned by transaction(); no backup files are created.
+        The immutable request/receipt audit remains evidence, never a candidate.
+        """
+        from xiaoba_agentos.value_scoring import summary
+        row=db.execute('SELECT * FROM memory_candidates WHERE task_id=?',(request['candidate_id'],)).fetchone()
+        if row['status'] not in {'pending_delivery_review','revision_requested'}:
+            raise ValueError('价值分只能丢弃尚未初审批准的候选')
+        path=Path(row['staged_path'])
+        path.resolve().relative_to(self.outbox_root)
+        if path.is_symlink():raise ValueError('候选不能通过符号链接改写')
+        sidecar=path.with_suffix(path.suffix+'.status.json')
+        if sidecar.is_symlink():raise ValueError('候选状态文件不能是符号链接')
+        self._file_state.undo.extend((p,p.read_bytes() if p.exists() else None) for p in (path,sidecar))
+        body=summary(assessment)+'\n';checksum=hashlib.sha256(body.encode()).hexdigest();now=time.time()
+        path.write_text(body,encoding='utf-8')
+        db.execute("UPDATE memory_candidates SET status='retired',evidence_sha256=?,updated_at=? WHERE task_id=?",(checksum,now,row['task_id']))
+        self.native._write_candidate_status_sidecar_values(row['task_id'],str(path),'retired',checksum,now)
+        db.execute('UPDATE tasks SET result=? WHERE id=?',(body,row['task_id']))
+        db.execute("UPDATE ri_requests SET state='value_discarded' WHERE id=?",(request['id'],))
+        db.execute('UPDATE ri_inbox SET current=0 WHERE request_id=?',(request['id'],))
+        db.execute("UPDATE ri_outbox SET status='superseded' WHERE request_id=?",(request['id'],))
+        self.event(db,request['id'],'value_discarded',{'assessment':assessment,'summary_sha256':checksum})
 
     def event(self, db, request_id, kind, data):
         row = db.execute('SELECT candidate_id FROM ri_requests WHERE id=?', (request_id,)).fetchone()
@@ -278,6 +314,9 @@ class ReviewStore:
         card['card_digest'] = digest(card)
         db.execute('INSERT INTO ri_assignments VALUES (?,?,?,?,1,?,NULL)',
                    (card['assignment_id'], request['id'], role, source_id, canonical(card)))
+        self.native._append_event_tx(db, request['candidate_id'], 'pool.node_dispatched',
+            {'node_id':source_id,'role':'review','model':(source.get('node') or {}).get('model'),
+             'assignment_id':card['assignment_id']})
         return card
 
     def create(self, candidate_id, dsh_id, peer_id, scope, evidence, request_id=None,
@@ -358,6 +397,7 @@ class ReviewStore:
         return all(current[key] == common[key] for key in ('candidate_sha256', 'delivery_review', 'body'))
 
     def refresh(self, db, request):
+        if request['state']=='value_discarded':return False
         if not self.fresh(db, request):
             if request['state'] != 'stale':
                 self.event(db, request['id'], 'binding_invalidated', {'reason': '原卡内容、状态或初审版本变化'})
@@ -500,6 +540,20 @@ class ReviewStore:
                   for r in receipts if 'score' in r['receipt'] and r['receipt']['score'] is not None}
         if scores:
             packet['scores'] = scores
+        if packet['subject'].get('review_type')=='new_experience':
+            from xiaoba_agentos.value_scoring import decide,record_tx
+            assessment=decide([{'reviewer_id':r['receipt']['reviewer_id'],
+                'score':r['receipt'].get('score'),'duplicate_of':r['receipt'].get('duplicate_of')} for r in receipts],
+                packet['subject'].get('duplicate_of'))
+            packet['value_assessment']=assessment
+            # A revalidation after initial approval keeps its existing trial
+            # gates. This is the admission line for a new, unapproved draft.
+            initial=packet['subject'].get('delivery_review')
+            if not initial or initial.get('decision')!='approve':
+                record_tx(db,request['candidate_id'],assessment)
+                if assessment['decision']=='discard':
+                    self.discard_value(db,request,assessment)
+                    return
         checksum = digest(packet)
         # Receipt-version changes supersede old packets, retaining their full history.
         packet_id = request['id'] + ':' + checksum

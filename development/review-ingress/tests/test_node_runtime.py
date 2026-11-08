@@ -182,7 +182,11 @@ print(json.dumps(r))
         request=self.store.create(self.candidate['task_id'],a,b,'TEST review',[{'ref':'TEST','sha256':'a'*64}],dsh_channel='backend_adapter',peer_channel='backend_adapter')
         (self.root/'fail-peer').touch();assignment=next(a for a in request['assignments'] if a['role']=='peer')
         with self.assertRaises(ValueError):self.backends.execute(assignment['id'],require_test=True)
-        self.assertFalse(self.node(b)['readiness']['ready']);self.assertEqual(self.runtime.prepare(['peer'])['route'],'ask_user')
+        self.assertFalse(self.node(b)['readiness']['ready'])
+        # Legacy dsh is also a review node; a new planning request may select it.
+        # The failed assignment itself is not retried or silently replaced.
+        prepared=self.runtime.prepare(['peer'])
+        self.assertEqual('run',prepared['route']);self.assertEqual({'peer':a},prepared['selections'])
         self.assertEqual(self.calls(),['test','review'])
 
     def test_close_during_test_cannot_mark_pass(self):

@@ -14,6 +14,18 @@ FIELDS = {'name':'Agent 如何命名？', 'interface':'使用哪种调用方式�
           'entry':'该 Agent 的调用入口是什么？', 'model':'该 Agent 使用哪个明确模型？'}
 
 
+def requested_role(seat):
+    # Legacy keys remain request/response labels, never a vendor filter.
+    from xiaoba_agentos.pool_dispatch import mapped_role
+    return mapped_role({'review_2':'review','collaborate_2':'collaborate'}.get(seat,seat))
+
+
+def role_matches(source, seat):
+    from xiaoba_agentos.pool_dispatch import mapped_role
+    wanted=requested_role(seat); role=mapped_role(source['kind'])
+    return role==wanted or (role=='both' and wanted in {'review','collaborate'})
+
+
 def spec(source):
     """What a passed test is bound to: the call itself, not the node's label.
 
@@ -73,15 +85,15 @@ class NodeRuntime:
     def start_workday(self,user_message,message_id,required_kinds,selections=None):
         if user_message!='上班了小八助理':raise ValueError('只有用户真正发出的完整开工口令才能执行开工检测')
         if not isinstance(message_id,str) or not message_id or len(message_id)>128:raise ValueError('需要稳定的用户开工消息ID')
-        if not isinstance(required_kinds,list) or not required_kinds or set(required_kinds)-{'dsh','peer'} or len(set(required_kinds))!=len(required_kinds):
-            raise ValueError('需要明确当天工作链路的后台槽位')
+        if not isinstance(required_kinds,list) or not required_kinds or set(required_kinds)-{'dsh','peer','review','review_2','collaborate','collaborate_2','both'} or len(set(required_kinds))!=len(required_kinds):
+            raise ValueError('需要明确当天工作链路的节点角色')
         selections=selections or {}
         if not isinstance(selections,dict) or set(selections)-set(required_kinds):raise ValueError('选择与当天链路不符')
         chosen={};questions=[];blockers=[]
         with self.store.native.read_only() as db:
             sources=[json.loads(v[0]) for v in db.execute('SELECT data FROM ri_sources')]
             for kind in required_kinds:
-                candidates=[v for v in sources if v['kind']==kind and node_state(v).get('enabled') and not node_state(v).get('removed')]
+                candidates=[v for v in sources if role_matches(v,kind) and node_state(v).get('enabled') and not node_state(v).get('removed')]
                 if kind in selections:candidates=[v for v in candidates if v['reviewer_id']==selections[kind]]
                 if len(candidates)!=1:
                     questions.append({'kind':kind,'question':'请明确本次开工链路使用的已开启节点','node_ids':[v['reviewer_id'] for v in candidates]});continue
@@ -155,7 +167,8 @@ class NodeRuntime:
         native_task=self.store.native.get_task(task_id)
         if not native_task:return adapter.run_task(task_id,step_code,instruction,materials)
         self.store.native.record_task_participant(task_id,node_id,'collaborator')
-        run=self.store.native.start_agent_run(task_id,node_id,{'purpose':'collaboration','step_code':step_code})
+        run=self.store.native.start_agent_run(task_id,node_id,{'purpose':'collaboration','step_code':step_code,
+            'configured_model':node.get('model'),'pool_source_ref':source['source_ref']})
         try:
             result=adapter.run_task(task_id,step_code,instruction,materials)
         except Exception as exc:
@@ -175,8 +188,8 @@ class NodeRuntime:
         return snapshot() if callable(snapshot) else {
             'supported':False,'state':'not_connected','text':'','read_only':True}
 
-    def onboard(self, draft, kind='peer'):
-        if not isinstance(draft,dict) or set(draft)-set(FIELDS)-{'node_id','agent','agent_type'} or kind not in {'dsh','peer'}:
+    def onboard(self, draft, kind='review'):
+        if not isinstance(draft,dict) or set(draft)-set(FIELDS)-{'node_id','agent','agent_type'} or kind not in {'dsh','peer','review','collaborate','both'}:
             raise ValueError('对话配置只接受用户提供的节点名称、调用方式、入口和模型')
         from xiaoba_agentos.memory import MemoryBridge
         if MemoryBridge._sensitive_reason(canonical(draft)):
@@ -313,11 +326,11 @@ class NodeRuntime:
 
     def prepare(self, required_kinds, selections=None, task_type=None, candidate_id=None):
         if task_type is not None and (not isinstance(task_type,str) or not task_type.strip() or len(task_type)>128):raise ValueError('任务类型格式异常')
-        if not isinstance(required_kinds,list) or not required_kinds or len(set(required_kinds))!=len(required_kinds) or set(required_kinds)-{'dsh','peer','review','collaborate','both'}:
-            raise ValueError('需要明确当前任务的后台槽位')
+        if not isinstance(required_kinds,list) or not required_kinds or len(set(required_kinds))!=len(required_kinds) or set(required_kinds)-{'dsh','peer','review','review_2','collaborate','collaborate_2','both'}:
+            raise ValueError('需要明确当前任务的节点角色')
         selections=selections or {}
         if not isinstance(selections,dict) or set(selections)-set(required_kinds):raise ValueError('节点选择与当前任务槽位不符')
-        chosen={};questions=[];blockers=[];used=set()
+        chosen={};questions=[];blockers=[];used=set();planned={}
         with self.store.native.read_only() as db:
             if not self.store.native.verify_event_chain_tx(db)['ok']:
                 return {'route':'blocked','reason':'event_chain_invalid','questions':[]}
@@ -329,54 +342,41 @@ class NodeRuntime:
                 excluded=set(execution_context(self.store.native,dict(task),db)['excluded_ids'])
                 sources=[s for s in sources if s['reviewer_id'] not in excluded]
             for kind in required_kinds:
-                from xiaoba_agentos.pool_dispatch import mapped_role
-                def seat(source, wanted):
-                    stored = source['kind']
-                    if stored == wanted:
-                        return True
-                    try:
-                        role = mapped_role(stored)
-                    except ValueError:
-                        return False
-                    if wanted in {'dsh','peer','review'}:
-                        return role in {'review','both'}
-                    if wanted in {'collaborate','collaborator'}:
-                        return role in {'collaborate','both'}
-                    return role == wanted
                 alive=[s for s in sources if not node_state(s)['removed'] and s['reviewer_id'] not in used]
-                exact=[s for s in alive if s['kind']==kind]
-                candidates=exact or [s for s in alive if seat(s, kind)]
+                candidates=[s for s in alive if role_matches(s,kind)]
                 explicit=selections.get(kind)
                 if explicit:candidates=[s for s in candidates if s['reviewer_id']==explicit]
-                ready=[s for s in candidates if self.readiness(db,s)['ready']]
+                healthy=[s for s in candidates if self.readiness(db,s)['ready']]
+                ready=[s for s in healthy if independence(s) not in {independence(v) for v in chosen.values()}]
+                if healthy and not ready and chosen:
+                    return {'route':'ask_user','questions':[{'field':'independent_source',
+                        'question':'需要入口程序＋模型彼此独立的节点，不能用同一来源凑两票。'}],'blockers':[]}
                 remaining=required_kinds[required_kinds.index(kind):]
-                # When all remaining seats need exactly this eligible set, no
-                # choice is being made. More nodes than seats still use scores.
-                if (len(ready)==len(remaining) and len(ready)>1
-                        and len({independence(s) for s in ready})==len(ready)
-                        and all(seat(s,wanted) for s in ready for wanted in remaining)
-                        and not any(selections.get(wanted) for wanted in remaining)):
-                    first=min(ready,key=lambda s:s['reviewer_id'])
-                    chosen[kind]=first;used.add(first['reviewer_id']);continue
+                if kind in planned:
+                    selected=next((s for s in ready if s['reviewer_id']==planned[kind]),None)
+                    if selected:chosen[kind]=selected;used.add(selected['reviewer_id']);continue
                 if len(ready)==1:chosen[kind]=ready[0];used.add(ready[0]['reviewer_id']);continue
                 if len(ready)>1:
-                    from datetime import datetime
-                    from zoneinfo import ZoneInfo
-                    rankings=self.scoring.weekly(datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat(),task_type)['ranking']
-                    scores={(v.get('role') or '', v['source_ref'], v['model']):(v['points'],v['success_rate'],v['tasks']) for v in rankings}
-                    scores.update({(v['source_ref'], v['model']):(v['points'],v['success_rate'],v['tasks']) for v in rankings})
-                    def rank_of(source):
-                        state=node_state(source)
-                        try:
-                            role=mapped_role(source['kind'])
-                        except ValueError:
-                            role=''
-                        model=state.get('model')
-                        return scores.get((role, source['source_ref'], model)) or scores.get((source['source_ref'], model)) or (0,0,0)
-                    ranked=[(rank_of(v),v) for v in ready]
-                    best=max(v[0] for v in ranked)
-                    winners=[v for score,v in ranked if score==best]
-                    if best[0]>0 and len(winners)==1:chosen[kind]=winners[0];used.add(winners[0]['reviewer_id']);continue
+                    from xiaoba_agentos.task_scores import decorate_nodes,choose_pair
+                    views=[{'node_id':s['reviewer_id'],'source_ref':s['source_ref'],
+                            'model':node_state(s).get('model'),'independence':independence(s)} for s in ready]
+                    role=requested_role(kind)
+                    decorate_nodes(db,views,role='review' if role=='both' else role,manual_inputs=self.scoring.inputs)
+                    same=[k for k in remaining if requested_role(k)==role]
+                    pair=choose_pair(views)
+                    if len(same)>=2 and not any(selections.get(k) for k in same):
+                        if len(pair)<2:
+                            return {'route':'ask_user','questions':[{'field':'independent_source',
+                                'question':'需要入口程序＋模型彼此独立的节点，留位不能破坏独立性。'}],'blockers':[]}
+                        for key,view in zip(same,pair):planned[key]=view['node_id']
+                        winner=pair[0]['node_id']
+                    else:
+                        highest=pair[0]['weekly_score']['points']
+                        winners=[v for v in views if v['weekly_score']['points']==highest]
+                        winner=winners[0]['node_id'] if highest>0 and len(winners)==1 else None
+                    if winner:
+                        chosen[kind]=next(s for s in ready if s['reviewer_id']==winner)
+                        used.add(winner);continue
                     questions.append({'kind':kind,'field':'node_id','question':'本任务使用哪个已测试节点？','options':[{'node_id':s['reviewer_id'],'name':node_state(s)['name']} for s in ready]});continue
                 if not candidates:
                     questions.extend({'kind':kind,'field':k,'question':v} for k,v in FIELDS.items())

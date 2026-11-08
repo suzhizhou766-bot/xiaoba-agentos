@@ -696,6 +696,11 @@ class EventStore:
             "INSERT INTO events(event_id,task_id,event_type,payload_json,created_at,prev_hash,event_hash) VALUES(?,?,?,?,?,?,?)",
             (event_id, task_id, event_type, payload_json, now, prev_hash, event_hash),
         )
+        # All host/Worker/audit completion and terminal abandonment paths share
+        # this transaction boundary. Score events do not re-enter settlement.
+        if task_id and event_type in {'task.completed', 'task.failed', 'task.abandoned', 'task.cancelled'}:
+            from .task_scores import settlement_tx
+            settlement_tx(conn, task_id, event_type == 'task.completed', now)
         return event_id
 
     def append_event(self, task_id: Optional[str], event_type: str, payload: Any) -> str:
@@ -1812,6 +1817,8 @@ class EventStore:
                     (item["task_id"],),
                 ).fetchone()
                 item["judge"] = json.loads(judge["payload_json"]) if judge else None
+                value = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed' ORDER BY sequence DESC LIMIT 1", (item['task_id'],)).fetchone()
+                item['value_assessment'] = json.loads(value[0]) if value else None
                 item["reviews"] = [
                     dict(row) for row in conn.execute(
                         "SELECT stage,decision,note,candidate_sha256,created_at FROM memory_reviews WHERE task_id=? ORDER BY created_at",
@@ -2050,7 +2057,16 @@ class EventStore:
             )
             payload = {"agent": agent_name, "run_id": run_id}
             if metadata:
-                payload["execution"] = metadata
+                from .task_scores import capture_pool
+                execution = dict(metadata)
+                frozen = capture_pool(conn, agent_name, execution.get('purpose'))
+                if frozen:
+                    if 'configured_model' in execution:
+                        frozen['model']=execution['configured_model']
+                    if 'pool_source_ref' in execution:
+                        frozen['source_ref']=execution['pool_source_ref']
+                    execution['pool_score'] = frozen
+                payload["execution"] = execution
             self._append_event_tx(conn, task_id, "agent.started", payload)
         return run_id
 
@@ -2075,7 +2091,10 @@ class EventStore:
                 conn,
                 row["task_id"],
                 "agent.finished",
-                {"agent": row["agent_name"], "run_id": run_id, "status": status, "latency_ms": latency_ms},
+                {"agent": row["agent_name"], "run_id": run_id, "status": status, "latency_ms": latency_ms,
+                 "receipt_sha256": hashlib.sha256(
+                     json.dumps({'output':output,'status':status},ensure_ascii=False,sort_keys=True,
+                                separators=(',',':'),allow_nan=False).encode()).hexdigest()},
             )
 
     def complete(self, task_id: str, result: str, provenance_kind: str = "agentos_multi_adjudicated",
@@ -2212,8 +2231,18 @@ class EventStore:
         now: float,
         *,
         repaired: bool = False,
-    ) -> None:
+    ) -> bool:
         """Queue the candidate row and its status sidecar. Approves nothing."""
+        from .value_scoring import native_value, record_tx, summary
+        assessment = native_value(conn, task_id)
+        record_tx(conn, task_id, assessment)
+        if assessment and assessment['decision'] == 'discard':
+            result = summary(assessment)
+            task = conn.execute('SELECT provenance_json FROM tasks WHERE id=?', (task_id,)).fetchone()
+            provenance = json.loads(task['provenance_json'] or '{}')
+            provenance.update(memory_disposition='value_discarded',result_sha256=hashlib.sha256(result.encode()).hexdigest())
+            conn.execute('UPDATE tasks SET result=?,provenance_json=? WHERE id=?', (result,_canonical(provenance),task_id))
+            return False
         conflict = "" if repaired else """
                    ON CONFLICT(task_id) DO UPDATE SET
                        staged_path=excluded.staged_path,
@@ -2232,6 +2261,7 @@ class EventStore:
         self._write_candidate_status_sidecar_values(
             task_id, staged_path, "pending_delivery_review", evidence_sha256, now
         )
+        return True
 
     def _complete_with_memory_candidate_tx(
         self,
@@ -2257,6 +2287,8 @@ class EventStore:
             if not self._candidate_gates_tx(conn, task_id):
                 return False
             if row["status"] == "completed":
+                if conn.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_assessed' AND json_extract(payload_json,'$.decision')='discard'", (task_id,)).fetchone():
+                    return False
                 if self._existing_candidate_status(conn, task_id) is not None:
                     # A finished candidate is idempotent (no-op) unless it is
                     # terminal, where any second registration is refused.
@@ -2278,9 +2310,13 @@ class EventStore:
                 "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
                 (result, _canonical(provenance), now, task_id),
             )
-            self._insert_candidate_tx(conn, task_id, staged_path, evidence_sha256, source_task_ids, now)
+            admitted = self._insert_candidate_tx(conn, task_id, staged_path, evidence_sha256, source_task_ids, now)
+            if not admitted:
+                final = conn.execute('SELECT result FROM tasks WHERE id=?', (task_id,)).fetchone()[0]
+                result_sha256 = hashlib.sha256(final.encode()).hexdigest()
             self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_sha256})
-            self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
+            if admitted:
+                self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
         return True
 
     def hold_constraint_task(self, task_id: str, result: str, details: Dict[str, Any]) -> None:
@@ -2386,25 +2422,13 @@ class EventStore:
             self._append_event_tx(
                 conn, task_id, "constraint_hold_released", {"result_sha256": result_hash}
             )
-            self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_hash})
             if staged_path is not None:
-                conn.execute(
-                    """INSERT INTO memory_candidates(
-                           task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at
-                       ) VALUES(?,?,?,?,?,?,?)
-                       ON CONFLICT(task_id) DO UPDATE SET
-                           staged_path=excluded.staged_path,
-                           evidence_sha256=excluded.evidence_sha256,
-                           source_task_ids_json=excluded.source_task_ids_json,
-                           updated_at=excluded.updated_at""",
-                    (task_id, "pending_delivery_review", staged_path, evidence_sha256, _canonical([]), now, now),
-                )
-                self._write_candidate_status_sidecar_values(
-                    task_id, staged_path, "pending_delivery_review", evidence_sha256, now
-                )
-                self._append_event_tx(
-                    conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256}
-                )
+                if self._insert_candidate_tx(conn,task_id,staged_path,evidence_sha256,[],now):
+                    self._append_event_tx(conn,task_id,'memory.candidate_staged',{'evidence_sha256':evidence_sha256})
+                else:
+                    result=conn.execute('SELECT result FROM tasks WHERE id=?',(task_id,)).fetchone()[0]
+                    result_hash=hashlib.sha256(result.encode()).hexdigest()
+            self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_hash})
             return {"task_id": task_id, "result": result, "result_sha256": result_hash}
 
     def retry_or_fail(self, task: Dict[str, Any], error: str, delay_seconds: int) -> str:

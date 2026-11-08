@@ -65,7 +65,7 @@ def contribution_records(config, store, task_id, names):
     return records
 
 
-def review_plan(config, store, work_task_id, context, artifacts):
+def review_plan(config, store, work_task_id, context, artifacts, *, frozen_reviewers=None):
     task = store.get_task(work_task_id)
     if not task or task["status"] != "completed":
         raise ValueError("collaboration work must complete before review")
@@ -77,8 +77,12 @@ def review_plan(config, store, work_task_id, context, artifacts):
     from .pool_dispatch import load_nodes, select_reviewers
     nodes = load_nodes(store)
     if nodes:
-        decision = select_reviewers(nodes, exclude_ids=workers)
+        eligible = [n for n in nodes if n['node_id'] in frozen_reviewers] if frozen_reviewers is not None else nodes
+        decision = select_reviewers(eligible, exclude_ids=workers)
         names = [n['node_id'] for n in decision['reviewers']] if decision['route']=='run' else []
+        if frozen_reviewers is not None:
+            if set(names)!=set(frozen_reviewers):raise ValueError('冻结审查节点已不可用，不能按新排名自动替换')
+            names=list(frozen_reviewers)
     else:
         names = _roster(config, store, purpose="review")
     if set(names) & set(workers):
@@ -116,7 +120,7 @@ def validate_plan(config, store, task, snapshot):
         work_plan(config, plan.get("assignments"), snapshot["task_context"]["text"], store=store)
     else:
         expected = review_plan(config, store, plan["work_task_id"], snapshot["task_context"]["text"],
-                               [item["path"] for item in plan["artifacts"]])
+                               [item["path"] for item in plan["artifacts"]],frozen_reviewers=plan['agents'])
         if expected != plan:
             raise ValueError("integration artifacts or work evidence changed; submit a new review")
 

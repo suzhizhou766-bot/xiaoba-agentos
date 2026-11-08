@@ -118,9 +118,10 @@ class OpenReviewModule(Module):
                 raise ValueError('接口不再接受 contract_version；第 1 版只留给已存在的任务卡')
             task_type=data.pop('task_type',None)
             if not data.get('dsh_id') or not data.get('peer_id'):
-                prepared=self.pool.runtime.prepare(['dsh','peer'],{k:data[k+'_id'] for k in ('dsh','peer') if data.get(k+'_id')},task_type,candidate_id=data.get('candidate_id'))
+                prepared=self.pool.runtime.prepare(['review','review_2'],
+                    {role:data[key] for role,key in [('review','dsh_id'),('review_2','peer_id')] if data.get(key)},task_type,candidate_id=data.get('candidate_id'))
                 if prepared['route']!='run':return prepared
-                for kind,node_id in prepared['selections'].items():data[kind+'_id']=node_id
+                data['dsh_id']=prepared['selections']['review'];data['peer_id']=prepared['selections']['review_2']
             review_type = data.get('review_type')
             if not review_type:
                 raise ValueError('创建审查任务卡必须指定审查类型 (review_type)')
@@ -141,10 +142,12 @@ class OpenReviewModule(Module):
                 raise ValueError('派工必须指定审查类型 (review_type)')
             if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:
                 raise ValueError('未知审查类型')
-            prepared=self.pool.runtime.prepare(['dsh','peer'],data.get('selections'),data.get('task_type'),candidate_id=data.get('candidate_id'))
+            selected=data.get('selections') or {}
+            selected={ {'dsh':'review','peer':'review_2'}.get(k,k):v for k,v in selected.items() }
+            prepared=self.pool.runtime.prepare(['review','review_2'],selected,data.get('task_type'),candidate_id=data.get('candidate_id'))
             if prepared['route']!='run':return prepared
             selected=prepared['selections']
-            request=self.store.create(data['candidate_id'],selected['dsh'],selected['peer'],data['scope'],data['evidence'],
+            request=self.store.create(data['candidate_id'],selected['review'],selected['review_2'],data['scope'],data['evidence'],
                 request_id=data['request_id'],dsh_channel='backend_adapter',peer_channel='backend_adapter',
                 review_type=review_type, duplicate_of=data.get('duplicate_of'))
             # Existing successful receipts are retained on exact request retries.
