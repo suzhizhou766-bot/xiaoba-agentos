@@ -81,7 +81,6 @@ class Card56ReceiptFieldTests(unittest.TestCase):
                 from_body("TEST", "评分: 8\n重复经验: TEST-old\n---\n" + suffix)
 
 
-if __name__ == '__main__': unittest.main()
 
 
 class Card57ValueSourceTests(unittest.TestCase):
@@ -113,3 +112,7 @@ class Card57ValueSourceTests(unittest.TestCase):
         task = self.task(host=True)
         with self.store.read_only() as db, self.assertRaisesRegex(ValueError, '评分字段'):
             native_value(db, task, {'reviewer_id': 'TEST-host', 'score': 8})
+
+
+if __name__ == '__main__':
+    unittest.main()

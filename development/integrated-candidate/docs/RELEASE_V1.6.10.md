@@ -8,11 +8,14 @@ v1.6.9 上线后第一个真实普通任务（`3e5514f5…`）：三个节点都
 
 ## 改法
 
-- 评分来源沿用卡 55 已有的 `task_scores.requires_review_vote(task)`：宿主审查／宿主补票结算、带宿主审查上下文且需审查、发布验收任务，池节点票按审查回执取评分，规则不变，缺分、越界、矛盾照旧拒收。
+- 评分来源沿用卡 55 已有的 `task_scores.requires_review_vote`：宿主审查／宿主补票结算、带宿主审查上下文且需审查、发布验收任务，池节点票按审查回执取评分，规则不变，缺分、越界、矛盾照旧拒收。
 - 普通多节点任务的节点输出不是评分来源；没有带分的宿主回执时，不做价值分判定，候选按 v1.6.7 旧路径进入 `pending_delivery_review` 交用户初审，并写一条 `memory.value_unscored`。
 - 宿主回执带 `score` 时仍计入。
+- 后果要说清楚：v1.6.9 里没有绑宿主、只靠池节点票取分的新经验，本版**一律不做价值分判定**，候选都带 `memory.value_unscored` 进用户初审。方向是多交人工初审，不会因此自动放行；接入口的新经验审查材料路径不受影响。
+- 已知局限：识别发布验收沿用卡 55 的题面判据（题面同时含 `FINAL_ACCEPTANCE: PASS` 与 `FAIL`）。普通任务题面如果恰好引用了这两行，会被当成需要审查票，节点回答没有评分时仍会失败。概率低，下一批改成显式标记。
+- 判定函数的实际签名是 `task_scores.requires_review_vote(db, task, snapshot)`。
 
-实现：`value_scoring.py`（`native_value`）、`store.py`（候选入库时写 `memory.value_unscored`）。反例：`tests/test_card51_value.py`。
+实现：`value_scoring.py`（`native_value`）、`store.py`（候选入库时写 `memory.value_unscored`）。反例：`tests/test_card51_value.py`（`Card57ValueSourceTests`）。卡 58 第一轮验收指出该反例类原先写在 `unittest.main()` 之后、单独执行文件时会被跳过，已移到文件末尾之前；`tests/test_build_boundary.py` 的同类问题一并修正。
 
 ## 怎么上线
 

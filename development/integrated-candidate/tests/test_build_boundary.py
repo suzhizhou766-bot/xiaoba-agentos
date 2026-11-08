@@ -443,8 +443,6 @@ class ManifestSymlinkTest(unittest.TestCase):
                          '重算结果不得顺着软链写到树外')
 
 
-if __name__ == '__main__':
-    unittest.main()
 
 class ReviewPackageBoundaryTest(unittest.TestCase):
     def test_dangling_review_package_symlink_is_not_treated_as_old_release(self):
@@ -485,3 +483,7 @@ class ReviewPackageBoundaryTest(unittest.TestCase):
             (review / 'leak').symlink_to(fx.outside, target_is_directory=True)
             with self.assertRaises(SymlinkError):collect_entries(fx.source)
             with self.assertRaises(SymlinkError):build_release.copy_review(fx.source, fx.target)
+
+
+if __name__ == '__main__':
+    unittest.main()
