@@ -220,7 +220,12 @@ def node_view(source: Dict[str, Any], store: Any = None) -> Dict[str, Any]:
 
 
 def load_nodes(store: Any) -> List[Dict[str, Any]]:
-    return [node_view(source, store) for source in load_sources(store)]
+    nodes = [node_view(source, store) for source in load_sources(store)]
+    if nodes:
+        from .task_scores import decorate_nodes
+        with store.read_only() as db:
+            decorate_nodes(db, nodes)
+    return nodes
 
 
 def retired_engine_warnings(nodes: Iterable[Dict[str, Any]]) -> List[str]:
@@ -282,7 +287,8 @@ def select_reviewers(
         node for node in review_nodes
         if node.get("ready_review") and str(node.get("node_id")) not in excluded
     ]
-    distinct = _distinct(eligible)
+    from .task_scores import choose_pair
+    distinct = choose_pair(eligible)
     # Two registered nodes that share an entry and a model are not a pair.
     ready_ids = [node for node in review_nodes if node.get("ready_review")]
     if len(ready_ids) >= 2 and len(_distinct(ready_ids)) < 2 and len(distinct) < 2:
@@ -476,7 +482,10 @@ def worker_roster(config: Any, store: Any, task: Any = None) -> Dict[str, Any]:
         exclude = list(set(task_exclude_ids(task)) | set(execution.get("excluded_ids", [])))
         host = execution.get("host") or task_host(task)
         user_chose_host = bool(snapshot.get("user_chose_host"))
-        decision = select_reviewers(nodes, exclude_ids=exclude, host=host, user_chose_host=user_chose_host)
+        # Ranking changes after dispatch cannot rewrite a frozen review plan.
+        frozen = snapshot.get('workflow',{})
+        selection_nodes = [n for n in nodes if n['node_id'] in frozen.get('agents',[])] if frozen.get('phase')=='review' else nodes
+        decision = select_reviewers(selection_nodes, exclude_ids=exclude, host=host, user_chose_host=user_chose_host)
         if decision["route"] == "run" and decision["reviewers"]:
             return {
                 "mode": "pool",

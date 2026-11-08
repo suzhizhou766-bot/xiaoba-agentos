@@ -82,6 +82,7 @@ import sys
 from pathlib import Path
 
 candidate = Path(sys.argv[1])
+sys.path.insert(0, str(candidate / "src"))
 scripts = str(candidate / "scripts")
 if scripts not in sys.path:
     sys.path.insert(0, scripts)

@@ -8,10 +8,10 @@
   const lockedStates=['publishing','published','release_unknown'];
   const controls=element('div',undefined,document.querySelector('.header-actions'),'iteration-controls');
   const mode=element('span','架构查看',controls,'iteration-chip');
-  button('模块规范',()=>openEditor(selectedModule),controls,'iteration-button');
-  button('待发布 / 版本记录',()=>openCenter(),controls,'iteration-button');
+  button('模块规范 · 待用户定',()=>openEditor(selectedModule),controls,'iteration-button');
+  button('发布记录 · 待用户定',()=>openCenter(),controls,'iteration-button');
   const panel=element('section',undefined,document.body,'upgrade-panel');panel.hidden=true;panel.setAttribute('aria-label','升级发布中心');
-  const header=element('div',undefined,panel,'upgrade-head');const heading=element('div',undefined,header);element('h2','架构与升级发布中心',heading);element('p','模块提案 → 待发布 → Agent 接续 → 正式包预检 → 用户发版',heading);button('关闭',()=>panel.hidden=true,header);
+  const header=element('div',undefined,panel,'upgrade-head');const heading=element('div',undefined,header);element('h2','升级发布中心 · 待用户定',heading);element('p','旧站点功能保留展示；2026-11-08 起暂停 AgentOS 发版，v1.6.8 已合并未上线。',heading);button('关闭',()=>panel.hidden=true,header);
   const body=element('div',undefined,panel,'upgrade-body');const list=element('aside',undefined,body,'upgrade-list');const item=element('article',undefined,body,'upgrade-item');
   const editor=element('dialog',undefined,document.body,'upgrade-dialog');
   const form=element('form',undefined,editor);element('h2','修改模块规范 · 创建待发布提案',form);element('p','保存只写入待发布工作区，不直接修改活动规则或运行代码。任意获授权的 Agent 可从接续任务入口继续实施。',form);
@@ -31,8 +31,9 @@
     let result;try{result=await response.json();}catch{throw Error('此页面未连接本机监看中心的升级服务。');}
     if(!response.ok||!result.ok)throw Error(result.error||'请求失败');return result;
   }
-  function readonly(){return '当前在线页面用于架构查看。模块编辑、待发布文件与正式发版，在已接入的本机监看中心执行；此页不会直接连接或修改你的电脑。';}
+  function readonly(){return '此为旧站点保留功能，是否保留由用户定。当前页面只展示架构；2026-11-08 起暂停 AgentOS 发版，v1.6.8 已合并未上线。此页未连接本机发布服务。';}
   async function refresh(){
+    if(!token){metadata=null;mode.textContent='架构查看';renderList();return false;}
     try{metadata=await api('meta');mode.textContent=token?'更新迭代入口已接入':'架构查看';mode.classList.toggle('connected',!!token);renderList();return true;}
     catch{metadata=null;mode.textContent='架构查看';return false;}
   }

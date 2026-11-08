@@ -20,7 +20,6 @@
     "log_heartbeat_polls": 60
   },
   "recovery": {
-    "probe_on_session_start": true,
     "repair_max_attempts": 2,
     "repair_retry_seconds": 30,
     "resume_requires_user": true

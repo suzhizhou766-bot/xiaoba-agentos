@@ -71,7 +71,7 @@ class _FakePoolResource:
             "status": "completed",
             # 审查票正文要能当回执用：写明结论字段；回执正文本身用固定标记便于断言。
             "body": "证据引用：task:" + str(task_id) + "\n审查结论：PASS\n"
-                    "FINAL_ACCEPTANCE: PASS\nRECEIPT_BODY_FROM_" + name,
+                    "评分：8\n重复经验：无\nFINAL_ACCEPTANCE: PASS\nRECEIPT_BODY_FROM_" + name,
             "execution_evidence": {"provider": "fake", "route_source": "test"},
         }
 

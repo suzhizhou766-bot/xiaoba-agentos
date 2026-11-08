@@ -365,6 +365,11 @@ class Orchestrator:
 
     def _run_agent(self, task_id: str, agent_config: Any, prompt: str, context: str,
                    lease_attempt: Optional[int] = None, is_workflow_work: bool = False) -> AgentResult:
+        from .experience_workflow import policy
+        if agent_config.raw.get('pool_node') and not is_workflow_work and policy(self.store.get_task(task_id) or {})['kind'] in {'method','rule'}:
+            context += ('\n\n新经验价值审查：请在回执正文单独写“评分：0–10的有限数”，'
+                       '以及“重复经验：已有经验标识或无”。你只提供价值分与依据；'
+                       '是否进入用户初审由评分中心判定，不替用户批准。')
         if agent_config.raw.get("pool_node"):
             step = "WORK-01" if is_workflow_work else "REVIEW-01"
             raw = {**agent_config.raw, "task_id": task_id, "step_code": step}
@@ -384,6 +389,9 @@ class Orchestrator:
                 "cli_route": agent_config.raw.get("cli_route"),
                 # 这一行的用途：等宿主补票时按用途取那一票，节点测试运行不算审查票。
                 "purpose": "work" if is_workflow_work else "review",
+                **({'configured_model':agent_config.raw.get('model'),
+                    'pool_source_ref':agent_config.raw['pool_source']['source_ref']}
+                   if agent_config.raw.get('pool_source') else {}),
             },
         )
         receipt = ExecutionReceiptStore(self.config.runtime_dir / "receipts" / task_id / (str(run_id) + ".json"))
@@ -534,6 +542,7 @@ class Orchestrator:
             current
             and current["status"] == "completed"
             and (self.store.get_memory_candidate(task_id) or
+                 json.loads(current.get('provenance_json') or '{}').get('memory_disposition') == 'value_discarded' or
                  audit_committed(self.store, current))
         )
 
@@ -1350,19 +1359,21 @@ class Orchestrator:
                     "retry_in": delay if status == "retry" else None,
                     "errors": [error],
                 })
+        settled = self.store.get_task(task['id'])
+        discarded = json.loads(settled.get('provenance_json') or '{}').get('memory_disposition') == 'value_discarded'
         return task_result({
             "status": "completed",
             "task_id": task["id"],
             "winner": winner.agent,
             "scores": scores,
-            "result": final,
+            "result": settled['result'],
             "host": bool(roster.get("host")),
             "label": roster.get("label") or (NO_INDEPENDENT if roster.get("host") else None),
             "standby_substitution": substitution or prior_substitution,
             "delivery_review": {
-                "status": "audit_only" if audit_only else "pending_delivery_review",
+                "status": "discarded" if discarded else "audit_only" if audit_only else "pending_delivery_review",
                 "candidate_sha256": evidence_sha256 if evidence_sha256 is not None else (
-                    None if audit_only else self.store.get_memory_candidate(task["id"])["evidence_sha256"]),
+                    None if audit_only or discarded else self.store.get_memory_candidate(task["id"])["evidence_sha256"]),
                 "requires_explicit_user_decision": not audit_only,
             },
         })

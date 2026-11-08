@@ -524,10 +524,20 @@ class MemoryBridge:
         """
         return self.outbox / f"{task_id}.md"
 
-    def stage_experience(self, task_id: str, prompt: str, result: str, runs: List[Dict[str, Any]]) -> Path:
+    def stage_experience(self, task_id: str, prompt: str, result: str, runs: List[Dict[str, Any]],
+                         *, value_assessment: Optional[Dict[str, Any]] = None) -> Path:
         self._secure_runtime_dir(self.config.runtime_dir)
         self._secure_runtime_dir(self.outbox)
         target = self.staged_path(task_id)
+        from .value_scoring import native_value, summary
+        assessment = value_assessment
+        if assessment is None and self.store is not None:
+            with self.store.read_only() as db:
+                assessment = native_value(db, task_id)
+        if assessment and assessment['decision'] == 'discard':
+            target.write_text(summary(assessment) + '\n', encoding='utf-8')
+            os.chmod(target, 0o600)
+            return target
         lines = [
             "---",
             f"task_id: {task_id}",

@@ -104,7 +104,7 @@
       el('strong',data.result.week_start+' 至 '+data.result.week_end+' · Agent＋模型周表现',box);
       const rows=data.result.ranking.filter(row=>row.node_ids.includes(node.node_id));
       if(!rows.length)el('p','本周暂无主入口核验后的任务评分。健康检测不计业务分。',box);
-      for(const row of rows)el('p',row.model+'：'+row.points+' 分 / '+row.tasks+' 项任务，完成得好 '+Math.round(row.success_rate*100)+'%',box);
+      for(const row of rows)el('p',(row.role==='collaborate'?'协作':'审查')+' · '+(row.model||'配置模型未填写')+'：'+row.points+' 分 / '+row.tasks+' 项任务，成功率 '+Math.round(row.success_rate*100)+'%',box);
       el('p','按任务记＋1或0，不计资源投入，不形成永久总分。',box);
     }).disabled=!writable();
     if(node.enabled){const a=el('a','用于审查任务 →',actions);a.className='ap-primary';a.href='/open-review?node='+encodeURIComponent(node.node_id);}

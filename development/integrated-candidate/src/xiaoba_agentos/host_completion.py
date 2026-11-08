@@ -131,18 +131,32 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                       'result_sha256': hashlib.sha256(final.encode()).hexdigest(), 'receipt_sha256': checksum,
                       'host_id': host['id'], 'pool_run_ids': [r['id'] for r in pool_runs], 'label': label}
         evidence_sha256 = None
+        # Bind the host vote before evaluating admission, in this same locked
+        # transaction. A failed staging or score write rolls this back too.
+        store._append_event_tx(db, task_id, 'host.receipt_accepted', {'receipt_sha256': checksum, 'receipt': receipt,
+                               'user_chose_host': user_chose_host, 'label': label, 'pool_run_ids': provenance['pool_run_ids']})
+        from .value_scoring import native_value, record_tx, summary
+        assessment = native_value(db, task_id) if produces_candidate else None
+        record_tx(db, task_id, assessment)
+        if assessment and assessment['decision'] == 'discard':
+            final = summary(assessment)
+            produces_candidate = False
+            provenance['memory_disposition'] = 'value_discarded'
+            provenance['result_sha256'] = hashlib.sha256(final.encode()).hexdigest()
         if produces_candidate:
-            staged = MemoryBridge(config, store).stage_experience(task_id, task['prompt'], final, store.task_runs(task_id))
+            # The host vote is still uncommitted: pass the combined assessment
+            # instead of reading only the pool vote on a second connection.
+            staged = MemoryBridge(config, store).stage_experience(task_id, task['prompt'], final,
+                store.task_runs(task_id), value_assessment=assessment)
             staged_out(staged)
             evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
             store._require_staged_evidence(str(staged), evidence_sha256)
-        store._append_event_tx(db, task_id, 'host.receipt_accepted', {'receipt_sha256': checksum, 'receipt': receipt,
-                               'user_chose_host': user_chose_host, 'label': label, 'pool_run_ids': provenance['pool_run_ids']})
         db.execute("UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
                    (final,json.dumps(provenance,ensure_ascii=False,sort_keys=True),time.time(),task_id))
         store._append_event_tx(db, task_id, 'task.completed', {'result_sha256': provenance['result_sha256'], 'manual': True})
         if produces_candidate:
             source_task_ids = [str(hit.get('source_task_id')) for hit in snapshot.get('memory_hits', []) if hit.get('source_task_id')]
-            store._insert_candidate_tx(db, task_id, str(staged), evidence_sha256, source_task_ids, time.time())
-            store._append_event_tx(db, task_id, 'memory.candidate_staged', {'evidence_sha256': evidence_sha256})
-        return {'status': 'completed', 'task_id': task_id, 'label': label}
+            if store._insert_candidate_tx(db, task_id, str(staged), evidence_sha256, source_task_ids, time.time()):
+                store._append_event_tx(db, task_id, 'memory.candidate_staged', {'evidence_sha256': evidence_sha256})
+        return {'status': 'completed', 'task_id': task_id, 'label': label,
+                'value_assessment': assessment}

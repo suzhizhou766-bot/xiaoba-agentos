@@ -433,9 +433,6 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
         },
         "recovery": {
             "live_inference_tested": False,
-            "requires_session_start_probe": bool(
-                config.raw.get("recovery", {}).get("probe_on_session_start", True)
-            ),
             "agent_health_last_recorded": store.agent_health(
                 enabled_names=[agent.name for agent in enabled],
                 max_age_seconds=float(config.worker.get("health_max_age_seconds", 86400)),
@@ -465,6 +462,15 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
     # 卡 45：内置 WorkBuddy 引擎已退役。旧节点数据保留，这里只按现有警告格式标出来，
     # 不改节点数据、不参与 ok 判定；测试运行与派活由 Agent 池自己拒绝。
     checks["warnings"].extend(retired_engine_warnings(nodes))
+    # 卡 51：干活分评分账本一致性核查。账本不一致时在 doctor 报出警告，不让派活失败。
+    try:
+        from .task_scores import ledger_check
+        task_scores = ledger_check(store)
+        checks["task_scores"] = task_scores
+        if not task_scores.get("ok") and task_scores.get("problems"):
+            checks["warnings"].append(f"干活分评分账本不一致：{'; '.join(task_scores.get('problems', []))}")
+    except Exception as exc:
+        checks["warnings"].append(f"干活分评分账本检查异常：{exc}")
     # 卡 43：doctor 只读展示节点测试失败时已脱敏的错误尾部（review-ingress 在
     # 测试记录里写好 error_tail，这里只读取既有字段）；不参与 ok 判定，不改变
     # 其它 doctor 语义。
