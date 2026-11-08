@@ -1,4 +1,4 @@
-# v1.6.8 运维
+# v1.6.9 运维
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
@@ -10,7 +10,7 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 
 上班不发真实探针，只做本地检查：节点是否开启、测试资格是否有效、入口是否还在。节点要真实连通时，由用户在页面手动测试运行。只读检查不创建任务。Worker 身份为小八 AgentOS Runner；沙箱禁止 kill(pid,0) 时可能误报 alive=false，需授权只读进程确认，不盲目重启。
 
-卡 51 候选已移除 `recovery.probe_on_session_start` 及 doctor 的
+v1.6.9（卡 51）已移除 `recovery.probe_on_session_start` 及 doctor 的
 `requires_session_start_probe` 字段。旧配置残留该键也不触发模型调用；上班只做上述本地检查。
 
 ### 干活分与价值分（卡 51，2026-11-08 用户补定）
@@ -37,7 +37,7 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 直接进入用户初审，并携带分歧/重复依据。该判断不批准任何经验，不改变用户初审、
 终审及真实隔离验证门禁；已初审通过的复验仍走原验证流程。历史未分类任务沿用旧协议。
 
-### 正式经验复用分（卡52候选；未上线）
+### 正式经验复用分（v1.6.9 卡 52）
 
 复用分与新经验两轮复验、Agent干活分分别记账。只检索或阅读不计分；用户明确
 “交付”后，本任务结论 `tasks.result` 确实引用源经验ID或笔记名，才结算。
@@ -120,7 +120,7 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 - 切换成功后会把新发布目录封成只读（文件 0444，可执行文件与目录 0555），结果记在切换返回的 `release_sealed` 里；封不上只报告，不退回已成功的切换。`doctor` 的 `release_read_only` 只报告当前发布目录是否仍是只读，不影响 `ok`。不要手工在发布目录里以会写字节码缓存的方式运行或导入 Python：多出一个字节码缓存文件就会让入口的发布校验失败，小八拒绝运行（v1.6.5 起把发布目录封成只读，正是为了防这一件事）。Worker 服务照常运行发布内的代码，它以不写字节码的方式启动，不受影响。
 - 裁决后端由小八监看中心（`http://127.0.0.1:8799/`，「裁决中心」标签）按需拉起并看护：监看中心开启时运行，关闭时一并停止，没有独立网页，原 `127.0.0.1:8797` 地址与 `com.xiaoba.review-center` LaunchAgent 已停用。监看中心没开时不能在浏览器里裁决，待审队列也不会同步到第二大脑；重新开启后补同步。CLI 的 `review-list`/`review` 不受影响。
 - 裁决后端必须与 Worker 使用同一份 `XIAOBA_CONFIG`。监看中心默认读取 Worker LaunchAgent 里的配置路径；裁决后端运行时把自己实际使用的配置记录在 `<runtime_dir>/review-center/backend-state.json`，`doctor` 的 `config_consistency` 据此把它列为 `review_backend` 一并比对：内容不一致判失败，路径不同但内容相同给警告。后端没在运行（或记录已过期）时跳过，不算失败。旧的 `com.xiaoba.review-center` LaunchAgent 若被重新启用，仍按原规则比对。
-- 裁决中心列表的序号角标（v1.6.8 卡 47）：序号是该条在**全部待审队列**里的位置，后端按登记时间排序；页面搜索或过滤时不重排、序号不变；某条被处理离开队列后，剩下的条目按新队列重新编号。序号只取完整队列快照，不是搜索结果的下标。
+- 裁决中心列表的序号角标（v1.6.9 卡 47）：序号是该条在**全部待审队列**里的位置，后端按登记时间排序；页面搜索或过滤时不重排、序号不变；某条被处理离开队列后，剩下的条目按新队列重新编号。序号只取完整队列快照，不是搜索结果的下标。
 - **已退回的条目不能重复退回**：`revision_requested` 的条目仍留在待审队列里，列表和详情显示「已退回，等作者修改」及上次退回时间、上次意见；「需要修改」按钮置灰并写明「正文未改动，不能重复退回」，**驳回仍可点**，批准路径不变。后端在该条候选正文哈希与上次退回相同时，再提交「需要修改」返回 `already_revision_requested`（带上一次退回时间和意见），不新增裁决、不新增审计记录；作者改过正文（候选正文哈希变化）后再退回照常写入。
 - `intake --submit` 返回 `blocked_local_health` 时任务未入队，按 `blockers` 处理后重新提交。
 - `install-service` 不会自行备份（v1.6.5 起）：服务配置的原内容只留在内存里，安装失败时写回并重启原服务（按 launchctl 的实际结果报告，重启失败会写明）；数据库已是当前结构时不碰；只有数据库确实需要迁移时，命令会停下说明，用户明确同意备份后再加 `--backup-database` 重跑。安装中途失败时，错误信息会写明是否创建过数据库备份，没有创建就明说“本次未创建数据库备份”，不会误报“已恢复备份”；回滚留下的失败副本位置、以及旧 Runner 留在了哪里，也会写进错误信息。重建 Runner 时被替换下来的旧 Runner 移进废纸篓（可恢复），不再留在 `.runtime/backups/runner/`；移不进废纸篓时（比如废纸篓目录不可用），旧 Runner 会留在运行目录里，命令结果会写明它的位置并提示用户处理，绝不会悄悄删掉。`agent-enable` / `agent-disable` 也不再复制配置文件，新配置先写临时文件再整体替换。日志轮转与安装失败的新配置文件仍移到 `.runtime/backups/` 下（是移动现有文件，不是复制备份）。
@@ -186,7 +186,7 @@ xiaoba task-host-complete TASK_ID --receipt /absolute/path/host-receipt.json
 
 ### 发布验收的宿主补票
 
-软件发版门禁至少要 2 份合格结论，可以是“1 份池节点 ＋ 1 份宿主”。门禁函数 `release_acceptance` 一直认这种组合，v1.6.8 起构包从验收数据库取证也照这个收（此前只认两个池节点，宿主结算的任务直接报错）。
+软件发版门禁至少要 2 份合格结论，可以是“1 份池节点 ＋ 1 份宿主”。门禁函数 `release_acceptance` 一直认这种组合，v1.6.9 起构包从验收数据库取证也照这个收（此前只认两个池节点，宿主结算的任务直接报错）。
 
 **什么时候可以补。** 验收任务由 `task-host-complete` 结算（`provenance_json.kind` 是 `host_review`）、宿主这一票结论是 PASS、任务里至少有 1 份池节点结论时，才谈得上补票。至少 1 份来自池节点、入口程序与模型彼此独立、不恢复固定后台名字和备用补位这几条一条没放宽；两票都是宿主直接拒收。
 
@@ -245,23 +245,23 @@ xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
 
 新增经验分类与受控验证的运行契约及验收条件见 docs/EXPERIENCE_TRIALS.md；技术审计仅结算审计回执，方法必须真实新执行与独立双审后用户终审。历史候选不批量迁移。
 
-## 节点测试期限与失败诊断（v1.6.8 卡 43）
+## 节点测试期限与失败诊断（v1.6.9 卡 43）
 
 - **测试期限怎么算**：节点测试（健康检查、上班初始化）的运行期限取该节点已设的掉线时限（`no_progress_seconds`），上限 300 秒；节点没设掉线时限时仍是 90 秒。所有 CLI 类型（含 AGY 交互与 AGY CLI 两种）走同一个函数取值，不再各自写死常量；工作调用不受影响（AGY 工作调用不向 CLI 传期限，仍为 0 秒）。掉线时限只在 Agent 池编辑节点处修改，不新增节点配置字段。
 - **错误尾部在哪看**：节点测试失败时，测试记录新增 `error_tail`：stderr 最后 2 KB 经 `_redact_error` 脱敏后的文字；stderr 为空时取 stdout 最后 2 KB 中不是结构化事件（不能解析成 JSON 的行）的文字，同样脱敏。Agent 池节点卡片显示“错误尾部（已脱敏 · 仅末段）”；`doctor` 结果的 `review_node_error_tails` 列出同样的内容。原始 stdout 不保存、不落盘。
 - **失败分类只看诊断文字**：分类匹配只读 stderr 全文，加上 stdout 最后 4 KB 里不是结构化事件的文字；读过的源码、工具结果都在结构化事件里，不参与匹配。`call_terminated`、`permission_denied` 的判定顺序不变，既有分类测试全部照旧。
 
-## 内置 WorkBuddy 引擎退役（v1.6.8 卡 45）
+## 内置 WorkBuddy 引擎退役（v1.6.9 卡 45）
 
 - **退役了什么**：Agent 池的 `workbuddy` 类型（WorkBuddy 桌面附带的内置精简引擎，原生 `--serve` + ACP HTTP/SSE、事件流上限 1 MiB）不再维护。`resource_workbuddy.py`、`workbuddy_login.py` 已移出仓库（移入私人助理 `_待删/内置WorkBuddy引擎-20261106`，由用户清空）；`RESOURCES` 表、身份摘要名单、登录提示、类型推断里的对应分支一并清掉。CodeBuddy CLI（`codebuddy` 类型，入口 `~/.local/bin/codebuddy`）不受影响，调用方式、参数与行为与改动前一致。
 - **新建节点**：Agent 池页面类型下拉和接口都不再提供 `workbuddy`，提交会被拒绝并给出迁移办法。`workbuddy` 仍留在类型清单里，只用于识别旧数据，不当作可选项。
 - **已有旧节点**：数据不动、类型不自动改。测试运行与派活直接返回错误码 `engine_retired`（HTTP 400 的 `error` 文本带迁移提示），不起进程、不写测试记录、不动 `revision`；`doctor` 在 `warnings` 里按现有警告格式列出这些节点（不参与 `ok`），Agent 池节点卡片也标出退役。
 - **迁移办法**：编辑该节点，把类型改成 WorkBuddy CLI（CodeBuddy），入口填本机 `codebuddy` 的可执行路径，模型按需填写，再点测试运行。旧节点改名称、掉线时限等其它字段仍可编辑。
-- **入口名 `codebuddy` 的推断**：v1.6.8 起入口名 `codebuddy` 判成 `codebuddy` 类型（原来归到 `workbuddy`）；判独立仍把两类算同一个来源，`workbuddy` 只由显式类型或 `workbuddy` 入口名留给旧节点。线上 v1.6.7 池的 CodeBuddy 节点已显式存 `agent_type=codebuddy`，切换后行为不变；线上池只读盘点（2026-11-06）没有 `workbuddy` 类型节点，不需要迁移。
+- **入口名 `codebuddy` 的推断**：v1.6.9 起入口名 `codebuddy` 判成 `codebuddy` 类型（原来归到 `workbuddy`）；判独立仍把两类算同一个来源，`workbuddy` 只由显式类型或 `workbuddy` 入口名留给旧节点。线上 v1.6.7 池的 CodeBuddy 节点已显式存 `agent_type=codebuddy`，切换后行为不变；线上池只读盘点（2026-11-06）没有 `workbuddy` 类型节点，不需要迁移。
 - **ACP**：Agent 池退役内置引擎后就没有 ACP 通道了，ACP 另走卡 48 实测。`implementation_sha256` 随本次改动变化，池里已有节点要重新测试运行才算通过。
 
 
-## 正式经验裁决（卡52b候选，未上线）
+## 正式经验裁决（v1.6.9 卡 52b）
 
 状态只从 `memory.reuse_revision_requested` 与 `memory.formal_*` SQLite专用事件投影，不增加表、列、索引或数据库版本。源正式经验不进入新经验初审／两轮复验。请求ID是改动事件ID；源经验ID保持稳定，版本是发布笔记的SHA-256。
 

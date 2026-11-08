@@ -79,7 +79,7 @@ class DeploymentPredecessorBindingTest(unittest.TestCase):
         write(self.layout.config, switch.encoded(config))
         return ({'version': 'v1.6.7', 'database_schema_version': 7,
                  'agentos_source_manifest_sha256': LIVE_V167_SOURCE_MANIFEST_SHA256},
-                {'version': 'v1.6.8', 'database_schema_version': 7})
+                {'version': 'v1.6.9', 'database_schema_version': 7})
 
     def test_repository_declaration_binds_the_live_release_and_keeps_executed_steps(self):
         declaration = self.declaration()
@@ -111,7 +111,7 @@ class DeploymentPredecessorBindingTest(unittest.TestCase):
 
     def test_this_release_adds_no_step(self):
         self.assertEqual(sorted(RECORDED_STEPS), sorted(step['id'] for step in self.declaration()['steps']),
-                         'v1.6.8 不新增编号步骤：声明里的步骤必须正好是线上已执行的那四个')
+                         'v1.6.9 不新增编号步骤：声明里的步骤必须正好是线上已执行的那四个')
 
 
 if __name__ == '__main__':
