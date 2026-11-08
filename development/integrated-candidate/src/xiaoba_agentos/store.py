@@ -2253,7 +2253,7 @@ class EventStore:
                 "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_unscored'", (task_id,)
             ).fetchone():
                 self._append_event_tx(conn, task_id, 'memory.value_unscored', {
-                    'reason': '普通任务无审查评分，按旧路径交用户初审'})
+                    'reason': '本任务没有审查评分来源（不是宿主审查、宿主补票或发布验收），不做价值分判定，按旧路径交用户初审'})
         if assessment and assessment['decision'] == 'discard':
             result = summary(assessment)
             task = conn.execute('SELECT provenance_json FROM tasks WHERE id=?', (task_id,)).fetchone()

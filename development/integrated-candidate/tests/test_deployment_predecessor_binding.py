@@ -5,8 +5,9 @@
 `agentos_source_manifest_sha256`（第 580 行）；每个已执行步骤的哈希必须等于
 `.runtime/release-steps.json` 里记录的哈希（第 616 行）。
 
-下面的常量是只读抄自线上的真实值：v1.6.7 的清单哈希 2026-11-06 抄自线上
-（`.runtime/releases/v1.6.7/agentos/SOURCE_MANIFEST.json`），步骤哈希 2026-11-02 抄自
+下面的常量是只读抄自线上的真实值：v1.6.9 的清单哈希 2026-11-09 抄自线上
+（`.runtime/releases/v1.6.9/RELEASE.json` 的 `agentos_source_manifest_sha256`，与线上根目录
+`SOURCE_MANIFEST.json` 的 SHA-256 一致）；v1.6.7 的值保留作“仍绑上一版会被拒”的反例；步骤哈希 2026-11-02 抄自
 `.runtime/release-steps.json`。测试现场全部建在临时目录里，不读写线上。
 """
 import json
