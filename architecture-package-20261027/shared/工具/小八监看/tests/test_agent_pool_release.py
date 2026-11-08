@@ -68,10 +68,14 @@ class ReleaseAgentProcessTest(unittest.TestCase):
             fake_tmux.write_text('#!/bin/sh\nexit 0\n')
             fake_tmux.chmod(0o700)
             spec.write_text(json.dumps({'port':port,'project':str(project),'config':str(config),'page':str(page),'root':str(root),'tmux':str(fake_tmux)}))
-            child_env=dict(os.environ,PYTHONPATH=str(MONITOR))
+            # 子进程故意不带 -B，用来证明加载的 agentos 项目不写 __pycache__；
+            # 监看中心自身模块会写字节码，所以子进程跑在监看源码的临时副本里，不污染源码树（v1.6.11 r2 导出核对发现）。
+            monitor_copy=root/'monitor-copy'
+            shutil.copytree(MONITOR,monitor_copy,ignore=shutil.ignore_patterns('__pycache__','*.pyc','node_modules','run','logs'))
+            child_env=dict(os.environ,PYTHONPATH=str(monitor_copy))
             child_env.pop('PYTHONDONTWRITEBYTECODE',None)
-            proc=subprocess.Popen([PYTHON,str(Path(__file__).resolve()),'serve',str(spec)],
-                cwd=str(MONITOR),stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+            proc=subprocess.Popen([PYTHON,str(monitor_copy/'tests'/Path(__file__).name),'serve',str(spec)],
+                cwd=str(monitor_copy),stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                 env=child_env)
             try:
                 base='http://127.0.0.1:%d'%port
