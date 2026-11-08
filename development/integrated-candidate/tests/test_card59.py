@@ -17,7 +17,7 @@ from xiaoba_agentos.store import EventStore
 
 REPO=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(REPO/'development/review-ingress'))
-sys.path.insert(0,str(REPO/'monitor'))
+sys.path.insert(0,str(REPO/'architecture-package-20261027/shared/工具/小八监看'))  # 与接入口测试同源；仓库根 monitor/ 不在发版导出里
 PREVIOUS=Path(__file__).with_name('fixtures')/'review-ui-v1.6.10.json'
 
 
