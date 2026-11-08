@@ -286,10 +286,10 @@ def pool_vote_conclusions(
 
 
 def _passed_verdict(text: str) -> bool:
-    """这一票必须是恰好一处 FINAL_ACCEPTANCE: PASS，别处不能出现 FAIL。"""
+    """这一票必须是恰好一处 FINAL_ACCEPTANCE: PASS，别处不能出现 FAIL 或 NEEDS_INFO。"""
     from xiaoba_agentos.pool_dispatch import review_vote_problem
     verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", text, re.MULTILINE)
-    return (not review_vote_problem(text) and verdicts == ["PASS"] and not re.search(r"FINAL_ACCEPTANCE:\s*FAIL", text)
+    return (not review_vote_problem(text) and verdicts == ["PASS"] and not re.search(r"FINAL_ACCEPTANCE:\s*(?:FAIL|NEEDS_INFO)", text)
             and not contains_non_answer_markers(text))
 
 
@@ -427,6 +427,12 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
         raise RuntimeError(
             "验收任务没有声明来源工作任务，构包不能核对作者和执行者；"
             "提交时用 --work-task 链上工作任务，或明确声明 --no-work-task")
+    # 卡 59 复查：验收任务必须在快照里显式声明发布验收，题面标记不算。
+    review_context = snapshot.get("review_context") if isinstance(snapshot.get("review_context"), dict) else {}
+    if review_context.get("release_acceptance") is not True:
+        raise RuntimeError(
+            "验收任务没有显式声明发布验收（review_context.release_acceptance 不是 true）；"
+            "提交时用 scripts/submit_release_acceptance.py 或 submit --release-acceptance")
     if isinstance(payload.get("host_settlement"), dict):
         return _validate_host_acceptance(payload, source_root, task, snapshot, list(runs or []),
                                          payload["host_settlement"], source_manifest_sha256)

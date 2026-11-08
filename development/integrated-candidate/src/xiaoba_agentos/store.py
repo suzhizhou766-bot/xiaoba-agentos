@@ -2243,18 +2243,20 @@ class EventStore:
     ) -> bool:
         """Queue the candidate row and its status sidecar. Approves nothing."""
         from .value_scoring import native_value, record_tx, summary
-        assessment = native_value(conn, task_id)
+        reasons = []
+        assessment = native_value(conn, task_id, reason_out=reasons)
         record_tx(conn, task_id, assessment)
         if assessment is None:
-            from .task_scores import requires_review_vote
-            task = conn.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
-            snapshot = json.loads(task['execution_snapshot_json'] or '{}')
-            if not requires_review_vote(conn, task, snapshot) and not conn.execute(
+            if not conn.execute(
                 "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_unscored'", (task_id,)
             ).fetchone():
                 self._append_event_tx(conn, task_id, 'memory.value_unscored', {
-                    'reason': '本任务没有审查评分来源（不是宿主审查、宿主补票或发布验收），不做价值分判定，按旧路径交用户初审'})
+                    'reason': reasons[0] if reasons else 'no_scoring_source'})
         if assessment and assessment['decision'] == 'discard':
+            if repaired:
+                # An immutable completion already binds the original result hash.
+                # Record the value decision, but never rewrite its settled result.
+                return False
             result = summary(assessment)
             task = conn.execute('SELECT provenance_json FROM tasks WHERE id=?', (task_id,)).fetchone()
             provenance = json.loads(task['provenance_json'] or '{}')
@@ -2315,14 +2317,14 @@ class EventStore:
                 # Completed without a candidate must not exist; if an older
                 # code path left one behind, queue the candidate now instead of
                 # reporting an idempotent no-op that would hide the gap.
-                self._insert_candidate_tx(
+                if self._insert_candidate_tx(
                     conn, task_id, staged_path, evidence_sha256, source_task_ids, now,
                     repaired=True,
-                )
-                self._append_event_tx(
-                    conn, task_id, "memory.candidate_staged",
-                    {"evidence_sha256": evidence_sha256, "repaired_missing_candidate": True},
-                )
+                ):
+                    self._append_event_tx(
+                        conn, task_id, "memory.candidate_staged",
+                        {"evidence_sha256": evidence_sha256, "repaired_missing_candidate": True},
+                    )
                 return False
             conn.execute(
                 "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
@@ -2889,7 +2891,11 @@ class EventStore:
         now = time.time()
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM notifications WHERE status='pending' ORDER BY created_at"
+                """SELECT n.* FROM notifications n WHERE n.status='pending'
+                   AND NOT (n.kind='task.recovery_blocked' AND EXISTS (
+                     SELECT 1 FROM events e WHERE e.task_id=n.task_id
+                     AND e.event_type IN ('task.abandoned','task.cancelled')))
+                   ORDER BY n.created_at"""
             ).fetchall()
             result = []
             for row in rows:
@@ -2986,7 +2992,10 @@ class EventStore:
                 "memory_candidates": memory_counts,
                 "repairs": repair_counts,
                 "pending_notifications": conn.execute(
-                    "SELECT COUNT(*) FROM notifications WHERE status='pending'"
+                    """SELECT COUNT(*) FROM notifications n WHERE n.status='pending'
+                       AND NOT (n.kind='task.recovery_blocked' AND EXISTS (
+                         SELECT 1 FROM events e WHERE e.task_id=n.task_id
+                         AND e.event_type IN ('task.abandoned','task.cancelled')))"""
                 ).fetchone()[0],
                 "pending_constraint_holds": conn.execute(
                     "SELECT COUNT(*) FROM constraint_holds WHERE status='pending'"

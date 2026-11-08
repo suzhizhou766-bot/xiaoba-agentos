@@ -82,7 +82,9 @@ def projection(db):
                 status='pending', created_at=event['created_at'], updated_at=event['sequence'])
         elif v.get('request_id') in objects:
             item = objects[v['request_id']]; item['updated_at'] = event['sequence']
-            if kind == PREFIX+'draft_submitted': item.update(draft=v['draft'], status='awaiting_review', reviews=[])
+            if kind == PREFIX+'draft_submitted': item.update(draft=v['draft'], status='awaiting_review', reviews=[], dispatch_status=None)
+            elif kind == PREFIX+'dispatch_status':
+                if item.get('draft',{}).get('sha256')==v['draft_sha256']:item['dispatch_status']=v['dispatch_status']
             elif kind == PREFIX+'host_review': item['host_packet']=v['packet']
             elif kind == PREFIX+'decided': item.update(status='withdrawn' if item['entry_type']=='unused_batch' and v['decision']=='approve' else 'approved' if v['decision']=='approve' else 'rejected', decision=v)
     for item in objects.values():
@@ -115,7 +117,8 @@ def _view(item):
     if kind=='unused_batch':
         item['body']='\n\n'.join(f"{e['title']}\n经验：{e['source_task_id']}\n最后调用：{e['last_used_at']}\n计时起点：{e['clock_at']}\n当前间隔：{e['interval_days']}天\n永久总分：{e['score']}" for e in item['entries'])
     else:
-        item['body']=item.get('body','待宿主补交完整修订稿')+'\n\n本次改动材料\n'+json.dumps({'source':item['source_task_id'],'version':item['source_sha256'],'task':item['real_task_id'],'applications':item.get('applications',[]),'reviews':item['reviews'],'label':item.get('review_label')},ensure_ascii=False,indent=2)
+        dispatch_label={'retry_pending':'派审查软失败，下一个空闲周期最多再派一次','manual_required':'派审查未完成，待人工补派','qualified':'审查回执已合格'}.get(item.get('dispatch_status'),'')
+        item['body']=dispatch_label+'\n'+item.get('body','待宿主补交完整修订稿')+'\n\n本次改动材料\n'+json.dumps({'source':item['source_task_id'],'version':item['source_sha256'],'task':item['real_task_id'],'applications':item.get('applications',[]),'reviews':item['reviews'],'label':item.get('review_label')},ensure_ascii=False,indent=2)
     return item
 
 

@@ -295,8 +295,6 @@ class StdlibOnlyTests(unittest.TestCase):
                 self.assertIn(node.module.split(".")[0], allowed, node.module)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class FakeResolve:
@@ -3036,3 +3034,7 @@ class InstallerGuidanceTests(unittest.TestCase):
         free = text.index("21.1+ FREE")
         studio = text.index("Studio, or 21.0.x")
         self.assertLess(free, studio, "the newer, likelier cause reads first")
+
+
+if __name__ == "__main__":
+    unittest.main()

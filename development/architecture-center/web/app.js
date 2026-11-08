@@ -23,8 +23,8 @@
     selected=id;const fact=data.facts[id];$('detail').hidden=false;$('detailEyebrow').textContent=view.title;$('detailTitle').textContent=fact.title;
     $('detailStatus').replaceChildren();text('span',fact.status,$('detailStatus'),'badge '+fact.kind);
     $('detailDescription').textContent=fact.summary;$('detailSections').replaceChildren();
-    detailSection('依据与状态口径',fact.source==='topology.json'?'来自现行 topology.json。状态照图谱原文保留；已上线仅指基础能力，新意图是否实现须结合下方问题待办与卡 50 核对。':'旧站点保留展示，是否纳入现行图谱待用户定。');
-    detailSection('线上核对 · 卡 50 / 2026-11-08',fact.observation,'implementation-gap');
+    detailSection('依据与状态口径',fact.source==='topology.json'?'来自现行 topology.json。状态照图谱原文保留；已上线仅指基础能力，新意图是否实现须结合下方现行图谱问题待办与上线说明。':'旧站点保留展示，是否纳入现行图谱待用户定。');
+    detailSection('现行图谱与上线说明 · 2026-11-09',fact.observation,'implementation-gap');
     detailSection('专业说明',fact.description);
     detailSection('问题与待办 · 图谱原文',fact.issues,'implementation-gap');
     detailSection('备注',fact.note);

@@ -27,18 +27,21 @@ class TaskScoring:
         if workspace is None:raise ValueError('此节点尚无可核对的工作区台账')
         return workspace.workday_inputs(day)
 
-    def assess(self,node_id,day,task_id,task_type,outcome,evidence_refs,expected_revision,assessment_id,role=None):
-        if outcome not in {'good','not_good'} or type(expected_revision) is not int or expected_revision<0:
-            raise ValueError('任务评价只接受good或not_good及当前评价修订号')
+    def assess(self,node_id,day,task_id,task_type,outcome,evidence_refs,expected_revision,assessment_id,role=None,void_reason=None):
+        if outcome not in {'good','not_good','void'} or type(expected_revision) is not int or expected_revision<0:
+            raise ValueError('任务评价只接受good、not_good或void及当前评价修订号')
         if (not isinstance(task_type,str) or not task_type.strip() or len(task_type)>128
                 or not isinstance(assessment_id,str) or not assessment_id or len(assessment_id)>128):
             raise ValueError('需要明确任务类型与稳定评价ID')
         if not isinstance(evidence_refs,list) or not evidence_refs or any(not isinstance(v,str) or not v.strip() or len(v)>2048 for v in evidence_refs):
             raise ValueError('评分必须提供主入口实际核验的依据，不能直接采用Agent自评分')
+        if outcome=='void' and (not isinstance(void_reason,str) or not void_reason.strip() or len(void_reason)>2048):
+            raise ValueError('作废必须提供非空 void_reason（最多2048字）')
         # Native tasks are automatically scored at settlement. This endpoint
         # corrects that same row, even if the node was renamed/reconfigured.
         if self.store.native.get_task(task_id):
-            return self._correct_native(node_id,task_id,outcome,evidence_refs,expected_revision,assessment_id,role)
+            return self._correct_native(node_id,task_id,outcome,evidence_refs,expected_revision,assessment_id,role,void_reason)
+        if outcome=='void':raise ValueError('只能作废已结算的自动样本')
         if role is not None and role not in {'review','collaborate'}:raise ValueError('更正必须使用审查或协作执行角色')
         facts=[v for v in self.inputs(node_id,day) if v['task_id']==task_id and not v['health_check'] and
                (role is None or ('review' if v.get('is_review') else 'collaborate')==role)]
@@ -83,30 +86,34 @@ class TaskScoring:
                  'previous':old_value,'current':value,'delta':value['points']-(old_value['points'] if old_value else 0)})
         return dict(value,revision=revision+1)
 
-    def _correct_native(self,node_id,task_id,outcome,evidence_refs,expected_revision,assessment_id,role):
+    def _correct_native(self,node_id,task_id,outcome,evidence_refs,expected_revision,assessment_id,role,void_reason=None):
         from xiaoba_agentos.memory import MemoryBridge
-        if MemoryBridge._sensitive_reason(canonical(evidence_refs)):raise ValueError('评分依据不能含敏感资料')
+        if MemoryBridge._sensitive_reason(canonical([evidence_refs,void_reason])):raise ValueError('评分依据不能含敏感资料')
         with self.store.transaction() as db:
-            task_scores.rows_tx(db)
+            task_scores.rows_tx(db,raise_on_inconsistent=True)
             choices=[r for r in db.execute('SELECT * FROM ri_task_assessments')
                 if (v:=json.loads(r['data'])).get('task_id')==task_id and v.get('node_id')==node_id and
                 (role is None or v.get('role')==role)]
             if len(choices)!=1:raise ValueError('需要已结算的任务评分；多角色任务更正必须明确角色')
             old=choices[0];previous=json.loads(old['data'])
+            if outcome=='void' and not previous.get('run_id'):raise ValueError('只能作废已结算的自动样本')
+            if previous.get('outcome')=='void' and outcome!='void':raise ValueError('已作废样本不能恢复计分')
             if outcome=='good' and not (previous.get('receipt_accepted') and previous.get('task_completed')):
                 raise ValueError('未接收的回执或未完成任务不能更正为1分')
             value=dict(previous,outcome=outcome,points=int(outcome=='good'),evidence_refs=evidence_refs,
-                       tasks=1,success_rate=float(outcome=='good'),evaluator='trusted_host_correction')
+                       tasks=0 if outcome=='void' else 1,success_rate=float(outcome=='good'),evaluator='trusted_host_correction')
+            if outcome=='void':value['void_reason']=void_reason.strip()
             if old['assessment_id']==assessment_id:
                 if value!=previous:raise Conflict('同一评价ID不能写入不同内容')
                 return dict(value,revision=old['revision'])
+            if previous.get('outcome')=='void':raise ValueError('已作废样本不可再次更正')
             if old['revision']!=expected_revision:raise Conflict('任务评价已变化，请读取当前修订号')
             revision=old['revision']+1
             db.execute('UPDATE ri_task_assessments SET data=?,revision=?,assessment_id=?,updated_at=? WHERE id=?',
                        (canonical(value),revision,assessment_id,time.time(),old['id']))
             self.store.native._append_event_tx(db,task_id,'task_scoring.assessed',
                 {'assessment_id':assessment_id,'key':old['id'],'revision':revision,'previous':previous,
-                 'current':value,'delta':value['points']-previous['points']})
+                 'current':value,'delta':value['points']-previous['points'],'void':outcome=='void'})
         return dict(value,revision=revision)
 
     def weekly(self,day,task_type=None):

@@ -260,7 +260,7 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
                 ),
                 "execution_snapshot_json": json.dumps(
                     {"source_manifest_sha256": self.source_manifest_sha256,
-                     "review_context": {"work_task_id": "work-1"}}
+                     "review_context": {"work_task_id": "work-1", "release_acceptance": True}}
                 ),
             },
             "runs": [
@@ -280,7 +280,7 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
     def audit_payload(self):
         payload = self.payload()
         snapshot = {"source_manifest_sha256": self.source_manifest_sha256,
-                    "review_context": {"work_task_id": "work-1"},
+                    "review_context": {"work_task_id": "work-1", "release_acceptance": True},
                     "experience_policy": {"version": 1, "kind": "audit"}}
         canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         payload["task"]["execution_snapshot_json"] = canonical
@@ -317,6 +317,19 @@ class ReleaseAcceptanceEvidenceTest(unittest.TestCase):
         result = BUILD_RELEASE_MODULE.validate_acceptance_evidence(self.evidence, self.root)
         self.assertEqual(["north-node", "south-node"], result["successful_agents"])
         self.assertEqual("task-1", result["task_id"])
+
+    def test_acceptance_without_explicit_release_flag_is_refused(self):
+        # 卡 59 复查：手敲 submit 不带 --release-acceptance 时，即使题面和两票都对，构包也拒收。
+        for context in ({"work_task_id": "work-1"},
+                        {"work_task_id": "work-1", "release_acceptance": False},
+                        {"work_task_id": "work-1", "release_acceptance": "true"}):
+            with self.subTest(context=context):
+                payload = self.payload()
+                payload["task"]["execution_snapshot_json"] = json.dumps(
+                    {"source_manifest_sha256": self.source_manifest_sha256, "review_context": context})
+                self.evidence.write_text(json.dumps(payload), encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "显式声明发布验收"):
+                    BUILD_RELEASE_MODULE.validate_acceptance_evidence(self.evidence, self.root)
 
     def test_tool_call_markup_cannot_be_release_evidence(self):
         payload = self.payload(

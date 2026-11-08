@@ -379,7 +379,7 @@ class StandbyReleaseGateTest(unittest.TestCase):
             {"kind": "agentos_multi_adjudicated", "minimum_successful_agents": 2}
         )
         snapshot = json.dumps({"source_manifest_sha256": self.source_manifest_sha256,
-                               "review_context": {"no_work_task": True}})
+                               "review_context": {"no_work_task": True, "release_acceptance": True}})
 
         connection.execute(
             "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?)",

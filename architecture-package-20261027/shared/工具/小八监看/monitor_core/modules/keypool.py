@@ -19,7 +19,6 @@ import re
 import secrets
 import signal
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -32,10 +31,12 @@ from .. import config as cfg
 from .. import keypool_balance
 from .. import keypool_stats
 from ..web import Response
-from ..keypool_proxy import CLIENT_UA, DEFAULT_SETTINGS, join_url, mask, model_names, station_of
+from ..keypool_proxy import (CLIENT_UA, DEFAULT_SETTINGS, Approvals, BIND_HOLD, binding_state, join_url,
+                             key_digests, mask, model_names, site_of, station_of)
 from ..supervise import Backoff, Breaker, ManagedProcess
 from ..web import Route
 from . import Module
+from .portprobe import LISTENING, UNAVAILABLE, listener_pids
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 MAX_NODES = 64
@@ -65,6 +66,8 @@ class KeyPoolModule(Module):
         settings = ctx.config["keypool"]
         self.port = int(settings["port"])
         self.file = cfg.resolve(ctx.config, settings["file"])
+        # Key 获准发往的站点，和代理读写同一份文件（keypool.json 旁边，不进版本历史）
+        self.approvals = Approvals(str(self.file.with_name("keypool-approved.json")))
         self.python = settings.get("python") or sys.executable
         self.script = Path(__file__).resolve().parent.parent / "keypool_proxy.py"
         self.state_file = cfg.resolve(ctx.config, "run") / "keypool.json"
@@ -72,6 +75,7 @@ class KeyPoolModule(Module):
         self.manage = manage
         self.process = None
         self.blocked = ""          # 端口被别的程序占用时的说明
+        self.probe_warning = ""    # 端口监听检测不可用时的说明，只在健康状态里给人看
         self.lock = threading.Lock()  # 串行化对 keypool.json 的读改写
         self.balances = {}            # 节点编号 → 最近一次余额查询结果（只在内存里）
         self.balance_lock = threading.Lock()
@@ -127,9 +131,12 @@ class KeyPoolModule(Module):
         self.ensure_file()
         if not self.manage:
             return
+        self.probe_warning = ""
         self._retire_previous()
         if self._port_busy():
             self.blocked = "端口 %d 被其他程序占用，Key 池代理没有启动" % self.port
+            if self.probe_warning:
+                self.blocked += "；%s" % self.probe_warning
             self.ctx.log(self.id, "port busy", "error", port=self.port)
             return
         watchdog = self.ctx.config["watchdog"]
@@ -172,14 +179,6 @@ class KeyPoolModule(Module):
             sock.settimeout(0.5)
             return sock.connect_ex(("127.0.0.1", self.port)) == 0
 
-    def _listener_pid(self):
-        try:
-            out = subprocess.run(["/usr/sbin/lsof", "-nP", "-tiTCP:%d" % self.port, "-sTCP:LISTEN"],
-                                 capture_output=True, text=True, timeout=5).stdout.split()
-            return int(out[0]) if out else None
-        except (OSError, ValueError, subprocess.SubprocessError):
-            return None
-
     def _record_pid(self):
         for _ in range(40):
             status = self.process.status() if self.process else {}
@@ -193,13 +192,23 @@ class KeyPoolModule(Module):
             time.sleep(0.5)
 
     def _retire_previous(self):
-        """监看中心被强行结束时留下的旧代理：确认是它还占着端口，就结束它（它的管理令牌已经丢了，没法接管）。"""
+        """监看中心被强行结束时留下的旧代理：确认是它还占着端口，就结束它（它的管理令牌已经丢了，没法接管）。
+
+        检测不可用时不结束任何进程，也保留状态文件里的记录，等检测恢复后下次启动再认领。
+        """
         try:
             record = json.loads(self.state_file.read_text(encoding="utf-8"))
             pid = int(record["pid"])
         except (OSError, ValueError, KeyError, TypeError):
             return
-        if pid and pid == self._listener_pid():
+        state, pids, detail = listener_pids(self.port)
+        if state == UNAVAILABLE:
+            self.probe_warning = detail
+            self.ctx.log(self.id, "listener detection unavailable; leaving port %d alone" % self.port, "warning",
+                         detail=detail)
+            return
+        self.probe_warning = ""
+        if pid and state == LISTENING and pid in pids:
             try:
                 os.kill(pid, signal.SIGTERM)
                 self.ctx.log(self.id, "stopped proxy left by a previous run", pid=pid)
@@ -230,15 +239,26 @@ class KeyPoolModule(Module):
         if self.blocked:
             return {"status": "failed", "detail": self.blocked}
         if not self.process:
-            return {"status": "starting" if self.manage else "warn", "detail": "代理未启动"}
-        status = self.process.status()
-        state = status["state"]
-        mapped = {"running": "ok", "starting": "starting", "backoff": "warn", "failed": "failed"}.get(state, "warn")
-        detail = {"running": "代理运行中", "starting": "代理正在启动", "backoff": "代理已退出，等待自动重启",
-                  "failed": status["error"] or "代理反复退出，已停止自动重启"}.get(state, state)
-        return {"status": mapped, "detail": detail, "pid": status["pid"], "restarts": status["restarts"]}
+            result = {"status": "starting" if self.manage else "warn", "detail": "代理未启动"}
+        else:
+            status = self.process.status()
+            state = status["state"]
+            mapped = {"running": "ok", "starting": "starting", "backoff": "warn", "failed": "failed"}.get(state, "warn")
+            detail = {"running": "代理运行中", "starting": "代理正在启动", "backoff": "代理已退出，等待自动重启",
+                      "failed": status["error"] or "代理反复退出，已停止自动重启"}.get(state, state)
+            result = {"status": mapped, "detail": detail, "pid": status["pid"], "restarts": status["restarts"]}
+        if self.probe_warning:
+            result["detail"] = "%s；%s" % (result["detail"], self.probe_warning)
+            result["warning"] = self.probe_warning
+        return result
 
     def health(self):
+        result = self._health()
+        if self.probe_warning:
+            result["warning"] = self.probe_warning   # 端口监听检测不可用：页面正文里要看得见
+        return result
+
+    def _health(self):
         base = self.process_health()
         if base["status"] != "ok":
             return base
@@ -279,6 +299,14 @@ class KeyPoolModule(Module):
             Route("GET", "/api/keypool/usage.csv", self.usage_csv, "read"),
         ]
 
+    def binding(self, node):
+        """这个节点的 Key 现在能不能发往它的地址：和代理同一份获准站点文件、同一套判据。"""
+        state, reason = binding_state(self.approvals.load().get(str(node.get("id") or "")),
+                                      site_of(node.get("baseUrl")),
+                                      key_digests(node.get("key"), node.get("payKey")),
+                                      self.approvals.exists())
+        return state, reason
+
     def public_node(self, node):
         return {"id": node.get("id"), "name": node.get("name") or node.get("id"), "baseUrl": node.get("baseUrl") or "",
                 "keyMasked": mask(node.get("key")), "hasKey": bool(node.get("key")), "weight": node.get("weight", 1),
@@ -318,6 +346,7 @@ class KeyPoolModule(Module):
             "stations": self.stations(data, (live or {}).get("stations") or []),
             "totals": (live or {}).get("totals"), "events": (live or {}).get("events", []),
             "seq": (live or {}).get("seq", since), "configError": (live or {}).get("configError"),
+            "approvalError": (live or {}).get("approvalError"),
             "proxyStartedAt": (live or {}).get("startedAt"),
             "guardEnabled": (live or {}).get("guardEnabled", True),
             "security": (live or {}).get("security", {"counts": {}, "events": []})}
@@ -369,6 +398,9 @@ class KeyPoolModule(Module):
             if "baseUrl" in body or current is None:
                 node["baseUrl"] = self._clean_url(body.get("baseUrl"))
             # 双路：key 是套餐 Key（只有一个 Key 的节点也填它），payKey 是余额（按量）Key。留空不修改。
+            # 用户这次亲手动过哪几路 Key：只有动过的才算重新授权，没动的那把不能跟着去新站点（卡 22）。
+            submitted = {slot for slot, field in (("plan", "key"), ("pay", "payKey"))
+                         if str(body.get(field) or "").strip()}
             for field, clear in (("key", "keyClear"), ("payKey", "payKeyClear")):
                 key = str(body.get(field) or "").strip()
                 if len(key) > 512 or any(ch.isspace() for ch in key):
@@ -456,6 +488,13 @@ class KeyPoolModule(Module):
             else:
                 data["nodes"][data["nodes"].index(current)] = node
             self.save(data)
+            # 用户这次填了 Key（或新加节点）就是一次授权：记下 Key 现在获准发往的站点，代理重新加载后恢复发请求。
+            # 只改地址、没重填 Key 的保存不记授予——旧 Key 继续停用，等用户确认过新站点再填一次 Key。
+            if current is None or submitted:
+                site = site_of(node.get("baseUrl"))
+                digests = key_digests(node.get("key"), node.get("payKey"))
+                if site and not self.approvals.grant(node["id"], site, digests, None if current is None else submitted):
+                    self.ctx.log(self.id, "approval save failed", "warn", node=node["id"])
         self.models_due.set()
         self.ctx.log(self.id, "node saved", node=node["id"], name=node["name"], created=current is None)
         return 200, {"ok": True, "node": self.public_node(node)}
@@ -481,6 +520,7 @@ class KeyPoolModule(Module):
                 return 404, {"ok": False, "error": "找不到这个节点"}
             data["nodes"] = kept
             self.save(data)
+        self.approvals.drop(node_id)   # 节点删了，Key 的获准记录也清掉
         for store in (self.balances, self.balance_cache, self.balance_wait):
             store.pop(node_id, None)
         self.ctx.log(self.id, "node deleted", node=node_id)
@@ -514,16 +554,21 @@ class KeyPoolModule(Module):
         field = "payKey" if body.get("which") == "pay" else "key"
         base, key = body.get("baseUrl"), str(body.get(field) or "").strip()
         agent = body.get("userAgent")
+        node, own_key = None, False
         if body.get("id"):
             node = next((n for n in self.load()["nodes"] if n.get("id") == body["id"]), None)
             if node is None:
                 return 404, {"ok": False, "error": "找不到这个节点"}
+            own_key = not key          # 用的是已保存的 Key，不是用户这次手填的
             base = base or node.get("baseUrl")
             key = key or node.get(field) or ""
             agent = node.get("userAgent") if agent is None else agent
         base = self._clean_url(base)
         if not key:
             raise ValueError("缺少 Key")
+        if own_key and self.binding(node)[0] == BIND_HOLD:
+            # 地址换到别的站点：已保存的旧 Key 不往那边发，用户重新填 Key 或改回地址后再测
+            return 200, {"ok": False, "status": None, "detail": "等待重新授权：地址换了站点，旧 Key 已停用"}
         agent = str(agent or "").strip()
         if len(agent) > 200 or any(ord(ch) < 32 or ord(ch) > 126 for ch in agent):
             raise ValueError("客户端标识只能用英文字符，最长 200 个")
@@ -593,6 +638,8 @@ class KeyPoolModule(Module):
         for node in data["nodes"]:
             if node.get("enabled", True) is False:
                 continue
+            if self.binding(node)[0] == BIND_HOLD:
+                continue   # 地址换到别的站点、Key 还没重填：这个 Key 不发出去
             # 读模型清单也算在对方的 IP 限流里：同一个站的几个 Key 按这个站的请求间隔隔开
             try:
                 gap = float((limits.get(station_of(node.get("baseUrl"))) or {}).get("minIntervalSeconds") or 0)
@@ -714,6 +761,11 @@ class KeyPoolModule(Module):
     def _balance_one(self, node, auto):
         """查一个节点并记下结果。失败时保留上一次成功的数字（last），页面照常显示旧值并标出原因。"""
         node_id, now = node["id"], time.time()
+        if self.binding(node)[0] == BIND_HOLD:
+            # 地址换到别的站点、Key 还没重填：会话也别发过去，等用户确认新站点
+            result = {"ok": False, "error": "等待重新授权：地址换了站点，旧 Key 已停用", "at": int(now)}
+            self.balances[node_id] = result
+            return result
         cache = self.balance_cache.setdefault(node_id, {})
         if not auto:
             cache.clear()  # 手动查询要最新的

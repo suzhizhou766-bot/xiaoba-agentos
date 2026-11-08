@@ -14,6 +14,7 @@
 """
 import argparse
 import collections
+import hashlib
 import http.server
 import json
 import os
@@ -106,6 +107,82 @@ def station_of(base_url):
     return urllib.parse.urlsplit(str(base_url or "")).netloc.lower()
 
 
+def site_of(base_url):
+    """节点的站点：协议 ＋ 域名 ＋ 端口。同站换路径不算换站；协议、域名或端口变了才算（卡 19）。"""
+    parts = urllib.parse.urlsplit(str(base_url or ""))
+    host = (parts.hostname or "").lower()
+    if not host:
+        return ""
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    scheme = (parts.scheme or "").lower()
+    if port is None:
+        port = {"http": 80, "https": 443}.get(scheme)
+    return "%s://%s:%d" % (scheme or "?", host, port) if port is not None else "%s://%s" % (scheme or "?", host)
+
+
+def key_digest(key):
+    """一把 Key 的不可逆摘要：只用来判断“这把 Key 有没有变”，不落 Key 本身；空 Key 是空串。"""
+    key = str(key or "")
+    if not key:
+        return ""
+    return hashlib.sha256(("1\0%s" % key).encode("utf-8")).hexdigest()
+
+
+def key_digests(key, pay_key):
+    """一个节点两路 Key 各自的摘要：{"plan": 套餐 Key, "pay": 按量 Key}。两把分开记，才分得清哪把换过。"""
+    return {"plan": key_digest(key), "pay": key_digest(pay_key)}
+
+
+KEY_LABELS = {"plan": "套餐 Key", "pay": "按量 Key"}
+BIND_OK, BIND_GRANT, BIND_HOLD = "ok", "grant", "hold"
+
+
+def binding_state(record, site, digests, store_exists=False):
+    """这个节点的每把 Key 能不能发往当前站点：Key 只发往获准站点，地址换站就停用，等用户重新填 Key。
+
+    record 是这个节点在获准站点文件里的记录，没有 Key 本身：
+    新格式 {"keys": {"plan": {"site": 站点, "digest": 摘要}, "pay": {...}}}——每把 Key 各记各的获准站点；
+    旧格式 {"site": 站点, "keys": "<两把 Key 合起来的摘要>"}——分不清哪把换过，只认“站点没变”。
+    digests 是当前配置里两把 Key 的摘要（key_digests 的结果）。
+    返回 (状态, 原因)：ok＝可以发；grant＝有 Key 变了或第一次见，按当前站点记下授权；
+    hold＝有非空的 Key 没换而站点变了（原因里写明是哪一类，不写 Key 本身），停用、不发请求。
+    store_exists 表示获准站点文件已经在：这之后的陌生节点（比如改了节点编号的配置）不再白送一次授权。
+    """
+    if not site:
+        return BIND_HOLD, "节点地址无效"
+    if record is None:
+        if not store_exists:
+            return BIND_GRANT, ""
+        return BIND_HOLD, "还没有这个节点的获准记录，重新填写 Key 才能恢复"
+    stored = record.get("keys")
+    old_site = str(record.get("site") or "")
+    if isinstance(stored, str):   # 旧格式：两把 Key 合成一个摘要，换站时分不清哪把换过，只能保守停用
+        if old_site != site:
+            return BIND_HOLD, "地址从 %s 换到 %s，旧记录分不清哪把 Key 换过，重新填写 Key 才能恢复" % (old_site or "未记录", site)
+        return BIND_GRANT, ""     # 站点没变：照常，顺便升级成逐把的新格式
+    rows = stored if isinstance(stored, dict) else {}
+    current = digests or {}
+    held, grants = [], False
+    for slot in ("plan", "pay"):
+        digest = str(current.get(slot) or "")
+        if not digest:
+            continue              # 这一路没有 Key：没有东西会从这一路发出去
+        row = rows.get(slot) if isinstance(rows.get(slot), dict) else {}
+        row_site, row_digest = str(row.get("site") or ""), str(row.get("digest") or "")
+        if row_site == site and row_digest == digest:
+            continue              # 这把 Key 已经获准发往这个站点
+        if row_digest == digest and row_site:
+            held.append(KEY_LABELS[slot])   # 同一把 Key、站点变了：没换的 Key 不能跟着走
+            continue
+        grants = True             # 这把 Key 换了（或第一次见）：按当前站点授权
+    if held:
+        return BIND_HOLD, "地址从 %s 换到 %s，%s 没换，旧 Key 已停用" % (old_site or "未记录", site, "、".join(held))
+    return (BIND_GRANT if grants else BIND_OK), ""
+
+
 def join_url(base, path):
     base = base.rstrip("/")
     # baseUrl 可以写成 https://x.com 或 https://x.com/v1，避免拼出 /v1/v1
@@ -172,12 +249,16 @@ class Node:
         self.route_error = {}    # 线路 → 最近一次被拒的说明
         self.hint = None         # 监看中心送来的余额读数 {"plan", "pay", "at"}
         self.last_route = ""     # 最近一次成功走的是哪一路
+        self.reauth = False      # 地址换到别的站点、Key 没换：旧 Key 停用，等用户重新填 Key
+        self.reauth_reason = ""
         self.apply(spec)
 
     def apply(self, spec):
         self.name = str(spec.get("name") or self.id)
         self.base_url = str(spec.get("baseUrl") or "").rstrip("/")
         self.station = station_of(self.base_url)
+        self.site = site_of(self.base_url)   # Key 绑定的站点；路径变了不算换站
+        self.reauth, self.reauth_reason = False, ""   # 能不能发由 Pool 每次重载按获准站点重新判定
         keys = (str(spec.get("key") or ""), str(spec.get("payKey") or ""))
         if keys != (getattr(self, "key", None), getattr(self, "pay_key", None)):
             self.route_down, self.route_error = {}, {}  # 换了 Key：之前的暂停不再作数
@@ -214,6 +295,9 @@ class Node:
     # ---- 双路：套餐 Key 与余额 Key ----
     def route_key(self, route):
         return self.pay_key if route == "pay" else self.key
+
+    def key_digests(self):
+        return key_digests(self.key, self.pay_key)
 
     def order(self):
         routes = ("pay", "plan") if self.pay_first else ROUTES
@@ -500,6 +584,97 @@ class _Replay:
         return getattr(self._upstream, name)
 
 
+class Approvals:
+    """获准站点：每个节点的 Key 只发往记下的那个站点（scheme ＋ host ＋ port）。
+
+    文件放在 keypool.json 旁边，权限 600，内容只有站点和 Key 摘要，没有 Key 本身：
+    监看中心在用户保存节点（填了 Key）时写入，代理读它决定能不能发，也在旧配置第一次加载时记回去。
+    两边都只做“读出来、改一个节点、原子替换”，写入很少；丢了记录最坏也只是要用户重新填一次 Key。
+    """
+
+    def __init__(self, path):
+        self.path = str(path)
+        self.lock = threading.Lock()
+
+    def exists(self):
+        return os.path.exists(self.path)
+
+    def load(self):
+        try:
+            with open(self.path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            return {}
+        rows = data.get("nodes") if isinstance(data, dict) else None
+        if not isinstance(rows, dict):
+            return {}
+        return {str(k): v for k, v in rows.items() if isinstance(v, dict)}
+
+    def write(self, rows):
+        tmp = "%s.tmp-%d" % (self.path, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump({"nodes": rows}, handle, ensure_ascii=False, indent=1, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.path)
+
+    def grant(self, node_id, site, digests, slots=None):
+        """把这几路 Key 记成获准发往这个站点；返回 False 表示写不进去。
+
+        digests 是节点两把 Key 各自的摘要（key_digests 的结果）；slots 是这次要记的哪几路
+        （None＝非空的都记，代理重载时用；模块只在用户重填了 Key 的那几路记）。
+        没提到的路保持原样——用户只重填了一把时，另一把还记着旧站点，照样停用。
+        遇到旧格式记录先摊成逐把的：没被这次重填的路，仍按旧站点的站点记着（换站后照样停用）。
+        """
+        if not node_id or not site:
+            return False
+        current = {slot: str((digests or {}).get(slot) or "") for slot in ("plan", "pay")}
+        take = [slot for slot in ("plan", "pay") if current[slot] and (slots is None or slot in slots)]
+        if not take and all(current.values()):
+            return False      # 要记哪几路却一路都没给出摘要：调用方搞错了，别写坏文件
+        if not take:
+            return True       # 这个节点没有 Key：没有东西会发出去，也不用记
+        with self.lock:
+            rows = self.load()
+            record = rows.get(str(node_id))
+            keys = record.get("keys") if isinstance(record, dict) else None
+            if not isinstance(keys, dict):
+                legacy_site = str(record.get("site") or "") if isinstance(record, dict) else ""
+                keys = {slot: {"site": legacy_site, "digest": digest}
+                        for slot, digest in current.items() if digest}   # 旧格式摊开：没重填的路仍记旧站点
+            changed = False
+            for slot in take:
+                if keys.get(slot) != {"site": site, "digest": current[slot]}:
+                    keys[slot] = {"site": site, "digest": current[slot]}
+                    changed = True
+            for slot in ("plan", "pay"):
+                if not current[slot] and slot in keys:
+                    keys.pop(slot)    # 这把 Key 已经清掉：记录跟着清，免得以后同编号的 Key 被旧站点记录放行
+                    changed = True
+            if not changed and isinstance(record, dict) and isinstance(record.get("keys"), dict):
+                return True   # 一样，不用写
+            rows[str(node_id)] = {"keys": keys}
+            try:
+                self.write(rows)
+            except OSError:
+                return False
+            return True
+
+    def drop(self, node_id):
+        """节点删掉了：它的获准记录也一起删，免得留着旧记录给以后同编号的节点作数。"""
+        with self.lock:
+            rows = self.load()
+            if str(node_id) not in rows:
+                return True
+            rows.pop(str(node_id), None)
+            try:
+                self.write(rows)
+            except OSError:
+                return False
+            return True
+
+
 class Pool:
     def __init__(self, path, usage_dir=None):
         self.path = path
@@ -508,6 +683,8 @@ class Pool:
         self.lock = threading.Condition()
         self.nodes = collections.OrderedDict()
         self.stations = {}              # 中转站名 → Station（限速与在途数，整个站共用）
+        self.approvals = Approvals(os.path.join(os.path.dirname(os.path.abspath(path)) or ".", "keypool-approved.json"))
+        self.approval_error = ""        # 获准站点记不下来时在这里说明（不改节点的可发状态）
         self.master_keys = []
         self.published_models = []      # 对外公布的模型清单（客户端读 /v1/models 时看到的）；空表示公布全部
         self.settings = dict(DEFAULT_SETTINGS)
@@ -543,6 +720,9 @@ class Pool:
         keys = [k for k in (keys if isinstance(keys, list) else [keys]) if isinstance(k, str) and k]
         settings = dict(DEFAULT_SETTINGS)
         settings.update({k: v for k, v in (data.get("settings") or {}).items() if k in DEFAULT_SETTINGS})
+        approvals = self.approvals.load()   # Key 只发往记下的站点
+        known = self.approvals.exists()
+        grants = []
         with self.lock:
             fresh = collections.OrderedDict()
             for spec in data.get("nodes") or []:
@@ -553,6 +733,11 @@ class Pool:
                     node.apply(spec)
                 else:
                     node = Node(spec)
+                digests = node.key_digests()
+                state, reason = binding_state(approvals.get(node.id), node.site, digests, known)
+                node.reauth, node.reauth_reason = state == BIND_HOLD, reason
+                if state == BIND_GRANT:
+                    grants.append((node.id, node.site, digests))
                 fresh[node.id] = node
             self.nodes = fresh
             limits = data.get("stations") if isinstance(data.get("stations"), dict) else {}
@@ -565,13 +750,20 @@ class Pool:
             self.mtime = mtime
             self.load_error = ""
             self.lock.notify_all()
+        # 记下这次成立的授予（旧配置第一次加载、用户重新填了 Key）。文件写不进去时只说一声，不打断节点。
+        for node_id, site, digests in grants:
+            if self.approvals.grant(node_id, site, digests):
+                self.approval_error = ""
+            else:
+                self.approval_error = "记不下获准站点（%s），下次重载会要求重新授权" % self.approvals.path
 
     # ---- 调度 ----
     def served(self, model, pin=None):
         """池里（指定了节点就只看那个节点）有没有哪一路确实有这个模型。有的话只分给这些线路，不让别的线路拿替代模型顶上。"""
         with self.lock:
             return bool(model) and any(n.serves(r, model) for n in self.nodes.values()
-                                       if n.enabled and (pin is None or pin in (n.id, n.name)) for r in n.order())
+                                       if n.enabled and not n.reauth
+                                       and (pin is None or pin in (n.id, n.name)) for r in n.order())
 
     def published(self):
         """对外公布的模型清单；没有设置时是所有启用线路的模型合在一起。一个都不知道时返回 None。"""
@@ -580,14 +772,15 @@ class Pool:
                 return list(self.published_models)
             names = set()
             for node in self.nodes.values():
-                if node.enabled:
+                if node.enabled and not node.reauth:
                     known = set(node.models if node.key else []) | set(node.pay_models if node.pay_key else [])
                     names |= known | {k for k, v in node.aliases.items() if not known or v in known}
             return sorted(names) or None
 
     def _pick(self, tried, pin=None, model=None, strict=False):
         now, ttl = time.time(), self.hint_ttl()
-        free = [n for n in self.nodes.values() if n.enabled and not n.quarantined and n.id not in tried
+        free = [n for n in self.nodes.values() if n.enabled and not n.quarantined and not n.reauth
+                and n.id not in tried
                 and (pin is None or pin in (n.id, n.name)) and n.route(now, ttl, model=model, strict=strict)
                 and (n.max_concurrency is None or n.inflight < n.max_concurrency)
                 and self.stations[n.station].open(now)]   # 整个站的并发、间隔、被限流后的暂停
@@ -617,7 +810,8 @@ class Pool:
                     self._take(node)
                     return node
                 now, ttl = time.time(), self.hint_ttl()
-                left = [n for n in self.nodes.values() if n.enabled and not n.quarantined and n.id not in tried
+                left = [n for n in self.nodes.values() if n.enabled and not n.quarantined and not n.reauth
+                        and n.id not in tried
                         and (pin is None or pin in (n.id, n.name)) and n.route(now, ttl, model=model, strict=strict)]
                 remaining = deadline - time.time()
                 if not left or remaining <= 0:
@@ -862,7 +1056,7 @@ class Pool:
         没有任何读数返回 None。套餐 = granted_balance，按量 = topped_up_balance。"""
         now, ttl = time.time(), self.hint_ttl()
         with self.lock:
-            enabled = [n for n in self.nodes.values() if n.enabled]
+            enabled = [n for n in self.nodes.values() if n.enabled and not n.reauth]
             readings = [h for h in (n._reading(now, ttl) for n in enabled) if h]
         if not readings:
             return None
@@ -882,6 +1076,8 @@ class Pool:
             for node in self.nodes.values():
                 if not node.enabled:
                     status = "disabled"
+                elif node.reauth:
+                    status = "reauth"   # 地址换到别的站点、Key 没换：旧 Key 停用，不发请求
                 elif node.quarantined:
                     status = "quarantined"
                 elif node.cooldown_until > now:
@@ -900,6 +1096,7 @@ class Pool:
                     "ttfbMs": node.ttfb_ms, "totalMs": node.total_ms, "streams": node.streams,
                     "buffered": node.buffered, "lastBuffered": node.last_buffered,
                     "quarantined": node.quarantined, "quarantineReason": node.quarantine_reason or None,
+                    "reauth": node.reauth, "reauthReason": node.reauth_reason or None,
                     "blockedCount": node.blocked_count,
                     "rpm": rpm_by_node.get(node.id, 0), "lastUsed": node.last_used or None,
                     "dual": node.dual(), "route": node.route(now, ttl) if node.enabled else None,
@@ -916,7 +1113,7 @@ class Pool:
             return {
                 "ok": True, "pid": os.getpid(), "startedAt": self.started_at, "seq": self.seq,
                 "configError": self.load_error or None, "hasMasterKey": bool(self.master_keys),
-                "usageError": self.usage_error or None,
+                "usageError": self.usage_error or None, "approvalError": self.approval_error or None,
                 "totals": {"inflight": sum(n.inflight for n in self.nodes.values()), "rpm": len(recent),
                            "successRate": round(good * 100.0 / (good + bad), 1) if good + bad else None,
                            "requests10m": good + bad,
@@ -1073,7 +1270,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         asked = model if isinstance(model, str) and model else None  # 客户端要的模型；model 之后记的是实际发给节点的
         settings = pool.settings
         retry_on = set(settings["retryOnStatus"])
-        enabled = [n for n in pool.nodes.values() if n.enabled]
+        enabled = [n for n in pool.nodes.values() if n.enabled and not n.reauth]
         max_attempts = int(settings["maxAttempts"]) or len(enabled)
         max_attempts = max(1, min(max_attempts, len(enabled) or 1))
         pin = (self.headers.get("X-KeyPool-Node") or "").strip() or None

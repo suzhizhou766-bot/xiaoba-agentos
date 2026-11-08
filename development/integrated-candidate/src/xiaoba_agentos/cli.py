@@ -397,6 +397,7 @@ def _submit_task(
     experience_trial: Optional[dict] = None,
     work_task_id: Optional[str] = None,
     no_work_task: bool = False,
+    release_acceptance: bool = False,
     host: Optional[dict] = None,
     needs_review: bool = True,
 ) -> str:
@@ -448,7 +449,7 @@ def _submit_task(
     if work_task_id and no_work_task:
         raise ValueError('来源工作任务和“没有来源工作任务”只能声明一个')
     snapshot['needs_review'] = needs_review
-    snapshot['review_context'] = {'work_task_id': work_task_id, 'host': host, 'needs_review': needs_review}
+    snapshot['review_context'] = {'work_task_id': work_task_id, 'host': host, 'needs_review': needs_review, 'release_acceptance': release_acceptance}
     if no_work_task:
         # 发布验收要从来源任务读出作者和执行者，所以“没有来源任务”也得显式声明一次；
         # 什么都不写不算声明，构包拒收。
@@ -1287,6 +1288,7 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument('--work-task', help='待审查产物的来源工作任务；从记录和agent_runs推导参与者')
     submit.add_argument('--no-work-task', action='store_true',
                         help='明确声明没有来源工作任务；发布验收取证要求二者声明其一')
+    submit.add_argument('--release-acceptance', action='store_true', help='发版工具显式声明验收任务，冻结进执行快照')
     submit.add_argument('--host-id')
     submit.add_argument('--host-entry')
     submit.add_argument('--host-model')
@@ -2092,6 +2094,7 @@ def main(argv: Optional[list] = None) -> int:
                 experience_kind=args.memory_kind, problem_key=args.problem_key,
                 work_task_id=args.work_task,
                 no_work_task=getattr(args, 'no_work_task', False),
+                release_acceptance=args.release_acceptance,
                 host=({'id': args.host_id, 'entry': args.host_entry, 'model': args.host_model}
                       if any((args.host_id,args.host_entry,args.host_model)) else None),
                 needs_review=not args.no_review,

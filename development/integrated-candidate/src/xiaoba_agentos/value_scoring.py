@@ -62,12 +62,15 @@ def from_body(reviewer_id, body):
             'duplicate_of': duplicates[0] if duplicates else None}
 
 
-def native_value(db, task_id, host_receipt=None):
+def native_value(db, task_id, host_receipt=None, *, reason_out=None):
+    def unscored(reason):
+        if reason_out is not None: reason_out.append(reason)
+        return None
     from .pool_dispatch import review_vote_runs,needs_review
     from .experience_workflow import policy
     row = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
     if not row or policy(dict(row))['kind'] not in {'method', 'rule'}:
-        return None  # Historical unclassified tasks retain their old contract.
+        return unscored('kind_not_method_rule')
     votes = review_vote_runs(db, task_id)
     if host_receipt is None:
         event = db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='host.receipt_accepted' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
@@ -77,19 +80,19 @@ def native_value(db, task_id, host_receipt=None):
     actual_pool = any(json.loads(e[0]).get('execution',{}).get('pool_score')
         for e in db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.started'",(task_id,)))
     if not actual_pool and not host_receipt:
-        return None  # Mock-only fixtures and historical non-pool protocols.
+        return unscored('host_draft' if row['execution_mode'] == 'host_authored' else 'mock_or_non_pool')
     from .task_scores import requires_review_vote
     snapshot = json.loads(row['execution_snapshot_json'] or '{}')
     pool_is_source = requires_review_vote(db, row, snapshot)
     if not pool_is_source and not (host_receipt and 'score' in host_receipt):
-        return None
+        return unscored('no_scoring_source')
     reviews = [from_body(node, run['output']) for node, run in votes.items()
                if pool_is_source and run['status'] == 'completed']
     if host_receipt and 'score' in host_receipt:
         reviews.append({'reviewer_id':host_receipt['reviewer_id'], 'score':host_receipt['score'],
                         'duplicate_of':host_receipt.get('duplicate_of')})
     if not reviews and not votes:
-        return None  # Host-authored drafts may collect scores through ingress.
+        return unscored('no_review_receipts')
     return decide(reviews)
 
 
@@ -105,3 +108,9 @@ def record_tx(db, task_id, value):
     previous = db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
     if previous and json.loads(previous[0]) == value: return
     EventStore._append_event_tx(db, task_id, 'memory.value_assessed', value)
+
+
+def unscored_reason(db, task_id):
+    reasons = []
+    native_value(db, task_id, reason_out=reasons)
+    return reasons[0] if reasons else None

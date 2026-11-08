@@ -323,6 +323,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.9；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.11",
+      "release_date": "2026-11-09",
+      "status": "candidate",
+      "summary": "小修与评分作废（卡 59、卡 60）：干活分手动更正增加 outcome=void，作废样本不计入周分、样本数、成功率与择优，不能借作废把失败改成 +1；发布验收任务改用快照里的显式标记 review_context.release_acceptance（缺字段的旧快照才兼容题面双标记），memory.value_unscored 记录真实原因；缺候选修复分支检查插入结果；构包判票 PASS 与 NEEDS_INFO 并存不算通过；记忆索引链接逐行精确匹配；放弃/取消任务的恢复通知不再列为待处理；审查派发软失败最多自动重派一次；页面安装清单 before 对齐已上线 v1.6.10；仓库级测试禁止 __main__ 之后定义；监看中心仓库副本收回线上 Agent 池、portprobe、Key 绑定等改动。无数据库结构变更，不新增切换步骤；前置源码清单哈希为已上线 v1.6.10 的值。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.10；不创建备份，切换由主力在本机终端按授权执行。"
     }
   ]
 }

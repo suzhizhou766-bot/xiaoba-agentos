@@ -158,10 +158,6 @@ class StageTests(unittest.TestCase):
         self.assertIn("npm run build", health["detail"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ComposeTests(StageTests):
     """用 Key 池模型写最终提示词：假的 Key 池，不发任何真实请求。"""
 
@@ -233,3 +229,9 @@ class ComposeTests(StageTests):
         self.pool([{"id": "a", "baseUrl": "https://x/v1", "key": "k"}], answer={"choices": []})
         data = self.post("/stage/api/compose", {"model": "m", "messages": self.MESSAGES})[1]
         self.assertEqual((data["ok"], data["error"]), (False, "模型没有返回内容"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+

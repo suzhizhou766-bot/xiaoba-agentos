@@ -6,6 +6,8 @@
   - 监看中心启动时把它拉起来并持续看护（退出自动重启，反复失败则熔断报障）；
   - 端口上已有一个控制器时（启动脚本拉起的，或监看中心上次被强行结束留下的），先结束它再自己拉起，
     这样它始终归监看中心管；占着端口的不是控制器时不动它，只报障；
+  - 端口监听检测不可用时（找不到 lsof、被拒或超时），认不出占用端口的进程就不接管、不结束任何进程，
+    只把原因写进健康状态，页面能看到；
   - 监看中心关闭时，先让控制器关掉还开着的服务，再关闭控制器。
 """
 import json
@@ -21,6 +23,7 @@ from pathlib import Path
 from .. import config as cfg
 from ..supervise import Backoff, Breaker, ManagedProcess
 from . import Module
+from .portprobe import LISTENING, UNAVAILABLE, listener_pids
 
 
 class LocalToolsModule(Module):
@@ -35,6 +38,7 @@ class LocalToolsModule(Module):
         self.manage = manage          # 测试时可关掉
         self.process = None
         self.blocked = ""
+        self.probe_warning = ""       # 端口监听检测不可用时的说明，只在健康状态里给人看
 
     @property
     def base(self):
@@ -45,6 +49,7 @@ class LocalToolsModule(Module):
         if not self.manage:
             return
         self.blocked = ""
+        self.probe_warning = ""
         missing = next((path for path in (self.script, Path(self.python)) if not path.exists()), None)
         if missing:
             self.blocked = "找不到控制器的启动文件：%s" % missing
@@ -53,6 +58,8 @@ class LocalToolsModule(Module):
         self._retire_previous()
         if self._port_busy():
             self.blocked = "端口 %d 被其他程序占用，本地工具控制器没有启动" % self.port
+            if self.probe_warning:
+                self.blocked += "；%s" % self.probe_warning
             self.ctx.log(self.id, "port busy", "error", port=self.port)
             return
         watchdog = self.ctx.config["watchdog"]
@@ -80,16 +87,23 @@ class LocalToolsModule(Module):
         self.process.stop()
 
     def health(self):
+        result = self._health()
+        if self.probe_warning:
+            result["warning"] = self.probe_warning   # 端口监听检测不可用：页面正文里要看得见
+        return result
+
+    def _health(self):
         if self.blocked:
             return {"status": "failed", "detail": self.blocked}
+        warning = "；%s" % self.probe_warning if self.probe_warning else ""
         if not self.process:
-            return {"status": "warn", "detail": "未由监看中心管理"}
+            return {"status": "warn", "detail": "未由监看中心管理%s" % warning}
         status = self.process.status()
         if status["state"] == "running":
-            return {"status": "ok", "detail": "控制器在线（端口 %d）；三个服务由导演台里的开关控制" % self.port}
+            return {"status": "ok", "detail": "控制器在线（端口 %d）；三个服务由导演台里的开关控制%s" % (self.port, warning)}
         if status["state"] == "failed":
-            return {"status": "failed", "detail": status["error"] or "控制器反复退出，已停止自动重启"}
-        return {"status": "starting", "detail": status["error"] or "控制器正在启动"}
+            return {"status": "failed", "detail": (status["error"] or "控制器反复退出，已停止自动重启") + warning}
+        return {"status": "starting", "detail": (status["error"] or "控制器正在启动") + warning}
 
     # ---- 内部 ----
     def _port_busy(self):
@@ -107,14 +121,6 @@ class LocalToolsModule(Module):
         except (OSError, ValueError, urllib.error.URLError):
             return None
 
-    def _listener_pids(self):
-        try:
-            out = subprocess.run(["/usr/sbin/lsof", "-nP", "-tiTCP:%d" % self.port, "-sTCP:LISTEN"],
-                                 capture_output=True, text=True, timeout=5)
-            return [int(line) for line in out.stdout.split() if line.isdigit()]
-        except (OSError, subprocess.SubprocessError):
-            return []
-
     def _is_controller(self, pid):
         try:
             out = subprocess.run(["/bin/ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=5)
@@ -123,9 +129,20 @@ class LocalToolsModule(Module):
         return self.script.name in out.stdout
 
     def _retire_previous(self):
-        """端口上已有的控制器（启动脚本或上一次运行留下的）：确认是它，就结束它，由监看中心重新拉起。"""
+        """端口上已有的控制器（启动脚本或上一次运行留下的）：确认是它，就结束它，由监看中心重新拉起。
+
+        检测不可用时什么都不结束：认不出占端口的是谁，就不去猜。
+        """
+        state, pids, detail = listener_pids(self.port)
+        if state == UNAVAILABLE:
+            self.probe_warning = detail
+            self.ctx.log(self.id, "listener detection unavailable; leaving port %d alone" % self.port, "warning",
+                         detail=detail)
+            return
+        if state != LISTENING:
+            return
         retired = False
-        for pid in self._listener_pids():
+        for pid in pids:
             if not self._is_controller(pid):
                 continue
             try:

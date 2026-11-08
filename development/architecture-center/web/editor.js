@@ -11,7 +11,7 @@
   button('模块规范 · 待用户定',()=>openEditor(selectedModule),controls,'iteration-button');
   button('发布记录 · 待用户定',()=>openCenter(),controls,'iteration-button');
   const panel=element('section',undefined,document.body,'upgrade-panel');panel.hidden=true;panel.setAttribute('aria-label','升级发布中心');
-  const header=element('div',undefined,panel,'upgrade-head');const heading=element('div',undefined,header);element('h2','升级发布中心 · 待用户定',heading);element('p','旧站点功能保留展示；2026-11-08 起暂停 AgentOS 发版，v1.6.8 已合并未上线。',heading);button('关闭',()=>panel.hidden=true,header);
+  const header=element('div',undefined,panel,'upgrade-head');const heading=element('div',undefined,header);element('h2','升级发布中心 · 待用户定',heading);element('p','旧站点功能保留展示；线上 v1.6.10（2026-11-09 热修），发版已恢复；v1.6.8 改动并入 v1.6.9。',heading);button('关闭',()=>panel.hidden=true,header);
   const body=element('div',undefined,panel,'upgrade-body');const list=element('aside',undefined,body,'upgrade-list');const item=element('article',undefined,body,'upgrade-item');
   const editor=element('dialog',undefined,document.body,'upgrade-dialog');
   const form=element('form',undefined,editor);element('h2','修改模块规范 · 创建待发布提案',form);element('p','保存只写入待发布工作区，不直接修改活动规则或运行代码。任意获授权的 Agent 可从接续任务入口继续实施。',form);
@@ -31,7 +31,7 @@
     let result;try{result=await response.json();}catch{throw Error('此页面未连接本机监看中心的升级服务。');}
     if(!response.ok||!result.ok)throw Error(result.error||'请求失败');return result;
   }
-  function readonly(){return '此为旧站点保留功能，是否保留由用户定。当前页面只展示架构；2026-11-08 起暂停 AgentOS 发版，v1.6.8 已合并未上线。此页未连接本机发布服务。';}
+  function readonly(){return '此为旧站点保留功能，是否保留由用户定。当前页面只展示架构；线上 v1.6.10（2026-11-09 热修），发版已恢复；v1.6.8 改动并入 v1.6.9。此页未连接本机发布服务。';}
   async function refresh(){
     if(!token){metadata=null;mode.textContent='架构查看';renderList();return false;}
     try{metadata=await api('meta');mode.textContent=token?'更新迭代入口已接入':'架构查看';mode.classList.toggle('connected',!!token);renderList();return true;}

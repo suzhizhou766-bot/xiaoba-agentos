@@ -1,4 +1,4 @@
-# v1.6.10 发布验收
+# v1.6.11 发布验收
 
 - 审查节点来自 Agent 池，成功门槛 2。v1.6.9 起构包接受“1 份池节点结论 ＋ 1 份宿主结论”，但至少 1 份必须来自已开启且测试通过的池节点，不能两票都是宿主，宿主也不能是这次的作者或执行者；宿主票只从 `task-host-complete` 留下的结算记录取，手写的 JSON 不算。构包从验收数据库取证。“干过活的节点不能计票”只查得到任务记录里有的执行者：验收任务必须用 `--work-task` 链上来源工作任务，确实没有时用 `--no-work-task` 明确写明，两者都不写构包拒收；工作如果不是通过小八任务做的，门禁看不出来，要由发版的人选没参与过的节点。固定后台名字和备用补位组合不再验收。登录材料与节点上的模型选择不在任何自动改动范围。
 - 全回归、Skill结构验证、8技能和16知识来源哈希、源码与发布清单校验通过。
@@ -34,3 +34,23 @@
 
 
 新增经验分类与受控验证的运行契约及验收条件见 docs/EXPERIENCE_TRIALS.md；技术审计仅结算审计回执，方法必须真实新执行与独立双审后用户终审。历史候选不批量迁移。
+
+## v1.6.11 候选：显式发布验收声明
+
+发版工具用 `scripts/submit_release_acceptance.py --config CONFIG PROMPT --memory-kind audit --work-task TASK_ID` 提交；确实没有来源任务时改用 `--no-work-task`。工具强制传入 `submit --release-acceptance`，快照冻结 `review_context.release_acceptance: true`。普通 submit 冻结 false，不会因为题面引用两个验收结论标记而被识别成发布验收。宿主审查、宿主补票仍按自己的身份与上下文要求结论。
+
+兼容口径：仅缺少该字段的历史快照保留原题面双标记判据；显式 false 不回退，显式 true 不要求题面标记。历史快照及哈希不重写。
+
+未评分事件的 reason 使用 `no_scoring_source`（无评分来源）、`kind_not_method_rule`（分类不适用）、`mock_or_non_pool`（mock 或旧非池协议）、`host_draft`（宿主草稿）、`no_review_receipts`（尚无审查回执）。原因由价值评分函数同次求值返回，候选插入不重复判断 requires_review_vote。
+
+页面安装清单的 before 基准为上一已发布 v1.6.10 的 after。测试夹具 `tests/fixtures/review-ui-v1.6.10.json` 来自已上线不可变包 `工作区/小八AgentOS-v1.6.10-热修/releases/v1610-r3/v1.6.10/agentos/src/xiaoba_agentos/review_ui_assets/manifest.json`；该版页面与 v1.6.9 相同。它是发布契约的固定测试输入，不从当前开发清单推导。
+
+干活分更正接口接受 `outcome: "void"`、非空 `void_reason` 和 `evidence_refs`，仅作废已结算自动样本。保留冻结身份与回执哈希，points/tasks/success_rate 归零；事件 delta 为原分数取负，void 为 true。相同评价ID、相同内容可幂等重读，不能恢复计分或再次更正作废行。统计与近四周择优样本均排除 void。
+
+已完成但缺候选的修复在价值分丢弃时不插候选、不发 candidate_staged；保留原已完成 result/provenance 与 task.completed 哈希，另记价值评分决策。放弃或取消后的恢复通知采用读取过滤：保留通知及原事件，不自动伪造用户确认；doctor 和待处理计数使用相同过滤。
+
+复用改动派审按原请求版本、原指派记录尝试；仅未出合格且已确认来源的回执算软失败。下个空闲周期每张未合格卡最多再派一次，合格卡不重跑；仍失败显示“待人工补派”。硬异常、在途或中断的不确定尝试停止自动补派，不自动换节点。尝试及可见状态写入既有事件链，不新增数据库表、列或索引。
+
+仓库级 Python 测试入口顺序检查覆盖所有 test*.py / *_test.py，没有排除目录（卡 60 已改正监看中心仓库副本的 12 处）。已有测试只把主入口移到文件末尾，避免直接运行时漏收后面的定义。
+
+构包要求验收任务快照里 `review_context.release_acceptance` 为 true；题面里的结论标记不能代替这项声明。

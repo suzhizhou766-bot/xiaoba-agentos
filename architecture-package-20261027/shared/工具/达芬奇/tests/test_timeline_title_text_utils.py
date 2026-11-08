@@ -60,8 +60,6 @@ class TimelineTitleTextUtilsTest(unittest.TestCase):
         self.assertEqual(keys[0], "Styled Text")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class GetTitleTextServerHelperTest(unittest.TestCase):
@@ -120,3 +118,7 @@ class GetTitleTextServerHelperTest(unittest.TestCase):
         result = self._get({"ZoomX": 1.0, "Opacity": 100.0})
         self.assertFalse(result["success"])
         self.assertIsNone(result["text"])
+
+
+if __name__ == "__main__":
+    unittest.main()
