@@ -493,6 +493,12 @@ class MemoryBridge:
             if formal:
                 selected.append(min(formal, key=lambda h: h["reuse_score"]))
         verified = selected
+        if isinstance(self.store, EventStore):
+            try:
+                from .formal_review import record_hits
+                record_hits(self.store, verified)
+            except (ValueError, TypeError, KeyError, OSError, sqlite3.Error) as exc:
+                score_problems.append("formal retrieval clock unavailable: " + str(exc)[:240])
         status = "canonical_match" if verified else "miss"
         return {
             "retrieval_status": status,

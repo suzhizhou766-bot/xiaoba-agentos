@@ -704,6 +704,11 @@ class Orchestrator:
         """
         has_work = self.store.has_runnable_work()
         if not preflight_when_idle and not has_work:
+            from .formal_review import check_inactivity
+            try:
+                check_inactivity(self.store)
+            except (ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
+                return {"status": "idle", "formal_review_warning": str(exc)}
             return {"status": "idle"}
         release_binding = release_binding_status(self.config)
         if not release_binding.get("ok", False):

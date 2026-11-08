@@ -338,8 +338,13 @@ class NodeRuntime:
             if candidate_id is not None:
                 from xiaoba_agentos.task_participants import execution_context
                 task=db.execute('SELECT * FROM tasks WHERE id=?',(candidate_id,)).fetchone()
-                if task is None:raise ValueError('待审查任务不存在')
-                excluded=set(execution_context(self.store.native,dict(task),db)['excluded_ids'])
+                if task is None:
+                    from xiaoba_agentos.formal_review import exclusions, subject
+                    subject(db,candidate_id)
+                    excluded=exclusions(self.store.native,db,candidate_id)
+                    if excluded is None:raise ValueError('待审查任务不存在')
+                else:
+                    excluded=set(execution_context(self.store.native,dict(task),db)['excluded_ids'])
                 sources=[s for s in sources if s['reviewer_id'] not in excluded]
             for kind in required_kinds:
                 alive=[s for s in sources if not node_state(s)['removed'] and s['reviewer_id'] not in used]

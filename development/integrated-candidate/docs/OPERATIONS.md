@@ -259,3 +259,22 @@ xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
 - **迁移办法**：编辑该节点，把类型改成 WorkBuddy CLI（CodeBuddy），入口填本机 `codebuddy` 的可执行路径，模型按需填写，再点测试运行。旧节点改名称、掉线时限等其它字段仍可编辑。
 - **入口名 `codebuddy` 的推断**：v1.6.8 起入口名 `codebuddy` 判成 `codebuddy` 类型（原来归到 `workbuddy`）；判独立仍把两类算同一个来源，`workbuddy` 只由显式类型或 `workbuddy` 入口名留给旧节点。线上 v1.6.7 池的 CodeBuddy 节点已显式存 `agent_type=codebuddy`，切换后行为不变；线上池只读盘点（2026-11-06）没有 `workbuddy` 类型节点，不需要迁移。
 - **ACP**：Agent 池退役内置引擎后就没有 ACP 通道了，ACP 另走卡 48 实测。`implementation_sha256` 随本次改动变化，池里已有节点要重新测试运行才算通过。
+
+
+## 正式经验裁决（卡52b候选，未上线）
+
+状态只从 `memory.reuse_revision_requested` 与 `memory.formal_*` SQLite专用事件投影，不增加表、列、索引或数据库版本。源正式经验不进入新经验初审／两轮复验。请求ID是改动事件ID；源经验ID保持稳定，版本是发布笔记的SHA-256。
+
+宿主提交完整修订稿：在 `reuse_assessment.draft` 传 `{path, sha256}`，或使用 `memory-revision-submit --receipt FILE` 补交 `{request_id, draft:{path,sha256}}`。修订稿为绝对路径的普通UTF-8文件，最多1,000,000字节；敏感内容、非答案与新增双方括号链接拒收。没正文的请求显示“待补正文”，不派审查，可由用户关闭。改正文后必须重新审查，不能沿用旧正文的回执；最终用户操作再次复核同一正文哈希。发布只生成规范生命周期元数据，已批准正文（包括标题、空白与分隔线）不改写。
+
+现有接入口新增 `/api/open-review/revision-body` 与 `/formal-call`；仍由本机同源／CSRF内核保护。原 `/requests`、`/dispatch` 使用改动请求ID与 `review_type=reuse_change`，证据必须包含修订稿摘要。身份卡携带完整修订稿、源ID／版本、真实任务与全部改动说明；排除源作者和本次真实任务的执行者／协作者，继续按入口程序＋模型核验独立性。现有监看进程内单独派审查线程自动准备有正文的请求，不阻塞材料投递；不另建常驻进程。缺节点／节点故障时保留待审查，不自动回退或重复执行失败节点，补选／重试沿用已有接入口。
+
+宿主补票通过 `/api/open-review/revision-host-plan`（`request_id, plan_id`）先生成单池节点身份卡，再由 `/revision-host-receipt` 提交 `request_id, receipt`；回执绑定宿主真实任务身份、请求ID、修订稿哈希，包含 `review_type=reuse_change`、结论／正文／评分／适用条件与 `evidence_refs:[{path,sha256}]`。复用现有池选择规则：宿主没执行且不是作者时才算一票；全池不可用须用户显式选择 `user_chose_host:true`，终审材料标“无独立审查”。池回执和宿主回执均不批准经验。审查全部到齐后，包含FAIL或分歧的原始结论仍提交用户终审，不由代码假装一致通过。
+
+用户在裁决中心操作批准／驳回。批准后新笔记成为源经验的当前发布路径，旧版本原文件移至运行目录 `memory-versions/<源ID>-<旧SHA>.md`，精确保留旧字节；索引只链接新版本。其它绑定旧版本的请求显示“版本已过期”，只能关闭或重新提交新请求，不能自动合并。宿主重新登记绑定当前源版本、同一真实任务的应用并取得该应用的用户交付后，可用 `memory-revision-resubmit --receipt FILE` 或 `/api/open-review/revision-resubmit`（`request_id, application_id, draft`）重新提交；不重复结算复用分、不沿用旧审查。驳回仅关闭本次请求。新版本路径长度不随版本数增长。新经验队列、初审和试验门禁不变。
+
+长期未用检查选在 Worker `run_once(preflight_when_idle=False)` 的空闲分支，不调用模型。首次检查写唯一启用事件；每条经验起点取启用时间与 `published_at` 较晚者，缺发布时间取启用时间。最近调用取历史 `memory_reuse.created_at`、检索出口的专用 `memory.formal_retrieved` 事件（仅记实际返回的正式来源ID／版本及时间，不记查询正文、不加分）、交付复用结算、显式 `memory-formal-call --receipt FILE`（`source_task_id,source_sha256`）中最新者，再与起点及用户保留时间取较晚者。首次严格超过14天到期，保留后依次30／90／90天，永久分不清零。每次检查将当前新到期条目合成一个批次；已有待决批次里的条目不重复生成，用户不处理就保持待决。
+
+裁决中心一批展示名称、最后调用时间、计时起点、当前间隔与永久分。本批“保留”对应 approve：整批记为已撤回、重新计时并升档；“删除（退役归档）”对应 reject：整批源笔记移出Vault至 `memory-retired/<源ID>-<SHA>.md`，摘链接、重建校验索引，数据库记退役，原字节可找回，不硬删除。两种操作均为用户手动决定，不由计时检查触发。
+
+浏览器显示、审查回执版本与最终操作绑定；旧快照、正文漂移、最新回执未核验、作者／执行者身份冲突均拒绝发布。普通文件／索引异常会回滚DB与文件，失败产生的新文件移至运行目录 `_待删/` 并记说明；不生成备份。跨SQLite与文件系统没有跨进程崩溃事务：进程被强制终止时可能留下待核对文件，重试遇到冲突会停止并要求人工核对，不覆盖或删除保留版本。不把此限制称为端到端崩溃恢复通过。

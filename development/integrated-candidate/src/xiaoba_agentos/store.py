@@ -1831,6 +1831,9 @@ class EventStore:
                         (item["task_id"],),
                     )
                 ]
+            if stage in {"final", "all"}:
+                from .formal_review import projection, _view
+                items.extend(_view(v) for v in projection(conn).values() if v['status'] not in {'approved','rejected','withdrawn'})
             return items
 
     def memory_lifecycle_rows(self) -> List[Dict[str, Any]]:

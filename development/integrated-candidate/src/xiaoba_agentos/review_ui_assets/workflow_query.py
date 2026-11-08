@@ -27,6 +27,8 @@ def main():
         else:
             rows=conn.execute("SELECT * FROM memory_candidates WHERE status IN ('pending_delivery_review','revision_requested','delivery_approved','pending_final_review','publication_failed','revalidation_required')").fetchall()
         items={row['task_id']:trial_summary(conn,row) for row in rows}
+    from xiaoba_agentos.formal_review import items as formal_items
+    items['_formal'] = formal_items(store, include_closed=True)
     return {'ok':True,'supported':True,'items':items}
 
 if __name__=='__main__':

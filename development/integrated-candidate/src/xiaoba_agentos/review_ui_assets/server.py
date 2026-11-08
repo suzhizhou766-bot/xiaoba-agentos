@@ -86,6 +86,8 @@ class Center:
         return first[:36]+('…' if len(first)>36 else '')
 
     def item(self,x):
+        if x.get('entry_type'):
+            return dict(x, obsidian_url='', formal_reviews=x.get('reviews',[]), reviews=[])
         stage='delivery' if x['status'] in {'pending_delivery_review','revision_requested'} else 'final'
         obsidian='obsidian://open?vault='+quote(self.vault.name)+'&file='+quote('70_复利规则/待审队列')
         validation=x.get('experience_validation') or {}
@@ -115,13 +117,15 @@ class Center:
         candidates,reviews,holds,orphans=self.snapshot()
         views=self.workflow_views()
         for candidate in candidates: candidate['experience_validation']=views.get(candidate['task_id'])
-        return {'ok':True,'items':[self.item(x) for x in candidates if x['status'] in PENDING],
+        return {'ok':True,'items':[self.item(x) for x in candidates if x['status'] in PENDING]+[self.item(x) for x in views.get('_formal',[]) if x['status'] not in {'approved','rejected','withdrawn'}],
                 'total':len(candidates),'reviews':reviews[-30:], 'holds':holds,'orphans':orphans,
                 'sync':self.sync_status,'release':self.binding.get('current_release'),
                 'updated':time.strftime('%Y-%m-%d %H:%M:%S'), 'csrf':self.csrf,
                 'revision':digest([(x['task_id'],x['status'],x['updated_at'],x['evidence_sha256']) for x in candidates]+reviews+[views])}
 
     def detail(self,task_id):
+        for x in self.workflow_views(task_id).get('_formal',[]):
+            if x['task_id']==task_id: return self.item(x)
         with self.read() as conn:
             row=conn.execute('SELECT mc.*,t.prompt FROM memory_candidates mc JOIN tasks t ON t.id=mc.task_id WHERE mc.task_id=?',(task_id,)).fetchone()
             if row is None: raise ValueError('找不到候选')
@@ -183,6 +187,15 @@ class Center:
                 self.sync_status={'ok':False,'state':'retry_pending','error':str(exc),'at':time.strftime('%Y-%m-%d %H:%M:%S')}
             atomic(self.runtime/'sync-status.json',json.dumps(self.sync_status,ensure_ascii=False,indent=2))
 
+    @staticmethod
+    def receipt(conn, task_id, marker):
+        row=conn.execute('SELECT id FROM memory_reviews WHERE task_id=? AND instr(note,?)>0',(task_id,marker)).fetchone()
+        if row: return row
+        for event in conn.execute("SELECT event_id,payload_json FROM events WHERE event_type='memory.formal_decided' ORDER BY sequence DESC"):
+            value=json.loads(event['payload_json'])
+            if value.get('request_id')==task_id and marker in value.get('note',''): return {'id':event['event_id']}
+        return None
+
     def decide(self,request):
         batch=request.get('id'); entries=request.get('items')
         uuid.UUID(batch)
@@ -209,7 +222,7 @@ class Center:
             for x in entries:
                 marker=f'[裁决中心:{batch}:{x["task_id"]}]'
                 with self.read() as conn:
-                    seen=conn.execute('SELECT id FROM memory_reviews WHERE task_id=? AND instr(note,?)>0',(x['task_id'],marker)).fetchone()
+                    seen=self.receipt(conn,x['task_id'],marker)
                 if seen:
                     # Never repeat publication side effects after a lost response.
                     current=self.detail(x['task_id'])
@@ -217,19 +230,19 @@ class Center:
                     continue
                 try:
                     detail=self.detail(x['task_id'])
-                    if detail['expected']!=x['expected'] or detail['stage']!=x['stage'] or x['decision'] not in detail['allowed_decisions'] or not detail['hash_matches']:
+                    if detail['expected']!=x['expected'] or detail['stage']!=x['stage'] or x['decision'] not in detail['allowed_decisions'] or (not detail['hash_matches'] and not (detail.get('entry_type')=='reuse_change' and x['decision']=='reject')):
                         raise ValueError('候选已变化或证据不一致，请刷新后重新确认')
-                    packet=dict(x);packet['note']=x.get('note','').strip()+'\n'+marker
+                    packet=dict(x);packet['entry_type']=detail.get('entry_type');packet['note']=x.get('note','').strip()+'\n'+marker
                     action={'verifier':str(self.verifier),'config_path':str(self.config_path),'binding_sha256':binding['files_manifest_sha256'],'packet':packet}
                     proc=subprocess.run([sys.executable,str(HERE/'review_action.py')],input=json.dumps(action,ensure_ascii=False),capture_output=True,text=True,timeout=240)
                     response=json.loads(proc.stdout)
                     with self.read() as conn:
-                        receipt=conn.execute('SELECT id FROM memory_reviews WHERE task_id=? AND instr(note,?)>0',(x['task_id'],marker)).fetchone()
+                        receipt=self.receipt(conn,x['task_id'],marker)
                     current=self.detail(x['task_id'])
-                    results.append({'task_id':x['task_id'],'ok':response['exit_code']==0,'recorded':bool(receipt),'review_id':receipt['id'] if receipt else None,'status':current['status'],'result':response['result']})
+                    results.append({'task_id':x['task_id'],'ok':response['exit_code']==0,'recorded':bool(receipt),'review_id':receipt['id'] if receipt else None,'status':'published' if current.get('entry_type')=='reuse_change' and current['status']=='approved' and response['result'].get('path') else current['status'],'result':response['result']})
                 except Exception as exc:
                     with self.read() as conn:
-                        receipt=conn.execute('SELECT id FROM memory_reviews WHERE task_id=? AND instr(note,?)>0',(x['task_id'],marker)).fetchone()
+                        receipt=self.receipt(conn,x['task_id'],marker)
                     results.append({'task_id':x['task_id'],'ok':False,'recorded':bool(receipt),'review_id':receipt['id'] if receipt else None,'error':str(exc)})
             self.sync(force=True)
             response={'id':batch,'ok':all(x['ok'] for x in results),'items':results,'sync':self.sync_status}

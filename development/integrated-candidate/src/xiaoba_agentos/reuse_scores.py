@@ -110,11 +110,16 @@ def _settle_source(store, conn, delivery, delivery_id, applications):
     if not score:
         # Preserve every assessment when a task applied one experience multiple times.
         revised = [a for a in applications if a['reuse_assessment']['outcome'] != 'unchanged']
-        store._append_event_tx(conn, source_id, REVISION, dict(value,
+        revision_id = store._append_event_tx(conn, source_id, REVISION, dict(value,
             reuse_assessment=revised[-1]['reuse_assessment'],
             applications=[{'application_id': a['application_id'], 'application_location': a['application_location'],
                            'steps_applied': a['steps_applied'], 'deviations': a['deviations'],
                            'reuse_assessment': a['reuse_assessment']} for a in revised]))
+        draft = revised[-1]['reuse_assessment'].get('draft')
+        if draft is not None:
+            from .formal_review import _draft, PREFIX
+            _draft(draft)
+            store._append_event_tx(conn, source_id, PREFIX+'draft_submitted', {'request_id':revision_id,'draft':draft})
 
 
 def settle_delivery_tx(store, conn, delivery, delivery_id, applications):

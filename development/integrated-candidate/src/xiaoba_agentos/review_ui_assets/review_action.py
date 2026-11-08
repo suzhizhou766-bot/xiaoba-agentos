@@ -16,6 +16,13 @@ def execute(packet, config_path, source):
     from xiaoba_agentos import cli
     from xiaoba_agentos.store import EventStore
     expected = packet['expected']
+    if packet.get('entry_type'):
+        from xiaoba_agentos.config import AppConfig
+        from xiaoba_agentos.formal_review import decide
+        config = AppConfig.load(Path(config_path))
+        result = decide(config, EventStore(config.database_path), packet['task_id'], packet['decision'],
+                        expected, packet['note'], origin='user')
+        return {'exit_code':0,'result':result}
 
     class GuardedStore(EventStore):
         def initialize(self):

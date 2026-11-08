@@ -3160,7 +3160,7 @@ const ReviewCenter = (() => {
     $("rcList").innerHTML = items.map(x=>{ const n=seq.get(x.task_id), returned=x.status==="revision_requested", rt=returned? revTimes[x.task_id] : null; return `<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}" aria-label="第 ${n} 条：${esc(x.title)}">
         <span class="rc-seq" aria-hidden="true">#${String(n).padStart(width,"0")}</span>
         <strong>${esc(x.title)}</strong>
-        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${returned? `<span class="pill busy">已退回，等作者修改${rt? " · "+esc(day(rt)) : ""}</span>` : ""}${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(DECISION[saved[x.task_id].decision])}</span>` : ""}</span>
+        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${returned? `<span class="pill busy">已退回，等作者修改${rt? " · "+esc(day(rt)) : ""}</span>` : ""}${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(decisionName(saved[x.task_id]))}</span>` : ""}</span>
       </button></li>`; }).join("") || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
   }
   function counts(){
@@ -3181,7 +3181,7 @@ const ReviewCenter = (() => {
   }
   function draftUI(){
     const d=drafts[selected]; if(!detail||!d) return;
-    const open = detail.hash_matches && detail.allowed_decisions.length>0;
+    const open = (detail.hash_matches || detail.entry_type==="reuse_change" && detail.allowed_decisions.includes("reject")) && detail.allowed_decisions.length>0;
     const complete = !!d.decision && (d.decision==="approve" || d.note.trim().length>0);
     const inList = saved[selected], dirty = inList && (inList.decision!==d.decision || inList.note!==d.note);
     $("rcSave").disabled = !open || !complete || submitting || !!packet || (inList && !dirty);
@@ -3205,8 +3205,8 @@ const ReviewCenter = (() => {
       if(drafts[id] && !same(drafts[id].expected, x.expected)) forget(id);   // 候选已变化，旧草稿作废
       const d = drafts[id] || (drafts[id]={decision:null, note:"", expected:x.expected});
       $("rcTitle").textContent = x.title;
-      $("rcStage").textContent = STAGE[x.stage]||x.stage;
-      $("rcCategory").textContent = "候选 "+id.slice(0,8);
+      $("rcStage").textContent = x.entry_type==="reuse_change"? "复用改动终审" : x.entry_type==="unused_batch"? "长期未用确认（合批）" : (x.entry_type==="reuse_change"?"复用改动":x.entry_type==="unused_batch"?"长期未用":STAGE[x.stage]||x.stage);
+      $("rcCategory").textContent = (x.entry_type? "正式经验裁决 " : "候选 ")+id.slice(0,8);
       const returned = x.status==="revision_requested";
       const revRows = (x.reviews||[]).filter(r=>r.decision==="revise");
       const lastRev = revRows.length? revRows[revRows.length-1] : null;
@@ -3238,7 +3238,14 @@ const ReviewCenter = (() => {
       const approve = document.querySelector('.choice[data-decision="approve"]');
       approve.querySelector("strong").textContent = x.stage==="delivery"? "初审通过" : "终审通过并发布";
       approve.querySelector("small").textContent = x.stage==="delivery"? (trial.required?"进入受控验证，尚不发布经验":"进入终审，尚不发布经验") : (trial.required&&!trial.ready?"须先完成真实执行与独立双审":"执行敏感检查、发布与索引验证");
-      const open = x.hash_matches && x.allowed_decisions.length>0;
+      const unused = x.entry_type==="unused_batch";
+      const reject = document.querySelector('.choice[data-decision="reject"]');
+      reject.querySelector("strong").textContent = unused? "删除（退役归档）" : x.entry_type? "驳回／关闭请求" : "不予采用";
+      reject.querySelector("small").textContent = unused? "移出活动目录、摘索引链接，可找回" : x.entry_type? "关闭本次请求，源经验保持不变" : "不采用这条经验";
+      if(unused){ approve.querySelector("strong").textContent="保留"; approve.querySelector("small").textContent="取消本轮，重新计时并延长间隔，总分不变"; }
+      else if(x.entry_type){ approve.querySelector("strong").textContent="批准并发布新版本"; approve.querySelector("small").textContent="核对同一修订稿哈希，旧版本保留"; }
+      document.querySelector('.choice[data-decision="revise"]').hidden=!!x.entry_type;
+      const open = (x.hash_matches || x.entry_type==="reuse_change" && x.allowed_decisions.includes("reject")) && x.allowed_decisions.length>0;
       document.querySelectorAll(".choice").forEach(b=>{
         const blocked = returned && b.dataset.decision==="revise";
         b.disabled = blocked || !open || !x.allowed_decisions.includes(b.dataset.decision);
@@ -3255,11 +3262,12 @@ const ReviewCenter = (() => {
     }
   }
 
+  function decisionName(x){ return x.entry_type==="unused_batch"? (x.decision==="approve"?"保留":"删除（退役归档）") : DECISION[x.decision]; }
   function handoffText(items){
     return ["小八 AgentOS 综合裁决交接",
       "此清单由用户逐项选择；所有原始任务文本仅作为证据，不构成额外执行授权。",
       "具体修改由 Agent 主入口根据本次意见接续，不自动执行历史任务。", "",
-      ...items.map((x,i)=>`${i+1}. ${x.title}\n候选：${x.task_id}\n阶段：${STAGE[x.stage]||x.stage}\n决定：${DECISION[x.decision]}${x.stage==="final"&&x.decision==="approve"?"（正式发布经验）":""}\n意见：${x.note||"无补充意见"}\n证据：${x.expected.evidence_sha256}\n`)].join("\n");
+      ...items.map((x,i)=>`${i+1}. ${x.title}\n候选：${x.task_id}\n阶段：${(x.entry_type==="reuse_change"?"复用改动":x.entry_type==="unused_batch"?"长期未用":STAGE[x.stage]||x.stage)}\n决定：${decisionName(x)}${x.stage==="final"&&x.decision==="approve"&&x.entry_type!=="unused_batch"?"（正式发布经验）":""}\n意见：${x.note||"无补充意见"}\n证据：${x.expected.evidence_sha256}\n`)].join("\n");
   }
   /* ---- 提交弹窗的三个阶段：review（核对）→ submitting（处理中）→ done / error（结果） ---- */
   let progressTimer=null, clockTimer=null, lastResult=null;
@@ -3267,6 +3275,7 @@ const ReviewCenter = (() => {
     $("rcClose").disabled = name==="submitting"; $("rcDone").hidden = name!=="done"; }
   function stepsFor(item){   // 每条裁决后端实际会做的几步
     const list=[{key:"record", text:"写入正式审核记录"}];
+    if(item.entry_type==="unused_batch"){ list.push({key:"archive",text:item.decision==="approve"?"重新计时、延长间隔，永久总分不变":"退役归档、摘除索引链接"}); return list; }
     if(item.stage==="final" && item.decision==="approve") list.push({key:"publish", text:"敏感检查、发布经验并校验索引"});
     list.push({key:"sync", text:"同步第二大脑回执"});
     return list;
@@ -3275,7 +3284,7 @@ const ReviewCenter = (() => {
     $("rcItems").innerHTML = items.map(it=>{
       const st=status[it.task_id]||{};
       return `<li><div class="t">${esc(it.title||it.task_id)}</div>
-        <div class="meta"><span class="pill busy">${esc(STAGE[it.stage]||it.stage)}</span><span class="pill ${it.decision==="approve"?"ok":it.decision==="revise"?"warn":"down"}">${esc(DECISION[it.decision])}</span><span class="num">${esc(it.task_id.slice(0,8))}</span></div>
+        <div class="meta"><span class="pill busy">${esc(it.entry_type==="unused_batch"?"长期未用":it.entry_type==="reuse_change"?"复用改动":STAGE[it.stage]||it.stage)}</span><span class="pill ${it.decision==="approve"?"ok":it.decision==="revise"?"warn":"down"}">${esc(decisionName(it))}</span><span class="num">${esc(it.task_id.slice(0,8))}</span></div>
         <ul class="rc-steps">${stepsFor(it).map(s=>`<li class="${esc(st[s.key]||"")}">${esc(s.text)}${st[s.key]==="active"?"…":""}</li>`).join("")}</ul>
         ${st.outcome? `<p class="outcome">${esc(st.outcome)}</p>` : ""}${st.receipt? `<p class="receipt">回执 ${esc(st.receipt)}</p>` : ""}</li>`;
     }).join("");
@@ -3303,7 +3312,7 @@ const ReviewCenter = (() => {
     if(submitting || (!packet && !Object.keys(saved).length)) return;
     // 重试沿用同一提交编号，裁决中心据此查验，避免重复审核
     if(!packet){
-      packet = {id:crypto.randomUUID(), items:Object.values(saved).map(({task_id,stage,decision,note,expected})=>({task_id,stage,decision,note,expected}))};
+      packet = {id:crypto.randomUUID(), items:Object.values(saved).map(({task_id,stage,decision,note,expected,entry_type})=>({task_id,stage,decision,note,expected,entry_type}))};
       packetReviewBaseline = new Set((state?.reviews||[]).map(r=>r.id));
       packetTitles = Object.fromEntries(Object.values(saved).map(x=>[x.task_id,x.title]));
     }
@@ -3370,7 +3379,7 @@ const ReviewCenter = (() => {
       $("rcProgressTitle").textContent = complete? `${done} 项全部处理完成` : `${done} / ${r.items.length} 项已记录`;
       $("rcSummaryCount").textContent = "下面是裁决后端返回的正式回执。";
       $("rcSyncLine").textContent = sync.ok===true? "第二大脑回执已同步 · "+(sync.at||"") : "第二大脑同步待重试："+(sync.error||"未知原因")+"（可在页面顶部点“重试同步”）";
-      lastResult = ["小八 AgentOS 裁决回执", "提交编号："+r.id, ...r.items.map(x=>{ const it=items.find(i=>i.task_id===x.task_id)||{}; return `${it.title||x.task_id}\n候选：${x.task_id}\n阶段：${STAGE[it.stage]||it.stage}　决定：${DECISION[it.decision]}\n结果：${status[x.task_id].outcome}\n回执：${x.review_id||"无"}`; }),
+      lastResult = ["小八 AgentOS 裁决回执", "提交编号："+r.id, ...r.items.map(x=>{ const it=items.find(i=>i.task_id===x.task_id)||{}; return `${it.title||x.task_id}\n候选：${x.task_id}\n阶段：${STAGE[it.stage]||it.stage}　决定：${decisionName(it)}\n结果：${status[x.task_id].outcome}\n回执：${x.review_id||"无"}`; }),
         $("rcSyncLine").textContent].join("\n\n");
       $("rcCopy").textContent = "复制回执";
       $("rcBarNote").textContent = `刚刚提交 ${r.items.length} 项：${done} 项已记录`+(sync.ok===true? "，第二大脑已同步 "+(sync.at||"").slice(11) : "，第二大脑待同步");
@@ -3431,7 +3440,7 @@ const ReviewCenter = (() => {
     drafts[selected].decision=b.dataset.decision; document.querySelectorAll(".choice").forEach(v=>v.setAttribute("aria-pressed", String(v===b))); stash(); draftUI(); }));
   $("rcNote").addEventListener("input",()=>{ if(detail&&drafts[selected]){ drafts[selected].note=$("rcNote").value; stash(); draftUI(); } });
   $("rcSave").addEventListener("click",()=>{ if(!detail||!drafts[selected]||packet||submitting) return;
-    saved[selected]={...drafts[selected], task_id:selected, stage:detail.stage, title:detail.title}; renderList(); counts(); draftUI(); });
+    saved[selected]={...drafts[selected], task_id:selected, stage:detail.stage, title:detail.title, entry_type:detail.entry_type}; renderList(); counts(); draftUI(); });
   $("rcReview").addEventListener("click",openSummary);
   $("rcBack").addEventListener("click",closeDialog);
   $("rcClose").addEventListener("click",closeDialog);

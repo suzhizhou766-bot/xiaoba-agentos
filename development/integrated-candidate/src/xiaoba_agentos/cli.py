@@ -1333,7 +1333,7 @@ def build_parser() -> argparse.ArgumentParser:
     pending_read.add_argument("task_id")
     pending_read.add_argument("--candidate-sha256", required=True)
     pending_read.add_argument("--delivery-review-id", required=True)
-    for name in ("memory-application-record", "memory-delivery-record"):
+    for name in ("memory-application-record", "memory-delivery-record", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call"):
         command = sub.add_parser(name, help="登记实际应用或真实用户交付事件，不批准经验")
         command.add_argument("--receipt", required=True)
     for name in ("collaborate", "collaborate-review"):
@@ -1617,7 +1617,7 @@ def main(argv: Optional[list] = None) -> int:
             "skill-review-prompt", "skill-publish", "knowledge-index-rebuild",
             "memory-retrieve", "memory-retained-list", "memory-retained-resolve",
             "review-list", "memory-trial-status", "memory-trial-match", "review-ui-install",
-            "memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record",
+            "memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call",
         }
         read_only_or_managed = read_only_or_managed or (args.command == "intake" and bool(args.delivery_receipt))
         config, store = _load(args.config, initialize=not read_only_or_managed)
@@ -1625,7 +1625,7 @@ def main(argv: Optional[list] = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    if args.command in {"memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record"}:
+    if args.command in {"memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call"}:
         from .experience_loop import pending_index, read_pending, record_application, record_delivery
         try:
             if not store.schema_status()["ok"]:
@@ -1639,7 +1639,17 @@ def main(argv: Optional[list] = None) -> int:
                 if path.stat().st_size > 65536:
                     raise ValueError("receipt exceeds 64 KiB")
                 value = json.loads(path.read_text(encoding="utf-8"))
-                result = (record_application if args.command == "memory-application-record" else record_delivery)(store, value)
+                if args.command == "memory-revision-submit":
+                    from .formal_review import submit_draft
+                    result = submit_draft(store, value['request_id'], value['draft'])
+                elif args.command == "memory-revision-resubmit":
+                    from .formal_review import resubmit
+                    result = resubmit(store,value['request_id'],value['application_id'],value['draft'])
+                elif args.command == "memory-formal-call":
+                    from .formal_review import record_call
+                    result = record_call(store, value['source_task_id'], value['source_sha256'])
+                else:
+                    result = (record_application if args.command == "memory-application-record" else record_delivery)(store, value)
             _print(result, True)
             return 0
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
