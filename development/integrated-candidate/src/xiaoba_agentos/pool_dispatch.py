@@ -39,7 +39,7 @@ NO_INDEPENDENT = "无独立审查"
 NO_COLLAB = "没有协作节点，这次不排队"
 AWAITING_HOST = "这次没有需要审查的经验，留给宿主完成。"
 DEFAULT_NO_PROGRESS_SECONDS = 300
-# 卡 45（v1.6.8）：内置 WorkBuddy 引擎退役。类型 "workbuddy" 只保留用于识别旧节点
+# 卡 45（v1.6.9）：内置 WorkBuddy 引擎退役。类型 "workbuddy" 只保留用于识别旧节点
 # 数据；新建节点不再提供该类型，旧节点的测试运行与派活一律返回这个错误码与提示。
 # CodeBuddy CLI（"codebuddy"）不受影响，调用方式与参数保持原样。
 WORKBUDDY_RETIRED_CODE = "engine_retired"

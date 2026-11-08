@@ -135,7 +135,7 @@ Qoder 用 accept_edits，Claude/CodeBuddy 用 acceptEdits。支持工具白名�
 DSH 建议使用 `current` 下的稳定入口。适配器与模板不绑定安装版本或安装位置。
 独立性按已知 CLI 类型＋节点模型判断；同类型同模型的不同路径算同一入口，其它类型仍按解析后路径判断。
 
-内置 WorkBuddy 引擎已退役（v1.6.8 卡 45）：`resource_workbuddy.py` 与 `workbuddy_login.py` 已移出本目录待清理。
+内置 WorkBuddy 引擎已退役（v1.6.9 卡 45）：`resource_workbuddy.py` 与 `workbuddy_login.py` 已移出本目录待清理。
 原来那条原生 `--serve` + ACP HTTP/SSE 通道、lite 启动标记、随机网关密码与 `X-CodeBuddy-Request` 校验、
 账号状态核对、事件流上限和人工登录引导一并撤销，不再维护也不再调用。
 Agent 池退役内置引擎后就没有 ACP 通道了，ACP 另走卡 48 实测。
@@ -149,5 +149,5 @@ WorkBuddy CLI 请选择 `codebuddy` 类型（独立安装的 CodeBuddy），入�
 它采用原生print+stdin，沿用固定工作区和文件回执；仅允许Read、Write、Edit、Glob、Grep文件工具，
 额外MCP关闭，不使用权限跳过参数。模型留空时由CLI默认选择；不读取账号、模型或设置文件。
 它不使用WorkBuddy桌面产品配置、lite强制开关或桌面认证上下文，父进程的这些变量会被清除。
-入口名是`codebuddy`的节点一律判成`codebuddy`类型（v1.6.8 卡 45 起不再归到 WorkBuddy）；
+入口名是`codebuddy`的节点一律判成`codebuddy`类型（v1.6.9 卡 45 起不再归到 WorkBuddy）；
 `workbuddy` 类型只能由显式类型或`workbuddy`入口名留给旧节点，已退役、不再派活。

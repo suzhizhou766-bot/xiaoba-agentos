@@ -6,8 +6,8 @@
 
 | 层次 | 当前值 | 唯一声明点 | 校验位置 |
 | --- | --- | --- | --- |
-| 软件版本 | `v1.6.8`（候选） | `pyproject.toml` 的 `[project] version` | `scripts/agentos_version.py` 的 `software_version()` |
-| 发布标识 | `v1.6.8`（目标；活动索引仍为 `v1.6.7`） | `.runtime/releases/index.json` 的 `current_release` | `src/xiaoba_agentos/release.py` |
+| 软件版本 | `v1.6.9`（候选） | `pyproject.toml` 的 `[project] version` | `scripts/agentos_version.py` 的 `software_version()` |
+| 发布标识 | `v1.6.9`（目标；活动索引仍为 `v1.6.7`） | `.runtime/releases/index.json` 的 `current_release` | `src/xiaoba_agentos/release.py` |
 | 知识协议 / 树格式族 | `v1.4` | `scripts/build_second_brain.py` 生成的树结构 | `build_second_brain.py --verify` |
 | 历史版本记录 | 从 `v1.4.2` 起，完整清单看右边的文件 | `docs/HISTORY_VERSIONS.json`（只追加） | `tests/test_release_version_contract.py` |
 

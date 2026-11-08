@@ -299,6 +299,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.7；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.9",
+      "release_date": "2026-11-08",
+      "status": "candidate",
+      "summary": "v1.6.8 没有单独上线，并入本版。包含 v1.6.8 全部内容（节点测试期限与失败诊断、发布验收接受宿主补票且池节点票也须 PASS、退役内置 WorkBuddy 引擎、经验待复验恢复与归档、裁决中心序号角标与不可重复退回、监看中心任务卡页），另加：干活分在任务结算时自动记、择优按角色并给新节点留位、价值分判定线接通；正式经验复用分（晋升机制）与按分检索；正式经验进裁决中心（复用改动终审、长期未用确认）。无数据库结构变更，不新增切换步骤；前置源码清单哈希为已上线 v1.6.7 的值。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.7；不创建备份，用户终端切换。"
     }
   ]
 }
