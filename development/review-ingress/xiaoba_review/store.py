@@ -235,7 +235,8 @@ class ReviewStore:
     def subject(self, db, candidate_id):
         row = db.execute('SELECT * FROM memory_candidates WHERE task_id=?', (candidate_id,)).fetchone()
         if row is None:
-            raise ValueError('找不到原经验卡')
+            from xiaoba_agentos.formal_review import subject
+            return subject(db, candidate_id)
         if row['status'] not in {'pending_delivery_review', 'revision_requested', 'delivery_approved',
                                   'pending_final_review', 'revalidation_required', 'publication_failed'}:
             raise ValueError('原卡已结束，不能补审')
@@ -279,7 +280,9 @@ class ReviewStore:
             raise ValueError('审查席位必须使用审查角色节点')
         from xiaoba_agentos.task_participants import execution_context
         task = db.execute('SELECT * FROM tasks WHERE id=?', (request['candidate_id'],)).fetchone()
-        if task and source_id in execution_context(self.native, dict(task), db)['excluded_ids']:
+        from xiaoba_agentos.formal_review import exclusions
+        excluded = exclusions(self.native, db, request['candidate_id']) if task is None else None
+        if source_id in (excluded if excluded is not None else execution_context(self.native, dict(task), db)['excluded_ids'] if task else []):
             raise ValueError('干过活或是作者的节点不能审查本任务')
         if channel not in {'external_handoff', 'backend_adapter'}:
             raise ValueError('未知接入通道')
@@ -341,10 +344,14 @@ class ReviewStore:
         request_id = request_id or identifier()
         with self.transaction() as db:
             subject = self.subject(db, candidate_id)
+            if subject.get('source_task_id') and review_type != 'reuse_change':
+                raise ValueError('正式复用改动必须使用 reuse_change 审查类型')
             dsh, peer = self.source(db, dsh_id), self.source(db, peer_id)
             from .agent_pool import independence
             if independence(dsh) == independence(peer):
                 raise ValueError('两方实际来源相同（入口程序与模型一致），不能凑独立意见')
+            if subject.get('source_task_id') and subject['candidate_sha256'] not in {r['sha256'] for r in evidence}:
+                raise ValueError('证据未绑定完整修订稿')
             common = {**subject, 'scope': scope, 'evidence_refs': evidence, 'contract_version': contract_version}
             if review_type is not None:
                 common['review_type'] = review_type
@@ -381,6 +388,32 @@ class ReviewStore:
                 self.assignment(db, row, 'dsh', dsh_id, dsh_channel)
                 self.assignment(db, row, 'peer', peer_id, peer_channel)
                 self.event(db, request_id, 'created', {'revision': 1})
+        return self.get(request_id)
+
+    def create_host_plan(self, candidate_id, request_id, *, user_chose_host=False):
+        """One pool vote plus the bound host, or explicitly selected host fallback."""
+        from xiaoba_agentos.formal_review import subject, exclusions
+        from xiaoba_agentos.task_participants import execution_context
+        from xiaoba_agentos.pool_dispatch import select_reviewers, load_nodes
+        with self.transaction() as db:
+            frozen=subject(db,candidate_id)
+            task=db.execute('SELECT * FROM tasks WHERE id=?',(frozen['real_task_id'],)).fetchone()
+            context=execution_context(self.native,dict(task),db)
+            selection=select_reviewers(load_nodes(self.native),exclude_ids=exclusions(self.native,db,candidate_id),
+                host=context.get('host'),user_chose_host=user_chose_host)
+            if not selection.get('host') or selection['route'] not in {'run','host_fallback'}:
+                raise ValueError('宿主不符合补票条件或尚未选择兜底')
+            common=dict(frozen,review_type='reuse_change',contract_version=2,host_label=selection.get('label'),
+                scope='复用改动：宿主与独立池节点审查完整修订稿，不代用户批准',
+                evidence_refs=[{'ref':'revision:'+candidate_id,'sha256':frozen['candidate_sha256']}])
+            fingerprint=digest([common,[n['node_id'] for n in selection['reviewers']]])
+            old=db.execute('SELECT * FROM ri_requests WHERE id=?',(request_id,)).fetchone()
+            if old and old['fingerprint']!=fingerprint: raise Conflict('宿主计划版本冲突')
+            if not old:
+                db.execute('INSERT INTO ri_requests VALUES (?,?,1,?,?,?)',(request_id,candidate_id,canonical(common),fingerprint,'waiting_receipts'))
+                row=db.execute('SELECT * FROM ri_requests WHERE id=?',(request_id,)).fetchone()
+                for node in selection['reviewers']: self.assignment(db,row,'dsh',node['node_id'],'backend_adapter')
+                self.event(db,request_id,'created',{'host':context['host']['id'],'label':selection.get('label')})
         return self.get(request_id)
 
     def fresh(self, db, request):

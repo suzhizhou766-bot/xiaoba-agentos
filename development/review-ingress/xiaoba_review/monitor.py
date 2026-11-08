@@ -45,6 +45,11 @@ class OpenReviewModule(Module):
                 Route('GET', '/open-review.js', self.script, 'page'),
                 Route('GET', '/open-review-native.js', self.native_script, 'page'),
                 Route('GET', '/api/open-review/state', self.state, 'read'),
+                Route('POST', '/api/open-review/revision-host-plan', self.revision_host_plan, 'write'),
+                Route('POST', '/api/open-review/revision-host-receipt', self.revision_host_receipt, 'write'),
+                Route('POST', '/api/open-review/revision-resubmit', self.revision_resubmit, 'write'),
+                Route('POST', '/api/open-review/revision-body', self.revision_body, 'write'),
+                Route('POST', '/api/open-review/formal-call', self.formal_call, 'write'),
                 Route('POST', '/api/open-review/sources', self.sources, 'write'),
                 Route('POST', '/api/open-review/requests', self.create, 'write'),
                 Route('POST', '/api/open-review/receipts', self.receive, 'write'),
@@ -107,6 +112,59 @@ class OpenReviewModule(Module):
             return 409, {'ok': False, 'error': str(exc)}
         except (ValueError, KeyError, TypeError) as exc:
             return 400, {'ok': False, 'error': str(exc)}
+
+    def revision_host_plan(self, req):
+        data=req.json()
+        def action():
+            plan=self.store.create_host_plan(data['request_id'],data['plan_id'],user_chose_host=data.get('user_chose_host') is True)
+            for assignment in plan['assignments']:
+                if not any(r['assignment_id']==assignment['id'] for r in plan['receipts']):
+                    self.backends.execute(assignment['id'],require_test=True)
+            return plan
+        return self.perform(action)
+
+    def revision_host_receipt(self, req):
+        from xiaoba_agentos.formal_review import submit_host_review
+        data=req.json()
+        return self.perform(lambda: submit_host_review(self.store.native,data['request_id'],data['receipt'],
+            user_chose_host=data.get('user_chose_host') is True))
+
+    def revision_resubmit(self, req):
+        from xiaoba_agentos.formal_review import resubmit
+        data=req.json()
+        return self.perform(lambda: resubmit(self.store.native,data['request_id'],data['application_id'],data['draft']))
+
+    def revision_body(self, req):
+        from xiaoba_agentos.formal_review import submit_draft
+        data=req.json()
+        return self.perform(lambda: submit_draft(self.store.native,data['request_id'],data['draft']))
+
+    def formal_call(self, req):
+        from xiaoba_agentos.formal_review import record_call
+        data=req.json()
+        return self.perform(lambda: record_call(self.store.native,data['source_task_id'],data['source_sha256']))
+
+    def prepare_revisions(self):
+        """No model call in the timer. Review dispatch uses the existing pool API."""
+        from xiaoba_agentos.formal_review import items
+        import uuid
+        outcomes=[]
+        for item in items(self.store.native):
+            if item['entry_type']!='reuse_change' or item['status']!='awaiting_review' or not item['hash_matches']: continue
+            rid=str(uuid.uuid5(uuid.NAMESPACE_URL,item['task_id']+item['evidence_sha256']))
+            with self.store.native.read_only() as db:
+                if db.execute('SELECT 1 FROM ri_requests WHERE id=?',(rid,)).fetchone(): continue
+            planned=self.pool.runtime.prepare(['review','review_2'],candidate_id=item['task_id'])
+            if planned['route']!='run':
+                outcomes.append({'request_id':item['task_id'],**planned}); continue
+            pair=planned['selections']
+            request=self.store.create(item['task_id'],pair['review'],pair['review_2'],
+                '复用改动：核对完整修订稿、源版本、真实任务与改动三项；不代用户批准',
+                [{'ref':item['draft']['path'],'sha256':item['evidence_sha256']}],request_id=rid,
+                dsh_channel='backend_adapter',peer_channel='backend_adapter',review_type='reuse_change')
+            for assignment in request['assignments']: self.backends.execute(assignment['id'],require_test=True)
+            outcomes.append({'request_id':item['task_id'],'route':'dispatched'})
+        return outcomes
 
     def sources(self, req):
         return self.perform(lambda: self.store.register_source(req.json()))
@@ -214,12 +272,20 @@ class OpenReviewModule(Module):
                     self.store.deliver(self.inbox)
                 except Exception:
                     self.ctx.log(self.id, '材料归集待重试', level='warning')
+        def revisions():
+            while not self.stopping.wait(2):
+                try: self.prepare_revisions()
+                except Exception: self.ctx.log(self.id,'复用改动派审查待重试',level='warning')
+        self.revision_thread = threading.Thread(target=revisions, daemon=True)
+        self.revision_thread.start()
         self.thread = threading.Thread(target=loop, daemon=True)
         self.thread.start()
 
     def stop(self):
         self.stopping.set()
         self.backends.close()
+        revision_thread=getattr(self,'revision_thread',None)
+        if revision_thread: revision_thread.join(timeout=5)
         if self.thread:
             self.thread.join(timeout=5)
 

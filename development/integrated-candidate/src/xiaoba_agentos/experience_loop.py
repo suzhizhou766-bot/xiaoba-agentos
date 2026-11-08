@@ -171,6 +171,9 @@ def record_application(store, value):
             source_version(conn, value)
             if value["real_task"]["id"] == value["candidate_id"]:
                 raise ValueError("a later real task must differ from the source task")
+            if (value.get('reuse_assessment') or {}).get('draft') is not None:
+                from .formal_review import _draft
+                _draft(value['reuse_assessment']['draft'])
             application = dict(application, formal_reuse=True)
             old = _events(conn, "memory.application_recorded", value["candidate_id"])
             if not any(a["application_id"] == application["application_id"] for a in old):
