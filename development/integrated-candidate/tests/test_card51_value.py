@@ -13,7 +13,7 @@ class Card51ValueTests(unittest.TestCase):
     rows = scoring_fixture.Card51ScoringTests.rows
     def value_task(self, scores, duplicate=False):
         task = self.store.submit('TEST new reusable experience', 2,
-            snapshot={'needs_review': True, 'experience_policy': {'version': 1, 'kind': 'method'}})
+            snapshot={'needs_review': True, 'review_context': {'host': {'id': 'TEST-host'}}, 'experience_policy': {'version': 1, 'kind': 'method'}})
         for node, score in zip(('A', 'B'), scores):
             run = self.store.start_agent_run(task, node, {'purpose': 'review'})
             text = '审查结论：FAIL\n评分：'+str(score)+'\nTEST reviewed evidence'
@@ -82,3 +82,34 @@ class Card56ReceiptFieldTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class Card57ValueSourceTests(unittest.TestCase):
+    setUp = scoring_fixture.Card51ScoringTests.setUp
+
+    def task(self, host=False):
+        snapshot = {'needs_review': True, 'experience_policy': {'version': 1, 'kind': 'method'}}
+        if host:
+            snapshot['review_context'] = {'host': {'id': 'TEST-host'}}
+        task = self.store.submit('TEST ordinary multi task', 2, snapshot=snapshot)
+        for node in ('A', 'B'):
+            run = self.store.start_agent_run(task, node, {'purpose': 'review'})
+            self.store.finish_agent_run(run, 'completed', 'TEST ordinary answer', None, 1)
+        return task
+
+    def test_plain_multi_completes_unscored_once(self):
+        import hashlib
+        from xiaoba_agentos.memory import MemoryBridge
+        task = self.task()
+        path = MemoryBridge(self.config, self.store).stage_experience(task, 'TEST prompt', 'TEST answer', self.store.task_runs(task))
+        self.store.complete_with_memory_candidate(task, 'TEST answer', str(path), hashlib.sha256(path.read_bytes()).hexdigest(), [], expected_attempt=0)
+        self.assertEqual('completed', self.store.get_task(task)['status'])
+        self.assertEqual('pending_delivery_review', self.store.get_memory_candidate(task)['status'])
+        with self.store.read_only() as db:
+            self.assertEqual(1, db.execute("SELECT count(*) FROM events WHERE task_id=? AND event_type='memory.value_unscored'", (task,)).fetchone()[0])
+
+    def test_host_score_does_not_hide_missing_pool_score(self):
+        from xiaoba_agentos.value_scoring import native_value
+        task = self.task(host=True)
+        with self.store.read_only() as db, self.assertRaisesRegex(ValueError, '评分字段'):
+            native_value(db, task, {'reviewer_id': 'TEST-host', 'score': 8})

@@ -78,7 +78,13 @@ def native_value(db, task_id, host_receipt=None):
         for e in db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.started'",(task_id,)))
     if not actual_pool and not host_receipt:
         return None  # Mock-only fixtures and historical non-pool protocols.
-    reviews = [from_body(node, run['output']) for node, run in votes.items() if run['status'] == 'completed']
+    from .task_scores import requires_review_vote
+    snapshot = json.loads(row['execution_snapshot_json'] or '{}')
+    pool_is_source = requires_review_vote(db, row, snapshot)
+    if not pool_is_source and not (host_receipt and 'score' in host_receipt):
+        return None
+    reviews = [from_body(node, run['output']) for node, run in votes.items()
+               if pool_is_source and run['status'] == 'completed']
     if host_receipt and 'score' in host_receipt:
         reviews.append({'reviewer_id':host_receipt['reviewer_id'], 'score':host_receipt['score'],
                         'duplicate_of':host_receipt.get('duplicate_of')})

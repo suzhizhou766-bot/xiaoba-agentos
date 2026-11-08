@@ -2245,6 +2245,15 @@ class EventStore:
         from .value_scoring import native_value, record_tx, summary
         assessment = native_value(conn, task_id)
         record_tx(conn, task_id, assessment)
+        if assessment is None:
+            from .task_scores import requires_review_vote
+            task = conn.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
+            snapshot = json.loads(task['execution_snapshot_json'] or '{}')
+            if not requires_review_vote(conn, task, snapshot) and not conn.execute(
+                "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_unscored'", (task_id,)
+            ).fetchone():
+                self._append_event_tx(conn, task_id, 'memory.value_unscored', {
+                    'reason': '普通任务无审查评分，按旧路径交用户初审'})
         if assessment and assessment['decision'] == 'discard':
             result = summary(assessment)
             task = conn.execute('SELECT provenance_json FROM tasks WHERE id=?', (task_id,)).fetchone()
