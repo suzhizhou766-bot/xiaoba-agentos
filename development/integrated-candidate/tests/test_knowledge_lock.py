@@ -757,6 +757,9 @@ class VaultRetrievalLockTest(unittest.TestCase):
         self.assertIsNone(receipt["hits"][0]["source_task_id"], "非法 source_task_id 必须置空，不能冒充可追溯复用")
 
     def test_twenty_five_clones_admit_only_their_own_pages(self):
+        # This identity test explicitly asks for 25 primary places; default
+        # retrieval is now bounded to 6 primary plus 1 exploration place.
+        self.bridge.config.raw["memory"]["knowlp_limit"] = CLONE_COUNT
         clone_relative = sorted(str(path.relative_to(self.vault)) for path in self.layout["clones"].values())
         receipt = self._retrieve([{"path": relative} for relative in clone_relative])
         self.assertEqual(CLONE_COUNT, len(receipt["hits"]), "25 份克隆应各自独立通过验证，不能被去重成一份")

@@ -269,7 +269,7 @@
       "status": "guarded",
       "tests": [
         "test_cli.py::test_explicit_retirement_db_failure_returns_reconciliation_nonzero",
-        "test_cli.py::test_settled_failed_reuse_can_retry_automatic_retirement",
+        "test_cli.py::test_settled_failed_formal_reuse_does_not_retry_automatic_retirement",
         "test_knowledge_lock.py::test_archive_mirrored_into_active_dir_is_detected_by_lifecycle_audit",
         "test_memory.py::test_final_publication_updates_tree_and_verified_index",
         "test_memory.py::test_lifecycle_audit_detects_active_revalidation_note",

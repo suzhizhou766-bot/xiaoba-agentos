@@ -471,13 +471,13 @@ class EventStoreTest(unittest.TestCase):
         current_task = self.store.submit("reuse", 1)
         self.store.record_memory_reuse(current_task, source_task, "source.md")
         affected = self.store.decide_reuse_outcomes(current_task, False)
-        self.assertEqual([source_task], affected)
+        self.assertEqual([], affected)
         source = self.store.get_memory_candidate(source_task)
-        self.assertEqual("revalidation_required", source["status"])
-        self.assertEqual(1, source["reuse_count"])
-        self.assertEqual(1, source["failed_reuse_count"])
+        self.assertEqual("published", source["status"])
+        self.assertEqual(0, source["reuse_count"])
+        self.assertEqual(0, source["failed_reuse_count"])
 
-    def test_successful_reuse_resets_consecutive_failure_count(self):
+    def test_formal_reuse_old_settlement_does_not_change_failure_counts(self):
         source_task = self.store.submit("source", 1)
         self.store.complete_manually(source_task, "source result")
         self.store.stage_memory_candidate(source_task, "/tmp/source.md", "e" * 64)
@@ -488,7 +488,7 @@ class EventStoreTest(unittest.TestCase):
         failed_once = self.store.submit("failed once", 1)
         self.store.record_memory_reuse(failed_once, source_task, "source.md")
         self.store.decide_reuse_outcomes(failed_once, False)
-        self.assertEqual(1, self.store.get_memory_candidate(source_task)["failed_reuse_count"])
+        self.assertEqual(0, self.store.get_memory_candidate(source_task)["failed_reuse_count"])
 
         succeeded = self.store.submit("succeeded", 1)
         self.store.record_memory_reuse(succeeded, source_task, "source.md")
@@ -501,9 +501,10 @@ class EventStoreTest(unittest.TestCase):
         self.store.record_memory_reuse(failed_again, source_task, "source.md")
         self.store.decide_reuse_outcomes(failed_again, False)
         after_second_failure = self.store.get_memory_candidate(source_task)
-        self.assertEqual(1, after_second_failure["failed_reuse_count"])
-        self.assertEqual("revalidation_required", after_second_failure["status"])
-        self.assertEqual("failed", self.store.memory_reuses(failed_again)[0]["outcome"])
+        self.assertEqual(0, after_second_failure["failed_reuse_count"])
+        self.assertEqual("published", after_second_failure["status"])
+        self.assertEqual("pending", self.store.memory_reuses(failed_again)[0]["outcome"])
+        self.assertEqual(0, after_success["successful_reuse_count"])
 
     def test_final_review_cannot_skip_delivery_reapproval_after_revision(self):
         task_id = self.store.submit("revise", 1)

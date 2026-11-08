@@ -72,15 +72,11 @@ class Card46Fixture(unittest.TestCase):
         return row
 
     def _quarantine(self, source_task_id):
-        """2 号现场：复核失败把经验标成待复验，DB 与笔记都转 revalidation_required，链接被摘。"""
-        from xiaoba_agentos.review_flow import reconcile_failed_reuses
-        source_note = Path(self.store.get_memory_candidate(source_task_id)["published_path"])
-        decider, _, _ = self._candidate(
-            "触发复核失败的任务", "结论引用了 " + source_note.stem + " 的写法，但仍然失败。"
-        )
-        self.store.record_memory_reuse(decider, source_task_id, str(source_note))
-        _, _, errors = reconcile_failed_reuses(self.config, self.store, decider)
-        self.assertEqual([], errors)
+        """Historical pre-card52 quarantine fixture, not a new automatic demotion."""
+        source = self.store.get_memory_candidate(source_task_id)
+        self.bridge.set_validation_status(source_task_id, source["published_path"], "revalidation_required")
+        with self.store.connect() as conn:
+            conn.execute("UPDATE memory_candidates SET status='revalidation_required' WHERE task_id=?", (source_task_id,))
         row = self.store.get_memory_candidate(source_task_id)
         self.assertEqual("revalidation_required", row["status"])
         note = Path(row["published_path"])
@@ -249,15 +245,15 @@ class ReuseAccountingTest(Card46Fixture):
         self.assertEqual(0, after["failed_reuse_count"])
         self.assertEqual("active", _note_status(note))
 
-    def test_a_reuse_cited_by_the_conclusion_still_downgrades_the_source(self):
+    def test_a_cited_formal_reuse_no_longer_downgrades_the_source(self):
         source, note = self._source()
         reusing = self._reusing("本次结论引用了 " + note.stem + " 的做法，但结论仍不成立。")
         self.store.record_memory_reuse(reusing, source, str(note))
         code, payload = execute_review(self.config, self.store, reusing, "final", "reject", "结论不成立")
         self.assertEqual(0, code, payload)
         after = self.store.get_memory_candidate(source)
-        self.assertEqual("revalidation_required", after["status"], "真被引用且任务失败时照旧降级")
-        self.assertEqual(1, after["failed_reuse_count"])
+        self.assertEqual("published", after["status"], "卡52：来源正式经验不自动降级")
+        self.assertEqual(0, after["failed_reuse_count"])
 
     def test_an_uncited_hit_is_not_counted_as_a_successful_use_on_approval(self):
         """任务成功/批准时，只检索命中同样不算一次使用。"""
@@ -277,29 +273,18 @@ class ReuseAccountingTest(Card46Fixture):
         )
         self.assertEqual("published", after["status"])
 
-    def test_a_cited_reuse_still_counts_and_reactivates_on_approval(self):
-        """真被结论引用、任务成功时，照旧记一次成功复用并复活待复验的来源。"""
-        from xiaoba_agentos.review_flow import reconcile_failed_reuses
-
+    def test_cited_formal_reuse_does_not_reactivate_historical_quarantine(self):
+        """卡52：旧待复验不因其它任务终审通过而被恢复或计旧成功分。"""
         source, note = self._source()
-        failed, _, _ = self._candidate("先把来源降级", "结论引用了 " + note.stem + " 但失败。")
-        self.store.record_memory_reuse(failed, source, str(note))
-        _, _, errors = reconcile_failed_reuses(self.config, self.store, failed)
-        self.assertEqual([], errors)
-        self.assertEqual(
-            "revalidation_required", self.store.get_memory_candidate(source)["status"]
-        )
-
+        self._quarantine(source)
         reusing = self._reusing("本次结论引用了 " + note.stem + " 的做法，且结论成立。")
         self.store.record_memory_reuse(reusing, source, str(note))
-        code, payload = execute_review(
-            self.config, self.store, reusing, "final", "approve", "结论成立"
-        )
+        code, payload = execute_review(self.config, self.store, reusing, "final", "approve", "结论成立")
         self.assertEqual(0, code, payload)
         after = self.store.get_memory_candidate(source)
-        self.assertEqual(1, after["successful_reuse_count"])
-        self.assertEqual("published", after["status"], "成功复用要把待复验经验恢复")
-        self.assertEqual("active", _note_status(note))
+        self.assertEqual(0, after["successful_reuse_count"])
+        self.assertEqual("revalidation_required", after["status"])
+        self.assertEqual("revalidation_required", _note_status(note))
 
 
 if __name__ == "__main__":

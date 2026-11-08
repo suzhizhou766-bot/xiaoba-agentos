@@ -392,7 +392,11 @@ class MemoryBridge:
                 "verified_at": verified_at,
             }
 
-        argv = self._query_command(sanitized_query, int(memory.get("knowlp_limit", 6)))
+        main_limit = max(1, int(memory.get("knowlp_limit", 6)))
+        # KnowLP does relevance filtering first. Re-rank only a bounded matching
+        # pool; the extra exploration place never replaces a high-score place.
+        pool_limit = max(main_limit + 1, main_limit * 4)
+        argv = self._query_command(sanitized_query, pool_limit)
         try:
             result = subprocess.run(argv, text=True, capture_output=True, timeout=30, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -436,7 +440,8 @@ class MemoryBridge:
             }
 
         verified = []
-        for hit in raw_hits:
+        seen_sources = set()
+        for hit in raw_hits[:pool_limit]:
             if not isinstance(hit, dict):
                 continue
             source = self._verified_source(hit)
@@ -444,6 +449,10 @@ class MemoryBridge:
                 continue
             if not self._database_active(source):
                 continue
+            identity = source["source_task_id"] or source["path"]
+            if identity in seen_sources:
+                continue
+            seen_sources.add(identity)
             title = hit.get("title") or Path(source["path"]).name
             verified.append(
                 {
@@ -457,6 +466,33 @@ class MemoryBridge:
                 }
             )
 
+        from .store import EventStore
+        from .reuse_scores import projection_tx
+        scores = {}
+        score_problems = []
+        if isinstance(self.store, EventStore):
+            try:
+                with self.store.read_only() as conn:
+                    if not EventStore.verify_event_chain_tx(conn)["ok"]:
+                        raise ValueError("formal reuse score event chain is invalid")
+                    scores = projection_tx(conn)
+            except (ValueError, TypeError, KeyError, OSError, sqlite3.Error) as exc:
+                score_problems = ["formal reuse scores unavailable: " + str(exc)[:240]]
+        for hit in verified:
+            item = scores.get(hit["source_task_id"], {})
+            hit["reuse_score"] = item.get("score", 0)
+            hit["last_used_at"] = item.get("last_used_at")
+        ranked = sorted(verified, key=lambda h: -h["reuse_score"])
+        selected = ranked[:main_limit]
+        remaining = ranked[main_limit:]
+        if remaining:
+            # Prefer an unseen/lowest-score matching formal experience; ties
+            # retain KnowLP relevance order. Vault-native notes are not a
+            # formal-experience exploration candidate.
+            formal = [h for h in remaining if h["source_task_id"]]
+            if formal:
+                selected.append(min(formal, key=lambda h: h["reuse_score"]))
+        verified = selected
         status = "canonical_match" if verified else "miss"
         return {
             "retrieval_status": status,
@@ -464,6 +500,7 @@ class MemoryBridge:
             "hits": verified,
             "index_sha256": index_sha,
             "verified_at": verified_at,
+            "score_problems": score_problems,
         }
 
     def retrieve_hits(self, query: str) -> List[Dict[str, Any]]:

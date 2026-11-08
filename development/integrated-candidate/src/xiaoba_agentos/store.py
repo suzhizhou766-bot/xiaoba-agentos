@@ -1601,10 +1601,13 @@ class EventStore:
                 (str(uuid.uuid4()), task_id, source_task_id, source_path, "pending", time.time()),
             ).rowcount
             if created:
-                conn.execute(
-                    "UPDATE memory_candidates SET reuse_count=reuse_count+1,updated_at=? WHERE task_id=?",
-                    (time.time(), source_task_id),
-                )
+                from .reuse_scores import is_formal
+                source = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (source_task_id,)).fetchone()
+                if not is_formal(dict(source) if source else None):
+                    conn.execute(
+                        "UPDATE memory_candidates SET reuse_count=reuse_count+1,updated_at=? WHERE task_id=?",
+                        (time.time(), source_task_id),
+                    )
                 self._append_event_tx(
                     conn, task_id, "memory.reused",
                     {"source_task_id": source_task_id, "source_path": source_path},
@@ -1661,9 +1664,12 @@ class EventStore:
                 if sources is not None and source_task_id not in sources:
                     continue
                 candidate = conn.execute(
-                    "SELECT task_id,staged_path,evidence_sha256,status FROM memory_candidates WHERE task_id=?",
+                    "SELECT * FROM memory_candidates WHERE task_id=?",
                     (source_task_id,),
                 ).fetchone()
+                from .reuse_scores import is_formal
+                if is_formal(dict(candidate) if candidate else None):
+                    continue  # Formal reuse is settled only after explicit user delivery.
                 conn.execute(
                     "UPDATE memory_reuse SET outcome=?,decided_at=? WHERE id=?",
                     (outcome, now, row["id"]),

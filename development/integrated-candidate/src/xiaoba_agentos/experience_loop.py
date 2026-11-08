@@ -152,7 +152,7 @@ def record_application(store, value):
     _safe(value)
     if any(not isinstance(value.get(k), dict) for k in ("real_task", "artifact", "conditions_checked")):
         raise ValueError("real_task/artifact/conditions_checked must be JSON objects")
-    for key in ("candidate_id", "candidate_sha256", "delivery_review_id", "application_location", "steps_applied", "deviations"):
+    for key in ("candidate_id", "candidate_sha256", "application_location", "steps_applied", "deviations"):
         _text(value.get(key), key)
     for key in ("id", "problem_key", "description", "task_type", "authorization_ref"):
         _text(value.get("real_task", {}).get(key), "real_task." + key)
@@ -161,9 +161,22 @@ def record_application(store, value):
     _text(value.get("artifact", {}).get("version"), "artifact.version")
     _application_files(value)
     application = dict(value, application_id=digest(value))
+    application.pop("formal_reuse", None)  # Server-derived classification, never caller authority.
     with store.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         _chain(conn)
+        from .reuse_scores import is_formal, source_version
+        row = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (value["candidate_id"],)).fetchone()
+        if is_formal(dict(row) if row else None):
+            source_version(conn, value)
+            if value["real_task"]["id"] == value["candidate_id"]:
+                raise ValueError("a later real task must differ from the source task")
+            application = dict(application, formal_reuse=True)
+            old = _events(conn, "memory.application_recorded", value["candidate_id"])
+            if not any(a["application_id"] == application["application_id"] for a in old):
+                store._append_event_tx(conn, value["candidate_id"], "memory.application_recorded", application)
+            return dict(application, normal_retrieval=True)
+        _text(value.get("delivery_review_id"), "delivery_review_id")
         c, approved, _, p, _ = _candidate(conn, value["candidate_id"])
         if value["real_task"]["id"] == c["task_id"]:
             raise ValueError("a later real task must differ from the candidate-authoring task")
@@ -183,7 +196,10 @@ def record_application(store, value):
 
 def validate_trial_application(conn, candidate, card):
     binding = card.get("experience_application")
-    applications = _events(conn, "memory.application_recorded", candidate["task_id"])
+    recorded = _events(conn, "memory.application_recorded", candidate["task_id"])
+    if isinstance(binding, dict) and any(a.get("formal_reuse") and a["application_id"] == binding.get("application_id") for a in recorded):
+        raise ValueError("formal reuse applications cannot enter new-candidate validation")
+    applications = [a for a in recorded if not a.get("formal_reuse")]
     if binding is None:
         if applications:
             raise ValueError("actual-task use requires an explicit trial application binding")
@@ -195,7 +211,9 @@ def validate_trial_application(conn, candidate, card):
 
 
 def application_packet(conn, candidate):
-    applications = _events(conn, "memory.application_recorded", candidate["task_id"])
+    # This packet belongs to new-candidate validation, never formal reuse.
+    applications = [a for a in _events(conn, "memory.application_recorded", candidate["task_id"])
+                    if not a.get("formal_reuse")]
     deliveries = _events(conn, "task.delivery_recorded") if applications else []
     attached = _events(conn, "memory.delivery_attached", candidate["task_id"]) if applications else []
     return {"applications": applications, "deliveries": [d for d in deliveries if any(
@@ -233,6 +251,11 @@ def external_reviews(conn, candidate_id):
 
 def attach_delivery_tx(store, conn, candidate_id, delivery_id, applications):
     """Refresh evidence when either delivery or asynchronous trial completion lands."""
+    applications = [a for a in applications if not a.get("formal_reuse")]
+    if not applications:
+        raise ValueError("formal reuse applications cannot be attached to new-candidate validation")
+    if any(not a.get("delivery_review_id") for a in applications):
+        raise ValueError("pending application is missing its initial review binding")
     from .experience_workflow import _verify_trial_qualification, extract_trial_verdict
     candidate = dict(conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (candidate_id,)).fetchone())
     technical = _verify_trial_qualification(conn, candidate)
@@ -287,7 +310,7 @@ def _application_for_trial(conn, applications, task_id):
     binding_value = card.get("experience_application") if isinstance(card, dict) else None
     if binding_value is None:
         return None
-    return next((a for a in applications if trial_binding(a) == binding_value), None)
+    return next((a for a in applications if not a.get("formal_reuse") and trial_binding(a) == binding_value), None)
 
 
 def require_application_delivery(conn, candidate, verdict):
@@ -329,6 +352,8 @@ def final_binding(conn, candidate):
         app = None
     if app is None:
         app = packet["applications"][-1]
+    if not app.get("delivery_review_id"):
+        raise ValueError("pending application is missing its initial review binding")
     deliveries = [d for d in packet["deliveries"] if d["real_task_id"] == app["real_task"]["id"]]
     delivery = deliveries[-1] if deliveries else {}
     reviews = [dict(r) for r in conn.execute("SELECT id,agent_name,status,output FROM agent_runs WHERE task_id=? ORDER BY created_at,rowid", (task_id,))] if task_id else []
@@ -361,6 +386,9 @@ def record_delivery(store, value):
         apps = [a for a in _events(conn, "memory.application_recorded") if a["real_task"]["id"] == value["real_task_id"] and a["artifact"] == value.get("artifact")]
         if not apps:
             raise ValueError("no actual applications bind this task and artifact version")
+        from .reuse_scores import settle_delivery_tx
+        formal = [a for a in apps if a.get("formal_reuse")]
+        pending = [a for a in apps if not a.get("formal_reuse")]
         for app in apps:
             if decision == "accept":
                 _application_files(app)
@@ -371,6 +399,7 @@ def record_delivery(store, value):
             return latest
         delivery = dict(value, decision=decision, input_sha256=digest(value), application_ids=app_ids)
         delivery_id = store._append_event_tx(conn, None, "task.delivery_recorded", delivery)
-        for candidate_id in sorted({a["candidate_id"] for a in apps}):
-            attach_delivery_tx(store, conn, candidate_id, delivery_id, [a for a in apps if a["candidate_id"] == candidate_id])
+        for candidate_id in sorted({a["candidate_id"] for a in pending}):
+            attach_delivery_tx(store, conn, candidate_id, delivery_id, [a for a in pending if a["candidate_id"] == candidate_id])
+        settle_delivery_tx(store, conn, delivery, delivery_id, formal)
         return dict(delivery, event_id=delivery_id)

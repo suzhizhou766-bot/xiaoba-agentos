@@ -471,6 +471,13 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
             checks["warnings"].append(f"干活分评分账本不一致：{'; '.join(task_scores.get('problems', []))}")
     except Exception as exc:
         checks["warnings"].append(f"干活分评分账本检查异常：{exc}")
+    # Card52: malformed historical score events stop all reuse scoring, but
+    # valid delivery remains possible. Report this separately from chain damage.
+    from .reuse_scores import ledger_check as reuse_ledger_check
+    reuse_scores = reuse_ledger_check(store)
+    checks["reuse_scores"] = reuse_scores
+    if not reuse_scores["ok"]:
+        checks["warnings"].append("复用分历史事件异常，本轮记分全局熔断：" + "; ".join(reuse_scores["problems"]))
     # 卡 43：doctor 只读展示节点测试失败时已脱敏的错误尾部（review-ingress 在
     # 测试记录里写好 error_tail，这里只读取既有字段）；不参与 ok 判定，不改变
     # 其它 doctor 语义。

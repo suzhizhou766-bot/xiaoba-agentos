@@ -172,6 +172,9 @@ def quarantine_pending_reuses(
         if only is not None and source_task_id not in only:
             continue
         source = store.get_memory_candidate(source_task_id)
+        from .reuse_scores import is_formal
+        if is_formal(source):
+            continue
         if not source:
             errors.append({"task_id": source_task_id, "error": "source memory database row is missing"})
             continue
@@ -193,11 +196,14 @@ def reconcile_failed_reuses(
 ) -> tuple[list, list, list]:
     """Quarantine, settle, and if necessary retire failed source memories.
 
-    只有“真的被这次任务结论引用”的命中才算一次失败复用。只是检索命中的，
-    留一条 memory.reuse_uncited 事件、保持 pending，既不隔离也不降级。
+    仅处理非正式来源：结论未引用的命中留 memory.reuse_uncited 并保持 pending。
+    正式来源已停用整个旧账路径（包括 uncited 留痕），由交付后专用事件记账。
     """
-    pending = store.memory_reuses(task_id, "pending")
-    cited = cited_source_ids(store, task_id)
+    from .reuse_scores import is_formal
+    pending = [r for r in store.memory_reuses(task_id, "pending")
+               if not is_formal(store.get_memory_candidate(str(r["source_task_id"])))]
+    pending_ids = {str(r["source_task_id"]) for r in pending}
+    cited = [s for s in cited_source_ids(store, task_id) if s in pending_ids]
     uncited = [str(item["source_task_id"]) for item in pending
                if str(item["source_task_id"]) not in cited]
     if uncited:
@@ -211,7 +217,8 @@ def reconcile_failed_reuses(
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         return [], [], [{"task_id": task_id, "error": f"reuse database settlement failed: {exc}"}]
 
-    records = store.memory_reuses(task_id, "failed")
+    records = [r for r in store.memory_reuses(task_id, "failed")
+               if not is_formal(store.get_memory_candidate(str(r["source_task_id"])))]
     affected = list(dict.fromkeys(str(item["source_task_id"]) for item in records))
     threshold = max(1, int(config.memory.get("retire_after_failed_reuses", 2)))
     bridge = MemoryBridge(config)
@@ -258,13 +265,14 @@ def reconcile_validated_reuses(
 ) -> tuple[list, list, list]:
     """Settle successful reuse and restore every validated source to the active tree.
 
-    和失败侧一样：只有这次任务结论真的引用到的经验才算一次使用。只被检索
-    命中的留一条 memory.reuse_uncited 事件、保持 pending，既不加成功复用分，
-    也不会把待复验的经验误判成已复活。
+    仅处理非正式来源；未引用的命中留 memory.reuse_uncited 并保持 pending。
+    正式来源不走旧成功计数、恢复或 uncited 留痕，历史待复验来源也不自动恢复。
     """
     errors = []
-    pending = store.memory_reuses(task_id, "pending")
-    cited = set(cited_source_ids(store, task_id))
+    from .reuse_scores import is_formal
+    pending = [r for r in store.memory_reuses(task_id, "pending")
+               if not is_formal(store.get_memory_candidate(str(r["source_task_id"])))]
+    cited = set(cited_source_ids(store, task_id)) & {str(r["source_task_id"]) for r in pending}
     uncited = [str(item["source_task_id"]) for item in pending
                if str(item["source_task_id"]) not in cited]
     if uncited:
@@ -273,7 +281,8 @@ def reconcile_validated_reuses(
         store.decide_reuse_outcomes(task_id, True, sources=cited)
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         return [], [], [{"task_id": task_id, "error": f"reuse database settlement failed: {exc}"}]
-    records = store.memory_reuses(task_id, "validated")
+    records = [r for r in store.memory_reuses(task_id, "validated")
+               if not is_formal(store.get_memory_candidate(str(r["source_task_id"])))]
     affected = list(dict.fromkeys(str(item["source_task_id"]) for item in records))
     updates = []
     bridge = MemoryBridge(config)
