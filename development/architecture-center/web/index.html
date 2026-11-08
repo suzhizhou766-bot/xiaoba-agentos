@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f8fc">
-  <meta name="description" content="小八 AgentOS 现行架构：53 节点、85 连线；线上 v1.6.7，v1.6.8 已合并未上线，2026-11-08 起暂停发版。">
+  <meta name="description" content="小八 AgentOS 现行架构：53 节点、85 连线；线上 v1.6.10，云端图谱 1644；评分中心与复用计分已上线。">
   <title>小八 AgentOS · 架构拓扑</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./editor.css">
@@ -14,13 +14,13 @@
 </head>
 <body>
   <header class="header">
-    <div class="heading"><div class="brand-mark" aria-hidden="true">八</div><div><h1>小八 AgentOS <span>架构拓扑</span></h1><p class="version-line">线上 v1.6.7 · 清单 4f6da8d3…<br>v1.6.8 已合并未上线 · 2026-11-08 起暂停发版</p></div></div>
+    <div class="heading"><div class="brand-mark" aria-hidden="true">八</div><div><h1>小八 AgentOS <span>架构拓扑</span></h1><p class="version-line">线上 v1.6.10 · 清单 1b2aa8ab…<br>2026-11-09 热修上线 · 发版已恢复</p></div></div>
     <div class="header-actions"><button id="statusToggle" class="quiet" aria-expanded="true" aria-controls="statusStrip">实现状态</button><button id="readingToggle" class="quiet" aria-pressed="false">阅读模式</button></div>
   </header>
   <div id="statusStrip" class="status-strip">
-    <span>依据：现行 topology.json，53 节点 / 85 连线；运行差异据卡 50（2026-11-08）</span>
-    <span>设计了未实现：共用工作日台账＋每日台账索引总目录、正式经验复用计分</span>
-    <span>线上评分无数据；择优仍按 dsh / peer 槽位</span>
+    <span>依据：云端图谱 1644 · 2026-11-09 同步，53 节点 / 85 连线</span>
+    <span>已上线：评分中心、正式经验复用计分、按角色与周评分择优</span>
+    <span>待实现：共用工作日台账＋每日台账索引总目录；v1.6.8 未单独上线，改动并入 v1.6.9</span>
     <span>升级发布 8 节点、评分细分 5 节点独立保留，待用户定</span>
   </div>
   <nav id="viewTabs" class="tabs" aria-label="架构视图" role="tablist"></nav>
