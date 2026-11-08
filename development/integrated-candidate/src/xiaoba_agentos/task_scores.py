@@ -51,13 +51,34 @@ def capture_pool(db, node_id, purpose):
     return {'node_id': node_id, 'source_ref': source['source_ref'], 'model': node.get('model'), 'role': role}
 
 
-def accepted(run, role):
+def requires_review_vote(db, task, snapshot):
+    """Use the host settlement context and adapters' release receipt contract.
+
+    A review-purpose run or needs_review alone also occurs in ordinary multi
+    adjudication, where no structured verdict is required.
+    """
+    from .pool_dispatch import needs_review, task_host
+    task = dict(task)
+    provenance = json.loads(task['provenance_json'] or '{}')
+    if provenance.get('kind') == 'host_review':
+        return True
+    if needs_review(task) and (snapshot.get('review_context', {}).get('host') or task_host(task)
+            or db.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='task.host_bound'",
+                          (task['id'],)).fetchone()):
+        return True
+    # The CLI adapters require this exact pair in the frozen task prompt before
+    # enforcing FINAL_ACCEPTANCE; build_release subsequently validates the votes.
+    prompt = task['prompt']
+    return 'FINAL_ACCEPTANCE: PASS' in prompt and 'FINAL_ACCEPTANCE: FAIL' in prompt
+
+
+def accepted(run, role, *, require_review_vote=False):
     from .output_hygiene import contains_non_answer_markers, detect_reasoning_leak
     body = run['output']
     if (run['status'] != 'completed' or not isinstance(body, str) or not body.strip()
             or contains_non_answer_markers(body) or detect_reasoning_leak(body)):
         return False
-    if role == 'review':
+    if role == 'review' and require_review_vote:
         from .pool_dispatch import review_vote_problem
         return not review_vote_problem(body)
     return True
@@ -103,6 +124,7 @@ def settlement_tx(db, task_id, completed, now):
     for event in db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.finished' ORDER BY sequence", (task_id,)):
         value = json.loads(event[0]); finishes[value['run_id']] = value
 
+    require_review_vote = requires_review_vote(db, task, snapshot)
     day = datetime.fromtimestamp(now, ZONE).date().isoformat()
     for (node_id, role), (pool, run) in participants.items():
         key = digest([task_id, node_id, role])
@@ -127,7 +149,7 @@ def settlement_tx(db, task_id, completed, now):
             })
             continue
 
-        qualified = accepted(run, role)
+        qualified = accepted(run, role, require_review_vote=require_review_vote)
         qualified = qualified and run['id'] in finishes
         good = completed and qualified
         value = dict(pool, task_id=task_id, task_type=snapshot.get('experience_policy', {}).get('task_type') or
