@@ -54,4 +54,31 @@ class Card51ValueTests(unittest.TestCase):
             with self.subTest(score=score), self.assertRaises(ValueError): self.value_task([score, 6])
 
 
+class Card56ReceiptFieldTests(unittest.TestCase):
+    def test_empty_fields_do_not_consume_the_next_line(self):
+        from xiaoba_agentos.value_scoring import from_body, decide
+        value = from_body("TEST", "评分: 5\n重复经验: \n证据引用: TEST evidence\n---\nTEST body")
+        self.assertIsNone(value["duplicate_of"])
+        blank_score = from_body("TEST", "评分: \n证据引用: 8\n重复经验: ")
+        self.assertIsNone(blank_score["score"])
+        with self.assertRaisesRegex(ValueError, "0–10"):
+            decide([blank_score])
+
+    def test_matching_numeric_and_duplicate_aliases_are_one_value(self):
+        from xiaoba_agentos.value_scoring import from_body
+        for header, body, expected in (("", "无", None), ("none", "null", None),
+                                       ("TEST-old", "TEST-old", "TEST-old")):
+            with self.subTest(header=header, body=body):
+                value = from_body("TEST", "评分: 8\n重复经验: " + header
+                    + "\n证据引用: TEST evidence\n---\nscore: 8.0\nduplicate_of: " + body)
+                self.assertEqual(8, value["score"])
+                self.assertEqual(expected, value["duplicate_of"])
+
+    def test_conflicting_fields_are_explicitly_rejected(self):
+        from xiaoba_agentos.value_scoring import from_body
+        for suffix, field in (("score: 7", "评分"), ("duplicate_of: TEST-other", "重复经验")):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field + ".*自相矛盾"):
+                from_body("TEST", "评分: 8\n重复经验: TEST-old\n---\n" + suffix)
+
+
 if __name__ == '__main__': unittest.main()

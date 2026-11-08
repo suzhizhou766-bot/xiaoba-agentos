@@ -646,4 +646,6 @@ class CliWorklogResource:
         value, evidence = self._turn(instruction, json.dumps(materials, ensure_ascii=False),
             kind='work', task_id=task_id, step_code=step_code, record_id=record_id)
         return {'task_id': task_id, 'step_code': step_code, 'status': value['status'],
-                'body': value['body'], 'execution_evidence': evidence, 'score_assigned': False}
+                'body': value['body'], 'metadata': value.get('metadata', {}),
+                'evidence_refs': value.get('evidence_refs', []),
+                'execution_evidence': evidence, 'score_assigned': False}

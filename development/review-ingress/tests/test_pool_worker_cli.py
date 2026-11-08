@@ -49,8 +49,12 @@ if not logpath.exists():
     logpath.write_text(header)
 meta = "任务ID: " + taskid + "\n步骤码: " + step + "\n状态: completed\n"
 if step == "REVIEW-01":
+    options_path = root / "card56-review.json"
+    options = json.loads(options_path.read_text()) if options_path.exists() else {}
     meta += ("审查结论: PASS\n证据引用: TEST fake cli receipt\n审查类型: new_experience\n"
-             "评分: 8\n适用条件: 仅测试夹具\n重复经验: \n")
+             "评分: " + str(options.get("score", 8)) + "\n适用条件: 仅测试夹具\n重复经验: "
+             + options.get("duplicate", "") + "\n")
+    body += options.get("body_fields", "")
 with logpath.open("a") as out:
     out.write("\n<!-- task:" + nonce + " -->\n" + meta + "---\n" + body + "\n<!-- done:" + nonce + " -->\n")
 print(json.dumps({"event": "result", "result": {"status": "SUCCESS"}}))
@@ -130,6 +134,104 @@ class PoolWorkerCliTests(unittest.TestCase):
         result_text = self.native.get_task(task_id)["result"] or ""
         self.assertIn("RECEIPT_BODY_FROM_", result_text)
         self.assertNotIn("完成验证", result_text)
+
+    def test_card56_header_only_vote_completes_host_and_scores_one(self):
+        import time
+        from xiaoba_agentos.cli import _submit_task
+        from xiaoba_agentos.host_completion import complete_host
+        from xiaoba_agentos.pool_dispatch import review_vote_runs
+        self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
+        task = _submit_task(self.config, self.native, "TEST card56 header vote", experience_kind="audit",
+                            host={"id": "host", "entry": "cli:host", "model": "TEST host"})
+        with patch("xiaoba_agentos.orchestrator.release_binding_status", return_value={"ok": True}):
+            self.assertEqual("awaiting_host", Orchestrator(self.config, self.native).run_once()["status"])
+        receipt = {"receipt_id": "TEST-host", "task_id": task,
+                   "snapshot_sha256": self.native.get_task(task)["execution_snapshot_hash"],
+                   "reviewer_id": "host", "verdict": "PASS", "findings": "TEST host review",
+                   "evidence_refs": ["task:" + task], "review_type": "new_experience", "score": 8,
+                   "applicability": "TEST only", "duplicate_of": None,
+                   "started_at": time.time() - 1, "finished_at": time.time()}
+        complete_host(self.config, self.native, task, receipt)
+        with self.native.read_only() as db:
+            vote = review_vote_runs(db, task)["north-node"]
+            rows = [json.loads(r[0]) for r in db.execute("SELECT data FROM ri_task_assessments")]
+            finished = json.loads(db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.finished'", (task,)).fetchone()[0])
+        for field in ("审查结论: PASS", "证据引用: TEST fake cli receipt", "审查类型: new_experience",
+                      "评分: 8", "适用条件: 仅测试夹具", "重复经验: "):
+            self.assertIn(field, vote["output"])
+        self.assertIn("---\nRECEIPT_BODY_FROM_codex", vote["output"])
+        self.assertNotIn("FINAL_ACCEPTANCE", vote["output"])
+        self.assertEqual([1], [r["points"] for r in rows])
+        self.assertTrue(rows[0]["receipt_accepted"])
+        self.assertEqual(finished["receipt_sha256"], rows[0]["receipt_sha256"])
+        self.assertTrue(self.native.verify_event_chain()["ok"])
+
+    def card56_next_value_vote(self, kind, options, host_score=5):
+        import time
+        from xiaoba_agentos.cli import _submit_task
+        (self.root / "card56-review.json").write_text(json.dumps(options))
+        task = _submit_task(self.config, self.native, "TEST card56 value " + kind,
+                            experience_kind=kind,
+                            host={"id": "host", "entry": "cli:host", "model": "TEST host"})
+        with patch("xiaoba_agentos.orchestrator.release_binding_status", return_value={"ok": True}):
+            self.assertEqual("awaiting_host", Orchestrator(self.config, self.native).run_once()["status"])
+        receipt = {"receipt_id": "TEST-host-" + task, "task_id": task,
+                   "snapshot_sha256": self.native.get_task(task)["execution_snapshot_hash"],
+                   "reviewer_id": "host", "verdict": "PASS", "findings": "TEST host review",
+                   "evidence_refs": ["task:" + task], "review_type": "new_experience", "score": host_score,
+                   "applicability": "TEST only", "duplicate_of": None,
+                   "started_at": time.time() - 1, "finished_at": time.time()}
+        return task, receipt
+
+    def test_card56_method_rule_empty_duplicate_does_not_promote_low_value(self):
+        from xiaoba_agentos.host_completion import complete_host
+        self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
+        for kind in ("method", "rule"):
+            with self.subTest(kind=kind):
+                task, receipt = self.card56_next_value_vote(kind, {"score": 5})
+                result = complete_host(self.config, self.native, task, receipt)
+                value = result["value_assessment"]
+                self.assertEqual("below_threshold", value["reason"])
+                self.assertEqual("discard", value["decision"])
+                self.assertEqual([], value["duplicate_of"])
+                self.assertIsNone(self.native.get_memory_candidate(task))
+                self.assertEqual("completed", self.native.get_task(task)["status"])
+                with self.native.read_only() as db:
+                    output = db.execute("SELECT output FROM agent_runs WHERE task_id=?", (task,)).fetchone()[0]
+                self.assertIn("重复经验: \n证据引用:", output)
+
+    def test_card56_method_rule_matching_header_body_fields_settle_normally(self):
+        from xiaoba_agentos.host_completion import complete_host
+        self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
+        for kind in ("method", "rule"):
+            for duplicate, body_duplicate, score in (("", "无", 5), ("", "无", 8),
+                                                       ("TEST-existing", "TEST-existing", 1)):
+                with self.subTest(kind=kind, duplicate=duplicate):
+                    task, receipt = self.card56_next_value_vote(kind, {
+                        "score": score, "duplicate": duplicate,
+                        "body_fields": "\nscore: " + str(float(score)) + "\nduplicate_of: " + body_duplicate}, score)
+                    value = complete_host(self.config, self.native, task, receipt)["value_assessment"]
+                    self.assertEqual("duplicate" if duplicate else "average" if score >= 6 else "below_threshold", value["reason"])
+                    self.assertEqual([duplicate] if duplicate else [], value["duplicate_of"])
+                    candidate = self.native.get_memory_candidate(task)
+                    if duplicate or score >= 6:
+                        self.assertEqual("pending_delivery_review", candidate["status"])
+                    else:
+                        self.assertIsNone(candidate)
+
+    def test_card56_method_rule_conflicting_score_or_duplicate_rolls_back(self):
+        from xiaoba_agentos.host_completion import complete_host
+        self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
+        for kind in ("method", "rule"):
+            for body, field in (("\n评分: 8", "评分"), ("\n重复经验: TEST-other", "重复经验")):
+                with self.subTest(kind=kind, field=field):
+                    task, receipt = self.card56_next_value_vote(kind, {"score": 5, "body_fields": body})
+                    with self.assertRaisesRegex(ValueError, field + ".*自相矛盾"):
+                        complete_host(self.config, self.native, task, receipt)
+                    self.assertEqual("pending", self.native.get_task(task)["status"])
+                    self.assertIsNone(self.native.get_memory_candidate(task))
+                    with self.native.read_only() as db:
+                        self.assertIsNone(db.execute("SELECT 1 FROM events WHERE task_id=? AND event_type IN ('host.receipt_accepted','memory.value_assessed','task_scoring.assessed')", (task,)).fetchone())
 
     def test_missing_receipt_does_not_complete(self):
         north = self._fake("codex")
