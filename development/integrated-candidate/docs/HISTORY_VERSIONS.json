@@ -311,6 +311,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.7；不创建备份，用户终端切换。"
+    },
+    {
+      "version": "v1.6.10",
+      "release_date": "2026-11-09",
+      "status": "candidate",
+      "summary": "热修：v1.6.9 上线后普通多节点任务在新经验候选暂存时因“新经验回执必须有唯一的0–10价值评分字段”失败（卡 51 的价值分把普通任务的节点回答当评分来源）。改为评分来源沿用卡 55 的 requires_review_vote：只有宿主审查／宿主补票／发布验收任务的池票才按审查回执取评分，普通任务无审查评分时候选按 v1.6.7 旧路径交用户初审并记 memory.value_unscored。无数据库结构变更，不新增切换步骤；前置源码清单哈希为已上线 v1.6.9 的值。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.9；不创建备份，用户终端切换。"
     }
   ]
 }
