@@ -564,12 +564,32 @@ def review_vote_runs(db: Any, task_id: str) -> Dict[str, Dict[str, Any]]:
     return votes
 
 
+# 保留已通过文件回执校验的页眉审查字段；与正文一起进入现有 output 和摘要。
+# 不复制任务身份、路径等运行资料，也不生成 FINAL_ACCEPTANCE 代替节点正文。
+REVIEW_HEADER_FIELDS = (
+    "审查结论", "结论", "verdict", "审查类型", "review_type", "评分", "score",
+    "适用条件", "适用条件与限制", "applicability", "重复经验", "与已有经验重复", "duplicate_of",
+)
+
+
+def pool_receipt_output(result: Dict[str, Any]) -> str:
+    """文件回执的审查页眉和正文只在入口合并一次，后续取证统一读取 output。"""
+    body = str(result.get("body") or "").strip()
+    metadata = result.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    header = [key + ": " + str(metadata[key]) for key in REVIEW_HEADER_FIELDS if key in metadata]
+    refs = result.get("evidence_refs")
+    if isinstance(refs, list):
+        header.extend("证据引用: " + str(ref) for ref in refs)
+    return "\n".join(header) + "\n---\n" + body if header else body
+
+
 REVIEW_VERDICT_FIELD = re.compile(
     r"(?:审查结论|结论|verdict|FINAL_ACCEPTANCE)\s*[:：]\s*(?:\*\*)?\s*(PASS|FAIL|NEEDS_INFO)")
 
 
 def review_vote_problem(text: Any) -> str:
-    """池节点这一票的正文必须能当审查回执用：非空、过 B19、写明审查结论字段。
+    """池节点这一票的完整回执（保留页眉和正文）必须能当审查回执用：非空、过 B19、写明审查结论字段。
 
     缺结论字段的正文（例如节点测试运行回显的挑战原文）不是审查回执，不能算这一票。
     """

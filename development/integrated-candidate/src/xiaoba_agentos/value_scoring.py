@@ -35,14 +35,31 @@ def from_body(reviewer_id, body):
         data = None
     if isinstance(data, dict):
         return {'reviewer_id': reviewer_id, 'score': data.get('score'), 'duplicate_of': data.get('duplicate_of')}
-    matches = re.findall(r'^\s*(?:评分|score)\s*[:：]\s*(.*?)\s*$', body or '', re.M | re.I)
-    if len(matches) != 1:
+    # 按行读取：空字段不能跨换行吞掉证据引用或正文。页眉和正文同名字段
+    # 都保留取证；按值归一后相同算一处，有分歧时不挑其中一处覆盖。
+    scores, duplicates = [], []
+    field = re.compile(r'[ \t]*(评分|score|重复经验|duplicate_of)[ \t]*[:：][ \t]*(.*?)[ \t]*', re.I)
+    for line in (body or '').splitlines():
+        match = field.fullmatch(line)
+        if not match:
+            continue
+        name, raw = match.groups()
+        if name.casefold() in {'评分', 'score'}:
+            try: value = float(raw)
+            except ValueError: value = None
+            scores.append((value, raw))
+        else:
+            duplicates.append(None if raw.casefold() in {'', '无', 'none', 'null'} else raw)
+    if not scores:
         raise ValueError('新经验回执必须有唯一的0–10价值评分字段')
-    try: score = float(matches[0])
-    except ValueError: score = None
-    dup = re.findall(r'^\s*(?:重复经验|duplicate_of)\s*[:：]\s*(.*?)\s*$', body or '', re.M | re.I)
-    duplicate = dup[0] if dup and dup[0].strip().casefold() not in {'', '无', 'none', 'null'} else None
-    return {'reviewer_id': reviewer_id, 'score': score, 'duplicate_of': duplicate}
+    score, first_raw = scores[0]
+    if any((value != score if value is not None and score is not None else raw != first_raw)
+           for value, raw in scores[1:]):
+        raise ValueError('新经验回执评分字段自相矛盾')
+    if duplicates and any(value != duplicates[0] for value in duplicates[1:]):
+        raise ValueError('新经验回执重复经验字段自相矛盾')
+    return {'reviewer_id': reviewer_id, 'score': score,
+            'duplicate_of': duplicates[0] if duplicates else None}
 
 
 def native_value(db, task_id, host_receipt=None):

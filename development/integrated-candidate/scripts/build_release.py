@@ -287,8 +287,9 @@ def pool_vote_conclusions(
 
 def _passed_verdict(text: str) -> bool:
     """这一票必须是恰好一处 FINAL_ACCEPTANCE: PASS，别处不能出现 FAIL。"""
+    from xiaoba_agentos.pool_dispatch import review_vote_problem
     verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", text, re.MULTILINE)
-    return (verdicts == ["PASS"] and not re.search(r"FINAL_ACCEPTANCE:\s*FAIL", text)
+    return (not review_vote_problem(text) and verdicts == ["PASS"] and not re.search(r"FINAL_ACCEPTANCE:\s*FAIL", text)
             and not contains_non_answer_markers(text))
 
 
@@ -350,11 +351,13 @@ def _validate_host_acceptance(
             raise RuntimeError(f"池节点结论 {run_id} 不在这个任务的运行记录里，或没有完成")
         if str(run.get("agent_name")) in LEGACY_AGENT_NAMES:
             raise RuntimeError("验收不再接受固定后台名字或备用补位")
+        from xiaoba_agentos.pool_dispatch import review_vote_problem
+        problem = review_vote_problem(run.get("output"))
         # 和两个池节点的路径同一条规则：这一票必须恰好一处 FINAL_ACCEPTANCE: PASS。
         if not _passed_verdict(str(run.get("output") or "")):
             raise RuntimeError(
                 f"池节点结论 {run_id}（{run.get('agent_name')}）不是 FINAL_ACCEPTANCE: PASS，"
-                "宿主补票不能替它算通过，构包拒收")
+                "宿主补票不能替它算通过，构包拒收" + ("：" + problem if problem else ""))
         votes.append(run)
     pool_nodes = ([gate_node(node) for node in payload.get("pool_nodes", []) if isinstance(node, dict)]
                   if isinstance(payload.get("pool_nodes"), list) else [])
@@ -541,11 +544,15 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
         if not isinstance(item, dict) or item.get("status") != "completed":
             continue
         output = str(item.get("output") or "")
+        from xiaoba_agentos.pool_dispatch import review_vote_problem
+        problem = review_vote_problem(output)
         verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", output, re.MULTILINE)
         if verdicts != ["PASS"] or re.search(r"FINAL_ACCEPTANCE:\s*FAIL", output):
             raise RuntimeError("every successful acceptance Agent must explicitly return one FINAL_ACCEPTANCE: PASS")
         if contains_non_answer_markers(output):
             raise RuntimeError("acceptance Agent output contains unexecuted tool-call markup")
+        if problem:
+            raise RuntimeError("池节点这一票不能当审查回执：" + problem)
     audit_only, candidate_status = _acceptance_candidate_binding(payload, task, snapshot, provenance)
     from xiaoba_agentos.pool_dispatch import LEGACY_AGENT_NAMES, gate_node, release_acceptance
     if completed_agents & LEGACY_AGENT_NAMES:

@@ -18,6 +18,21 @@ def today():return datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
 
 
 class FileReceiptTests(InteractiveFixture,unittest.TestCase):
+    def test_card56_both_resource_paths_preserve_review_header(self):
+        from unittest.mock import Mock
+        from xiaoba_review.resource_agy import AgyInteractiveResource
+        from xiaoba_review.resource_cli import CliWorklogResource
+        value = {"status": "completed", "body": "TEST body", "metadata": {"审查结论": "PASS"},
+                 "evidence_refs": ["TEST evidence"]}
+        for resource in (AgyInteractiveResource, CliWorklogResource):
+            with self.subTest(resource=resource.__name__):
+                fake = Mock()
+                fake._turn.return_value = (value, {"TEST": "evidence"})
+                result = resource.run_task(fake, "TEST-task", "REVIEW-01", "TEST review", {})
+                self.assertEqual(value["metadata"], result.get("metadata"))
+                self.assertEqual(value["evidence_refs"], result.get("evidence_refs"))
+                self.assertEqual(value["body"], result["body"])
+
     def test_health_card_is_only_file_io_and_not_agent_self_diagnosis(self):
         adapter,record,ticket=self.ticket()
         probe=adapter.workday.prepare(record,'TASK-PROBE','HEALTH-01','TEST file I/O only',{'challenge':'TEST'},health_only=True)

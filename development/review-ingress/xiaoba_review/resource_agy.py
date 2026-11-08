@@ -394,4 +394,5 @@ class AgyInteractiveResource:
         value,evidence=self._turn(instruction,json.dumps(materials,ensure_ascii=False),kind='work',
             task_id=task_id,step_code=step_code,record_id=task_id+'-'+step_code+('-resume%d'%attempt if attempt else ''))
         return {'task_id':task_id,'step_code':step_code,'status':value['status'],'body':value['body'],
+            'metadata':value.get('metadata',{}),'evidence_refs':value.get('evidence_refs',[]),
             'execution_evidence':evidence,'score_assigned':False}

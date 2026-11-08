@@ -1126,6 +1126,8 @@ class PoolCliAdapter(BaseAdapter):
         body = str((result or {}).get("body") or "").strip()
         if not isinstance(result, dict) or result.get("status") != "completed" or not body:
             raise PermanentAdapterError("没有写出合格回执，任务不算完成")
+        from .pool_dispatch import pool_receipt_output
+        body = pool_receipt_output(result)
         evidence = result.get("execution_evidence") if isinstance(result.get("execution_evidence"), dict) else {}
         return AgentResult(
             self.config.name,

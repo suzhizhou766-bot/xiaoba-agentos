@@ -197,6 +197,28 @@ class ReleaseAcceptanceHostVoteTests(_AcceptanceDatabaseFixture):
         self.assertEqual([], result["execution"]["author_ids"])
         self.assertEqual([], result["execution"]["executor_ids"])
 
+    def check_card56_conflict(self, host):
+        with self.assertRaisesRegex(RuntimeError, "自相矛盾"):
+            self.validate(self.database(host_settled=host,
+                pool_body="审查结论: FAIL\n---\nFINAL_ACCEPTANCE: PASS\nTEST body"))
+
+    def test_card56_host_build_rejects_header_body_conflict(self):
+        self.check_card56_conflict(True)
+
+    def test_card56_pool_build_rejects_header_body_conflict(self):
+        self.check_card56_conflict(False)
+
+    def check_card56_strict_final(self, host):
+        with self.assertRaisesRegex(RuntimeError, "FINAL_ACCEPTANCE"):
+            self.validate(self.database(host_settled=host,
+                pool_body="审查结论: PASS\n---\nTEST body"))
+
+    def test_card56_host_header_alone_never_replaces_strict_final(self):
+        self.check_card56_strict_final(True)
+
+    def test_card56_pool_header_alone_never_replaces_strict_final(self):
+        self.check_card56_strict_final(False)
+
     def test_host_fail_verdict_is_not_counted_as_a_pass(self):
         with self.assertRaisesRegex(RuntimeError, "宿主结论是 FAIL"):
             self.validate(self.database(host_verdict="FAIL"))
@@ -313,6 +335,16 @@ class PoolVoteReuseTests(unittest.TestCase):
         provenance = json.loads(self.store.get_task(task)["provenance_json"])
         self.assertEqual([vote], provenance["pool_run_ids"], "复用的是那次审查运行的 run_id")
         self.assertNotIn("challenge-only-probe-answer", self.store.get_task(task)["result"])
+
+    def test_card56_header_pass_body_fail_is_refused(self):
+        self.seed()
+        task = _submit_task(self.config, self.store, "TEST 审查", experience_kind="audit", host=self.host())
+        with patch("test_pool_dispatch._FakePoolResource.run_task", return_value={
+                "status": "completed", "body": "FINAL_ACCEPTANCE: FAIL\nTEST negative body",
+                "metadata": {"审查结论": "PASS"}, "evidence_refs": ["TEST evidence"]}):
+            self.assertEqual("awaiting_host", Orchestrator(self.config, self.store).run_once()["status"])
+        with self.assertRaisesRegex(ValueError, "自相矛盾"):
+            complete_host(self.config, self.store, task, self.receipt(task))
 
     def test_submit_declares_the_source_work_task_or_explicitly_none(self):
         self.seed()
