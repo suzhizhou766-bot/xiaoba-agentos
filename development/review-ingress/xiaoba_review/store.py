@@ -177,13 +177,29 @@ class ReviewStore:
                     digest TEXT NOT NULL, current INTEGER NOT NULL, ack_at REAL NOT NULL);
             ''')
 
+    def defer_after_commit(self, callback):
+        """Run callback after the open transaction commits; otherwise run now.
+
+        Used by workday queue writers so a rolled-back business transaction does
+        not leave sidecar queue files that point at undone receipts.
+        """
+        pending = getattr(self._file_state, 'after_commit', None)
+        if pending is not None:
+            pending.append(callback)
+            return True
+        callback()
+        return False
+
     @contextmanager
     def transaction(self):
         db = sqlite3.connect(str(self.path), timeout=30, isolation_level=None)
         db.row_factory = sqlite3.Row
         dirty=False
         previous_undo = getattr(self._file_state, 'undo', None)
+        previous_after = getattr(self._file_state, 'after_commit', None)
         self._file_state.undo = []
+        self._file_state.after_commit = []
+        callbacks = []
         try:
             db.execute('BEGIN IMMEDIATE')
             if not self.native.verify_event_chain().get('ok'):
@@ -192,6 +208,7 @@ class ReviewStore:
             yield db
             dirty=db.execute("SELECT 1 FROM events WHERE sequence>? AND event_type IN ('agent_pool.tmux_job','workday.started','workday.finished') LIMIT 1",(sequence,)).fetchone() is not None
             db.commit()
+            callbacks = list(self._file_state.after_commit)
         except BaseException:
             db.rollback()
             for path, body in reversed(self._file_state.undo):
@@ -202,7 +219,18 @@ class ReviewStore:
             raise
         finally:
             self._file_state.undo = previous_undo
+            self._file_state.after_commit = previous_after
             db.close()
+
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:
+                try:
+                    from xiaoba_agentos.workday_ledger import warn
+                    warn(self.native,'registration_failed')
+                except Exception:
+                    pass
 
         if dirty:
             try:

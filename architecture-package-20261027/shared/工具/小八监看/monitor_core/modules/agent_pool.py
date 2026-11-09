@@ -107,8 +107,13 @@ class AgentPoolModule(Module):
             # Check UI before any database initialization or route registration.
             OpenReviewModule.mount_pool(Response(200, b'<body><div id="topo"></div></body>'), self.ctx.page_token)
             native = EventStore(native_config.database_path)
-            from xiaoba_agentos.workday_ledger import configure
-            configure(native,native_config)
+            try:
+                from xiaoba_agentos.workday_ledger import configure
+                configure(native,native_config)
+            except Exception as exc:
+                # 卡 66：台账模块导入失败只告警，不拦 Agent 池挂载（DSH 观察 2）。
+                import logging
+                logging.getLogger(__name__).warning('台账模块未加载，Agent 池照常挂载：%s', type(exc).__name__)
             native.initialize()
             # 用户在 monitor.json 指定；没指定时 AGY CLI 和桌面文件通道不可用，其它功能照常。
             workspace_root = (self.ctx.config.get('agent_pool') or {}).get('workspace_root') or None

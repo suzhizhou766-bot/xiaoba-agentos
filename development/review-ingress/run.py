@@ -53,8 +53,13 @@ def main():
     runtime = native_config.runtime_dir if native_config else args.runtime.resolve()
     runtime.mkdir(parents=True, exist_ok=True)
     native = EventStore(native_config.database_path if native_config else runtime / 'agentos.sqlite3')
-    from xiaoba_agentos.workday_ledger import configure
-    configure(native,native_config)
+    try:
+        from xiaoba_agentos.workday_ledger import configure
+        configure(native,native_config)
+    except Exception as exc:
+        # 卡 66：台账模块导入失败只告警，不影响接入口挂载（DSH 观察 2）。
+        import logging
+        logging.getLogger(__name__).warning('台账模块未加载，接入口照常启动：%s', type(exc).__name__)
     native.initialize()
     store = ReviewStore(native, runtime / 'memory-outbox', args.agent_workspace_root)
     from xiaoba_review.resource_stdio import json_stdio_factory

@@ -71,6 +71,7 @@ class CliWorklogResource:
     def __init__(self, source, workspace_root=None):
         self.kind, self.source_ref = source['kind'], source['source_ref']
         self.entry, self.model = source['node']['entry'], source['node']['model']
+        self.reasoning_effort = source['node'].get('reasoning_effort')
         limit = source['node'].get('no_progress_seconds', self.no_progress_seconds)
         if type(limit) is int and limit >= 1:
             self.no_progress_seconds = limit
