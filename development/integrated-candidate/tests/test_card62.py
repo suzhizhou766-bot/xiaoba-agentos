@@ -13,8 +13,14 @@ from xiaoba_agentos.store import EventStore
 class WorkdayTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.store = EventStore(self.root/'runtime/db.sqlite'); self.store.initialize()
+        self.configure(self.store)
+
+    def configure(self, store):
+        from types import SimpleNamespace
+        from xiaoba_agentos.workday_ledger import configure
+        configure(store,SimpleNamespace(memory={'obsidian_vault':str(self.root/'assistant/vault')}))
 
     def ledger(self):
         from xiaoba_agentos.workday_ledger import WorkdayLedger
@@ -50,13 +56,16 @@ class WorkdayTests(unittest.TestCase):
         ledger.rebuild('2026-11-09')
         self.assertTrue((folder/'_索引.jsonl').read_text().strip())
 
-    def test_A3_first_output_autogenerates_and_session_checks_are_files(self):
+    def test_A3_first_output_marks_pending_read_generates_and_session_checks_are_files(self):
         ledger=self.ledger();p=self.root/'p';p.write_text('TEST')
         ledger.record(p,node='TEST',task_id=None,agent='TEST',model='TEST',kind='回执',status='done')
         from datetime import datetime
         from zoneinfo import ZoneInfo
         day=datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
         folder=self.root/'assistant/工作区'/(day+'-小八台账')
+        self.assertFalse((folder/'台账.md').exists())
+        from xiaoba_agentos.workday_ledger import read_workday
+        self.assertIn('directory',read_workday(self.store,day=day))
         self.assertTrue((folder/'台账.md').exists())
         ledger.rebuild(day,checks={'model_tasks_sent':0,'nodes':[]})
         self.assertEqual(0,json.loads((folder/'本地检测报告.json').read_text())['model_tasks_sent'])
@@ -82,6 +91,7 @@ class WorkdayTests(unittest.TestCase):
             p=self.root/str(n);p.write_text('TEST '+str(n));files.append(p)
         def write(p):
             other=EventStore(self.store.path)
+            self.configure(other)
             from xiaoba_agentos.workday_ledger import WorkdayLedger
             return WorkdayLedger(other,self.root/'assistant').record(p,node='TEST',task_id=None,agent='TEST',model='TEST',kind='回执',status='done')
         with ThreadPoolExecutor(max_workers=4) as hosts:list(hosts.map(write,files))
@@ -102,6 +112,8 @@ class WorkdayTests(unittest.TestCase):
         from zoneinfo import ZoneInfo
         day=datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
         folder=self.root/'assistant/工作区'/(day+'-小八台账')
+        from xiaoba_agentos.workday_ledger import read_workday
+        self.assertIn('directory',read_workday(self.store,day=day))
         rows=[json.loads(v) for v in (folder/'_索引.jsonl').read_text().splitlines()]
         self.assertEqual(task,rows[0]['task_id']);self.assertEqual('新经验',rows[0]['kind'])
 
@@ -130,6 +142,7 @@ class WorkdayTests(unittest.TestCase):
         ledger=self.ledger();p=self.root/'p'
         for body in ('TEST A','TEST B','TEST B','TEST A'):
             p.write_text(body);ledger.record(p,node='TEST',task_id=None,agent='TEST',model='TEST',kind='产出',status='done')
+        self.assertIn('directory',ledger.rebuild())
         with self.store.read_only() as db:
             self.assertEqual(3,db.execute("SELECT COUNT(*) FROM events WHERE event_type='workday.output_recorded'").fetchone()[0])
 

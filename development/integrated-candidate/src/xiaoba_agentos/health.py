@@ -517,5 +517,16 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
         # not ok, the enumeration is not ok) instead of masquerading as ordinary
         # pending work.
     )
+    try:
+        from .workday_ledger import workday_status
+        checks['workday']=workday_status(store,config)
+    except Exception:
+        checks['workday']={'ok':False,'message':'台账状态检查失败，业务不受影响'}
+    workday=checks['workday'] if isinstance(checks['workday'],dict) else {}
+    last=workday.get('last_warning') if isinstance(workday.get('last_warning'),dict) else {}
+    if not workday.get('ok'):
+        checks['warnings'].append(str(workday.get('message') or '台账状态异常，业务不受影响'))
+    elif last:
+        checks['warnings'].append(str(last.get('message') or '台账有告警，业务不受影响'))
     checks["ready_for_external_tasks"] = checks["ok"] and enough_agents
     return checks

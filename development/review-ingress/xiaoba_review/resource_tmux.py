@@ -126,9 +126,15 @@ class TmuxChannel:
 
     def _save(self, db, job):
         if job.get('execution_receipt') and not job.get('execution_receipt_sha256'):
-            path=Path(job['execution_receipt'])
-            if path.is_symlink() or not path.is_file():raise Conflict('执行回执路径异常')
-            job['execution_receipt_sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
+            try:
+                path=Path(job['execution_receipt'])
+                if path.is_symlink() or not path.is_file():raise ValueError('invalid view reference')
+                job['execution_receipt_sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
+            except Exception:
+                try:
+                    from xiaoba_agentos.workday_ledger import warn
+                    warn(self.store.native,'registration_failed')
+                except Exception:pass
         self.store.native._append_event_tx(db, None, EVENT, job)
 
     def workspace(self, source):

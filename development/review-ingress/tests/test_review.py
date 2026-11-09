@@ -30,7 +30,7 @@ class FixtureMixin:
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.native = EventStore(self.root / 'agentos.sqlite3')
         self.native.initialize()
         self.store = ReviewStore(self.native, self.root / 'memory-outbox')

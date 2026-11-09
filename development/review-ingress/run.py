@@ -53,8 +53,8 @@ def main():
     runtime = native_config.runtime_dir if native_config else args.runtime.resolve()
     runtime.mkdir(parents=True, exist_ok=True)
     native = EventStore(native_config.database_path if native_config else runtime / 'agentos.sqlite3')
-    native.workday_root = (Path(native_config.memory['obsidian_vault']).expanduser().parent
-                           if native_config else runtime/'workday-views')
+    from xiaoba_agentos.workday_ledger import configure
+    configure(native,native_config)
     native.initialize()
     store = ReviewStore(native, runtime / 'memory-outbox', args.agent_workspace_root)
     from xiaoba_review.resource_stdio import json_stdio_factory

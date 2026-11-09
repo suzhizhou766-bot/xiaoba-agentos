@@ -22,6 +22,9 @@ class CliFixture(fixtures.FixtureMixin):
 
     def setUp(self):
         super().setUp()
+        from types import SimpleNamespace
+        from xiaoba_agentos.workday_ledger import configure
+        configure(self.store.native,SimpleNamespace(memory={'obsidian_vault':str(self.root/'assistant/vault')}))
         self.workspaces = self.root/'workspaces';self.workspaces.mkdir()
         self.backends = BackendRegistry(self.store,
             resource_factory=lambda source:json_stdio_factory(source,self.workspaces,agy_mode='cli'))
