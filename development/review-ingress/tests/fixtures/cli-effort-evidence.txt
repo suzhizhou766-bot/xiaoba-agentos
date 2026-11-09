@@ -1,0 +1,5 @@
+qodercli --help: --reasoning-effort <level>
+qodercli invalid NOT_A_LEVEL -> "Invalid reasoning effort: NOT_A_LEVEL. Valid values are: auto, none, low, medium, high, xhigh, max, ultracode."
+qodercli -p --model Qwen3.8-Flash --reasoning-effort xhigh ... -> replied OK (Extra High = xhigh)
+codebuddy --help: --effort <level> (minimal, low, medium, high, xhigh, max)
+codebuddy -p --model deepseek-v4.1-flash --effort high ... -> replied OK

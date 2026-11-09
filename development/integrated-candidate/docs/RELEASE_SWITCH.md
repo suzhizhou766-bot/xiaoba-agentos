@@ -54,4 +54,4 @@ python3 -B PACKAGE/agentos/scripts/switch_release.py readback --old-pid OLD_PID
 
 ## 随版同步的监看中心文件
 
-v1.6.12 随版同步 `monitor_core/modules/agent_pool.py`，由本轮发版工具的 post-switch 脚本执行，不新增部署步骤或更改数据库结构。复制前须核对线上文件的钉死哈希和 BASE/导出文件哈希，任一不符即停止；只复制授权文件，复制后再次核对哈希，并只读比较仓库副本与线上32个监看运行文件。页面安装继续核对既有 before 基准，不重设基准。
+每一版随版同步的监看文件由该版发布说明列出（v1.6.12、v1.6.13 都是 `monitor_core/modules/agent_pool.py`），由本轮发版工具的 post-switch 脚本执行，不新增部署步骤或更改数据库结构。复制前须核对线上文件的钉死哈希和 BASE/导出文件哈希，任一不符即停止；只复制授权文件，复制后再次核对哈希，并只读比较仓库副本与线上32个监看运行文件。页面安装继续核对既有 before 基准，不重设基准。

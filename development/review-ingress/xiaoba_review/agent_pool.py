@@ -66,11 +66,9 @@ NODE_FIELDS = ('name', 'agent', 'entry', 'model')
 OPTIONAL_FIELDS = ('agent_type', 'no_progress_seconds', 'reasoning_effort')
 MAX_NO_PROGRESS_SECONDS = 86400
 TMUX_FIELDS = ('tmux_session', 'working_directory')
-# 卡 66：思考强度只传给已核实参数名的 CLI；取值来自各自 --help / 实测。
-REASONING_EFFORT = {
-    'qoder': frozenset({'auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'}),
-    'codebuddy': frozenset({'minimal', 'low', 'medium', 'high', 'xhigh', 'max'}),
-}
+# 卡 66：思考强度只传给已核实参数名的 CLI；白名单只在核心 gateway.CLI_REASONING_EFFORTS 声明一次。
+from xiaoba_agentos.gateway import CLI_REASONING_EFFORTS
+REASONING_EFFORT = {kind: frozenset(values) for kind, values in CLI_REASONING_EFFORTS.items()}
 
 
 def entry_identity(clean):

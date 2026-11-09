@@ -47,7 +47,13 @@ def _redact_diagnostic(value: object, limit: int = _ROUTE_DIAGNOSTIC_LIMIT) -> s
 
 # A model id, never something shaped like a CLI flag ("--tools", "-c").
 _QODER_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}")
-_QODER_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# 思考强度白名单的唯一声明点（v1.6.13 验收 Qoder 阻断 2）：Agent 池节点与 qodercli 设置读取共用。
+# 取值是各 CLI 实际接受值的子集；依据见 review-ingress/tests/fixtures/cli-effort-evidence.txt。
+CLI_REASONING_EFFORTS = {
+    "qoder": ("low", "medium", "high", "xhigh", "max"),
+    "codebuddy": ("minimal", "low", "medium", "high", "xhigh", "max"),
+}
+_QODER_EFFORTS = CLI_REASONING_EFFORTS["qoder"]
 
 
 def read_qodercli_selection(settings_path: Any) -> Dict[str, Any]:

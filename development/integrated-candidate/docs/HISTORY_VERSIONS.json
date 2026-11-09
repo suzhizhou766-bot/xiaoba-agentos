@@ -350,7 +350,7 @@
     },
     {
       "version": "v1.6.13",
-      "release_date": "2026-11-09",
+      "release_date": "2026-11-10",
       "status": "candidate",
       "summary": "Agent 池节点思考强度（卡 66）：节点新增可选字段 reasoning_effort，Qoder 传 --reasoning-effort（Extra High 为 xhigh），CodeBuddy 传 --effort；按白名单校验，纳入调用摘要；未设置的旧节点命令参数与调用摘要不变。另修卡 65 复核遗留：临时文件清理、接入口回执提交后入队、CLI 单独报告本地检查失败、台账模块导入保护、两条测试改为真实断言。无数据库结构变更，不新增切换步骤；前置源码清单哈希为已上线 v1.6.12 的值。",
       "tests": {
