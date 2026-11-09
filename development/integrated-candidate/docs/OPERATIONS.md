@@ -1,4 +1,4 @@
-# v1.6.12 运维
+# v1.6.13 运维
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
