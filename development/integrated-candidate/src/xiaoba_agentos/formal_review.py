@@ -81,7 +81,9 @@ def projection(db):
             objects[event['event_id']] = dict(v, task_id=event['event_id'], entry_type='unused_batch',
                 status='pending', created_at=event['created_at'], updated_at=event['sequence'])
         elif v.get('request_id') in objects:
-            item = objects[v['request_id']]; item['updated_at'] = event['sequence']
+            item = objects[v['request_id']]
+            if not kind.startswith(PREFIX+'dispatch_'):
+                item['updated_at'] = event['sequence']
             if kind == PREFIX+'draft_submitted': item.update(draft=v['draft'], status='awaiting_review', reviews=[], dispatch_status=None)
             elif kind == PREFIX+'dispatch_status':
                 if item.get('draft',{}).get('sha256')==v['draft_sha256']:item['dispatch_status']=v['dispatch_status']

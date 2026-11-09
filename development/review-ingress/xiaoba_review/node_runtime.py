@@ -98,15 +98,7 @@ class NodeRuntime:
                 if len(candidates)!=1:
                     questions.append({'kind':kind,'question':'请明确本次开工链路使用的已开启节点','node_ids':[v['reviewer_id'] for v in candidates]});continue
                 source=candidates[0];node=node_state(source)
-                if missing_fields(node):
-                    blockers.append({'node_id':source['reviewer_id'],'reason':'missing_configuration'});continue
-                adapter=self.backends.adapter_for(source)
-                if not getattr(adapter,'supports_workday_receipts',False):
-                    blockers.append({'node_id':source['reviewer_id'],'reason':'workday_adapter_required'});continue
                 chosen[kind]=source
-        if questions or blockers:return {'route':'ask_user' if questions else 'blocked','questions':questions,'blockers':blockers,'model_tasks_sent':0}
-        if len({independence(v) for v in chosen.values()})!=len(chosen):
-            return {'route':'blocked','blockers':[{'reason':'independent_source_required'}],'model_tasks_sent':0}
         fingerprint=digest([required_kinds,selections])
         with self.store.transaction() as db:
             old=db.execute('SELECT * FROM ri_workday_starts WHERE message_id=?',(message_id,)).fetchone()
@@ -115,24 +107,16 @@ class NodeRuntime:
                 return json.loads(old['data']) if old['data'] else {'route':'running','model_tasks_sent':0}
             db.execute('INSERT INTO ri_workday_starts VALUES (?,?,NULL)',(message_id,fingerprint))
             self.store.native._append_event_tx(db,None,'workday.started',{'message_id':message_id,'plan_digest':fingerprint})
-        session=None;results=[];error_type=None
-        try:
-            session=self.store.native.start_session('Asia/Shanghai')
-            for kind,source in chosen.items():
-                node_id=source['reviewer_id']
-                with self.store.native.read_only() as db:revision=node_state(self.store.source(db,node_id))['revision']
-                result=self.test_run(node_id,revision,'workday-'+digest([message_id,node_id])[:48])
-                results.append({'kind':kind,'node_id':node_id,'test':result})
-                if result['status']!='passed':break
-                adapter=self.backends.adapter_for(source)
-                results[-1]['worklog_initialization']=adapter.initialize_workday(result['execution_evidence'],
-                    'workday-init-'+digest([message_id,node_id])[:48])
-        except Exception as exc:error_type=type(exc).__name__
-        ready=error_type is None and len(results)==len(required_kinds) and all(v['test']['status']=='passed' and v.get('worklog_initialization') for v in results)
-        value={'route':'ready' if ready else 'blocked','session':session,'nodes':results,
-                'work_logs_initialized':ready,'automatic_retry':False,'experience_approval':False,
-                'health_scope':'selected_backend_chain_and_owned_workspaces; not production doctor'}
-        if error_type:value['error_type']=error_type
+        from xiaoba_agentos.workday_ledger import bound_ledger, WorkdayLedger, local_checks
+        session=self.store.native.start_session('Asia/Shanghai')
+        checks=local_checks(self.store.native)
+        checks['selection_questions']=questions
+        results=checks['nodes']
+        ledger=bound_ledger(self.store.native) or WorkdayLedger(self.store.native,self.store.path.parent/'workday-views')
+        rendered=ledger.rebuild(checks=checks)
+        value={'route':'ready','session':session,'nodes':results,'ledger':rendered,
+               'model_tasks_sent':0,'work_logs_initialized':False,'automatic_retry':False,
+               'experience_approval':False,'health_scope':'local_only'}
         with self.store.transaction() as db:
             db.execute('UPDATE ri_workday_starts SET data=? WHERE message_id=?',(canonical(value),message_id))
             self.store.native._append_event_tx(db,None,'workday.finished',{'message_id':message_id,'result':value})

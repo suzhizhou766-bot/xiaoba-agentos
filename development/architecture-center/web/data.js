@@ -393,7 +393,7 @@
       "g": "g1",
       "id": "backends",
       "intent": "后台 Agent 改成插件化的 Agent 池，不绑定任何品牌，DSH 也不固定。节点可随时添加、删除、开启、关闭；每个节点单独设角色：审查、分工协作，或两样都做。旧的 AGY＋DSH 固定名单退役。",
-      "issues": "代码现状：随 v1.6.9 上线（2026-11-09）：节点测试期限取掉线时限（上限 300 秒），失败时保留脱敏错误尾部，失败分类只看诊断文字；内置 WorkBuddy 引擎已退役，旧节点测试与派活返回 engine_retired；审查回执页眉里的结论、评分等字段并入核心运行记录（v1.6.9 卡 56）；发布验收可用“1 个池节点＋1 个宿主”补票\nCLI 用户在场通道（tmux）正式 8799 上还没真实派过卡，见「用户在场通道」\n换版本后节点调用摘要变化时，所有节点要在 Agent 池重新“测试运行”才派活\nCodeBuddy 2026-11-08 起账号额度异常（creditStatus unknown），v1.6.9 验收改用 Qoder",
+      "issues": "代码现状：随 v1.6.9 上线（2026-11-09）：节点测试期限取掉线时限（上限 300 秒），失败时保留脱敏错误尾部，失败分类只看诊断文字；内置 WorkBuddy 引擎已退役，旧节点测试与派活返回 engine_retired；审查回执页眉里的结论、评分等字段并入核心运行记录（v1.6.9 卡 56）；发布验收可用“1 个池节点＋1 个宿主”补票\nCLI 用户在场通道（tmux）正式 8799 上还没真实派过卡，见「用户在场通道」\n换版本后节点调用摘要变化时，所有节点要在 Agent 池重新“测试运行”才派活（v1.6.11 切换后 4 个节点已重测通过）；v1.6.11：工作日志保存瞬间的第二个链接会短暂重读，不再判永久失败；复用改动派审软失败最多自动重派一次\nCodeBuddy 2026-11-08 起账号额度异常（creditStatus unknown），v1.6.9 验收改用 Qoder",
       "note": "",
       "pending": false,
       "refs": "integrated-candidate/src/xiaoba_agentos/adapters.py\nreview-ingress/xiaoba_review/agent_pool.py\nreview-ingress/AGENT_POOL.md\nreview-ingress/xiaoba_review/resource_tmux.py",
@@ -509,6 +509,12 @@
           "at": 1794174079870,
           "by": "agent",
           "text": "整理「后台执行适配器 · Agent 池」：v1.6.9／v1.6.10 于 2026-11-09 切换上线，按实际情况更新问题与待办"
+        },
+        {
+          "agent": "Claude",
+          "at": 1794198780869,
+          "by": "agent",
+          "text": "按 v1.6.11 上线（2026-11-09）更新"
         }
       ]
     },
@@ -751,7 +757,7 @@
       "g": "g2",
       "id": "candidate",
       "intent": "产生新经验候选后，交审查员打分（0–10 分），由评分中心根据分数决定是否值得进入用户初审。值得 → 用户初审；不值得 → 丢弃（不进用户队列、不留正文，事件链只留摘要和各审查员分数）；与已有经验重复 → 提交用户初审，由用户决定留哪条。审查员之间分歧大时，交用户初审，分歧原样带上。",
-      "issues": "代码现状：随 v1.6.9／v1.6.10 上线：有审查评分来源的任务（宿主审查／宿主补票／发布验收）按审查员 0–10 分判定：均分 ≥6 进初审、<6 丢弃只留摘要和分数、分差 ≥4 或重复直接初审；普通任务没有审查评分，候选带 memory.value_unscored 照旧进初审",
+      "issues": "代码现状：随 v1.6.9／v1.6.10 上线：有审查评分来源的任务（宿主审查／宿主补票／发布验收）按审查员 0–10 分判定：均分 ≥6 进初审、<6 丢弃只留摘要和分数、分差 ≥4 或重复直接初审；普通任务没有审查评分，候选带 memory.value_unscored 照旧进初审；v1.6.11 起发布验收按快照里的显式标记 review_context.release_acceptance 识别（构包要求为 true），value_unscored 记录真实原因（无评分来源／分类不适用／mock／宿主草稿／尚无审查回执）",
       "note": "",
       "pending": false,
       "refs": "memory-candidate-create",
@@ -835,6 +841,12 @@
           "at": 1794174079870,
           "by": "agent",
           "text": "整理「新经验候选」：v1.6.9／v1.6.10 于 2026-11-09 切换上线，按实际情况更新问题与待办"
+        },
+        {
+          "agent": "Claude",
+          "at": 1794198780869,
+          "by": "agent",
+          "text": "按 v1.6.11 上线（2026-11-09）更新"
         }
       ]
     },
@@ -1052,7 +1064,7 @@
       "g": "g2",
       "id": "evidence",
       "intent": "评分集中在本节点，因为它持有基础模型评分库（私人助理/工具/模型综合数据），是 Agent＋模型干活评分和正式经验复用计分的共同底座。\n① Agent＋模型干活评分：依据小八上班后在工作区产出的「统一回执入口」回执；宿主核实后做得好 +1、不好 0，按 Agent＋模型＋角色（审查 / 协作）和自然周汇总，同时显示任务数和成功率；不合格回执不计分；不记资源投入；宿主独自完成、无节点参与的任务不计分。宿主读取本节点数据，自行判断选用哪几个审查员 / 协作员。\n② 正式经验复用计分：由「复用计分」计数后存入本节点，只有晋升（原样好用且交付 +1；改过或不适用记 0，不扣分），经验保留永久总分，为正式经验的检索排序服务。",
-      "issues": "代码现状：随 v1.6.9／v1.6.10 上线（2026-11-09）：干活分在任务结算时自动记（回执被接收且任务完成 +1，否则 0），按 Agent＋配置模型＋角色和自然周汇总，旁列样本数与成功率；择优改为按角色，第一位给周分最高，第二位留给近 4 周样本少于 3 的节点；价值分判定线已接通，只对宿主审查／宿主补票／发布验收任务的池票取评分，普通任务无评分时候选带 memory.value_unscored 按旧路径进初审（v1.6.10 热修）；复用分见「复用计分」\n遗留：没有“因系统缺陷作废样本”的更正方式（v1.6.9 失败任务 3e5514f5 的三条 0 分改不了）；检索热路径每次全表扫描事件，待加索引",
+      "issues": "代码现状：随 v1.6.9／v1.6.10 上线（2026-11-09）：干活分在任务结算时自动记（回执被接收且任务完成 +1，否则 0），按 Agent＋配置模型＋角色和自然周汇总，旁列样本数与成功率；择优改为按角色，第一位给周分最高，第二位留给近 4 周样本少于 3 的节点；价值分判定线已接通，只对宿主审查／宿主补票／发布验收任务的池票取评分，普通任务无评分时候选带 memory.value_unscored 按旧路径进初审（v1.6.10 热修）；复用分见「复用计分」\nv1.6.11（2026-11-09）：更正接口新增作废（outcome=void，须写原因和证据），作废样本不计周分、样本数、成功率和择优，不能借作废把失败改成 +1，作废后不可恢复；3e5514f5 的三条 0 分已作废。遗留：检索热路径每次全表扫描事件，待加索引",
       "note": "",
       "pending": false,
       "refs": "私人助理/工具/模型综合数据\nreview-ingress/xiaoba_review/task_scoring.py\nreview-ingress/xiaoba_review/node_runtime.py:256（择优）",
@@ -1172,6 +1184,12 @@
           "at": 1794174079870,
           "by": "agent",
           "text": "整理「评分中心」：v1.6.9／v1.6.10 于 2026-11-09 切换上线，按实际情况更新状态与问题与待办"
+        },
+        {
+          "agent": "Claude",
+          "at": 1794198780869,
+          "by": "agent",
+          "text": "按 v1.6.11 上线（2026-11-09）更新"
         }
       ]
     },
@@ -3428,14 +3446,16 @@
     }
   ]
 };
-  const source={"file":"工作区/小八架构拓扑/topology.json","sha256":"6cb28141e27d7c909f0a26e8ba3b1d3c9274b381dc312626039acfbe140a511a","savedAt":1794174079870,"version":1,"cloudVersion":1644,"nodes":53,"edges":85};
-  const statuses={done:['已上线','current'],dev:['候选已开发','developed'],todo:['待实现','planned'],pending:['待用户裁定','pending'],old:['旧执行链','neutral']};
+  const source={"file":"docs/architecture-topology/topology.json","sha256":"f889e206096566f1f86b5db3405a20a0ac92e22e6880b8a4a7bafdb84f7e027a","savedAt":1794198780869,"version":1,"cloudVersion":1645,"nodes":53,"edges":85};
+  const release={version:"v1.6.11",date:"2026-11-09",note:"正式上线 · 发版已恢复"};
+  const statuses={done:['已上线','current'],dev:['候选已开发','developed'],todo:['待实现','planned'],pending:['待用户裁定','pending'],decide:['待用户裁定','pending'],old:['旧执行链','neutral']};
   const observations={
   "workday": "现行图谱 · 2026-11-09：共用工作日台账的每日索引、总目录、接续清单仍待实现；下一批从数据库生成台账视图。",
-  "evidence": "现行图谱 · 2026-11-09：评分中心已上线。v1.6.9 接通任务自动干活分、按角色择优及价值分预筛；v1.6.10 修复普通任务无审查评分时的候选路径。误记 0 分样本更正与检索事件索引仍为遗留。",
+  "evidence": "现行图谱 · 2026-11-09：评分中心已上线。v1.6.9 接通任务自动干活分、按角色择优及价值分预筛；v1.6.10 修复普通任务无审查评分时的候选路径。v1.6.11 已新增样本作废，更正须有原因与证据；作废样本不计分、不计样本数和成功率，也不参与择优，且不可恢复。检索事件索引仍待实现。",
   "nf2evuw": "现行图谱 · 2026-11-09：复用计分已上线。正式经验原样好用且交付 +1；改动或不适用记 0。复用改动终审与长期未用确认已接通，首次到期预计 2026-11-23 前后。",
-  "worker": "现行状态 · 2026-11-09：线上 v1.6.10；v1.6.9 已包含原 v1.6.8 的宿主补票等改动。图谱原文的旧排期待办保留于下方，较新的 Agent 池／评分中心待办与本次上线记录优先。",
-  "backends": "现行图谱 · 2026-11-09：v1.6.9 已接通节点诊断、内置 WorkBuddy 引擎退役、审查回执字段入库及发布验收宿主补票。用户在场通道的生产派卡仍未实测。",
+  "worker": `现行状态 · 2026-11-09：线上 ${release.version}；v1.6.9 已包含原 v1.6.8 的宿主补票等改动。图谱原文的旧排期待办保留于下方，较新的 Agent 池／评分中心待办与本次上线记录优先。`,
+  "backends": "现行图谱 · 2026-11-09：v1.6.11 切换后 4 个节点已重测通过；日志保存瞬间的链接重读与复用改动派审软失败重派已接通。用户在场通道的生产派卡仍未实测。",
+  "candidate": "现行图谱 · 2026-11-09：v1.6.11 以快照中的 review_context.release_acceptance 显式标记识别发布验收，并为 value_unscored 记录真实原因。",
   "formal": "现行图谱 · 2026-11-09：正式经验按相关性筛选后按复用分排序，并给新入库／低分经验留位；合并机制仍未实现。",
   "monitor": "现行图谱 · 2026-11-09：裁决中心已接通序号角标、重复退回阻断、复用改动终审及长期未用确认；其它监看能力按各节点问题待办判断。"
 };
@@ -3541,13 +3561,13 @@
   }
 };
   for(const [id,fact] of Object.entries(retained)){
-    facts[id]={...fact,status:'待用户定',kind:'pending',source:'旧站点保留视图',summary:'待用户定 · '+fact.summary,rules:['此节点不在现行 53 节点图谱内，保留展示，是否纳入现行架构由用户决定。','线上已恢复发版并更新到 v1.6.10；v1.6.8 未单独上线，改动并入 v1.6.9。本页面不执行生产切换。',...fact.rules]};
+    facts[id]={...fact,status:'待用户定',kind:'pending',source:'旧站点保留视图',summary:'待用户定 · '+fact.summary,rules:['此节点不在现行 53 节点图谱内，保留展示，是否纳入现行架构由用户决定。',`线上已恢复发版并更新到 ${release.version}；v1.6.8 未单独上线，改动并入 v1.6.9。本页面不执行生产切换。`,...fact.rules]};
   }
   const scoring={
     filter:['按条件与授权筛选','宿主核对任务授权、节点角色、测试资格与经验适用条件。',['价值分用于新经验预筛：每位审查员 0–10 分；分差 ≥4 优先提交用户，均分 ≥6 进入初审；重复经验交用户决定。','至少两份合格回执才判定，预筛通过不等于用户批准。']],
     rank:['排序与宿主选择','宿主读取周评分选节点；正式经验先匹配相关性，再按永久复用分排序。',['Agent＋模型＋角色只按自然周，不设永久能力总分。','正式经验原样好用且交付 +1，永久累计；改过或不适用记 0、不扣分，并送终审。','现行图谱：v1.6.9 已按角色及周评分择优，并保留低样本节点名额。']],
     score:['干活分与评分三本账','价值分 0–10、干活分每任务 +1 / 0、正式经验复用分 +1，三本账分开。',['干活分：宿主核实后做得好 +1、不好 0，按 Agent＋模型＋角色和自然周汇总，旁列任务数与成功率；不记资源投入。','不合格回执不计分；宿主独自完成、没有节点参与的任务不计分。','现行图谱：v1.6.9／v1.6.10 已接通干活分、价值分预筛和正式经验复用分；普通任务无审查评分时走原初审路径。']],
-    history:['周表现与正式经验累计记录','节点干活分按周观察；正式经验复用分保留永久总分。',['不把两类评分合成一个永久能力分。','明细在当天台账，SQLite 与事件链为准，汇总导出到模型综合数据。','现行图谱：评分已接通；共用台账与总目录仍待实现，误记 0 分样本更正仍为遗留。']],
+    history:['周表现与正式经验累计记录','节点干活分按周观察；正式经验复用分保留永久总分。',['不把两类评分合成一个永久能力分。','明细在当天台账，SQLite 与事件链为准，汇总导出到模型综合数据。','现行图谱：评分已接通；共用台账与总目录仍待实现；v1.6.11 已提供有原因和证据的样本作废，作废后不可恢复。']],
     memory:['索引与第二大脑长期记忆','用户终审通过的经验供后续检索，命中后回读原文。',['检索和阅读不算复用；实际登记应用，原样好用且交付后才 +1。','待验证经验与正式经验分开；价值预筛、干活分、正式经验复用分互不混记。','现行图谱：v1.6.9 已实现相关性筛选后按复用分排序，并保留新入库／低分名额。']]
   };
   for(const [id,[title,summary,rules]] of Object.entries(scoring))facts[id]={id,title,summary,status:'待用户定',kind:'pending',source:'旧站点评分细分节点',rules:['保留展示，是否保留为独立节点待用户定；文字按现行评分中心口径。',...rules],links:[]};
@@ -3563,7 +3583,7 @@
     }
     return {id,title,subtitle:note,w:1300,h:y+10,groups,nodes,edges:viewEdges,note};
   }
-  const note='图谱状态按原文保留：已上线只指基础能力；新意图与实现缺口见节点详情。候选已开发不代表整条链路已上线。';
+  const note=`当前线上 ${release.version}。图谱状态按原文保留：已上线指已有基础能力；新意图与实现缺口见节点详情。候选已开发指已有候选代码、尚未上线；待实现指设计已有、代码未实现；待用户裁定指尚未定案。`;
   const views=[layout('overview','现行完整图谱 · 53 节点 / 85 连线',topology.groups.map(g=>({title:g.title,ids:topology.nodes.filter(n=>n.g===g.id).map(n=>n.id)})),edges,note)];
   const viewIds=['execution','experience','validation','review','foundation'];
   for(const [index,group] of topology.groups.entries()){
@@ -3575,6 +3595,6 @@
   }
   views.push(layout('scoring','评分细分 · 待用户定',[{title:'现行图谱 · 三本账与输入输出',ids:['evidence','candidate','workday','nf2evuw','formal','archive']},{title:'旧站点 5 个细分节点 · 保留展示，待用户定',ids:Object.keys(scoring)}],edges.filter(e=>['evidence','candidate','workday','nf2evuw','formal','archive'].includes(e.from)&&['evidence','candidate','workday','nf2evuw','formal','archive'].includes(e.to)),'现行图谱：评分中心与复用计分已上线；细分节点仍保留待用户定，展示不增加图谱节点或连线。'));
   const upgradeIds=Object.keys(retained);
-  views.push(layout('upgrade','升级发布中心 · 待用户定',[{title:'旧站点 8 个节点 · 独立保留，不并入现行图谱',ids:upgradeIds}],upgradeIds.slice(0,-1).map((from,i)=>({from,to:upgradeIds[i+1],label:'历史流程 · 待用户定',tone:'feedback',kind:'retained'})),'软件发版与生产切换不在现行图谱内。原 8 个节点单独保留，是否继续保留由用户定；线上已恢复发版，当前 v1.6.10。此视图只展示。'));
-  window.XIAOBA_ARCHITECTURE={date:'2026-11-09',revision:'云端图谱 1644 · 线上 v1.6.10',source,topology,facts,views};
+  views.push(layout('upgrade','升级发布中心 · 待用户定',[{title:'旧站点 8 个节点 · 独立保留，不并入现行图谱',ids:upgradeIds}],upgradeIds.slice(0,-1).map((from,i)=>({from,to:upgradeIds[i+1],label:'历史流程 · 待用户定',tone:'feedback',kind:'retained'})),`软件发版与生产切换不在现行图谱内。原 8 个节点单独保留，是否继续保留由用户定；线上已恢复发版，当前 ${release.version}。此视图只展示。`));
+  window.XIAOBA_ARCHITECTURE={date:release.date,revision:`云端图谱 ${source.cloudVersion} · 线上 ${release.version}`,release,statuses,statusNote:note,source,topology,facts,views};
 })();

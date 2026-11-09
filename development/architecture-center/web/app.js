@@ -8,6 +8,10 @@
   const remembered={};
   const text=(tag,value,parent,className)=>{const e=document.createElement(tag);if(value!==undefined)e.textContent=value;if(className)e.className=className;if(parent)parent.append(e);return e;};
   const button=(title,fn,parent)=>{const b=text('button',title,parent);b.type='button';b.addEventListener('click',fn);return b;};
+  $('versionLine').replaceChildren(document.createTextNode('线上 '+data.release.version),document.createElement('br'),document.createTextNode(data.release.date+' '+data.release.note));
+  $('sourceLine').textContent='依据：云端图谱 '+data.source.cloudVersion+' · '+data.date+' 同步，'+data.source.nodes+' 节点 / '+data.source.edges+' 连线';
+  $('liveLegend').textContent=data.statuses.done[0]+'（'+data.release.version+' 基础能力）';
+  document.querySelector('meta[name="description"]').content='小八 AgentOS 现行架构：'+data.source.nodes+' 节点、'+data.source.edges+' 连线；线上 '+data.release.version+'，云端图谱 '+data.source.cloudVersion+'；评分中心与复用计分已上线。';
   function remember(){try{localStorage.setItem('xiaoba-architecture-view',JSON.stringify({view:view.id,reading}));}catch{}}
   function announce(value){$('announcement').textContent=value;}
   function transform(){world.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;$('zoomLevel').value=Math.round(scale*100)+'%';remembered[view.id]={scale,tx,ty};}
@@ -23,8 +27,8 @@
     selected=id;const fact=data.facts[id];$('detail').hidden=false;$('detailEyebrow').textContent=view.title;$('detailTitle').textContent=fact.title;
     $('detailStatus').replaceChildren();text('span',fact.status,$('detailStatus'),'badge '+fact.kind);
     $('detailDescription').textContent=fact.summary;$('detailSections').replaceChildren();
-    detailSection('依据与状态口径',fact.source==='topology.json'?'来自现行 topology.json。状态照图谱原文保留；已上线仅指基础能力，新意图是否实现须结合下方现行图谱问题待办与上线说明。':'旧站点保留展示，是否纳入现行图谱待用户定。');
-    detailSection('现行图谱与上线说明 · 2026-11-09',fact.observation,'implementation-gap');
+    detailSection('依据与状态口径',fact.source==='topology.json'?'来自 '+data.source.file+'。'+data.statusNote:'旧站点保留展示，是否纳入现行图谱待用户定。');
+    detailSection('现行图谱与上线说明 · '+data.date,fact.observation,'implementation-gap');
     detailSection('专业说明',fact.description);
     detailSection('问题与待办 · 图谱原文',fact.issues,'implementation-gap');
     detailSection('备注',fact.note);

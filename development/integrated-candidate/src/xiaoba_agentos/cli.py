@@ -375,6 +375,9 @@ def _load(path: str, initialize: bool = True) -> tuple:
     store = EventStore(config.database_path)
     if initialize:
         store.initialize()
+        # Configure the destination without writing an event on read/rejected
+        # commands. The first successful render records the binding durably.
+        store.workday_root = Path(config.memory['obsidian_vault']).expanduser().parent
     return config, store
 
 
@@ -1251,6 +1254,13 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--entity-root", type=Path, help="仅候选只读验收：显式共享实体根（默认核验正式部署位置；执行入口不接受该参数）")
     session_start = sub.add_parser("session-start")
     session_start.add_argument("--timezone", default="Asia/Shanghai")
+    ledger_rebuild = sub.add_parser('workday-rebuild', help='从 SQLite 重建共用工作日台账')
+    ledger_rebuild.add_argument('--day')
+    ledger_record = sub.add_parser('workday-record', help='登记原产物路径与哈希并生成台账')
+    ledger_record.add_argument('path', type=Path)
+    ledger_record.add_argument('--task-id')
+    for field in ('node','agent','model','kind','status'):
+        ledger_record.add_argument('--'+field, required=True)
     task_resume = sub.add_parser("task-resume")
     task_resume.add_argument("task_id")
     task_resume.add_argument("--freeze-hash", required=True)
@@ -1657,6 +1667,18 @@ def main(argv: Optional[list] = None) -> int:
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
             _print({"status": "blocked", "error": str(exc)}, True)
             return 1
+    if args.command in {'workday-rebuild','workday-record'}:
+        from .workday_ledger import bound_ledger
+        try:
+            ledger=bound_ledger(store)
+            if args.command=='workday-rebuild':result=ledger.rebuild(args.day)
+            else:result=ledger.record(args.path,node=args.node,task_id=args.task_id,agent=args.agent,
+                                     model=args.model,kind=args.kind,status=args.status)
+            _print(result,True)
+            return 0
+        except (OSError,ValueError) as exc:
+            _print({'status':'blocked','error':str(exc)},True)
+            return 1
     if args.command == "init":
         _secure_directory(config.runtime_dir)
         _secure_directory(config.runtime_dir / "logs")
@@ -1684,6 +1706,9 @@ def main(argv: Optional[list] = None) -> int:
             _print({"status": "blocked", "error": str(exc)}, True)
             return 2
         probe = start_session_health(config, store)
+        from .workday_ledger import bound_ledger, WorkdayLedger, local_checks
+        ledger = bound_ledger(store) or WorkdayLedger(store, config.runtime_dir/'workday-views')
+        workday = ledger.rebuild(checks=dict(local_checks(store),doctor_ok=True))
         notifications = store.pending_notifications(acknowledge=True)
         # A pending manual review must reach the user even on a fully successful
         # session start, so the reminder rides along with the success payload.  The
@@ -1694,6 +1719,7 @@ def main(argv: Optional[list] = None) -> int:
             {
                 "status": "ready" if probe["ok"] else probe["session_mode"],
                 "session": session,
+                "workday": workday,
                 "doctor_ok": True,
                 "live_probe": probe,
                 "notifications": notifications,

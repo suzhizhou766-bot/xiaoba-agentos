@@ -14,6 +14,20 @@ from xiaoba_review.store import Conflict
 
 
 class TmuxTests(fixtures.FixtureMixin, unittest.TestCase):
+    def test_card62_attended_card_and_receipt_are_database_ledger_references(self):
+        from xiaoba_agentos.workday_ledger import WorkdayLedger
+        import hashlib
+        ledger=WorkdayLedger(self.store.native,self.root/'assistant')
+        value=self.submit();rendered=ledger.rebuild()
+        folder=Path(rendered['directory'])
+        rows=[json.loads(v) for v in (folder/'_索引.jsonl').read_text().splitlines()]
+        self.assertTrue(any(r['path']==value['task_card'] for r in rows))
+        self.receipt();self.pool.tmux.collect();rendered=ledger.rebuild()
+        job=self.job();rows=[json.loads(v) for v in (folder/'_索引.jsonl').read_text().splitlines()]
+        row=next(r for r in rows if r['path']==job['execution_receipt'])
+        self.assertEqual(hashlib.sha256(Path(row['path']).read_bytes()).hexdigest(),row['sha256'])
+        self.assertEqual('TEST CLI',row['agent']);self.assertEqual('TEST-model',row['model'])
+
     def setUp(self):
         super().setUp()
         self.root = self.root.resolve()

@@ -33,6 +33,7 @@ class AgentWorkspace:
         self.directory=source['node'].get('workspace_name') or self.name
         self.owner={'schema':'xiaoba-agent-workspace-v1','node_id':self.node_id,
                     'source_ref':self.source_ref,'name':self.name}
+        self.on_receipt = None
 
     @property
     def path(self):
@@ -283,4 +284,7 @@ class AgentWorkspace:
         else:self._new(receipt,body)
         self._append({'event':'task_finished','record':record,'status':status,'receipt':receipt.name,
                       'receipt_sha256':checksum(body),'experience_approval':False})
+        if self.on_receipt:
+            card=json.loads(self._read(directory/'任务卡.json'))
+            self.on_receipt(receipt,card,evidence or {},status)
         return str(receipt)

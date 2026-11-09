@@ -217,6 +217,7 @@ class EventStore:
 
     def __init__(self, path: Path):
         self.path = path
+        self.workday_root = None
 
     def _secure_permissions(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -249,15 +250,18 @@ class EventStore:
                     raise
 
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
+    def connect(self, *, refresh_views: bool = True) -> Iterator[sqlite3.Connection]:
         self._secure_permissions()
         conn = sqlite3.connect(str(self.path), timeout=30)
         self._secure_permissions()
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA journal_mode=WAL")
+        has_events = conn.execute("SELECT 1 FROM sqlite_master WHERE name='events'").fetchone()
+        before_sequence = conn.execute('SELECT COALESCE(MAX(sequence),0) FROM events').fetchone()[0] if has_events else 0
         try:
             yield conn
+            changed = conn.total_changes > 0
             conn.commit()
         except Exception:
             conn.rollback()
@@ -265,6 +269,9 @@ class EventStore:
         finally:
             conn.close()
             self._secure_permissions()
+        if changed and refresh_views:
+            from .workday_ledger import refresh_after_write
+            refresh_after_write(self, before_sequence)
 
     @contextmanager
     def read_only(self) -> Iterator[sqlite3.Connection]:
@@ -686,6 +693,9 @@ class EventStore:
         if not conn.in_transaction:
             conn.execute("BEGIN IMMEDIATE")
         now = time.time()
+        if task_id and event_type == 'memory.candidate_staged':
+            candidate = conn.execute('SELECT staged_path FROM memory_candidates WHERE task_id=?',(task_id,)).fetchone()
+            if candidate:payload = dict(payload, staged_path=candidate[0])
         row = conn.execute("SELECT event_hash FROM events ORDER BY sequence DESC LIMIT 1").fetchone()
         prev_hash = row[0] if row else "0" * 64
         event_id = str(uuid.uuid4())
@@ -1608,9 +1618,11 @@ class EventStore:
                         "UPDATE memory_candidates SET reuse_count=reuse_count+1,updated_at=? WHERE task_id=?",
                         (time.time(), source_task_id),
                     )
+                path=Path(source_path)
+                source_sha256=hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() and not path.is_symlink() else None
                 self._append_event_tx(
                     conn, task_id, "memory.reused",
-                    {"source_task_id": source_task_id, "source_path": source_path},
+                    {"source_task_id": source_task_id, "source_path": source_path, "source_sha256":source_sha256},
                 )
 
     def memory_reuses(self, task_id: str, outcome: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -2065,6 +2077,12 @@ class EventStore:
                 (run_id, task_id, agent_name, "running", time.time()),
             )
             payload = {"agent": agent_name, "run_id": run_id}
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name='ri_sources'").fetchone():
+                source = conn.execute('SELECT data FROM ri_sources WHERE id=?',(agent_name,)).fetchone()
+                if source:
+                    node = json.loads(source[0]).get('node') or {}
+                    payload['workday_identity'] = {'agent':node.get('agent') or agent_name,
+                                                   'model':(metadata or {}).get('configured_model') or node.get('model') or '未记录'}
             if metadata:
                 from .task_scores import capture_pool
                 execution = dict(metadata)
@@ -2096,11 +2114,16 @@ class EventStore:
                 "UPDATE agent_runs SET status=?,output=?,error=?,failure_class=?,latency_ms=?,finished_at=? WHERE id=?",
                 (status, output, error, failure_class, latency_ms, time.time(), run_id),
             )
+            receipt_path = self.path.parent / 'receipts' / row['task_id'] / (run_id+'.json')
+            receipt_reference = {}
+            if receipt_path.is_file() and not receipt_path.is_symlink():
+                receipt_reference = {'receipt_path':str(receipt_path),
+                                     'receipt_file_sha256':hashlib.sha256(receipt_path.read_bytes()).hexdigest()}
             self._append_event_tx(
                 conn,
                 row["task_id"],
                 "agent.finished",
-                {"agent": row["agent_name"], "run_id": run_id, "status": status, "latency_ms": latency_ms,
+                {"agent": row["agent_name"], "run_id": run_id, "status": status, "latency_ms": latency_ms, **receipt_reference,
                  "receipt_sha256": hashlib.sha256(
                      json.dumps({'output':output,'status':status},ensure_ascii=False,sort_keys=True,
                                 separators=(',',':'),allow_nan=False).encode()).hexdigest()},
@@ -2247,11 +2270,14 @@ class EventStore:
         assessment = native_value(conn, task_id, reason_out=reasons)
         record_tx(conn, task_id, assessment)
         if assessment is None:
-            if not conn.execute(
-                "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_unscored'", (task_id,)
-            ).fetchone():
+            previous = conn.execute(
+                "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_unscored' ORDER BY sequence DESC LIMIT 1", (task_id,)
+            ).fetchone()
+            previous_reason = json.loads(previous[0]).get('reason') if previous else None
+            reason = reasons[0] if reasons else 'no_scoring_source'
+            if previous_reason != reason:
                 self._append_event_tx(conn, task_id, 'memory.value_unscored', {
-                    'reason': reasons[0] if reasons else 'no_scoring_source'})
+                    'reason': reason, 'previous_reason': previous_reason})
         if assessment and assessment['decision'] == 'discard':
             if repaired:
                 # An immutable completion already binds the original result hash.
@@ -2331,9 +2357,8 @@ class EventStore:
                 (result, _canonical(provenance), now, task_id),
             )
             admitted = self._insert_candidate_tx(conn, task_id, staged_path, evidence_sha256, source_task_ids, now)
-            if not admitted:
-                final = conn.execute('SELECT result FROM tasks WHERE id=?', (task_id,)).fetchone()[0]
-                result_sha256 = hashlib.sha256(final.encode()).hexdigest()
+            final = conn.execute('SELECT result FROM tasks WHERE id=?', (task_id,)).fetchone()[0]
+            result_sha256 = hashlib.sha256(final.encode()).hexdigest()
             self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_sha256})
             if admitted:
                 self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
@@ -2887,16 +2912,20 @@ class EventStore:
                 )
             ]
 
-    def pending_notifications(self, acknowledge: bool = False) -> List[Dict[str, Any]]:
-        now = time.time()
-        with self.connect() as conn:
-            rows = conn.execute(
+    @staticmethod
+    def _pending_notifications_tx(conn):
+        return conn.execute(
                 """SELECT n.* FROM notifications n WHERE n.status='pending'
                    AND NOT (n.kind='task.recovery_blocked' AND EXISTS (
                      SELECT 1 FROM events e WHERE e.task_id=n.task_id
                      AND e.event_type IN ('task.abandoned','task.cancelled')))
                    ORDER BY n.created_at"""
-            ).fetchall()
+        ).fetchall()
+
+    def pending_notifications(self, acknowledge: bool = False) -> List[Dict[str, Any]]:
+        now = time.time()
+        with self.connect() as conn:
+            rows = self._pending_notifications_tx(conn)
             result = []
             for row in rows:
                 item = dict(row)
@@ -2991,12 +3020,7 @@ class EventStore:
                 "routes": route_counts,
                 "memory_candidates": memory_counts,
                 "repairs": repair_counts,
-                "pending_notifications": conn.execute(
-                    """SELECT COUNT(*) FROM notifications n WHERE n.status='pending'
-                       AND NOT (n.kind='task.recovery_blocked' AND EXISTS (
-                         SELECT 1 FROM events e WHERE e.task_id=n.task_id
-                         AND e.event_type IN ('task.abandoned','task.cancelled')))"""
-                ).fetchone()[0],
+                "pending_notifications": len(self._pending_notifications_tx(conn)),
                 "pending_constraint_holds": conn.execute(
                     "SELECT COUNT(*) FROM constraint_holds WHERE status='pending'"
                 ).fetchone()[0],
