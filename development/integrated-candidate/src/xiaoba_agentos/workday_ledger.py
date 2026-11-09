@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sqlite3
 import stat
 import tempfile
 import time
@@ -150,6 +151,10 @@ def record_reference(store,path,**metadata):
 def _register_reference(store,path,**metadata):
     """Queue metadata cheaply; do not acquire SQLite's writer or render here."""
     try:return _queue_reference(store,path,**metadata)
+    except ValueError as exc:
+        # 参数或文件不合格：仍只告警，但把具体原因带给调用方（v1.6.12 第四轮 DSH 缺陷 1）。
+        result=warn(store,'registration_failed')
+        return dict(result,reason=str(exc)[:200]) if isinstance(result,dict) else result
     except Exception:return warn(store,'registration_failed')
 
 
@@ -218,6 +223,9 @@ def _flush_references(store):
                         store._append_event_tx(db,ref['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
                         latest[key]=ref
             consumed=[path for path,_,_,_ in valid]
+        except sqlite3.OperationalError:
+            # 拿不到写锁等瞬时竞争：整批留在队列下次再试，不计入死信次数（v1.6.12 第四轮 DSH 缺陷 2）。
+            warn(store,'lock_timeout')
         except Exception:failed.extend(path for path,_,_,_ in valid)
     for path in consumed:
         try:

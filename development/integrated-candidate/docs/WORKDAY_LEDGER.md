@@ -36,6 +36,6 @@ xiaoba workday-record /absolute/project/output.md --node NODE --task-id TASK --a
 
 单次重建最多处理500条排队引用；有效条目在一个事务里批量登记，只扫描一次既有引用事件，并按排队引用的日期、任务、路径、节点和类型保存当日最新版本。连续相同版本去重，A→B→A仍算三次修订，不新增 events 索引。超出预算的条目保留，待刷新标记不确认，后续读取或空闲周期继续处理。
 
-引用连续失败3次后，将原对象移入 runtime 的 `.workday-references-dead/` 并告警，不再自动重试；失败次数记录在 `.workday-reference-failures.json`。事务失败整批回滚，提交后消费队列失败时，下次依靠同一去重规则避免重复登记。未配置根目录不入队、不因引用登记打待刷新标记，同一 store 连续出现该状态只记一次告警。
+引用因数据或文件问题连续失败3次后（拿不到写锁的瞬时竞争不计入），将原对象移入 runtime 的 `.workday-references-dead/` 并告警，不再自动重试；失败次数记录在 `.workday-reference-failures.json`。事务失败整批回滚，提交后消费队列失败时，下次依靠同一去重规则避免重复登记。未配置根目录不入队、不因引用登记打待刷新标记，同一 store 连续出现该状态只记一次告警。
 
 接入口自有事务提交 tmux 任务卡/回执、workday.started/finished 后也标记待刷新，标记失败只告警；回滚不标记。开工准备异常以 blocked 和 error_type 收尾写回，不滞留 running；台账生成失败仍只告警。重建的全量快照成本随事件总量增长，C11再做索引。
