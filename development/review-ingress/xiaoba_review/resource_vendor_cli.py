@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from .resource_cli import CliWorklogResource
+from .agent_pool import REASONING_EFFORT
 
 # Restrict tool-capable print CLIs to file I/O. No shell, network or subagent
 # tool is offered; permission hooks and normal client authentication stay active.
@@ -23,14 +24,26 @@ class DshCliResource(CliWorklogResource):
                 '--permission-mode', 'workspace-write', '--approval-policy', 'never', '-']
 
 
+def _effort_args(agent_type, effort, flag):
+    """Append the vendor effort flag, or raise a clear error for bad values."""
+    if effort is None:
+        return []
+    allowed = REASONING_EFFORT.get(agent_type, frozenset())
+    if not isinstance(effort, str) or effort not in allowed:
+        raise ValueError('思考强度取值不合法（'+agent_type+'）：'+str(effort)
+                         +'；可选 '+', '.join(sorted(allowed)))
+    return [flag, effort]
+
+
 class QoderCliResource(CliWorklogResource):
     agent_type, label, provider = 'qoder', 'Qoder', 'qoder_cli'
 
     def _command(self, entry, timeout):
+        # qodercli --help: --reasoning-effort <level>; Extra High 实测写作 xhigh。
         return [entry, '-p', *(['--model', self.model] if self.model else []), '--permission-mode', 'accept_edits',
                 '--tools', FILE_TOOLS, '--no-session-persistence', '--strict-mcp-config',
-                '--mcp-config', '{"mcpServers":{}}', '--output-format', 'stream-json']
-
+                '--mcp-config', '{"mcpServers":{}}', '--output-format', 'stream-json',
+                *_effort_args(self.agent_type, self.reasoning_effort, '--reasoning-effort')]
 
 class CodexCliResource(CliWorklogResource):
     agent_type, label, provider = 'codex', 'Codex', 'codex_cli'
@@ -55,13 +68,13 @@ class CodeBuddyCliResource(CliWorklogResource):
         return env
 
     def _command(self, entry, timeout):
+        # codebuddy --help: --effort <level>（不是 --reasoning-effort）。
         return [entry, '-p', *(['--model', self.model] if self.model else []),
                 '--permission-mode', 'acceptEdits', '--tools', FILE_TOOLS,
                 '--allowedTools', FILE_TOOLS, '--no-session-persistence',
                 '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-                '--output-format', 'stream-json', '--verbose']
-
-
+                '--output-format', 'stream-json', '--verbose',
+                *_effort_args(self.agent_type, self.reasoning_effort, '--effort')]
 class ClaudeCliResource(CliWorklogResource):
     agent_type, label, provider = 'claude', 'Claude', 'claude_cli'
 

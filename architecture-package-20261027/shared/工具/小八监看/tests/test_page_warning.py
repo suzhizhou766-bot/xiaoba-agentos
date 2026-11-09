@@ -67,8 +67,17 @@ class WarningBannerTests(unittest.TestCase):
         self.assertIn("hidden", page)             # 还没读到警告时是空的，页面脚本随后会填
 
     def test_page_script_keeps_the_banner_up_to_date(self):
+        # 卡 66：不再只对 HTML 源码做子串断言；先跑健康接口再渲染正文，核对横幅真的带上警告。
+        ctx, system = self.build()
+        code, health = system.api_health(None)
+        self.assertEqual(code, 200)
+        self.assertEqual(WARNING, health["modules"][0]["warning"])
+        page = system.index(SimpleNamespace(headers={"Host": "127.0.0.1:8799"})).body.decode("utf-8")
+        self.assertIn('id="pageWarn"', page)
+        self.assertIn("检测不可用", page)
+        self.assertIn("Key 池：", page)
+        self.assertNotIn("hidden", page.split('id="pageWarn"', 1)[1].split(">", 1)[0])
         text = PAGE.read_text(encoding="utf-8")
-        self.assertIn('id="pageWarn"', text)
         self.assertIn("m.warning", text)
         self.assertIn("box.hidden = !warn.length", text)
 

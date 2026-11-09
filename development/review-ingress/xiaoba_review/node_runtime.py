@@ -36,7 +36,8 @@ def spec(source):
     node = node_state(source)
     return {'node_id':source['reviewer_id'], 'source_ref':source['source_ref'], 'kind':source['kind'],
             **{k:node.get(k) for k in ('agent','interface','entry','model')},
-            **({'agent_type':node['agent_type']} if 'agent_type' in node else {})}
+            **({'agent_type':node['agent_type']} if 'agent_type' in node else {}),
+            **({'reasoning_effort':node['reasoning_effort']} if 'reasoning_effort' in node else {})}
 
 
 def retired_error():
@@ -269,6 +270,9 @@ class NodeRuntime:
             from .resource_agy import InteractiveError
             from .agent_workspace import WorkspaceError
             if isinstance(exc,(InteractiveError,WorkspaceError)):reason=exc.code;message=exc.user_message
+            elif isinstance(exc,ValueError) and str(exc).startswith('思考强度'):
+                # 卡 66：思考强度不合法时把原文带回测试结果，不换成笼统的协议失败提示。
+                reason='reasoning_effort_invalid';message=str(exc)
             elif isinstance(exc,ValueError):
                 reason='response_invalid'
                 message='入口未按节点协议或本次挑战返回；请核对 Agent 类型、调用入口、登录和模型配置。未标记测试通过，不自动重试。'

@@ -1713,8 +1713,16 @@ def main(argv: Optional[list] = None) -> int:
             return 2
         probe = start_session_health(config, store)
         from .workday_ledger import rebuild_view,local_checks,warn
-        try:workday=rebuild_view(store,config=config,checks=dict(local_checks(store),doctor_ok=True))
-        except Exception:workday=warn(store,'generation_failed')
+        # 卡 66：本地检查失败单独报，不与台账生成失败混为一谈（同接入口口径）。
+        local_check_error=None
+        try:
+            checks=dict(local_checks(store),doctor_ok=True)
+        except Exception as exc:
+            local_check_error='本地检查失败：'+type(exc).__name__
+            workday=warn(store,'local_check_failed')
+        else:
+            try:workday=rebuild_view(store,config=config,checks=checks)
+            except Exception:workday=warn(store,'generation_failed')
         notifications = store.pending_notifications(acknowledge=True)
         # A pending manual review must reach the user even on a fully successful
         # session start, so the reminder rides along with the success payload.  The
@@ -1729,6 +1737,7 @@ def main(argv: Optional[list] = None) -> int:
                 "doctor_ok": True,
                 "live_probe": probe,
                 "notifications": notifications,
+                **({"local_check_error": local_check_error} if local_check_error else {}),
                 "retained_manual_review": {
                     "required": bool(retained.get("manual_action_required")),
                     "pending_count": int(retained.get("pending_count") or 0),

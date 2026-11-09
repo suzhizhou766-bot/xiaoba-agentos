@@ -153,13 +153,11 @@ class CLIRuntimeTest(unittest.TestCase):
 
     def test_session_start_reports_live_probe_and_does_not_create_task(self):
         store = MagicMock()
-        ledger = MagicMock()
-        ledger.rebuild.return_value = {'source':'sqlite','model_tasks_sent':0}
         store.start_session.return_value = {"id": "session", "status": "active"}
         store.pending_notifications.return_value = []
         config = SimpleNamespace()
         with patch("xiaoba_agentos.cli._load", return_value=(config, store)), patch(
-            "xiaoba_agentos.cli.doctor", return_value={"ok": True}
+            "xiaoba_agentos.cli.doctor", return_value={"ok": True, "retained_objects": {}}
         ), patch(
             "xiaoba_agentos.cli.start_session_health",
             return_value={
@@ -167,14 +165,17 @@ class CLIRuntimeTest(unittest.TestCase):
                 "healthy_agents": ["a", "b"], "failed_agents": [],
                 "repair_jobs": [], "peer_auto_repair": "retired",
             },
-        ), patch('xiaoba_agentos.workday_ledger.bound_ledger',return_value=ledger):
+        ), patch('xiaoba_agentos.workday_ledger.local_checks', return_value={'nodes': []}), patch(
+            'xiaoba_agentos.workday_ledger.rebuild_view', return_value={'source': 'sqlite', 'model_tasks_sent': 0}
+        ) as rebuild:
             output = io.StringIO()
             with redirect_stdout(output):
                 code = main(["session-start"])
         self.assertEqual(0, code)
         payload = json.loads(output.getvalue())
         self.assertTrue(payload["ready_for_external_tasks"])
-        ledger.rebuild.assert_called_once()
+        self.assertNotIn('local_check_error', payload)
+        rebuild.assert_called_once()
         store.submit.assert_not_called()
 
     def test_session_start_stops_before_session_and_probe_when_doctor_fails(self):

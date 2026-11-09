@@ -63,9 +63,14 @@ def independence(source):
 
 # 用户 2026-11-01 要求节点可修改。节点ID、角色、调用方式是不可改的身份字段。
 NODE_FIELDS = ('name', 'agent', 'entry', 'model')
-OPTIONAL_FIELDS = ('agent_type', 'no_progress_seconds')
+OPTIONAL_FIELDS = ('agent_type', 'no_progress_seconds', 'reasoning_effort')
 MAX_NO_PROGRESS_SECONDS = 86400
 TMUX_FIELDS = ('tmux_session', 'working_directory')
+# 卡 66：思考强度只传给已核实参数名的 CLI；取值来自各自 --help / 实测。
+REASONING_EFFORT = {
+    'qoder': frozenset({'auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'}),
+    'codebuddy': frozenset({'minimal', 'low', 'medium', 'high', 'xhigh', 'max'}),
+}
 
 
 def entry_identity(clean):
@@ -114,7 +119,19 @@ def validate_node(value):
     if 'agent_type' in value and value['agent_type'] not in TYPES:
         # 卡 45：内置 WorkBuddy 引擎已退役，'workbuddy' 只为识别旧节点保留，不再列出。
         raise ValueError('未知 Agent 类型，请选择 AGY、DSH、Qoder、CodeBuddy（WorkBuddy CLI）、Codex、Claude 或其它')
+    effort = value.get('reasoning_effort')
+    if effort is not None:
+        if not isinstance(effort, str) or not effort.strip() or len(effort) > 32 or any(c in effort for c in '\r\n\0'):
+            raise ValueError('思考强度格式异常')
+        kind = value.get('agent_type') or agent_type(value)
+        allowed = REASONING_EFFORT.get(kind)
+        if not allowed:
+            raise ValueError('思考强度目前只支持 Qoder 与 CodeBuddy（WorkBuddy CLI）节点')
+        if effort.strip() not in allowed:
+            raise ValueError('思考强度取值不合法（'+kind+'）：'+effort.strip()+'；可选 '+', '.join(sorted(allowed)))
     clean = {k:v.strip() if isinstance(v,str) and k != 'entry' else v for k,v in value.items()}
+    if effort is not None:
+        clean['reasoning_effort'] = effort.strip()
     if tmux:
         from .resource_tmux import validate_session, validate_directory
         clean['tmux_session'] = validate_session(value['tmux_session'])
@@ -242,6 +259,9 @@ class AgentPool:
                 raise ValueError('节点已移除，请先恢复再修改')
             fields = {'node_id':node_id,'kind':source['kind'],'interface':state['interface'],
                       **{k:changes[k] if k in changes else state.get(k) for k in allowed}}
+            # Switching away from Qoder/CodeBuddy clears effort before validation.
+            if fields.get('reasoning_effort') is not None and (fields.get('agent_type') or agent_type(fields)) not in REASONING_EFFORT:
+                fields['reasoning_effort'] = None
             clean, identity, _ = validate_node(fields)
             if clean.get('agent_type') == 'workbuddy' and state.get('agent_type') != 'workbuddy':
                 # 卡 45：已退役的内置引擎不能再被选上；旧节点本身仍可改其它字段。
@@ -263,6 +283,13 @@ class AgentPool:
             if after['name'] != state['name']:
                 state.setdefault('workspace_name',state['name'])  # 名字变了，目录和任务记录不搬。
             state.update({k:after[k] for k in allowed},revision=state['revision']+1)
+            # Optional clears: null means remove the field so old nodes stay byte-identical.
+            for key in OPTIONAL_FIELDS:
+                if key in after and after[key] is None:
+                    state.pop(key, None)
+            # Drop effort when the node leaves a vendor that accepts it.
+            if state.get('reasoning_effort') is not None and agent_type(state) not in REASONING_EFFORT:
+                state.pop('reasoning_effort', None)
             source['node'] = state
             source['source_ref'] = after['source_ref']
             # Readiness fails on its own digest once spec() moves, so replacing the

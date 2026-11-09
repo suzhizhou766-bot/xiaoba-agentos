@@ -297,11 +297,19 @@ def _write(path, text):
     _directory(path.parent)
     if path.is_symlink():
         raise ValueError('workday view must not be a symlink')
-    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
-                                     prefix='.workday-', delete=False) as handle:
-        handle.write(text); handle.flush(); os.fsync(handle.fileno())
-        temporary = handle.name
-    os.replace(temporary, path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                         prefix='.workday-', delete=False) as handle:
+            handle.write(text); handle.flush(); os.fsync(handle.fileno())
+            temporary = handle.name
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        # 卡 66：替换失败时清掉同目录临时文件，避免 runtime 里反复留下 .workday-XXXXXXXX。
+        if temporary is not None:
+            try:Path(temporary).unlink(missing_ok=True)
+            except OSError:pass
 
 
 class WorkdayLedger:
