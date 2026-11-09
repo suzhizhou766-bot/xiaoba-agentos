@@ -78,7 +78,8 @@ class ObserverIsolationTests(CliFixture,unittest.TestCase):
         node=self.add()
         with patch('xiaoba_agentos.workday_ledger.local_checks',side_effect=RuntimeError('TEST config broken')):
             result=self.pool.runtime.start_workday('上班了小八助理','TEST-local-check-fails',['peer'],{'peer':node})
-        self.assertEqual('ready',result['route'])
+        self.assertEqual('blocked',result['route'])
+        self.assertEqual('RuntimeError',result['error_type'])
         self.assertIn('本地检查失败',result['local_check_error'])
         self.assertEqual('local_check_failed',result['ledger']['warning_code'])
         with self.native.read_only() as db:

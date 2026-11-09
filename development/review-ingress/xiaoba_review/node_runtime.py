@@ -107,27 +107,40 @@ class NodeRuntime:
                 return json.loads(old['data']) if old['data'] else {'route':'running','model_tasks_sent':0}
             db.execute('INSERT INTO ri_workday_starts VALUES (?,?,NULL)',(message_id,fingerprint))
             self.store.native._append_event_tx(db,None,'workday.started',{'message_id':message_id,'plan_digest':fingerprint})
-        from xiaoba_agentos.workday_ledger import rebuild_view,local_checks,warn
-        session=self.store.native.start_session('Asia/Shanghai')
-        # 本地检查故障和台账生成故障分开报告，不互相伪装；两者都不让开工记录停在 running（卡 64 复查观察 4）。
-        local_check_error=None
+        session=None;results=[];local_check_error=None;error_type=None
+        rendered={'ok':False,'warning_code':'generation_failed','message':'开工检查未完成，台账未生成'}
+        # Once the start row exists, all preparation failures must reach the
+        # same durable finalization path. View failures remain warnings only.
         try:
-            checks=local_checks(self.store.native)
-            checks['selection_questions']=questions
-            results=checks['nodes']
+            session=self.store.native.start_session('Asia/Shanghai')
+            from xiaoba_agentos.workday_ledger import rebuild_view,local_checks,warn
+            try:
+                checks=local_checks(self.store.native)
+                checks['selection_questions']=questions
+                results=checks['nodes']
+            except Exception as exc:
+                checks=None;error_type=type(exc).__name__
+                local_check_error='本地检查失败：'+error_type
+            try:
+                rendered=rebuild_view(self.store.native,checks=checks) if checks is not None else warn(self.store.native,'local_check_failed')
+            except Exception:
+                rendered=warn(self.store.native,'generation_failed')
         except Exception as exc:
-            checks=None;results=[]
-            local_check_error='本地检查失败：'+type(exc).__name__+'：'+str(exc)[:200]
-        try:
-            rendered=rebuild_view(self.store.native,checks=checks) if checks is not None else warn(self.store.native,'local_check_failed')
-        except Exception:
-            rendered=warn(self.store.native,'generation_failed')
-        value={'route':'ready','session':session,'nodes':results,'ledger':rendered,
+            error_type=type(exc).__name__
+            import logging
+            logging.getLogger(__name__).warning('开工检查失败：%s',error_type)
+        value={'route':'blocked' if error_type else 'ready','session':session,'nodes':results,'ledger':rendered,
                'model_tasks_sent':0,'work_logs_initialized':False,'automatic_retry':False,
                'experience_approval':False,'health_scope':'local_only',
+               **({'error_type':error_type} if error_type else {}),
                **({'local_check_error':local_check_error} if local_check_error else {})}
+        try:encoded=canonical(value)
+        except Exception as exc:
+            value={'route':'blocked','error_type':type(exc).__name__,'model_tasks_sent':0,
+                   'work_logs_initialized':False,'automatic_retry':False,'experience_approval':False}
+            encoded=canonical(value)
         with self.store.transaction() as db:
-            db.execute('UPDATE ri_workday_starts SET data=? WHERE message_id=?',(canonical(value),message_id))
+            db.execute('UPDATE ri_workday_starts SET data=? WHERE message_id=?',(encoded,message_id))
             self.store.native._append_event_tx(db,None,'workday.finished',{'message_id':message_id,'result':value})
         return value
 

@@ -22,7 +22,9 @@ class TmuxTests(fixtures.FixtureMixin, unittest.TestCase):
         folder=Path(rendered['directory'])
         rows=[json.loads(v) for v in (folder/'_索引.jsonl').read_text().splitlines()]
         self.assertTrue(any(r['path']==value['task_card'] for r in rows))
-        self.receipt();self.pool.tmux.collect();rendered=ledger.rebuild()
+        self.receipt();self.pool.tmux.collect()
+        from xiaoba_agentos.workday_ledger import read_workday
+        rendered=read_workday(self.store.native)
         job=self.job();rows=[json.loads(v) for v in (folder/'_索引.jsonl').read_text().splitlines()]
         row=next(r for r in rows if r['path']==job['execution_receipt'])
         self.assertEqual(hashlib.sha256(Path(row['path']).read_bytes()).hexdigest(),row['sha256'])

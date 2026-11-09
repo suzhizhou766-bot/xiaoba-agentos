@@ -181,13 +181,16 @@ class ReviewStore:
     def transaction(self):
         db = sqlite3.connect(str(self.path), timeout=30, isolation_level=None)
         db.row_factory = sqlite3.Row
+        dirty=False
         previous_undo = getattr(self._file_state, 'undo', None)
         self._file_state.undo = []
         try:
             db.execute('BEGIN IMMEDIATE')
             if not self.native.verify_event_chain().get('ok'):
                 raise ValueError('原生审计事件链损坏，停止双审接入写入')
+            sequence=db.execute('SELECT COALESCE(MAX(sequence),0) FROM events').fetchone()[0]
             yield db
+            dirty=db.execute("SELECT 1 FROM events WHERE sequence>? AND event_type IN ('agent_pool.tmux_job','workday.started','workday.finished') LIMIT 1",(sequence,)).fetchone() is not None
             db.commit()
         except BaseException:
             db.rollback()
@@ -200,6 +203,19 @@ class ReviewStore:
         finally:
             self._file_state.undo = previous_undo
             db.close()
+
+        if dirty:
+            try:
+                from xiaoba_agentos.workday_ledger import mark_dirty
+                mark_dirty(self.native)
+            except Exception:
+                try:
+                    from xiaoba_agentos.workday_ledger import warn
+                    warn(self.native,'marker_failed')
+                except Exception:
+                    import logging
+                    try:logging.getLogger(__name__).warning('台账待刷新标记写入失败，业务结算不受影响')
+                    except Exception:pass
 
     def discard_value(self, db, request, assessment):
         """Retire an unapproved low-value draft, leaving its summary and scores.
