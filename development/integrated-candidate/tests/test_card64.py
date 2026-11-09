@@ -77,13 +77,15 @@ class LedgerSideChannelTests(unittest.TestCase):
 
     def test_review_obs1_doctor_tolerates_status_without_message(self):
         from xiaoba_agentos import health
-        with patch('xiaoba_agentos.workday_ledger.workday_status',return_value={'ok':False}):
-            checks={'workday':None,'warnings':[]}
-            workday={'ok':False}
-            # 直接走 doctor 末尾同一段逻辑的输入：缺 message 不得抛 KeyError
-            src=Path(health.__file__).read_text(encoding='utf-8')
-            self.assertNotIn("checks['workday']['message']",src)
-            self.assertNotIn("['last_warning']['message']",src)
+        from test_pool_dispatch import _config
+        root=self.root/'doctor';root.mkdir()
+        config=_config(root,[])
+        store=EventStore(config.database_path);store.initialize()
+        for state in ({'ok':False},{'ok':True,'last_warning':{}}):
+            with self.subTest(state=state),patch('xiaoba_agentos.workday_ledger.workday_status',return_value=state):
+                result=health.doctor(config,store)
+                self.assertEqual(state,result['workday'])
+                self.assertIsInstance(result['warnings'],list)
 
     def test_P2_missing_config_never_uses_bound_root_as_a_default(self):
         ledger.bind_root(self.store,self.root/'legacy')

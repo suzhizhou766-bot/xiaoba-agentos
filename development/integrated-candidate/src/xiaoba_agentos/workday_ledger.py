@@ -15,6 +15,9 @@ import tempfile
 import time
 from zoneinfo import ZoneInfo
 
+REFERENCE_BATCH_LIMIT=500
+REFERENCE_FAILURE_LIMIT=3
+
 ZONE = ZoneInfo('Asia/Shanghai')
 KINDS = ('回执', '新经验', '复用经验', '产出')
 TERMINAL = {'completed', 'failed', 'cancelled', 'abandoned', 'done', 'execution_completed', 'published'}
@@ -42,6 +45,7 @@ MESSAGES={
     'registration_failed':'台账引用登记失败，业务结算不受影响',
     'metadata_rejected':'台账元数据已跳过，业务结算不受影响',
     'generation_failed':'台账生成失败，业务结算不受影响',
+    'reference_dead':'台账引用连续失败，已移入死信目录，不再自动重试',
     'marker_failed':'台账待刷新标记写入失败，业务结算不受影响',
     'local_check_failed':'上班本地检查失败，本次未生成台账；请看开工结果里的本地检查错误'}
 
@@ -151,6 +155,8 @@ def _register_reference(store,path,**metadata):
 
 def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
     import uuid
+    if not isinstance(getattr(store,'workday_root',None),(str,Path)):
+        return warn(store,'unconfigured')
     path=Path(path)
     if not path.is_absolute() or path.is_symlink() or not path.is_file():raise ValueError('invalid output path')
     if kind not in KINDS or not all(isinstance(v,str) and v.strip() for v in (node,agent,model,status)):raise ValueError('invalid metadata')
@@ -171,23 +177,66 @@ def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
 
 
 def _flush_references(store):
+    """At most 500 queued objects, one event scan and one atomic transaction.
+
+    The per-day key retains the latest revision, preserving A -> B -> A while
+    skipping consecutive identical references. No schema/index changes.
+    """
+    import heapq
     queue=_sidecar(store,'references')
     if not queue.is_dir():return
-    for path in sorted(queue.glob('*.json')):
+    paths=heapq.nsmallest(REFERENCE_BATCH_LIMIT,queue.glob('*.json'))
+    if not paths:return
+    failure_path=_sidecar(store,'reference-failures.json')
+    failures=json.loads(failure_path.read_text()) if failure_path.is_file() else {}
+    valid=[];failed=[];consumed=[]
+    for path in paths:
         try:
-            assert not path.is_symlink()
+            if path.is_symlink():raise ValueError('invalid queued reference')
             ref=json.loads(path.read_text());stamp=ref.pop('recorded_at')
+            # Queue corruption cannot cause a partial batch or poison SQL keys.
+            required={'path','node','task_id','agent','model','kind','status','sha256'}
+            if set(ref)!=required or ref['kind'] not in KINDS:raise ValueError('invalid queued metadata')
+            if not all(isinstance(ref[k],str) and ref[k] for k in required-{'task_id'}):raise ValueError('invalid queued field')
+            if not Path(ref['path']).is_absolute() or (ref['task_id'] is not None and not isinstance(ref['task_id'],str)):raise ValueError('invalid queued identity')
+            valid.append((path,ref,stamp,day_of(stamp)))
+        except Exception:failed.append(path)
+    if valid:
+        try:
             with store.connect(refresh_views=False,timeout=.1) as db:
                 db.execute('BEGIN IMMEDIATE')
-                old=db.execute("SELECT payload_json,created_at FROM events WHERE event_type='workday.output_recorded' AND task_id IS ? AND json_extract(payload_json,'$.path')=? AND json_extract(payload_json,'$.node')=? AND json_extract(payload_json,'$.kind')=? ORDER BY sequence DESC LIMIT 1",(ref['task_id'],ref['path'],ref['node'],ref['kind'])).fetchone()
-                previous=json.loads(old[0]) if old else None
-                old_stamp=previous.pop('recorded_at',old[1]) if previous is not None else None
-                if previous!=ref or day_of(old_stamp)!=day_of(stamp):
-                    store._append_event_tx(db,ref['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
-            # Consume only derived queue metadata, retaining one last processed
-            # object through rename; no product or user file is removed/copied.
+                days={day for _,_,_,day in valid};latest={}
+                # One scan for the batch, never a history scan per queued row.
+                for row in db.execute("SELECT payload_json,created_at FROM events WHERE event_type='workday.output_recorded' ORDER BY sequence"):
+                    previous=json.loads(row[0]);old_stamp=previous.pop('recorded_at',row[1]);day=day_of(old_stamp)
+                    if day in days:
+                        key=(day,previous['task_id'],previous['path'],previous['node'],previous['kind'])
+                        latest[key]=previous
+                for path,ref,stamp,day in valid:
+                    key=(day,ref['task_id'],ref['path'],ref['node'],ref['kind'])
+                    if latest.get(key)!=ref:
+                        store._append_event_tx(db,ref['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
+                        latest[key]=ref
+            consumed=[path for path,_,_,_ in valid]
+        except Exception:failed.extend(path for path,_,_,_ in valid)
+    for path in consumed:
+        try:
             os.replace(path,_sidecar(store,'processed-reference.json'))
-        except Exception:warn(store,'registration_failed')
+            failures.pop(path.name,None)
+        except Exception:failed.append(path)
+    for path in failed:
+        count=int(failures.get(path.name,0))+1
+        if count>=REFERENCE_FAILURE_LIMIT:
+            dead=_sidecar(store,'references-dead');_directory(dead)
+            os.replace(path,dead/path.name);failures.pop(path.name,None)
+            warn(store,'reference_dead')
+        else:
+            failures[path.name]=count
+            warn(store,'registration_failed')
+    if failures or failure_path.exists():_write(failure_path,canonical(failures)+'\n')
+    # The renderer only acknowledges its pre-flush token. A remaining queue
+    # (including a retry) must keep the next read/idle cycle dirty.
+    if next(queue.glob('*.json'),None) is not None:mark_dirty(store)
 
 
 def refresh_after_write(store,after_sequence=0):

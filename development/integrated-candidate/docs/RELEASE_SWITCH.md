@@ -50,3 +50,8 @@ python3 -B PACKAGE/agentos/scripts/switch_release.py readback --old-pid OLD_PID
 ## 发布目录只读（v1.6.5 起）
 
 切换成功、读回通过后，切换命令把新发布目录设为只读（文件 0444，可执行文件与目录 0555），结果在 `release_sealed` 里报告。这样任何进程都不能往发布目录里写文件；以前一个 Python 字节码缓存文件就会让入口的发布校验失败。封不上只报告、不退回已成功的切换。`doctor` 的 `release_read_only` 字段报告当前发布目录是否已只读，只作报告，不改变 `ok`。以后确需整理旧发布目录时，先由用户决定，再 `chmod -R u+w` 该目录。
+
+
+## 随版同步的监看中心文件
+
+v1.6.12 随版同步 `monitor_core/modules/agent_pool.py`，由本轮发版工具的 post-switch 脚本执行，不新增部署步骤或更改数据库结构。复制前须核对线上文件的钉死哈希和 BASE/导出文件哈希，任一不符即停止；只复制授权文件，复制后再次核对哈希，并只读比较仓库副本与线上32个监看运行文件。页面安装继续核对既有 before 基准，不重设基准。
