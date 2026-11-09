@@ -704,6 +704,11 @@ class Orchestrator:
         """
         has_work = self.store.has_runnable_work()
         if not preflight_when_idle and not has_work:
+            # Derived views only refresh on an already-idle, no-model cycle.
+            try:
+                from .workday_ledger import rebuild_view
+                rebuild_view(self.store,config=self.config,only_if_dirty=True)
+            except Exception:pass
             from .formal_review import check_inactivity
             try:
                 check_inactivity(self.store)

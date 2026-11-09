@@ -31,6 +31,9 @@ class TmuxTests(fixtures.FixtureMixin, unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.root = self.root.resolve()
+        from types import SimpleNamespace
+        from xiaoba_agentos.workday_ledger import configure
+        configure(self.store.native,SimpleNamespace(memory={'obsidian_vault':str(self.root/'assistant/vault')}))
         self.pool = AgentPool(self.store, BackendRegistry(self.store))
         self.log = self.root/'argv.jsonl'
         self.mode = self.root/'mode'

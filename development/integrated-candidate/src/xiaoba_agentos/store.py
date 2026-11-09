@@ -212,6 +212,18 @@ class CandidatePublication:
         )
 
 
+
+def _view_file_sha256(path):
+    """只给台账阅读视图用的原文件哈希。读不到（不存在、符号链接、权限、正被移动）就返回 None，
+    不让业务事务因为视图字段失败（卡 64 复查，Qoder 第四节）。"""
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 class EventStore:
     DATABASE_SCHEMA_VERSION = 7
 
@@ -250,15 +262,13 @@ class EventStore:
                     raise
 
     @contextmanager
-    def connect(self, *, refresh_views: bool = True) -> Iterator[sqlite3.Connection]:
+    def connect(self, *, refresh_views: bool = True, timeout: float = 30) -> Iterator[sqlite3.Connection]:
         self._secure_permissions()
-        conn = sqlite3.connect(str(self.path), timeout=30)
+        conn = sqlite3.connect(str(self.path), timeout=timeout)
         self._secure_permissions()
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA journal_mode=WAL")
-        has_events = conn.execute("SELECT 1 FROM sqlite_master WHERE name='events'").fetchone()
-        before_sequence = conn.execute('SELECT COALESCE(MAX(sequence),0) FROM events').fetchone()[0] if has_events else 0
         try:
             yield conn
             changed = conn.total_changes > 0
@@ -270,8 +280,16 @@ class EventStore:
             conn.close()
             self._secure_permissions()
         if changed and refresh_views:
-            from .workday_ledger import refresh_after_write
-            refresh_after_write(self, before_sequence)
+            try:
+                from .workday_ledger import refresh_after_write
+                refresh_after_write(self)
+            except Exception:
+                # A committed business transaction must never look rolled back
+                # because a derived-view observer (including its import) failed.
+                try:
+                    from .workday_ledger import warn
+                    warn(self,'marker_failed')
+                except Exception:pass
 
     @contextmanager
     def read_only(self) -> Iterator[sqlite3.Connection]:
@@ -1618,8 +1636,7 @@ class EventStore:
                         "UPDATE memory_candidates SET reuse_count=reuse_count+1,updated_at=? WHERE task_id=?",
                         (time.time(), source_task_id),
                     )
-                path=Path(source_path)
-                source_sha256=hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() and not path.is_symlink() else None
+                source_sha256=_view_file_sha256(Path(source_path))
                 self._append_event_tx(
                     conn, task_id, "memory.reused",
                     {"source_task_id": source_task_id, "source_path": source_path, "source_sha256":source_sha256},
@@ -2116,9 +2133,9 @@ class EventStore:
             )
             receipt_path = self.path.parent / 'receipts' / row['task_id'] / (run_id+'.json')
             receipt_reference = {}
-            if receipt_path.is_file() and not receipt_path.is_symlink():
-                receipt_reference = {'receipt_path':str(receipt_path),
-                                     'receipt_file_sha256':hashlib.sha256(receipt_path.read_bytes()).hexdigest()}
+            receipt_sha256 = _view_file_sha256(receipt_path)
+            if receipt_sha256:
+                receipt_reference = {'receipt_path':str(receipt_path), 'receipt_file_sha256':receipt_sha256}
             self._append_event_tx(
                 conn,
                 row["task_id"],

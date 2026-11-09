@@ -107,16 +107,25 @@ class NodeRuntime:
                 return json.loads(old['data']) if old['data'] else {'route':'running','model_tasks_sent':0}
             db.execute('INSERT INTO ri_workday_starts VALUES (?,?,NULL)',(message_id,fingerprint))
             self.store.native._append_event_tx(db,None,'workday.started',{'message_id':message_id,'plan_digest':fingerprint})
-        from xiaoba_agentos.workday_ledger import bound_ledger, WorkdayLedger, local_checks
+        from xiaoba_agentos.workday_ledger import rebuild_view,local_checks,warn
         session=self.store.native.start_session('Asia/Shanghai')
-        checks=local_checks(self.store.native)
-        checks['selection_questions']=questions
-        results=checks['nodes']
-        ledger=bound_ledger(self.store.native) or WorkdayLedger(self.store.native,self.store.path.parent/'workday-views')
-        rendered=ledger.rebuild(checks=checks)
+        # 本地检查故障和台账生成故障分开报告，不互相伪装；两者都不让开工记录停在 running（卡 64 复查观察 4）。
+        local_check_error=None
+        try:
+            checks=local_checks(self.store.native)
+            checks['selection_questions']=questions
+            results=checks['nodes']
+        except Exception as exc:
+            checks=None;results=[]
+            local_check_error='本地检查失败：'+type(exc).__name__+'：'+str(exc)[:200]
+        try:
+            rendered=rebuild_view(self.store.native,checks=checks) if checks is not None else warn(self.store.native,'local_check_failed')
+        except Exception:
+            rendered=warn(self.store.native,'generation_failed')
         value={'route':'ready','session':session,'nodes':results,'ledger':rendered,
                'model_tasks_sent':0,'work_logs_initialized':False,'automatic_retry':False,
-               'experience_approval':False,'health_scope':'local_only'}
+               'experience_approval':False,'health_scope':'local_only',
+               **({'local_check_error':local_check_error} if local_check_error else {})}
         with self.store.transaction() as db:
             db.execute('UPDATE ri_workday_starts SET data=? WHERE message_id=?',(canonical(value),message_id))
             self.store.native._append_event_tx(db,None,'workday.finished',{'message_id':message_id,'result':value})

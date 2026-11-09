@@ -285,6 +285,14 @@ class AgentWorkspace:
         self._append({'event':'task_finished','record':record,'status':status,'receipt':receipt.name,
                       'receipt_sha256':checksum(body),'experience_approval':False})
         if self.on_receipt:
-            card=json.loads(self._read(directory/'任务卡.json'))
-            self.on_receipt(receipt,card,evidence or {},status)
+            # The receipt and task_finished journal entry are already settled.
+            # Observer failures cannot enter the adapter's failure-settlement path.
+            try:
+                card=json.loads(self._read(directory/'任务卡.json'))
+                self.on_receipt(receipt,card,evidence or {},status)
+            except Exception:
+                try:
+                    from xiaoba_agentos.workday_ledger import warn
+                    warn(getattr(self,'ledger_store',None),'registration_failed')
+                except Exception:pass
         return str(receipt)

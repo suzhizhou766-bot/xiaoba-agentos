@@ -34,12 +34,19 @@ class BackendRegistry:
             adapter=self.resource_factory(source)
             workspace=getattr(adapter,'workspace',None)
             if workspace is not None:
+                workspace.ledger_store=self.store.native
                 def record_receipt(path,card,evidence,status):
-                    from xiaoba_agentos.workday_ledger import record_reference
-                    record_reference(self.store.native,path,node=source['reviewer_id'],
-                        task_id=card.get('task_id'),agent=source.get('node',{}).get('agent') or source['reviewer_id'],
-                        model=evidence.get('model') or source.get('node',{}).get('model') or '未记录',
-                        kind='回执',status=status)
+                    try:
+                        from xiaoba_agentos.workday_ledger import record_reference
+                        record_reference(self.store.native,path,node=source['reviewer_id'],
+                            task_id=card.get('task_id'),agent=source.get('node',{}).get('agent') or source['reviewer_id'],
+                            model=evidence.get('model') or source.get('node',{}).get('model') or '未记录',
+                            kind='回执',status=status)
+                    except Exception:
+                        try:
+                            from xiaoba_agentos.workday_ledger import warn
+                            warn(self.store.native,'registration_failed')
+                        except Exception:pass
                 workspace.on_receipt=record_receipt
             if getattr(adapter,'persistent_resource',False):self.resource_adapters[source['reviewer_id']]=(key,adapter)
             return adapter

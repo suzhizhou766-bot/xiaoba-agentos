@@ -7,7 +7,7 @@ name = "xiaoba-agentos"
 version = "1.6.12"
 description = "小八 AgentOS：可审计会话路由、双阶段裁决与可恢复多智能体生产循环"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = {text = "Private"}
 
 [project.scripts]

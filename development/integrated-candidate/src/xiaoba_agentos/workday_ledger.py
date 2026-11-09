@@ -28,73 +28,196 @@ def local_checks(store):
         nodes.append({k:node.get(k) for k in ('node_id','enabled','removed','model','interface','readiness')})
         nodes[-1]['entry_exists']=_entry_present(node.get('entry'))
     return {'model_tasks_sent':0,'live_probe_sent':False,'remote_inference_tested':False,
-            'nodes':nodes,'scope':'local configuration, entry and test qualification; no model call'}
+            'nodes':nodes,'workday':workday_status(store),'scope':'local configuration, entry and test qualification; no model call'}
+
+
+class RootConflict(Exception):
+    pass
+
+
+MESSAGES={
+    'unconfigured':'台账未配置根目录，已跳过生成',
+    'binding_conflict':'台账根目录与已绑定位置不一致，需要用户决定',
+    'lock_timeout':'台账生成锁等待超时，已跳过本次生成',
+    'registration_failed':'台账引用登记失败，业务结算不受影响',
+    'metadata_rejected':'台账元数据已跳过，业务结算不受影响',
+    'generation_failed':'台账生成失败，业务结算不受影响',
+    'marker_failed':'台账待刷新标记写入失败，业务结算不受影响',
+    'local_check_failed':'上班本地检查失败，本次未生成台账；请看开工结果里的本地检查错误'}
+
+
+def resolve_root(config):
+    """The only config-to-root rule; never substitute runtime or a DB binding."""
+    try:
+        value=config.memory.get('obsidian_vault')
+        if not isinstance(value,str) or not value.strip():return None
+        path=Path(value).expanduser()
+        return path.resolve().parent if path.is_absolute() else None
+    except Exception:return None
+
+
+def configure(store,config):
+    store.workday_root=resolve_root(config)
+    return store.workday_root
+
+
+def _sidecar(store,name):
+    # 只在真实数据库旁边写诊断文件；路径不是绝对路径（如测试替身）时拒绝，避免在工作目录下建目录（卡 64 复查观察 2）。
+    path=Path(store.path)
+    if not path.is_absolute():
+        raise ValueError('workday sidecar needs an absolute database path')
+    return path.parent/('.workday-'+name)
+
+
+def warn(store,code):
+    """Best-effort, payload-free diagnostics. Never throw, including from logging."""
+    value={'ok':False,'warning_code':code,'message':MESSAGES.get(code,MESSAGES['generation_failed'])}
+    try:
+        repeated=getattr(store,'_workday_last_warning',None)==code
+        store._workday_last_warning=code
+        _write(_sidecar(store,'status.json'),canonical(value)+'\n')
+        if not repeated:
+            import logging
+            logging.getLogger(__name__).warning('%s',value['message'])
+    except Exception:
+        try:
+            import logging
+            logging.getLogger(__name__).warning('%s',value['message'])
+        except Exception:pass
+    return value
+
+
+def workday_status(store,config=None):
+    """Read-only diagnostics; warnings are deliberately outside doctor.ok."""
+    try:
+        root=resolve_root(config) if config is not None else getattr(store,'workday_root',None)
+        if not isinstance(root,(str,Path)):
+            return {'ok':False,'warning_code':'unconfigured','message':MESSAGES['unconfigured'],'pending':_pending(store)}
+        with store.read_only() as db:
+            found=db.execute("SELECT 1 FROM sqlite_master WHERE name='events'").fetchone()
+            bound=db.execute("SELECT payload_json FROM events WHERE event_type='workday.root_bound' ORDER BY sequence DESC LIMIT 1").fetchone() if found else None
+        if bound and Path(json.loads(bound[0])['root']).resolve()!=Path(root).resolve():
+            return {'ok':False,'warning_code':'binding_conflict','message':MESSAGES['binding_conflict'],'pending':_pending(store)}
+        path=_sidecar(store,'status.json')
+        value=json.loads(path.read_text()) if path.is_file() else {'ok':True}
+        # Root warnings above describe current configuration; a stored warning
+        # becomes history once the configuration/binding has been reconciled.
+        if value.get('warning_code') in ('unconfigured','binding_conflict'):
+            value={'ok':True,'last_warning':value}
+        return dict(value,pending=_pending(store),root=str(root))
+    except Exception:
+        return {'ok':False,'warning_code':'generation_failed','message':MESSAGES['generation_failed'],'pending':True}
+
+
+def _pending(store):
+    pending=_sidecar(store,'pending');rendered=_sidecar(store,'rendered')
+    return pending.is_file() and (not rendered.is_file() or pending.read_bytes()!=rendered.read_bytes())
+
+
+def mark_dirty(store):
+    import uuid
+    _write(_sidecar(store,'pending'),uuid.uuid4().hex+'\n')
 
 
 def bound_ledger(store):
-    root = getattr(store, 'workday_root', None)
-    if root is None:
-        with store.read_only() as db:
-            row=db.execute("SELECT payload_json FROM events WHERE event_type='workday.root_bound' ORDER BY sequence DESC LIMIT 1").fetchone()
-        if row:root=json.loads(row[0])['root']
-    return WorkdayLedger(store, root) if root else None
-
-
-def bind_root(store, root):
-    root=str(Path(root).resolve())
-    with store.connect() as db:
-        row=db.execute("SELECT payload_json FROM events WHERE event_type='workday.root_bound' ORDER BY sequence DESC LIMIT 1").fetchone()
-        if row and json.loads(row[0])['root'] != root:
-            raise ValueError('workday root binding changed; user decision required')
-        if not row:store._append_event_tx(db,None,'workday.root_bound',{'root':root})
-    store.workday_root=Path(root)
-    return WorkdayLedger(store,root)
-
-
-def record_reference(store, path, **metadata):
-    """Persist receipts before rendering; unchanged current versions are no-ops."""
-    _register_reference(store,path,**metadata)
-    # connect() already attempts automatic refresh after commit. A disposable
-    # view error must not invalidate the original adapter receipt.
-
-
-def _register_reference(store, path, *, node, task_id, agent, model, kind, status):
-    path=Path(path)
-    if not path.is_absolute() or path.is_symlink() or not path.is_file():
-        raise ValueError('original output must be a regular absolute file')
-    if kind not in KINDS or not all(isinstance(v,str) and v.strip() for v in (node,agent,model,status)):
-        raise ValueError('explicit node, agent, model, kind and status required')
-    if task_id is not None and (not isinstance(task_id,str) or not task_id.strip()):
-        raise ValueError('task ID must be nonempty or null')
-    with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb') as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):raise ValueError('original output must be a regular file')
-        before=os.fstat(handle.fileno());sha=hashlib.file_digest(handle,'sha256').hexdigest();after=os.fstat(handle.fileno())
-    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):
-        raise ValueError('original output changed while hashing; retry registration')
-    ref=dict(path=str(path),node=node,task_id=task_id,agent=agent,model=model,kind=kind,status=status,sha256=sha)
-    from .memory import MemoryBridge
-    if MemoryBridge._sensitive_reason(canonical(ref)):raise ValueError('sensitive output metadata refused')
-    with store.connect() as db:
-        db.execute('BEGIN IMMEDIATE')
-        if not store.verify_event_chain_tx(db)['ok']:raise ValueError('workday requires a valid event chain')
-        old=db.execute("SELECT payload_json,created_at FROM events WHERE event_type='workday.output_recorded' AND task_id IS ? AND json_extract(payload_json,'$.path')=? AND json_extract(payload_json,'$.node')=? AND json_extract(payload_json,'$.kind')=? ORDER BY sequence DESC LIMIT 1",(task_id,str(path),node,kind)).fetchone()
-        if not old or json.loads(old[0])!=ref or day_of(old[1])!=day_of(time.time()):
-            store._append_event_tx(db,task_id,'workday.output_recorded',ref)
-
-
-def refresh_after_write(store, after_sequence=0):
-    # A reading view failure must not turn committed task settlement into an
-    # apparent rollback. The durable record survives and can be rebuilt manually.
     try:
-        with store.read_only() as db:
-            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='events'").fetchone():return
-            relevant=db.execute("SELECT 1 FROM events WHERE sequence>? AND (event_type IN ('workday.output_recorded','agent_pool.tmux_job','agent.finished','task.delivery_recorded','task.completed','task.failed','task.cancelled','task.abandoned') OR event_type LIKE 'memory.%') LIMIT 1",(after_sequence,)).fetchone()
-        if not relevant:return
-        ledger=bound_ledger(store)
-        if ledger:ledger.rebuild()
-    except (OSError, ValueError) as exc:
-        import warnings
-        warnings.warn('workday view needs rebuild: '+type(exc).__name__,RuntimeWarning)
+        root=getattr(store,'workday_root',None)
+        if not isinstance(root,(str,Path)):
+            warn(store,'unconfigured');return None
+        return WorkdayLedger(store,root)
+    except Exception:
+        warn(store,'generation_failed');return None
+
+
+def bind_root(store,root):
+    # Explicit SDK/test binding, not an alternative config default.
+    try:
+        store.workday_root=Path(root).resolve()
+        return WorkdayLedger(store,root)
+    except Exception:
+        warn(store,'binding_conflict');return None
+
+
+def record_reference(store,path,**metadata):
+    try:return _register_reference(store,path,**metadata)
+    except Exception:return warn(store,'registration_failed')
+
+
+def _register_reference(store,path,**metadata):
+    """Queue metadata cheaply; do not acquire SQLite's writer or render here."""
+    try:return _queue_reference(store,path,**metadata)
+    except Exception:return warn(store,'registration_failed')
+
+
+def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
+    import uuid
+    path=Path(path)
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():raise ValueError('invalid output path')
+    if kind not in KINDS or not all(isinstance(v,str) and v.strip() for v in (node,agent,model,status)):raise ValueError('invalid metadata')
+    if task_id is not None and (not isinstance(task_id,str) or not task_id.strip()):raise ValueError('invalid task ID')
+    ref=dict(path=str(path),node=node,task_id=task_id,agent=agent,model=model,kind=kind,status=status)
+    from .memory import MemoryBridge
+    if MemoryBridge._sensitive_reason(canonical(ref)):return warn(store,'metadata_rejected')
+    with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb') as handle:
+        before=os.fstat(handle.fileno())
+        if not stat.S_ISREG(before.st_mode):raise ValueError('invalid output')
+        ref['sha256']=hashlib.file_digest(handle,'sha256').hexdigest();after=os.fstat(handle.fileno())
+    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('output changed')
+    ref['recorded_at']=time.time()
+    queue=_sidecar(store,'references')
+    _write(queue/(str(time.time_ns()).zfill(20)+'-'+uuid.uuid4().hex+'.json'),canonical(ref)+'\n')
+    mark_dirty(store)
+    return {'ok':True,'pending':True,'source':'sqlite_after_idle_registration'}
+
+
+def _flush_references(store):
+    queue=_sidecar(store,'references')
+    if not queue.is_dir():return
+    for path in sorted(queue.glob('*.json')):
+        try:
+            assert not path.is_symlink()
+            ref=json.loads(path.read_text());stamp=ref.pop('recorded_at')
+            with store.connect(refresh_views=False,timeout=.1) as db:
+                db.execute('BEGIN IMMEDIATE')
+                old=db.execute("SELECT payload_json,created_at FROM events WHERE event_type='workday.output_recorded' AND task_id IS ? AND json_extract(payload_json,'$.path')=? AND json_extract(payload_json,'$.node')=? AND json_extract(payload_json,'$.kind')=? ORDER BY sequence DESC LIMIT 1",(ref['task_id'],ref['path'],ref['node'],ref['kind'])).fetchone()
+                previous=json.loads(old[0]) if old else None
+                old_stamp=previous.pop('recorded_at',old[1]) if previous is not None else None
+                if previous!=ref or day_of(old_stamp)!=day_of(stamp):
+                    store._append_event_tx(db,ref['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
+            # Consume only derived queue metadata, retaining one last processed
+            # object through rename; no product or user file is removed/copied.
+            os.replace(path,_sidecar(store,'processed-reference.json'))
+        except Exception:warn(store,'registration_failed')
+
+
+def refresh_after_write(store,after_sequence=0):
+    """Post-commit work is one cheap pending token, never a scan or rebuild."""
+    try:mark_dirty(store)
+    except Exception:warn(store,'marker_failed')
+
+
+def rebuild_view(store,*,config=None,day=None,checks=None,only_if_dirty=False):
+    try:
+        if config is not None:configure(store,config)
+        if only_if_dirty and not _pending(store):return workday_status(store,config)
+        view=bound_ledger(store)
+        result=view.rebuild(day,checks=checks) if view else warn(store,'unconfigured')
+    except Exception:result=warn(store,'generation_failed')
+    if checks is not None:
+        try:_write(_sidecar(store,'local-check.json'),canonical(dict(checks,workday=result))+'\n')
+        except Exception:warn(store,'generation_failed')
+    return result
+
+
+def read_workday(store,day=None):
+    try:
+        view=bound_ledger(store)
+        if view is None:return warn(store,'unconfigured')
+        date_value=date.fromisoformat(day or day_of(time.time())).isoformat()
+        folder=view.root/'工作区'/(date_value+'-小八台账')
+        if _pending(store) or not (folder/'_索引.jsonl').is_file():return rebuild_view(store,day=date_value)
+        return {'ok':True,'directory':str(folder),'date':date_value,'pending':False,'source':'sqlite'}
+    except Exception:return warn(store,'generation_failed')
 
 
 def day_of(timestamp):
@@ -131,9 +254,9 @@ class WorkdayLedger:
         self.catalog = self.root/'工具/每日台账索引总目录'
 
     def record(self, path, *, node, task_id, agent, model, kind, status):
-        """Register an original output in the existing event chain, then render."""
-        _register_reference(self.store,path,node=node,task_id=task_id,agent=agent,model=model,kind=kind,status=status)
-        return self.rebuild(day_of(time.time()))
+        """Queue an original reference; rendering is deferred to an explicit trigger."""
+        try:return _register_reference(self.store,path,node=node,task_id=task_id,agent=agent,model=model,kind=kind,status=status)
+        except Exception:return warn(self.store,'registration_failed')
 
     def _snapshot(self):
         with self.store.read_only() as db:
@@ -144,6 +267,13 @@ class WorkdayLedger:
             tasks = {r['id']:dict(r) for r in db.execute('SELECT * FROM tasks')}
             candidates = [dict(r) for r in db.execute('SELECT * FROM memory_candidates ORDER BY created_at,task_id')]
             reuse = [dict(r) for r in db.execute('SELECT * FROM memory_reuse ORDER BY created_at,id')]
+        starts={};stages={};reuses={}
+        for event in events:
+            event['value']=json.loads(event['payload_json'])
+            kind=event['event_type'];value=event['value']
+            if kind=='agent.started':starts.setdefault(event['task_id'],[]).append(event)
+            elif kind=='memory.candidate_staged':stages.setdefault(event['task_id'],[]).append(event)
+            elif kind=='memory.reused':reuses.setdefault((event['task_id'],value.get('source_task_id')),event)
         rows = []
         event_order={e['event_id']:e['sequence'] for e in events}
         def add(value, timestamp, identity):
@@ -151,9 +281,9 @@ class WorkdayLedger:
                              sequence=event_order.get(identity.split(':')[0],0)))
         def identity(task_id, sequence, node=None, run_id=None):
             agents=[];models=[]
-            for e in events:
-                if e['event_type']!='agent.started' or e['task_id']!=task_id or e['sequence']>sequence:continue
-                v=json.loads(e['payload_json'])
+            for e in starts.get(task_id,[]):
+                if e['sequence']>sequence:break
+                v=e['value']
                 if node is not None and v.get('agent')!=node:continue
                 if run_id is not None and v.get('run_id')!=run_id:continue
                 pool=(v.get('execution') or {}).get('pool_score') or {}
@@ -165,15 +295,16 @@ class WorkdayLedger:
         tmux={};seen_cards=set();seen_receipts=set()
         for e in events:
             if e['event_type'] == 'workday.output_recorded':
-                add(json.loads(e['payload_json']), e['created_at'], e['event_id'])
+                value=e['value']
+                add(value,value.get('recorded_at',e['created_at']),e['event_id'])
             elif e['event_type']=='agent.finished':
-                v=json.loads(e['payload_json'])
+                v=e['value']
                 if v.get('receipt_path') and v.get('receipt_file_sha256'):
                     agent,model=identity(e['task_id'],e['sequence'],v['agent'],v['run_id'])
                     add(dict(path=v['receipt_path'],sha256=v['receipt_file_sha256'],node=v['agent'],task_id=e['task_id'],
                              agent=agent,model=model,kind='回执',status=v['status']),e['created_at'],e['event_id'])
             elif e['event_type']=='agent_pool.tmux_job':
-                v=json.loads(e['payload_json']);tmux[v['job_id']]=v
+                v=e['value'];tmux[v['job_id']]=v
                 ticket=v.get('ticket') or {};node=(v.get('source') or {}).get('node') or {}
                 base=dict(node=v.get('node_id'),task_id=ticket.get('task_id'),agent=node.get('agent','未记录'),model=node.get('model','未记录'))
                 if v['job_id'] not in seen_cards and ticket.get('card') and ticket.get('card_sha256'):
@@ -184,7 +315,7 @@ class WorkdayLedger:
                     add(dict(base,path=v['execution_receipt'],sha256=key[1],kind='回执',status=v['status']),e['created_at'],e['event_id']+':receipt')
                     seen_receipts.add(key)
             elif e['event_type'] in {'memory.application_recorded','task.delivery_recorded'}:
-                v=json.loads(e['payload_json']);task_id=v.get('real_task_id') or (v.get('real_task') or {}).get('id')
+                v=e['value'];task_id=v.get('real_task_id') or (v.get('real_task') or {}).get('id')
                 agent,model=identity(task_id,e['sequence'])
                 for key,kind in (('artifact','产出'),('delivery_record','回执')):
                     ref=v.get(key)
@@ -195,18 +326,15 @@ class WorkdayLedger:
         # Existing durable references are projected without opening originals.
         # Missing/cleaned products do not erase their registered evidence hashes.
         for c in candidates:
-            stages=[e for e in events if e['task_id']==c['task_id'] and e['event_type']=='memory.candidate_staged']
-            for stage in stages:
-                payload=json.loads(stage['payload_json'])
+            for stage in stages.get(c['task_id'],[]):
+                payload=stage['value']
                 add(dict(path=payload.get('staged_path',c['staged_path']),sha256=payload.get('evidence_sha256',c['evidence_sha256']),node='memory',task_id=c['task_id'],
                      agent=identity(c['task_id'],stage['sequence'])[0],
                      model=identity(c['task_id'],stage['sequence'])[1],kind='新经验',status='pending_delivery_review'),
                     stage['created_at'],stage['event_id'])
         for r in reuse:
-            evidence=[e for e in events if e['event_type']=='memory.reused' and e['task_id']==r['task_id']
-                      and json.loads(e['payload_json']).get('source_task_id')==r['source_task_id']]
-            event=evidence[0] if evidence else None
-            sha=json.loads(event['payload_json']).get('source_sha256') if event else None
+            event=reuses.get((r['task_id'],r['source_task_id']))
+            sha=event['value'].get('source_sha256') if event else None
             who=identity(r['task_id'],event['sequence'] if event else 0)
             add(dict(path=r['source_path'],sha256=sha,hash_state='recorded' if sha else '历史记录未保存文件哈希',
                      node='memory',task_id=r['task_id'],agent=who[0],model=who[1],kind='复用经验',status='pending'),
@@ -242,28 +370,41 @@ class WorkdayLedger:
         if not isinstance(host,dict):host={}
         return ', '.join(dict.fromkeys(selected)) or host.get('id') or provenance.get('author','未记录'), host.get('model','未记录')
 
-    def rebuild(self, day=None, *, checks=None):
-        day = date.fromisoformat(day or day_of(time.time())).isoformat()
-        with self.store.read_only() as db:
-            if not self.store.verify_event_chain_tx(db)['ok']:
-                raise ValueError('workday requires a valid event chain')
+    def rebuild(self,day=None,*,checks=None,lock_timeout=.25):
+        try:return self._rebuild(day,checks=checks,lock_timeout=lock_timeout)
+        except RootConflict:return warn(self.store,'binding_conflict')
+        except Exception:return warn(self.store,'generation_failed')
+
+    def _rebuild(self,day=None,*,checks=None,lock_timeout=.25):
+        day=date.fromisoformat(day or day_of(time.time())).isoformat()
+        state=workday_status(self.store)
+        if state.get('warning_code') in ('unconfigured','binding_conflict'):
+            return warn(self.store,state['warning_code'])
         _directory(self.catalog)
         lock=self.catalog/'.workday.lock'
-        if lock.is_symlink():raise ValueError('workday lock must not be a symlink')
-        with lock.open('a') as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            with self.store.connect(refresh_views=False) as db:
+        with os.fdopen(os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600),'a') as handle:
+            deadline=time.monotonic()+lock_timeout
+            while True:
+                try:
+                    fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+                except BlockingIOError:
+                    if time.monotonic()>=deadline:return warn(self.store,'lock_timeout')
+                    time.sleep(min(.02,max(0,deadline-time.monotonic())))
+            token=_sidecar(self.store,'pending').read_bytes() if _sidecar(self.store,'pending').is_file() else b''
+            _flush_references(self.store)
+            # Snapshot AFTER locking so an older snapshot cannot overwrite a new one.
+            rows,tasks,events = self._snapshot()
+            # The sole chain check and all projection data came from the closed
+            # read-only snapshot above. This short metadata transaction ends
+            # before any view file is rendered.
+            with self.store.connect(refresh_views=False,timeout=.1) as db:
                 db.execute('BEGIN IMMEDIATE')
-                if not self.store.verify_event_chain_tx(db)['ok']:
-                    raise ValueError('workday requires a valid event chain')
                 bound=db.execute("SELECT payload_json FROM events WHERE event_type='workday.root_bound' ORDER BY sequence DESC LIMIT 1").fetchone()
-                if bound and Path(json.loads(bound[0])['root']).resolve()!=self.root:
-                    raise ValueError('workday root binding changed; user decision required')
+                if bound and Path(json.loads(bound[0])['root']).resolve()!=self.root:raise RootConflict()
                 if not bound:self.store._append_event_tx(db,None,'workday.root_bound',{'root':str(self.root)})
                 exists=db.execute("SELECT 1 FROM events WHERE event_type='workday.render_requested' AND json_extract(payload_json,'$.date')=?",(day,)).fetchone()
                 if not exists:self.store._append_event_tx(db,None,'workday.render_requested',{'date':day})
-            # Snapshot AFTER locking so an older snapshot cannot overwrite a new one.
-            rows,tasks,events = self._snapshot()
+
             folder=self.root/'工作区'/(day+'-小八台账')
             _directory(folder)
             for kind in KINDS[:3]:_directory(folder/kind)
@@ -273,10 +414,10 @@ class WorkdayLedger:
             for kind in KINDS[:3]:
                 _write(folder/kind/'引用.jsonl',''.join(canonical(r)+'\n' for r in daily if r['kind']==kind))
             _write(folder/'台账.md','# '+day+' 小八台账\n\nSQLite 阅读视图；原文件留在项目目录。\n\n'+
-                   ''.join('- '+r['kind']+' · '+str(r['task_id'] or '无任务 ID')+' · '+r['status']+' · '+r['path']+' · SHA256 '+str(r['sha256'])+'\n' for r in daily))
+                   ''.join('- '+r['kind']+' · '+str(r['task_id'] or '无任务 ID')+' · '+r['status']+' · '+r['path']+' · '+('SHA256 '+r['sha256'] if r.get('sha256') else r.get('hash_state','历史记录未保存文件哈希'))+'\n' for r in daily))
             # The previous ledger day is reconstructed from DB dates, never files.
             days={r['date'] for r in rows}
-            days.update(json.loads(e['payload_json'])['date'] for e in events if e['event_type']=='workday.render_requested')
+            days.update(e['value']['date'] for e in events if e['event_type']=='workday.render_requested')
             days.update(day_of(e['created_at']) for e in events if e['event_type']=='session.started')
             previous=max((d for d in days if d<day),default=None)
             unfinished=[]
@@ -287,7 +428,7 @@ class WorkdayLedger:
             unfinished.sort(key=lambda t:(t['created_at'],t['id']))
             _write(folder/'接续清单.md','# 接续清单\n\n最近台账：'+str(previous or '无')+'；任务 ID 跨天接续，以 SQLite 当前状态为准。\n\n'+
                    ''.join('- '+t['id']+' · '+t['status']+'\n' for t in unfinished))
-            if checks is not None:_write(folder/'本地检测报告.json',canonical(checks)+'\n')
+            if checks is not None:_write(folder/'本地检测报告.json',canonical(dict(checks,workday=workday_status(self.store)))+'\n')
             catalog=[]
             for d in sorted(days|{day}):
                 location=self.root/'工作区'/(d+'-小八台账')
@@ -297,4 +438,9 @@ class WorkdayLedger:
                                     state='可读取' if (location/'_索引.jsonl').is_file() else '已清理、可重新生成'))
             _write(self.catalog/'_索引.jsonl',''.join(canonical(r)+'\n' for r in catalog))
             _write(self.catalog/'总目录.md','# 每日台账总目录\n\n'+''.join('- '+r['date']+' · '+r['state']+' · '+r['path']+' · '+canonical(r['counts'])+' · 未完成 '+str(r['unfinished'])+'\n' for r in catalog))
+            _write(_sidecar(self.store,'rendered'),token.decode())
+            previous_status=workday_status(self.store)
+            status={'ok':True}
+            if not previous_status.get('ok'):status['last_warning']=previous_status
+            _write(_sidecar(self.store,'status.json'),canonical(status)+'\n')
             return dict(directory=str(folder),date=day,entries=len(daily),continuation=len(unfinished),source='sqlite',model_tasks_sent=0)
