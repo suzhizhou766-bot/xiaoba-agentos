@@ -16,7 +16,7 @@
     <p id="apModelNote" class="ap-note"></p>
     <label id="apTimeoutField">掉线时限（秒）<input name="no_progress_seconds" type="number" min="1" max="86400" step="1" placeholder="留空用默认 300 秒"></label>
     <label id="apEffortField">思考强度<input name="reasoning_effort" list="apEffortOptions" maxlength="32" placeholder="留空不传；Qoder Extra High 填 xhigh"></label>
-    <datalist id="apEffortOptions"><option value="xhigh"><option value="high"><option value="medium"><option value="low"><option value="max"><option value="minimal"><option value="auto"><option value="none"><option value="ultracode"></datalist>
+    <datalist id="apEffortOptions"><option value="xhigh"><option value="high"><option value="medium"><option value="low"><option value="max"><option value="minimal"></datalist>
     <p id="apEffortNote" class="ap-note" hidden>Qoder 传 --reasoning-effort（Extra High 写作 xhigh）；CodeBuddy 传 --effort（high / xhigh 等）。改了要重测。</p>
     <p class="ap-note">名称、调用方式、入口和模型均由你指定，也可通过与小八对话补齐。新节点先关闭；开启并测试通过后，小八直接使用适用节点，不重复问这些资料。支持 AGY、DSH、Qoder、WorkBuddy CLI（CodeBuddy）、Codex、Claude，每张卡调用一次；内置 WorkBuddy 引擎已退役，只用于识别旧节点，按文件回执判断结果。CLI 更新或服务重启保留运行资格；修改调用配置后需重测。无人值守只接文件读写任务。其它 CLI 使用小八 JSON 协议；桌面或 Web 需对应受信调用器。</p><button type="submit" id="apSubmit" class="ap-primary ap-wide">添加节点</button>
   </form>

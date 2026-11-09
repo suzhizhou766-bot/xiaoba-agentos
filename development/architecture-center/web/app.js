@@ -11,7 +11,7 @@
   $('versionLine').replaceChildren(document.createTextNode('线上 '+data.release.version),document.createElement('br'),document.createTextNode(data.release.date+' '+data.release.note));
   $('sourceLine').textContent='依据：云端图谱 '+data.source.cloudVersion+' · '+data.date+' 同步，'+data.source.nodes+' 节点 / '+data.source.edges+' 连线';
   $('liveLegend').textContent=data.statuses.done[0]+'（'+data.release.version+' 基础能力）';
-  document.querySelector('meta[name="description"]').content='小八 AgentOS 现行架构：'+data.source.nodes+' 节点、'+data.source.edges+' 连线；线上 '+data.release.version+'，云端图谱 '+data.source.cloudVersion+'；评分中心与复用计分已上线。';
+  document.querySelector('meta[name="description"]').content='小八 AgentOS 现行架构：'+data.source.nodes+' 节点、'+data.source.edges+' 连线；线上 '+data.release.version+'，云端图谱 '+data.source.cloudVersion+'；共用工作日台账、评分中心与复用计分已上线。';
   function remember(){try{localStorage.setItem('xiaoba-architecture-view',JSON.stringify({view:view.id,reading}));}catch{}}
   function announce(value){$('announcement').textContent=value;}
   function transform(){world.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;$('zoomLevel').value=Math.round(scale*100)+'%';remembered[view.id]={scale,tx,ty};}

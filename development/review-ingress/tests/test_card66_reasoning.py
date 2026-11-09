@@ -72,10 +72,19 @@ class ReasoningEffortTests(CliFixture, unittest.TestCase):
         self.assertNotEqual(before, digest(spec(edited)))
         self.assertEqual('invalidated', node_state(edited)['test']['status'])
 
-    def test_effort_tables_match_verified_cli_help(self):
-        self.assertIn('xhigh', REASONING_EFFORT['qoder'])
-        self.assertIn('high', REASONING_EFFORT['codebuddy'])
-        self.assertNotIn('ultracode', REASONING_EFFORT['codebuddy'])
+    def test_effort_tables_are_subsets_of_recorded_cli_output(self):
+        # v1.6.13 验收 Qoder 阻断 2：白名单要对照 CLI 自己的输出（固定在夹具里），而不是和自己比。
+        import re
+        from pathlib import Path
+        from xiaoba_agentos.gateway import CLI_REASONING_EFFORTS, _QODER_EFFORTS
+        text = (Path(__file__).with_name('fixtures') / 'cli-effort-evidence.txt').read_text(encoding='utf-8')
+        qoder = set(re.search(r'Valid values are: ([a-z, ]+)\.', text).group(1).replace(' ', '').split(','))
+        codebuddy = set(re.search(r'--effort <level> \(([a-z, ]+)\)', text).group(1).replace(' ', '').split(','))
+        self.assertLessEqual(REASONING_EFFORT['qoder'], qoder)
+        self.assertLessEqual(REASONING_EFFORT['codebuddy'], codebuddy)
+        self.assertEqual(set(_QODER_EFFORTS), set(REASONING_EFFORT['qoder']))
+        self.assertEqual({k: set(v) for k, v in CLI_REASONING_EFFORTS.items()}, {k: set(v) for k, v in REASONING_EFFORT.items()})
+        self.assertIn('xhigh', REASONING_EFFORT['qoder']); self.assertIn('high', REASONING_EFFORT['codebuddy'])
 
 
 if __name__ == '__main__':
