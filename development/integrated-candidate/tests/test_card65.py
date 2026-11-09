@@ -42,6 +42,29 @@ class QueueTests(unittest.TestCase):
         with patch.object(self.store,'_append_event_tx',side_effect=append):ledger._flush_references(self.store)
         self.assertEqual(0,self.count());self.assertEqual(3,len(list(folder.glob('*.json'))))
         ledger._flush_references(self.store);self.assertEqual(3,self.count())
+    def test_r4_lock_contention_never_sends_valid_references_to_dead_letter(self):
+        # v1.6.12 第四轮 DSH 缺陷 2：拿不到写锁是瞬时竞争，不计死信次数，锁释放后照常登记。
+        folder=self.queue(3)
+        holder=sqlite3.connect(self.store.path);holder.execute('BEGIN IMMEDIATE')
+        try:
+            for _ in range(5):ledger._flush_references(self.store)
+        finally:holder.rollback();holder.close()
+        self.assertEqual(3,len(list(folder.glob('*.json'))))
+        self.assertFalse((folder.parent/'.workday-references-dead').exists())
+        ledger._flush_references(self.store);self.assertEqual(3,self.count())
+    def test_r4_workday_record_returns_the_specific_reason(self):
+        # v1.6.12 第四轮 DSH 缺陷 1：参数不合法时，CLI 输出里带具体原因，仍然返回 0。
+        import io,contextlib
+        from xiaoba_agentos import cli
+        product=self.root/'product.md';product.write_text('TEST product')
+        cfg=SimpleNamespace(memory={'obsidian_vault':str(self.root/'assistant/vault')},runtime_dir=self.root/'runtime')
+        out=io.StringIO()
+        with patch('xiaoba_agentos.cli._load',return_value=(cfg,self.store)),contextlib.redirect_stdout(out):
+            code=cli.main(['workday-record',str(product),'--node','TEST','--agent','TEST','--model','TEST','--kind','不存在的类型','--status','done'])
+        self.assertEqual(0,code)
+        result=json.loads(out.getvalue())
+        self.assertEqual('registration_failed',result['warning_code'])
+        self.assertEqual('invalid metadata',result['reason'])
     def test_D2_poison_reference_quarantined_after_three_failures(self):
         folder=self.queue(0);bad=folder/'bad.json';bad.write_text('TEST invalid JSON')
         for _ in range(3):ledger._flush_references(self.store)

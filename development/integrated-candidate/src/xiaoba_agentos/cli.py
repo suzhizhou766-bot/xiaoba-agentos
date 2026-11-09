@@ -1259,7 +1259,7 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_rebuild.add_argument('--day')
     ledger_read = sub.add_parser('workday-read', help='读取台账位置；发现待刷新标记时先重建')
     ledger_read.add_argument('--day')
-    ledger_record = sub.add_parser('workday-record', help='登记原产物路径与哈希并生成台账')
+    ledger_record = sub.add_parser('workday-record', help='登记原产物路径与哈希（只排队并标记待刷新，下次上班、手动重建或空闲时生成台账）')
     ledger_record.add_argument('path', type=Path)
     ledger_record.add_argument('--task-id')
     for field in ('node','agent','model','kind','status'):
@@ -1681,12 +1681,9 @@ def main(argv: Optional[list] = None) -> int:
                                      model=args.model,kind=args.kind,status=args.status) if ledger else warn(store,'unconfigured')
             _print(result,True)
             return 0
-        except Exception as exc:
-            result=warn(store,'generation_failed')
-            if args.command=='workday-record' and isinstance(exc,ValueError) and isinstance(result,dict):
-                # 登记参数不合法时告诉宿主具体原因（卡 64 复查观察 6），仍然返回 0。
-                result=dict(result,reason=str(exc)[:300])
-            _print(result,True)
+        except Exception:
+            # 台账命令一律返回 0；参数不合格的具体原因由 record 的返回值里的 reason 带出。
+            _print(warn(store,'generation_failed'),True)
             return 0
     if args.command == "init":
         _secure_directory(config.runtime_dir)
