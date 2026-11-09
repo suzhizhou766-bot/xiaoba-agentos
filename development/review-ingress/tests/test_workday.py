@@ -82,6 +82,16 @@ class FileReceiptTests(InteractiveFixture,unittest.TestCase):
         with self.assertRaises(WorkspaceError):adapter.workday.read(ticket)
         self.assertEqual(external.read_text(),'TEST outside')
 
+    def test_transient_second_link_during_atomic_save_is_reread_not_failed(self):
+        # v1.6.11 r3 验收：Qoder 保存工作日志的一瞬间文件有两个链接，回执被判永久失败。
+        adapter,record,ticket=self.ticket();self.write(ticket)
+        temp=ticket['log'].with_name('.save-tmp');os.link(ticket['log'],temp)
+        timer=threading.Timer(0.3,temp.unlink);timer.start()
+        try:value=adapter.workday.read(ticket)
+        finally:timer.join()
+        self.assertIsNotNone(value)
+        self.assertEqual(1,os.stat(ticket['log']).st_nlink)
+
     def test_accepted_prefix_can_be_appended_but_cannot_be_rewritten(self):
         adapter,record,ticket=self.ticket();self.write(ticket)
         value=adapter.workday.read(ticket)

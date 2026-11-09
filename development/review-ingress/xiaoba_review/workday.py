@@ -1,6 +1,7 @@
 """Read task receipts from an agent's append-only daily Markdown work log."""
 from datetime import datetime
 import hashlib
+import time
 import json
 import os
 from pathlib import Path
@@ -18,15 +19,30 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+# 节点自己的编辑器保存时可能有一瞬间是两个链接（先建临时链接再改名）。
+# v1.6.11 r3 验收里 Qoder 的回执因此被判永久失败；这里短暂重读，持续异常仍然拒绝。
+TRANSIENT_RETRIES = 20
+TRANSIENT_DELAY = 0.1
+
+
 def read_regular(path, limit=MAX_LOG_BYTES):
-    try:fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    except FileNotFoundError:return None
-    except OSError:
-        raise WorkspaceError('worklog_path_invalid', '工作日志不能通过符号链接或异常文件读取。') from None
-    with os.fdopen(fd, 'rb') as stream:
+    for attempt in range(TRANSIENT_RETRIES + 1):
+        try:fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except FileNotFoundError:return None
+        except OSError:
+            raise WorkspaceError('worklog_path_invalid', '工作日志不能通过符号链接或异常文件读取。') from None
+        stream = os.fdopen(fd, 'rb')
         before = os.fstat(stream.fileno())
-        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > limit:
+        if before.st_size > limit:
+            stream.close()
             raise WorkspaceError('worklog_path_invalid', '工作日志不是独立普通文件或超过读取上限。')
+        if stat.S_ISREG(before.st_mode) and before.st_nlink == 1:
+            break
+        stream.close()
+        if attempt == TRANSIENT_RETRIES:
+            raise WorkspaceError('worklog_path_invalid', '工作日志不是独立普通文件或超过读取上限。')
+        time.sleep(TRANSIENT_DELAY)
+    with stream:
         data = stream.read(limit + 1)
         after = os.fstat(stream.fileno())
     if len(data) > limit:raise WorkspaceError('worklog_limit', '工作日志超过读取上限。')
