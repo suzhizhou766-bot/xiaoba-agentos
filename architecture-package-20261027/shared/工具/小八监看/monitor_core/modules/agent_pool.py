@@ -107,6 +107,7 @@ class AgentPoolModule(Module):
             # Check UI before any database initialization or route registration.
             OpenReviewModule.mount_pool(Response(200, b'<body><div id="topo"></div></body>'), self.ctx.page_token)
             native = EventStore(native_config.database_path)
+            native.workday_root = Path(native_config.memory['obsidian_vault']).expanduser().parent
             native.initialize()
             # 用户在 monitor.json 指定；没指定时 AGY CLI 和桌面文件通道不可用，其它功能照常。
             workspace_root = (self.ctx.config.get('agent_pool') or {}).get('workspace_root') or None

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f8fc">
-  <meta name="description" content="小八 AgentOS 现行架构：53 节点、85 连线；线上 v1.6.10，云端图谱 1644；评分中心与复用计分已上线。">
+  <meta name="description" content="小八 AgentOS 现行架构：53 节点、85 连线；线上 v1.6.11，云端图谱 1645；评分中心与复用计分已上线。">
   <title>小八 AgentOS · 架构拓扑</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./editor.css">
@@ -14,11 +14,11 @@
 </head>
 <body>
   <header class="header">
-    <div class="heading"><div class="brand-mark" aria-hidden="true">八</div><div><h1>小八 AgentOS <span>架构拓扑</span></h1><p class="version-line">线上 v1.6.10 · 清单 1b2aa8ab…<br>2026-11-09 热修上线 · 发版已恢复</p></div></div>
+    <div class="heading"><div class="brand-mark" aria-hidden="true">八</div><div><h1>小八 AgentOS <span>架构拓扑</span></h1><p id="versionLine" class="version-line">线上 v1.6.11<br>2026-11-09 正式上线 · 发版已恢复</p></div></div>
     <div class="header-actions"><button id="statusToggle" class="quiet" aria-expanded="true" aria-controls="statusStrip">实现状态</button><button id="readingToggle" class="quiet" aria-pressed="false">阅读模式</button></div>
   </header>
   <div id="statusStrip" class="status-strip">
-    <span>依据：云端图谱 1644 · 2026-11-09 同步，53 节点 / 85 连线</span>
+    <span id="sourceLine">依据：云端图谱 1645 · 2026-11-09 同步，53 节点 / 85 连线</span>
     <span>已上线：评分中心、正式经验复用计分、按角色与周评分择优</span>
     <span>待实现：共用工作日台账＋每日台账索引总目录；v1.6.8 未单独上线，改动并入 v1.6.9</span>
     <span>升级发布 8 节点、评分细分 5 节点独立保留，待用户定</span>
@@ -42,7 +42,7 @@
       <h2 id="detailTitle"></h2><div id="detailStatus"></div><p id="detailDescription"></p><div id="detailSections"></div><div id="detailLinks"></div>
     </aside>
   </main>
-  <footer><div class="legend"><span><i class="dot current"></i>已上线（基础能力）</span><span><i class="dot developed"></i>候选已开发</span><span><i class="dot planned"></i>待实现</span><span><i class="dot pending"></i>待用户裁定 / 待用户定</span></div><span id="hint">拖动画布 · 滚轮缩放 · 点击节点查看规则</span></footer>
+  <footer><div class="legend"><span><i class="dot current"></i><span id="liveLegend">已上线（v1.6.11 基础能力）</span></span><span><i class="dot developed"></i>候选已开发</span><span><i class="dot planned"></i>待实现</span><span><i class="dot pending"></i>待用户裁定 / 待用户定</span></div><span id="hint">拖动画布 · 滚轮缩放 · 点击节点查看规则</span></footer>
   <div id="announcement" class="sr-only" aria-live="polite"></div>
 </body>
 </html>

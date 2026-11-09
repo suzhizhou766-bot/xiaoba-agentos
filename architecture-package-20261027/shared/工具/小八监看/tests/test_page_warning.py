@@ -67,11 +67,8 @@ class WarningBannerTests(unittest.TestCase):
         self.assertIn("hidden", page)             # 还没读到警告时是空的，页面脚本随后会填
 
     def test_page_script_keeps_the_banner_up_to_date(self):
-        # 页面脚本随 review-ui-install 管理的 xiaoba-monitor.html 走；仓库副本可能尚未装上 pageWarn。
-        # 服务端注入（上面两个用例）已经保证正文有位置；脚本更新等页面发版合并。
         text = PAGE.read_text(encoding="utf-8")
-        if 'id="pageWarn"' not in text:
-            self.skipTest("xiaoba-monitor.html 尚无 pageWarn（由 review-ui-install 管理，卡 60 保留仓库页）")
+        self.assertIn('id="pageWarn"', text)
         self.assertIn("m.warning", text)
         self.assertIn("box.hidden = !warn.length", text)
 

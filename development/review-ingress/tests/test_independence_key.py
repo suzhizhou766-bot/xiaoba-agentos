@@ -136,7 +136,7 @@ class PathConsistencyTests(fixtures.FixtureMixin, unittest.TestCase):
         revision = next(n['revision'] for n in self.pool.state()['nodes'] if n['node_id'] == node_id)
         return self.runtime.test_run(node_id, revision, 'TEST-ind-' + node_id)
 
-    def test_workday_and_prepare_agree_on_independence(self):
+    def test_local_workday_does_not_dispatch_and_prepare_enforces_independence(self):
         same = self.pair('same', 'TEST-model-A', 'TEST-model-A')
         for node in same:
             self.assertEqual(self.probe(node)['status'], 'passed')
@@ -145,8 +145,7 @@ class PathConsistencyTests(fixtures.FixtureMixin, unittest.TestCase):
         self.assertEqual(prepared['route'], 'ask_user')
         self.assertEqual(prepared['questions'][0]['field'], 'independent_source')
         workday = self.runtime.start_workday('上班了小八助理', 'TEST-START-SAME', ['dsh', 'peer'], selections)
-        self.assertEqual(workday['route'], 'blocked')
-        self.assertEqual(workday['blockers'], [{'reason': 'independent_source_required'}])
+        self.assertEqual(workday['route'], 'ready')  # Reading view only; no dispatch.
         self.assertEqual(workday['model_tasks_sent'], 0)
 
         other = self.pair('diff', 'TEST-model-A', 'TEST-model-B')
@@ -156,7 +155,7 @@ class PathConsistencyTests(fixtures.FixtureMixin, unittest.TestCase):
         self.assertEqual(self.runtime.prepare(['dsh', 'peer'], selections)['route'], 'run')
         workday = self.runtime.start_workday('上班了小八助理', 'TEST-START-DIFF', ['dsh', 'peer'], selections)
         self.assertEqual(workday['route'], 'ready', workday)
-        self.assertTrue(workday['work_logs_initialized'])
+        self.assertFalse(workday['work_logs_initialized'])
 
 
 class IngressEvidenceTests(unittest.TestCase):

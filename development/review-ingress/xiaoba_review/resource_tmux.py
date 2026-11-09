@@ -6,6 +6,7 @@ Before typing anything the channel reads pane metadata (`display-message -p`),
 which reports the foreground program and its directory, never screen content.
 """
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -124,6 +125,10 @@ class TmuxChannel:
         return jobs
 
     def _save(self, db, job):
+        if job.get('execution_receipt') and not job.get('execution_receipt_sha256'):
+            path=Path(job['execution_receipt'])
+            if path.is_symlink() or not path.is_file():raise Conflict('执行回执路径异常')
+            job['execution_receipt_sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
         self.store.native._append_event_tx(db, None, EVENT, job)
 
     def workspace(self, source):

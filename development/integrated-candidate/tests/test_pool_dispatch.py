@@ -22,6 +22,10 @@ def _config(root, agents):
     raw["agents"] = agents
     raw["memory"]["knowlp_enabled"] = False
     raw["memory"]["publish_enabled"] = False
+    # Workday views derive their root from the vault; fixtures must never
+    # inherit the shipped production vault even when publishing is disabled.
+    raw["memory"]["obsidian_vault"] = str(root / "vault")
+    raw["paths"]["obsidian_vault"] = str(root / "vault")
     path = root / "config.json"
     path.write_text(json.dumps(raw), encoding="utf-8")
     return AppConfig.load(path)

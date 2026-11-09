@@ -335,6 +335,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.10；不创建备份，切换由主力在本机终端按授权执行。"
+    },
+    {
+      "version": "v1.6.12",
+      "release_date": "2026-11-09",
+      "status": "candidate",
+      "summary": "共用工作日台账（卡 62）：从 SQLite 生成每日台账、_索引.jsonl、接续清单和总目录，只作阅读视图，可随时重建，用户清理工作区不影响记录；session-start 与接入口 start_workday 改用同一生成器；另修 v1.6.11 审查员的非阻断项（派审事件不再顶掉条目 updated_at、页面警告测试直接断言、B4 结果哈希回库重算、通知过滤共用函数、未评分原因变化时追加事件）。无数据库结构变更，不新增切换步骤；前置源码清单哈希为已上线 v1.6.11 的值。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.11；不创建备份，切换由主力在本机终端按授权执行。"
     }
   ]
 }

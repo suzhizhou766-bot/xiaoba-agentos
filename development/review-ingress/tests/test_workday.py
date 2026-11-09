@@ -119,22 +119,18 @@ class WorkdayFlowTests(InteractiveFixture,unittest.TestCase):
         return adapter.run({'task_id':task,'assignment_id':assignment,'step_code':step,
             'resource_plan':{'model':self.source(node)['node']['model']},'card_digest':'TEST'})
 
-    def test_literal_start_checks_selected_node_and_agent_creates_daily_log_once(self):
+    def test_literal_start_checks_locally_without_initializing_node_log(self):
         node=self.add();runtime=self.pool.runtime
         for text in ('用户说“上班了小八助理”','上班了小八助理，请说明流程'):
             with self.assertRaises(ValueError):runtime.start_workday(text,'START', ['peer'],{'peer':node})
-        self.assertEqual(self.calls(),[])
         one=runtime.start_workday('上班了小八助理','START',['peer'],{'peer':node})
         self.assertEqual(one['route'],'ready',one)
-        self.assertTrue(one['work_logs_initialized'])
-        logfile=self.workspaces/'用户自定名字'/(today()+'-工作内容.md')
-        self.assertTrue(logfile.is_file())
+        self.assertFalse(one['work_logs_initialized']);self.assertEqual(0,one['model_tasks_sent'])
+        self.assertFalse((self.workspaces/'用户自定名字'/(today()+'-工作内容.md')).exists())
         events=self.count('events')
         self.assertEqual(runtime.start_workday('上班了小八助理','START',['peer'],{'peer':node}),one)
-        self.assertEqual(self.count('events'),events)
-        self.assertEqual([v['event'] for v in self.calls()],['start','start'])  # One process per step.
-        facts=runtime.workday_inputs(node,today())['tasks']
-        self.assertEqual(len(facts),2);self.assertTrue(all(v['health_check'] for v in facts))
+        self.assertEqual(self.count('events'),events);self.assertEqual(self.calls(),[])
+        self.assertEqual(runtime.workday_inputs(node,today())['tasks'],[])
 
     def test_missing_chain_configuration_sends_no_model_task(self):
         self.add()
@@ -248,14 +244,14 @@ class WorkdayFlowTests(InteractiveFixture,unittest.TestCase):
         with self.assertRaises(ValueError):self.pool.runtime.scoring.assess(node,today(),'TASK-failed','code-review',
             'good',['TEST'],1,'ASSESS-bad')
 
-    def test_exception_during_start_is_saved_and_same_message_does_not_retry(self):
+    def test_start_never_calls_model_test_and_same_message_is_idempotent(self):
         from unittest.mock import patch
         node=self.add();runtime=self.pool.runtime
-        with patch.object(runtime,'test_run',side_effect=RuntimeError('TEST bounded failure')) as probe:
+        with patch.object(runtime,'test_run',side_effect=RuntimeError('must not dispatch')) as probe:
             result=runtime.start_workday('上班了小八助理','START-FAIL',['peer'],{'peer':node})
-            self.assertEqual(result['route'],'blocked')
+            self.assertEqual(result['route'],'ready')
             self.assertEqual(runtime.start_workday('上班了小八助理','START-FAIL',['peer'],{'peer':node}),result)
-            self.assertEqual(probe.call_count,1)
+            probe.assert_not_called()
 
     def test_general_work_card_uses_markdown_and_duplicate_step_does_not_execute_twice(self):
         node=self.add();self.probe(node);runtime=self.pool.runtime
@@ -315,7 +311,7 @@ class WorkdayHttpTests(InteractiveFixture,unittest.TestCase):
         self.assertEqual(code,200,value);self.assertEqual(value['result']['points'],1)
         code,value=self.fetch('/api/agent-pool/weekly-scores',{'day':today(),'task_type':'code-review'})
         self.assertEqual(code,200,value);self.assertEqual(value['result']['ranking'][0]['tasks'],1)
-        self.assertEqual(len({v['pid'] for v in self.calls()}),3)  # Probe + workday init + review, one process each.
+        self.assertEqual(len({v['pid'] for v in self.calls()}),1)  # Only the explicit business review; session start is local.
         self.assertEqual(self.count('memory_reviews'),1)  # Only authored fixture setup.
 
     def test_normal_backend_execution_reads_file_and_receives_bound_review(self):
