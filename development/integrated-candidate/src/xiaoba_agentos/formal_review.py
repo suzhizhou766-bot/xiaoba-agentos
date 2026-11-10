@@ -17,8 +17,17 @@ DAY = 86400
 
 
 def _events(db):
-    return [dict(r, value=json.loads(r['payload_json'])) for r in db.execute(
-        "SELECT * FROM events WHERE event_type=? OR event_type LIKE 'memory.formal_%' ORDER BY sequence", (REVISION,))]
+    # OR+LIKE forces a full scan; two index range scans + merge keep order.
+    # Prefix range uses the (event_type, sequence) composite index.
+    sql = (
+        "SELECT * FROM ("
+        "SELECT * FROM events WHERE event_type=?"
+        " UNION ALL "
+        "SELECT * FROM events WHERE event_type >= ? AND event_type < ?"
+        ") ORDER BY sequence"
+    )
+    rows = db.execute(sql, (REVISION, PREFIX, 'memory.formal`')).fetchall()
+    return [dict(r, value=json.loads(r['payload_json'])) for r in rows]
 
 
 def _chain(db):

@@ -7,8 +7,10 @@ sqlite_master 中全部表、索引、触发器、视图的定义和 PRAGMA user
 做确定性排序与空白归一后算 SHA-256，与 tests/fixtures/schema_fingerprint.json
 比对。
 
-失败即表示表结构变了：必须同时升 DATABASE_SCHEMA_VERSION 并更新指纹文件，
-这一版按迁移档走。
+失败即表示表结构（含索引）变了：必须更新指纹文件，这一版按迁移档走。
+结构版本（DATABASE_SCHEMA_VERSION / PRAGMA user_version）是否上调另按发版契约：
+仅加幂等索引、表/列不变时可保持同一结构版本；指纹变化本身已是迁移档，
+须走复制现场演练与 readback。switch_release 现行开关禁止在同一切换里升结构版本。
 """
 
 import hashlib
@@ -73,7 +75,7 @@ def _load_fixture():
 
 
 class SchemaFingerprintTest(unittest.TestCase):
-    """表结构一旦变化，必须同时升版本号并更新指纹文件。"""
+    """表结构（含索引）一旦变化，必须更新指纹文件；是否升结构版本另按发版契约。"""
 
     @classmethod
     def setUpClass(cls):
@@ -104,8 +106,9 @@ class SchemaFingerprintTest(unittest.TestCase):
                 "表结构指纹与 tests/fixtures/schema_fingerprint.json 不一致：\n"
                 "  指纹文件 schema_version={!r} sha256={!r} objects={!r}\n"
                 "  真实建库 schema_version={!r} sha256={!r} objects={!r}\n"
-                "改了表结构必须同时升 DATABASE_SCHEMA_VERSION"
-                "（当前 {!r}）并更新指纹文件，这一版按迁移档走。".format(
+                "改了表结构（含索引）必须更新指纹文件，按迁移档走；"
+                "结构版本常量当前为 {!r}，是否上调另按发版契约"
+                "（仅加幂等索引可保持不变；现行 switch 禁止同一切换里升结构版本）。".format(
                     fixture.get("schema_version"), fixture.get("sha256"),
                     fixture.get("objects"),
                     EventStore.DATABASE_SCHEMA_VERSION, self.sha256, self.objects,

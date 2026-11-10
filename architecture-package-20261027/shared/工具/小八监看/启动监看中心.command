@@ -3,19 +3,21 @@
 # 带看护：监看中心意外退出或不响应时会自动重启；它管理的裁决后端也一并拉起和看护。
 # 已在运行时只打开页面。关闭：双击同目录的“关闭监看中心.command”。不会开机自启。
 DIR="$(cd "$(dirname "$0")" && pwd)"
-URL="http://127.0.0.1:8799/"
+# 端口和“不弹浏览器”只给测试用（与关闭脚本的 XIAOBA_LSOF 同一做法）；不设就是线上默认。
+PORT="${XIAOBA_MONITOR_PORT:-8799}"
+URL="http://127.0.0.1:${PORT}/"
 ready() { /usr/bin/curl -fsS --max-time 2 "${URL}healthz" >/dev/null 2>&1; }
 if ! ready; then
   mkdir -p "$DIR/logs"
   cd "$DIR" || exit 1
   PY="/Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14"  # 统一解释器（2026-10-22 融合迭代第 2 步）
-  nohup "$PY" -B "$DIR/xiaoba_monitor.py" --supervise >> "$DIR/logs/supervisor.out.log" 2>&1 &
+  nohup "$PY" -B "$DIR/xiaoba_monitor.py" --supervise --detach --port "$PORT" >> "$DIR/logs/supervisor.out.log" 2>&1 &
   for _ in $(seq 1 40); do ready && break; sleep 0.5; done
 fi
 if ready; then
   echo "小八监看中心已开启：$URL"
   echo "（裁决后端首次启动要做发布校验与第二大脑同步，约需几十秒，期间裁决页会提示“正在启动”。）"
-  /usr/bin/open "$URL"
+  [ "${XIAOBA_MONITOR_NO_BROWSER:-0}" = "1" ] || /usr/bin/open "$URL"
 else
   echo "启动失败。日志：$DIR/logs/supervisor.out.log 与 $DIR/logs/monitor.log" >&2
   exit 1
