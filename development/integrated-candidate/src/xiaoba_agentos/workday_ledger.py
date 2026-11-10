@@ -181,6 +181,16 @@ def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
     return {'ok':True,'pending':True,'source':'sqlite_after_idle_registration'}
 
 
+def _transient_contention(error):
+    """只有拿不到写锁这类竞争可以下次再试；磁盘 I/O 等其它错误必须计入失败次数。"""
+    code=getattr(error,'sqlite_errorcode',None)
+    if isinstance(code,int) and code:
+        # SQLITE_BUSY=5、SQLITE_LOCKED=6；扩展码（517、262 等）低字节仍是这两类。
+        return (code&0xff) in (5,6)
+    text=str(error).lower()
+    return 'locked' in text or 'busy' in text
+
+
 def _flush_references(store):
     """At most 500 queued objects, one event scan and one atomic transaction.
 
@@ -223,9 +233,13 @@ def _flush_references(store):
                         store._append_event_tx(db,ref['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
                         latest[key]=ref
             consumed=[path for path,_,_,_ in valid]
-        except sqlite3.OperationalError:
-            # 拿不到写锁等瞬时竞争：整批留在队列下次再试，不计入死信次数（v1.6.12 第四轮 DSH 缺陷 2）。
-            warn(store,'lock_timeout')
+        except sqlite3.OperationalError as exc:
+            if _transient_contention(exc):
+                # 拿不到写锁等瞬时竞争：整批留在队列下次再试，不计入死信次数（v1.6.12 第四轮 DSH 缺陷 2）。
+                warn(store,'lock_timeout')
+            else:
+                # 磁盘 I/O 之类的真错误：照常计失败次数，满 3 次进死信（卡 69 第 2 项）。
+                failed.extend(path for path,_,_,_ in valid)
         except Exception:failed.extend(path for path,_,_,_ in valid)
     for path in consumed:
         try:
@@ -301,8 +315,9 @@ def _write(path, text):
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
                                          prefix='.workday-', delete=False) as handle:
-            handle.write(text); handle.flush(); os.fsync(handle.fileno())
+            # 卡 69：先记下临时文件名，后面写、flush、fsync 任何一步失败都能清掉它。
             temporary = handle.name
+            handle.write(text); handle.flush(); os.fsync(handle.fileno())
         os.replace(temporary, path)
         temporary = None
     finally:

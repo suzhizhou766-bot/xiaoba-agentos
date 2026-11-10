@@ -359,6 +359,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.12；不创建备份，切换由主力在本机终端按授权执行。"
+    },
+    {
+      "version": "v1.6.14",
+      "release_date": "2026-11-10",
+      "status": "candidate",
+      "summary": "检索热路径索引（卡 68）与监看中心脱离会话启动、台账小修（卡 69）：events 新增两个幂等复合索引（结构版本仍为 7，schema 指纹变化，走迁移档），formal_review 查询改写为可用索引；事件链校验仍每次全量，增量缓存因削弱防篡改已撤回；监看中心启动脱离调用方会话；台账只把 locked/busy 视为瞬时竞争，fsync 失败也清理临时文件。前置源码清单哈希为已上线 v1.6.13 的值。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.13；不创建备份，切换由主力在本机终端按授权执行。"
     }
   ]
 }

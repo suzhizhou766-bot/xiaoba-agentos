@@ -4,6 +4,8 @@
 用法：
   python3 xiaoba_monitor.py               直接运行监看中心（前台）
   python3 xiaoba_monitor.py --supervise   带看护运行：监看中心退出或不响应时自动重启（启动脚本用这个）
+  python3 xiaoba_monitor.py --supervise --detach
+                                          带看护运行并脱离调用方的会话和进程组（启动脚本用）
   python3 xiaoba_monitor.py --selftest    自检：配置、文件、路由、数据库是否就绪，不启动任何服务
   python3 xiaoba_monitor.py --once        打印一次运行总览快照后退出
 
@@ -16,6 +18,7 @@ import json
 import os
 import signal
 import socket
+import stat
 import sys
 import threading
 import time
@@ -105,6 +108,35 @@ def serve(config):
     return 0
 
 
+# ---------------------------------------------------------------- 脱离调用方会话
+def detach_from_caller():
+    """离开调用方的会话和进程组，调用方的终端或后台命令被整组结束时不跟着退出。
+
+    卡 69：v1.6.12 起启动脚本用 nohup + & 拉起看护进程，仍在调用方的进程组里；
+    调用它的终端命令结束时（宿主会整组回收），监看中心被一起关掉，停了约 2 小时。
+    先 fork 再 setsid，保证本进程不是进程组组长（组长调 setsid 会 EPERM）；
+    第二次 fork 之后不再是会话首进程，不会再拿到控制终端。
+    """
+    if os.environ.get("XIAOBA_MONITOR_DETACHED") == "1":
+        return
+    if os.fork() > 0:
+        os._exit(0)
+    os.setsid()
+    if os.fork() > 0:
+        os._exit(0)
+    os.environ["XIAOBA_MONITOR_DETACHED"] = "1"
+    # 标准输入不再连终端；输出是脚本重定向的日志文件时保留，连着终端的改成空设备。
+    devnull = os.open(os.devnull, os.O_RDWR)
+    os.dup2(devnull, 0)
+    for fd in (1, 2):
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                os.dup2(devnull, fd)
+        except OSError:
+            os.dup2(devnull, fd)
+    os.close(devnull)
+
+
 # ---------------------------------------------------------------- 带看护运行
 def supervise(config):
     port = int(config["port"])
@@ -124,7 +156,7 @@ def supervise(config):
     logger = make_logger(config, "supervisor.log")
     watchdog = config["watchdog"]
     child = ManagedProcess(
-        "monitor", [sys.executable, str(ROOT / "xiaoba_monitor.py")], logger, cwd=str(ROOT),
+        "monitor", [sys.executable, str(ROOT / "xiaoba_monitor.py"), "--port", str(port)], logger, cwd=str(ROOT),
         ready=lambda: healthy(port), ready_timeout=30,
         backoff=Backoff(watchdog["backoff_seconds"]),
         breaker=Breaker(watchdog["max_fast_failures"], watchdog["fast_failure_seconds"]),
@@ -194,6 +226,8 @@ def main():
     parser.add_argument("--config-file", default=None, help="默认读取同目录的 monitor.json（可以没有）")
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--supervise", action="store_true", help="带看护运行")
+    parser.add_argument("--detach", action="store_true",
+                        help="带看护运行时先脱离调用方的会话和进程组（启动脚本用）")
     parser.add_argument("--selftest", action="store_true", help="自检后退出")
     parser.add_argument("--once", action="store_true", help="打印一次运行总览快照后退出")
     args = parser.parse_args()
@@ -206,6 +240,8 @@ def main():
         print(json.dumps(app.ctx.modules["overview"].monitor.snapshot(), ensure_ascii=False, indent=2, default=str))
         return 0
     if args.supervise:
+        if args.detach:
+            detach_from_caller()
         return supervise(config)
     return serve(config)
 

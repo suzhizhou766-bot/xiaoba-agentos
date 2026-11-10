@@ -30,7 +30,7 @@
 
 ## 数据库结构指纹
 
-`tests/test_schema_fingerprint.py` 在临时库实际建表，把表结构算成指纹，与 `tests/fixtures/schema_fingerprint.json` 比对。改了表结构而没更新指纹文件，测试不过；更新了指纹文件，按路径就是迁移档。
+`tests/test_schema_fingerprint.py` 在临时库实际建表，把表结构（含索引）算成指纹，与 `tests/fixtures/schema_fingerprint.json` 比对。改了表结构而没更新指纹文件，测试不过；更新了指纹文件，按路径就是迁移档。仅加幂等索引、表/列不变时，结构版本（`DATABASE_SCHEMA_VERSION`）可以保持不变——指纹变化本身已是迁移档，须走复制现场演练与 readback；现行 `switch_release` 也禁止在同一切换里升结构版本。
 
 ## 没有做
 

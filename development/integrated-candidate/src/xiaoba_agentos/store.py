@@ -442,6 +442,10 @@ class EventStore:
                     prev_hash TEXT NOT NULL,
                     event_hash TEXT UNIQUE NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS idx_events_event_type_seq
+                    ON events(event_type, sequence);
+                CREATE INDEX IF NOT EXISTS idx_events_task_id_type_seq
+                    ON events(task_id, event_type, sequence);
                 CREATE TABLE IF NOT EXISTS strategies (
                     version INTEGER PRIMARY KEY AUTOINCREMENT,
                     status TEXT NOT NULL CHECK(status IN ('candidate','active','retained','retired','rejected')),
