@@ -101,12 +101,16 @@ class OpenReviewModule(Module):
     def state(self, req):
         # 监看页面刷新时自动收取桌面节点已写完的文件回执（小八自动收）。
         self.store.collect_manual_receipts()
+        # 卡 75C-r2：投影读路径有界补登记（跳过库内死信，不扫全历史）。
+        self.store.recover_pending_references()
         return 200, {'ok': True, 'inbox_online': self.inbox.online, **self.store.state()}
 
     def perform(self, action):
         try:
             value = action()
             self.store.deliver(self.inbox)
+            # 写路径收尾同样有界重放，覆盖瞬时 flush 失败而无需等进程重启。
+            self.store.recover_pending_references()
             return 200, {'ok': True, 'result': value}
         except Conflict as exc:
             return 409, {'ok': False, 'error': str(exc)}
@@ -310,6 +314,8 @@ class OpenReviewModule(Module):
                     # Revalidate against the original card before every delivery.
                     self.store.state()
                     self.store.deliver(self.inbox)
+                    # 卡 75C-r2：后台空闲循环有界重放待登记（每批至多 50，不含死信）。
+                    self.store.recover_pending_references()
                 except Exception:
                     self.ctx.log(self.id, '材料归集待重试', level='warning')
         def revisions():

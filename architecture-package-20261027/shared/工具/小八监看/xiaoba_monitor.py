@@ -58,6 +58,26 @@ def build_app(config, logger):
     return app
 
 
+def validated_listen_port(value):
+    """监看中心对外监听端口：必须是 1..65535 的整数。"""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("monitor.json 的 port 必须是整数，收到 %r" % (value,))
+    if not 1 <= value <= 65535:
+        raise ValueError("monitor.json 的 port 超出范围 1..65535：%r" % (value,))
+    return value
+
+
+def resolve_listen_port(config_file=None, port_override=None):
+    """启停脚本复用的端口解析：显式 --port（含环境变量经脚本传入）> monitor.json > 默认 8799。
+
+    不直接读 XIAOBA_MONITOR_PORT：由启停脚本把环境值转成 --port 再进来，保证校验入口唯一。
+    配置不可读或 port 非法（含 0、负数、越界、布尔、非整数）时抛错，供脚本在探测/杀进程前失败。
+    """
+    overrides = {"port": port_override} if port_override is not None else None
+    config = cfg.load(config_file, overrides)
+    return validated_listen_port(config["port"])
+
+
 def port_in_use(port):
     with socket.socket() as sock:
         sock.settimeout(0.5)
@@ -228,10 +248,27 @@ def main():
     parser.add_argument("--supervise", action="store_true", help="带看护运行")
     parser.add_argument("--detach", action="store_true",
                         help="带看护运行时先脱离调用方的会话和进程组（启动脚本用）")
+    parser.add_argument("--resolve-port", action="store_true",
+                        help="只解析并打印对外监听端口后退出（启动脚本健康探测与打开页面用）")
     parser.add_argument("--selftest", action="store_true", help="自检后退出")
     parser.add_argument("--once", action="store_true", help="打印一次运行总览快照后退出")
     args = parser.parse_args()
-    config = cfg.load(args.config_file, {"port": args.port} if args.port else None)
+    if args.resolve_port:
+        try:
+            # args.port 用 is not None：--port 0 必须进校验并拒绝，不能因真假回落到默认 8799。
+            print(resolve_listen_port(args.config_file, args.port if args.port is not None else None))
+            return 0
+        except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
+            print("无法解析监看中心端口：%s" % exc, file=sys.stderr)
+            return 2
+    # 同上：显式 None 判断，保留 --port 0 的拒绝语义。
+    config = cfg.load(args.config_file, {"port": args.port} if args.port is not None else None)
+    # 运行前再校验一次，避免非法 port 拖到 bind 才爆。
+    try:
+        validated_listen_port(config["port"])
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if args.selftest:
         return selftest(config)
     if args.once:

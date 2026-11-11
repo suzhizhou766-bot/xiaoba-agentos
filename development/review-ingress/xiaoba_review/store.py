@@ -29,6 +29,11 @@ def identifier():
     return str(uuid.uuid4())
 
 
+# 卡 75C：业务提交后、侧车入队前的待登记表；与 EventStore schema 指纹无关的 ri_* 附加表。
+PENDING_REFERENCE_BATCH = 50
+PENDING_REFERENCE_FAILURE_LIMIT = 3
+
+
 MANUAL_WAIT_SEND = '等待用户发送'
 MANUAL_WAIT_BACK = '等待用户贴回'
 _CARD_IDENTITY_KEYS = ('review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision', 'reviewer_id',
@@ -175,7 +180,23 @@ class ReviewStore:
                 CREATE TABLE IF NOT EXISTS ri_inbox (
                     id TEXT PRIMARY KEY, request_id TEXT NOT NULL, data TEXT NOT NULL,
                     digest TEXT NOT NULL, current INTEGER NOT NULL, ack_at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS ri_pending_references (
+                    id TEXT PRIMARY KEY, data TEXT NOT NULL,
+                    created_at REAL NOT NULL, attempts INTEGER NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'pending', last_error TEXT);
             ''')
+            self._ensure_pending_reference_columns(db)
+        # 正常启动入口：提交后回调前崩溃留下的待登记行，在构造后立刻补入队。
+        self.recover_pending_references()
+
+    def _ensure_pending_reference_columns(self, db):
+        """Additive columns for r1→r2; old 4-column tables keep their payload rows."""
+        columns = {row[1] for row in db.execute('PRAGMA table_info(ri_pending_references)')}
+        if 'state' not in columns:
+            db.execute(
+                "ALTER TABLE ri_pending_references ADD COLUMN state TEXT NOT NULL DEFAULT 'pending'")
+        if 'last_error' not in columns:
+            db.execute('ALTER TABLE ri_pending_references ADD COLUMN last_error TEXT')
 
     def defer_after_commit(self, callback):
         """Run callback after the open transaction commits; otherwise run now.
@@ -190,6 +211,132 @@ class ReviewStore:
         callback()
         return False
 
+    def stage_pending_reference(self, db, payload):
+        """Insert a pending workday reference into the open business transaction."""
+        pending_id = identifier()
+        db.execute(
+            'INSERT INTO ri_pending_references(id,data,created_at,attempts,state,last_error) '
+            'VALUES (?,?,?,?,?,?)',
+            (pending_id, canonical(payload), time.time(), 0, 'pending', None))
+        return pending_id
+
+    def flush_pending_reference(self, pending_id):
+        """Emit one pending row to the sidecar queue after the business commit."""
+        try:
+            with self.transaction() as db:
+                row = db.execute(
+                    'SELECT * FROM ri_pending_references WHERE id=?', (pending_id,)).fetchone()
+                if row is None:
+                    return False
+                return self._emit_pending_locked(db, dict(row)) == 'flushed'
+        except Exception:
+            return False
+
+    def recover_pending_references(self, pending_id=None, *, retry_dead=False):
+        """Replay a bounded batch of live pending rows, or explicitly retry one dead row.
+
+        Default path never auto-retries state='dead'. Pass pending_id with
+        retry_dead=True to clear the hold once after the fault is fixed.
+        """
+        try:
+            return self._recover_pending_references(pending_id=pending_id, retry_dead=retry_dead)
+        except Exception:
+            return 0
+
+    def _recover_pending_references(self, pending_id=None, *, retry_dead=False):
+        flushed = 0
+        with self.transaction() as db:
+            if pending_id is not None:
+                row = db.execute(
+                    'SELECT * FROM ri_pending_references WHERE id=?', (pending_id,)).fetchone()
+                if row is None:
+                    return 0
+                row = dict(row)
+                if row.get('state') == 'dead':
+                    if not retry_dead:
+                        return 0
+                    db.execute(
+                        "UPDATE ri_pending_references SET state='pending', attempts=0, "
+                        'last_error=NULL WHERE id=?',
+                        (pending_id,))
+                    row['state'] = 'pending'
+                    row['attempts'] = 0
+                    row['last_error'] = None
+                elif retry_dead:
+                    # Explicit retry of a live row: clear attempts once.
+                    db.execute(
+                        'UPDATE ri_pending_references SET attempts=0, last_error=NULL WHERE id=?',
+                        (pending_id,))
+                    row['attempts'] = 0
+                    row['last_error'] = None
+                if self._emit_pending_locked(db, row) == 'flushed':
+                    return 1
+                return 0
+            rows = [dict(r) for r in db.execute(
+                "SELECT * FROM ri_pending_references WHERE COALESCE(state,'pending')='pending' "
+                'ORDER BY created_at, rowid LIMIT ?',
+                (PENDING_REFERENCE_BATCH,)).fetchall()]
+            for row in rows:
+                if self._emit_pending_locked(db, row) == 'flushed':
+                    flushed += 1
+        return flushed
+
+    def _hold_pending_locked(self, db, row, *, code, detail=None):
+        """Keep the only pending payload; stop auto-retry until explicit recover."""
+        message = detail or code
+        db.execute(
+            "UPDATE ri_pending_references SET attempts=?, state='dead', last_error=? WHERE id=?",
+            (max(int(row['attempts']), PENDING_REFERENCE_FAILURE_LIMIT), message, row['id']))
+        try:
+            from xiaoba_agentos.workday_ledger import warn
+            warn(self.native, code)
+        except Exception:
+            pass
+        return 'dead'
+
+    def _emit_pending_locked(self, db, row):
+        """Queue one pending row while holding the writer; update attempts in-place."""
+        if row.get('state') == 'dead':
+            return 'dead'
+        try:
+            data = json.loads(row['data'])
+            if not isinstance(data, dict):
+                raise ValueError('pending payload must be an object')
+        except Exception as exc:
+            return self._hold_pending_locked(
+                db, row, code='pending_reference_corrupt', detail=str(exc)[:200])
+        try:
+            from xiaoba_agentos.workday_ledger import record_reference
+        except ImportError:
+            return 'deferred'
+        try:
+            result = record_reference(
+                self.native, data['path'],
+                node=data['node'], task_id=data.get('task_id'),
+                agent=data['agent'], model=data['model'],
+                kind=data.get('kind') or '回执', status=data['status'],
+                recorded_at=row['created_at'], reference_id=row['id'])
+        except Exception:
+            result = {'ok': False, 'warning_code': 'registration_failed'}
+        if isinstance(result, dict) and result.get('ok'):
+            db.execute('DELETE FROM ri_pending_references WHERE id=?', (row['id'],))
+            return 'flushed'
+        code = result.get('warning_code') if isinstance(result, dict) else None
+        if code == 'unconfigured':
+            return 'deferred'
+        attempts = int(row['attempts']) + 1
+        reason = code or 'registration_failed'
+        if isinstance(result, dict) and result.get('reason'):
+            reason = '%s:%s' % (reason, result['reason'])
+        if attempts >= PENDING_REFERENCE_FAILURE_LIMIT:
+            row = dict(row, attempts=attempts)
+            return self._hold_pending_locked(
+                db, row, code='pending_reference_held', detail=reason[:200])
+        db.execute(
+            'UPDATE ri_pending_references SET attempts=?, last_error=? WHERE id=?',
+            (attempts, reason[:200], row['id']))
+        return 'failed'
+
     @contextmanager
     def transaction(self):
         db = sqlite3.connect(str(self.path), timeout=30, isolation_level=None)
@@ -197,8 +344,10 @@ class ReviewStore:
         dirty=False
         previous_undo = getattr(self._file_state, 'undo', None)
         previous_after = getattr(self._file_state, 'after_commit', None)
+        previous_db = getattr(self._file_state, 'db', None)
         self._file_state.undo = []
         self._file_state.after_commit = []
+        self._file_state.db = db
         callbacks = []
         try:
             db.execute('BEGIN IMMEDIATE')
@@ -220,6 +369,7 @@ class ReviewStore:
         finally:
             self._file_state.undo = previous_undo
             self._file_state.after_commit = previous_after
+            self._file_state.db = previous_db
             db.close()
 
         for callback in callbacks:

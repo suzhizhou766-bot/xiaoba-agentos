@@ -47,6 +47,9 @@ MESSAGES={
     'metadata_rejected':'台账元数据已跳过，业务结算不受影响',
     'generation_failed':'台账生成失败，业务结算不受影响',
     'reference_dead':'台账引用连续失败，已移入死信目录，不再自动重试',
+    # 卡 75C-r2：库内待登记死信，未写入 .workday-references-dead。
+    'pending_reference_held':'台账待登记引用连续失败，已保留在库内死信状态，需显式重试；未移入侧车死信目录',
+    'pending_reference_corrupt':'台账待登记引用数据损坏，已保留原文供核对；未移入侧车死信目录',
     'marker_failed':'台账待刷新标记写入失败，业务结算不受影响',
     'local_check_failed':'上班本地检查失败，本次未生成台账；请看开工结果里的本地检查错误'}
 
@@ -158,7 +161,26 @@ def _register_reference(store,path,**metadata):
     except Exception:return warn(store,'registration_failed')
 
 
-def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
+def _normalize_reference_id(reference_id):
+    """Production ids are uuid4 via ReviewStore.identifier(); opaque outbox tokens allowed."""
+    import uuid
+    if not isinstance(reference_id, str):
+        raise ValueError('invalid reference_id')
+    value = reference_id.strip()
+    if not value or value != reference_id or len(value) > 128:
+        raise ValueError('invalid reference_id')
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError('invalid reference_id')
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        # 非 UUID：仅允许可打印 ASCII 令牌（兼容测试/旧 pending 行），仍纳入敏感扫描。
+        if not all(32 < ord(ch) < 127 for ch in value):
+            raise ValueError('invalid reference_id')
+        return value
+
+
+def _queue_reference(store,path,*,node,task_id,agent,model,kind,status,recorded_at=None,reference_id=None):
     import uuid
     if not isinstance(getattr(store,'workday_root',None),(str,Path)):
         return warn(store,'unconfigured')
@@ -166,7 +188,15 @@ def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
     if not path.is_absolute() or path.is_symlink() or not path.is_file():raise ValueError('invalid output path')
     if kind not in KINDS or not all(isinstance(v,str) and v.strip() for v in (node,agent,model,status)):raise ValueError('invalid metadata')
     if task_id is not None and (not isinstance(task_id,str) or not task_id.strip()):raise ValueError('invalid task ID')
+    # 卡 75C：补登记保留待登记行的 created_at，跨天重启不得把同一回执记到两天。
+    if recorded_at is not None and not isinstance(recorded_at,(int,float)):
+        raise ValueError('invalid recorded_at')
+    # 卡 75C-r3：可选稳定意图身份；格式与生产者 identifier()/uuid4 对齐，并纳入敏感门禁。
+    if reference_id is not None:
+        reference_id=_normalize_reference_id(reference_id)
     ref=dict(path=str(path),node=node,task_id=task_id,agent=agent,model=model,kind=kind,status=status)
+    if reference_id is not None:
+        ref['reference_id']=reference_id
     from .memory import MemoryBridge
     if MemoryBridge._sensitive_reason(canonical(ref)):return warn(store,'metadata_rejected')
     with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb') as handle:
@@ -174,7 +204,7 @@ def _queue_reference(store,path,*,node,task_id,agent,model,kind,status):
         if not stat.S_ISREG(before.st_mode):raise ValueError('invalid output')
         ref['sha256']=hashlib.file_digest(handle,'sha256').hexdigest();after=os.fstat(handle.fileno())
     if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('output changed')
-    ref['recorded_at']=time.time()
+    ref['recorded_at']=float(recorded_at) if recorded_at is not None else time.time()
     queue=_sidecar(store,'references')
     _write(queue/(str(time.time_ns()).zfill(20)+'-'+uuid.uuid4().hex+'.json'),canonical(ref)+'\n')
     mark_dirty(store)
@@ -211,27 +241,54 @@ def _flush_references(store):
             ref=json.loads(path.read_text());stamp=ref.pop('recorded_at')
             # Queue corruption cannot cause a partial batch or poison SQL keys.
             required={'path','node','task_id','agent','model','kind','status','sha256'}
+            reference_id=ref.pop('reference_id',None)
             if set(ref)!=required or ref['kind'] not in KINDS:raise ValueError('invalid queued metadata')
             if not all(isinstance(ref[k],str) and ref[k] for k in required-{'task_id'}):raise ValueError('invalid queued field')
             if not Path(ref['path']).is_absolute() or (ref['task_id'] is not None and not isinstance(ref['task_id'],str)):raise ValueError('invalid queued identity')
+            if reference_id is not None:
+                reference_id=_normalize_reference_id(reference_id)
+                ref['reference_id']=reference_id
             valid.append((path,ref,stamp,day_of(stamp)))
         except Exception:failed.append(path)
     if valid:
         try:
             with store.connect(refresh_views=False,timeout=.1) as db:
                 db.execute('BEGIN IMMEDIATE')
-                days={day for _,_,_,day in valid};latest={}
-                # One scan for the batch, never a history scan per queued row.
-                for row in db.execute("SELECT payload_json,created_at FROM events WHERE event_type='workday.output_recorded' ORDER BY sequence"):
-                    previous=json.loads(row[0]);old_stamp=previous.pop('recorded_at',row[1]);day=day_of(old_stamp)
+                days={day for _,_,_,day in valid};latest={};seen_ids=set()
+                # One scan：output_recorded 内容链 + reference_acked 持久确认（含被合并意图）。
+                for row in db.execute("SELECT event_type,payload_json,created_at FROM events WHERE event_type IN ('workday.output_recorded','workday.reference_acked') ORDER BY sequence"):
+                    etype,previous,created=row[0],json.loads(row[1]),row[2]
+                    if etype=='workday.reference_acked':
+                        rid=previous.get('reference_id')
+                        if rid:seen_ids.add(rid)
+                        continue
+                    old_stamp=previous.pop('recorded_at',created);day=day_of(old_stamp)
+                    rid=previous.pop('reference_id',None)
+                    if rid:seen_ids.add(rid)
                     if day in days:
                         key=(day,previous['task_id'],previous['path'],previous['node'],previous['kind'])
                         latest[key]=previous
                 for path,ref,stamp,day in valid:
-                    key=(day,ref['task_id'],ref['path'],ref['node'],ref['kind'])
-                    if latest.get(key)!=ref:
-                        store._append_event_tx(db,ref['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
-                        latest[key]=ref
+                    body={k:v for k,v in ref.items() if k!='reference_id'}
+                    key=(day,body['task_id'],body['path'],body['node'],body['kind'])
+                    rid=ref.get('reference_id')
+                    if rid:
+                        if rid in seen_ids:
+                            continue
+                        if latest.get(key)==body:
+                            # 同内容合并：不新增 output_recorded，但必须同事务持久确认该意图。
+                            store._append_event_tx(db,body['task_id'],'workday.reference_acked',
+                                {'reference_id':rid,'path':body['path'],'task_id':body['task_id'],
+                                 'node':body['node'],'kind':body['kind'],'status':body['status'],
+                                 'sha256':body['sha256'],'recorded_at':stamp})
+                            seen_ids.add(rid)
+                            continue
+                        store._append_event_tx(db,body['task_id'],'workday.output_recorded',dict(ref,recorded_at=stamp))
+                        seen_ids.add(rid);latest[key]=body
+                    elif latest.get(key)!=body:
+                        # 无稳定身份：保留连续内容判重，合法 A→B→A 仍记三次。
+                        store._append_event_tx(db,body['task_id'],'workday.output_recorded',dict(body,recorded_at=stamp))
+                        latest[key]=body
             consumed=[path for path,_,_,_ in valid]
         except sqlite3.OperationalError as exc:
             if _transient_contention(exc):

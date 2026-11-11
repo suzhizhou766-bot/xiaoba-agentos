@@ -371,6 +371,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.13；不创建备份，切换由主力在本机终端按授权执行。"
+    },
+    {
+      "version": "v1.6.15",
+      "release_date": "2026-11-11",
+      "status": "candidate",
+      "summary": "监看启停统一配置端口（卡 75A）；接入口提交后待登记恢复、库内死信保留与显式重试、稳定意图 reference_id 与同事务 workday.reference_acked 持久确认（卡 75C）；75B 为外部发版准备工具参数化，不进包内运行。无数据库结构版本变更。前置源码清单哈希以正式冻结时重建为准。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.14；不创建备份，切换由主力在本机终端按授权执行。"
     }
   ]
 }
