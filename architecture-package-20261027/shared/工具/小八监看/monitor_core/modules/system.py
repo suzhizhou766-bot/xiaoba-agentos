@@ -16,6 +16,18 @@ class SystemModule(Module):
         self.page = cfg.resolve(ctx.config, ctx.config["page_file"])
         self.revision = self._revision()
         self.warnings = []   # 最近一次读到的模块警告，正文提示条用它（不是只在标签悬浮提示里）
+        # 主页含内联脚本/样式，并 fetch 同源接口、嵌导演台与 3D 台；策略写法对齐 stage/director。
+        own = "http://127.0.0.1:%d/" % ctx.port
+        stage = "http://127.0.0.1:%d/stage/" % ctx.port
+        director = "http://127.0.0.1:%d/director/" % ctx.port
+        self.csp = (
+            "default-src 'none'; script-src 'unsafe-inline' %s; "
+            "style-src 'unsafe-inline' https://fonts.googleapis.com; "
+            "img-src %s %s data: blob:; font-src %s https://fonts.gstatic.com data:; "
+            "connect-src %s ws://127.0.0.1:%d/ https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; "
+            "frame-src %s %s; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
+            % (stage, own, stage, own, own, ctx.port, director, stage)
+        )
 
     def _revision(self):
         try:
@@ -47,7 +59,7 @@ class SystemModule(Module):
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
                '<meta name="xiaoba-page-token" content="%s"></head><body>' % ctx.page_token
                + self._banner() + page + "</body></html>")
-        return Response(200, doc.encode("utf-8"), "text/html; charset=utf-8")
+        return Response(200, doc.encode("utf-8"), "text/html; charset=utf-8", csp=self.csp)
 
     def _banner(self):
         """模块自己报的警告（例如端口监听检测不可用）写进正文里的一条提示：光有标签上的悬浮提示不够。

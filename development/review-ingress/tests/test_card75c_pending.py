@@ -241,6 +241,49 @@ class PendingOutboxTests(CliFixture, unittest.TestCase):
         self.assertEqual(len(self.queue_files()), 1)
         self.assertEqual(self.store.recover_pending_references(), 0)
 
+    def test_empty_recover_skips_write_lock_nonempty_keeps_one(self):
+        """空队列不取写锁；有待办时仍只开一次写事务（全链校验路径保留）。"""
+        counter = {'begin_immediate': 0}
+        real_connect = sqlite3.connect
+
+        class CountingConnection:
+            def __init__(self, conn):
+                object.__setattr__(self, '_conn', conn)
+
+            def execute(self, sql, parameters=()):
+                text = sql if isinstance(sql, str) else str(sql)
+                if text.lstrip().upper().startswith('BEGIN IMMEDIATE'):
+                    counter['begin_immediate'] += 1
+                return self._conn.execute(sql, parameters)
+
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+            def __setattr__(self, name, value):
+                if name == '_conn':
+                    object.__setattr__(self, name, value)
+                else:
+                    setattr(self._conn, name, value)
+
+        def counting_connect(*args, **kwargs):
+            return CountingConnection(real_connect(*args, **kwargs))
+
+        with patch('sqlite3.connect', counting_connect):
+            counter['begin_immediate'] = 0
+            self.assertEqual(self.store.recover_pending_references(), 0)
+            self.assertEqual(counter['begin_immediate'], 0, '空队列不得开启写事务')
+
+            self.add_node()
+            adapter = self.adapter()
+            with patch('xiaoba_agentos.workday_ledger.record_reference',
+                       return_value={'ok': False, 'warning_code': 'registration_failed'}):
+                self.stage(adapter, self.receipt())
+            before = counter['begin_immediate']
+            with patch('xiaoba_agentos.workday_ledger.record_reference',
+                       return_value={'ok': False, 'warning_code': 'registration_failed'}):
+                self.assertEqual(self.store.recover_pending_references(), 0)
+            self.assertEqual(counter['begin_immediate'] - before, 1, '非空时写事务恰一次')
+
     def test_unconfigured_root_keeps_row_without_counting(self):
         self.add_node()
         adapter = self.adapter()

@@ -17,17 +17,35 @@ if ! PORT="$("$PY" -B "$DIR/xiaoba_monitor.py" --resolve-port "${RESOLVE_ARGS[@]
 fi
 URL="http://127.0.0.1:${PORT}/"
 ready() { /usr/bin/curl -fsS --max-time 2 "${URL}healthz" >/dev/null 2>&1; }
+supervisor_running() {
+  local pid command
+  pid="$(cat "$DIR/run/supervisor.pid" 2>/dev/null)" || return 1
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$pid" -gt 1 ] && kill -0 "$pid" 2>/dev/null || return 1
+  command="$(/bin/ps -p "$pid" -o command= 2>/dev/null)" || return 1
+  # PID 文件可能陈旧；不能把另一个仍存活的进程当成当前目录的监管进程。
+  case "$command" in *"$DIR/xiaoba_monitor.py "*) ;; *) return 1 ;; esac
+  case " $command " in *" --supervise "*) ;; *) return 1 ;; esac
+  # 目录相同但端口已改时，旧端口的看护不能证明当前端口受到监管。
+  case " $command " in *" --port $PORT "*) ;; *) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null
+}
+supervised_ready() { ready && supervisor_running; }
 if ! ready; then
   mkdir -p "$DIR/logs"
   cd "$DIR" || exit 1
   nohup "$PY" -B "$DIR/xiaoba_monitor.py" --supervise --detach --port "$PORT" >> "$DIR/logs/supervisor.out.log" 2>&1 &
-  for _ in $(seq 1 40); do ready && break; sleep 0.5; done
+  for _ in $(seq 1 40); do supervised_ready && break; sleep 0.5; done
 fi
-if ready; then
+if supervised_ready; then
   echo "小八监看中心已开启：$URL"
   echo "（裁决后端首次启动要做发布校验与第二大脑同步，约需几十秒，期间裁决页会提示“正在启动”。）"
   [ "${XIAOBA_MONITOR_NO_BROWSER:-0}" = "1" ] || /usr/bin/open "$URL"
 else
-  echo "启动失败。日志：$DIR/logs/supervisor.out.log 与 $DIR/logs/monitor.log" >&2
+  if ready; then
+    echo "启动失败：监看服务仍可响应，但监管进程未运行或身份不匹配。请先关闭监看中心再重新启动。" >&2
+  else
+    echo "启动失败。日志：$DIR/logs/supervisor.out.log 与 $DIR/logs/monitor.log" >&2
+  fi
   exit 1
 fi

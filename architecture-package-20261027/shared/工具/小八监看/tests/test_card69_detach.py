@@ -14,6 +14,11 @@ import time
 import unittest
 import urllib.request
 
+try:
+    from .detach_support import wait_supervisor_ready
+except ImportError:
+    from detach_support import wait_supervisor_ready
+
 MONITOR = Path(__file__).resolve().parents[1]
 
 
@@ -55,9 +60,11 @@ class DetachedLaunchTests(unittest.TestCase):
             }))
             env = dict(os.environ, XIAOBA_MONITOR_PORT=str(port), XIAOBA_MONITOR_NO_BROWSER='1')
             # 调用方自己就是会话和进程组的组长，等同“终端里的一条命令”。
-            caller = subprocess.Popen(['/bin/bash', str(copy / '启动监看中心.command')],
+            # 启动脚本返回后阻塞读管道，让调用方组长活到真正的组杀；不靠延时制造观察窗口。
+            caller = subprocess.Popen(['/bin/bash', '-c', '"$1" || exit "$?"; read -r _',
+                                       'detach-caller', str(copy / '启动监看中心.command')],
                                       env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                      start_new_session=True)
+                                      stdin=subprocess.PIPE, start_new_session=True)
             supervisor = None
             try:
                 deadline = time.monotonic() + 40
@@ -67,17 +74,12 @@ class DetachedLaunchTests(unittest.TestCase):
                 pid_file = copy / 'run' / 'supervisor.pid'
                 self.assertTrue(pid_file.is_file(), '启动脚本没有留下 run/supervisor.pid')
                 supervisor = int(pid_file.read_text().strip())
+                self.assertTrue(wait_supervisor_ready(root, supervisor), '监管进程未完成就绪探测')
                 self.assertNotEqual(caller.pid, os.getsid(supervisor), 'supervisor 仍在调用方的会话里')
                 self.assertNotEqual(caller.pid, os.getpgid(supervisor), 'supervisor 仍在调用方的进程组里')
                 # 模拟调用方进程组被整组终止（关终端、宿主回收后台命令都会这样）。
-                try:
-                    os.killpg(caller.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                try:
-                    caller.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    pass
+                os.killpg(caller.pid, signal.SIGKILL)
+                self.assertEqual(-signal.SIGKILL, caller.wait(timeout=10))
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline and not healthy(port):
                     time.sleep(.2)
@@ -105,6 +107,8 @@ class DetachedLaunchTests(unittest.TestCase):
                         os.kill(int(pid), signal.SIGKILL)
                     except (ProcessLookupError, ValueError):
                         pass
+                caller.wait(timeout=10)
+                caller.stdin.close()
 
 
 if __name__ == '__main__':

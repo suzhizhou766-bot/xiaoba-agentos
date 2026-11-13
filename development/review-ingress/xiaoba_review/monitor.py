@@ -101,7 +101,8 @@ class OpenReviewModule(Module):
     def state(self, req):
         # 监看页面刷新时自动收取桌面节点已写完的文件回执（小八自动收）。
         self.store.collect_manual_receipts()
-        # 卡 75C-r2：投影读路径有界补登记（跳过库内死信，不扫全历史）。
+        # 卡 75C-r2：投影读路径有界补登记（待登记选取有界、跳过库内死信；
+        # 无待办时不取写锁，有待办时写事务仍做全链校验）。
         self.store.recover_pending_references()
         return 200, {'ok': True, 'inbox_online': self.inbox.online, **self.store.state()}
 

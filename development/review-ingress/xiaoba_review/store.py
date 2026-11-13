@@ -237,13 +237,28 @@ class ReviewStore:
 
         Default path never auto-retries state='dead'. Pass pending_id with
         retry_dead=True to clear the hold once after the fault is fixed.
+        Empty default batch skips the write transaction; a non-empty batch keeps
+        the full-chain check inside the real write transaction.
         """
         try:
             return self._recover_pending_references(pending_id=pending_id, retry_dead=retry_dead)
         except Exception:
             return 0
 
+    def _pending_reference_rows_exist(self):
+        """Read-only peek: avoid taking a write lock when the live queue is empty."""
+        db = sqlite3.connect(str(self.path), timeout=30, isolation_level=None)
+        try:
+            row = db.execute(
+                "SELECT 1 FROM ri_pending_references WHERE COALESCE(state,'pending')='pending' "
+                "LIMIT 1").fetchone()
+            return row is not None
+        finally:
+            db.close()
+
     def _recover_pending_references(self, pending_id=None, *, retry_dead=False):
+        if pending_id is None and not self._pending_reference_rows_exist():
+            return 0
         flushed = 0
         with self.transaction() as db:
             if pending_id is not None:

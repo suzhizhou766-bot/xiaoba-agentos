@@ -86,7 +86,9 @@ def port_in_use(port):
 
 def healthy(port, timeout=3):
     try:
-        with urllib.request.urlopen("http://127.0.0.1:%d/healthz" % port, timeout=timeout) as response:
+        # 只探测回环地址；默认代理发现会在 macOS 的 fork 后监管进程里调用不安全的系统 API。
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open("http://127.0.0.1:%d/healthz" % port, timeout=timeout) as response:
             return response.status == 200
     except Exception:
         return False

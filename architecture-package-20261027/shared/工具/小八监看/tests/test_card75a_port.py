@@ -18,6 +18,11 @@ import time
 import unittest
 import urllib.request
 
+try:
+    from .detach_support import wait_supervisor_ready
+except ImportError:
+    from detach_support import wait_supervisor_ready
+
 MONITOR = Path(__file__).resolve().parents[1]
 PY = "/Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14"
 FORBIDDEN_PORT = 8799
@@ -170,9 +175,15 @@ class PortLaunchTests(unittest.TestCase):
             cmd.extend(extra_args)
         return subprocess.run(cmd, capture_output=True, text=True, env=env or self.env(), cwd=str(self.copy))
 
-    def start(self, env=None):
+    def start(self, env=None, keep_caller=False):
+        script = str(self.copy / "启动监看中心.command")
+        command = ["/bin/bash", script]
+        if keep_caller:
+            # 启动成功后读管道阻塞，保证调用方进程组确实能被整组结束。
+            command = ["/bin/bash", "-c", '"$1" || exit "$?"; read -r _', "detach-caller", script]
         self.caller = subprocess.Popen(
-            ["/bin/bash", str(self.copy / "启动监看中心.command")],
+            command,
+            stdin=subprocess.PIPE if keep_caller else None,
             env=env or self.env(),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             start_new_session=True,
@@ -198,6 +209,7 @@ class PortLaunchTests(unittest.TestCase):
         pid_file = self.copy / "run" / "supervisor.pid"
         self.assertTrue(pid_file.is_file(), "缺少 run/supervisor.pid")
         self.supervisor = int(pid_file.read_text().strip())
+        self.assertTrue(wait_supervisor_ready(self.root, self.supervisor), '监管进程未完成就绪探测')
         return self.supervisor
 
     def assert_no_start_artifacts(self):
@@ -322,19 +334,13 @@ class PortLaunchTests(unittest.TestCase):
     def test_detach_survives_caller_group_kill(self):
         port = self.alloc()
         self.write_monitor_json(port)
-        caller = self.start(self.env())
+        caller = self.start(self.env(), keep_caller=True)
         self.assertTrue(self.wait_healthy(port))
         supervisor = self.read_supervisor()
         self.assertNotEqual(caller.pid, os.getsid(supervisor))
         self.assertNotEqual(caller.pid, os.getpgid(supervisor))
-        try:
-            os.killpg(caller.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            caller.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            pass
+        os.killpg(caller.pid, signal.SIGKILL)
+        self.assertEqual(-signal.SIGKILL, caller.wait(timeout=10))
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline and not healthy(port):
             time.sleep(0.2)

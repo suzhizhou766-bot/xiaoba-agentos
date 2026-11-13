@@ -273,6 +273,40 @@ class DraftReviewPublishTest(ContentIndexCase):
         self.assertEqual((code, result["status"]), (1, "blocked"))
         self.assertEqual((self.skills / "demo/SKILL.md").read_text(encoding="utf-8"), "# demo\n第一版\n")
 
+    def test_catalog_publish_keeps_original_when_write_is_killed(self):
+        """中途失败时 catalog.json 原文不变，也不留临时文件；成功时保留原权限。"""
+        import os
+        catalog_path = self.skills / "catalog.json"
+        original = catalog_path.read_bytes()
+        os.chmod(catalog_path, 0o640)
+        self.make_draft(files={"SKILL.md": "# demo\n第二版\n"})
+        entry = content_index.draft_entry(self.skills, "demo", self.draft)
+        real_write_text = Path.write_text
+
+        def flaky_write_text(self, data, *args, **kwargs):
+            name = self.name
+            text = data if isinstance(data, str) else data.decode("utf-8")
+            if name.startswith(".") and name.endswith(".publish") and "catalog.json" in name:
+                self.write_bytes(text[: max(1, len(text) // 3)].encode("utf-8"))
+                raise OSError("模拟写入中途被杀")
+            return real_write_text(self, data, *args, **kwargs)
+
+        with patch.object(Path, "write_text", flaky_write_text):
+            with self.assertRaises(OSError):
+                content_index.publish_skill(self.skills, self.skills / "index.json", entry, self.draft, "t-j2")
+        self.assertEqual(catalog_path.read_bytes(), original)
+        leftovers = [
+            p.name for p in self.skills.iterdir()
+            if p.name.startswith(".") and ("publish" in p.name or p.name.endswith(".tmp"))
+        ]
+        self.assertEqual(leftovers, [])
+
+        self.make_draft(files={"SKILL.md": "# demo\n第二版\n"})
+        self.review("t-j2-ok")
+        code, result = self.run_command("skill-publish", review_task="t-j2-ok")
+        self.assertEqual(code, 0, result)
+        self.assertEqual(catalog_path.stat().st_mode & 0o777, 0o640)
+
     def test_verify_script_accepts_an_index_that_records_review_tasks(self):
         script = Path(__file__).resolve().parents[1] / "scripts/create_skill_index.py"
         self.make_draft(files={"SKILL.md": "# demo\n第二版\n"})
