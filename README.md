@@ -6,11 +6,13 @@
 
 ## 当前云端开发
 
-2026-10-27 用户授权在本仓库开展实现并提交。新增 [DSH＋开放第二方审查接入](development/review-ingress/README.md)：身份任务卡、外部/后台回执、来源核对、可靠归集与运行监看。验证记录见 [TEST-RESULTS](development/review-ingress/TEST-RESULTS.md)。
+本节记录 2026-10-27 起的云端开发起点，下面的状态句是当时的时点记录。当前线上版本以运行根 `/Users/suzhizhou/Documents/小八AgentOS/.runtime/releases/index.json` 的 `current_release` 指针为准；进行中的版本、待办和候选目录见 `私人助理/工作区/README.md`。
+
+2026-10-27 用户授权在本仓库开展实现并提交。新增 [DSH＋开放第二方审查接入](development/review-ingress/README.md)：身份任务卡、外部/后台回执、来源核对、可靠归集与运行监看。该目录 2026-11-08 起按卡 51 改为按审查/协作角色选节点，固定 DSH 槽位与「真实 DSH 未联调」是早期实现的描述；现行口径以该目录 README 开头、`development/architecture-center/modules/task-scoring/SPEC.md` 和 `development/integrated-candidate/docs/OPERATIONS.md` 为准。验证记录见 [TEST-RESULTS](development/review-ingress/TEST-RESULTS.md)（2026-10-27 的开发验证记录，不是发版验收）。
 
 新增 [架构与升级发布中心](development/architecture-center/README.md)：HTML 模块规范编辑、待发布文件夹、跨 Agent 接续、版本源码记录，以及受原生预检约束的正式发版按钮。
 
-这是开发代码，尚未完成真实 DSH 模型联调或本机生产切换。活动 v1.6.4 与冻结 v1.6.5 的原始材料均保留在 architecture-package-20261027，未被本次扩展改写。
+2026-10-27 当时这些是开发代码，未完成真实 DSH 模型联调或本机生产切换；`architecture-package-20261027/implementation/` 下的 `active-v1.6.4` 与 `candidate-v1.6.5` 是当时的活动版与冻结候选材料，仍原样保留、未被本次扩展改写。当前线上版本不从本仓库目录推断。
 
 ## 历史 v1.6.1 定版快照
 

@@ -330,6 +330,18 @@ def publish_skill(skills_root: Path, index_path: Path, entry: Dict[str, Any], dr
         os.chmod(temporary, (draft / relative).stat().st_mode & 0o777)
         os.replace(temporary, destination)
         changed.append(f"wrote {entry['id']}/{relative}")
-    (skills_root / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    catalog_path = skills_root / "catalog.json"
+    catalog_temporary = catalog_path.with_name("." + catalog_path.name + ".publish")
+    try:
+        catalog_temporary.write_text(
+            json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if catalog_path.exists():
+            os.chmod(catalog_temporary, catalog_path.stat().st_mode & 0o777)
+        else:
+            os.chmod(catalog_temporary, 0o644)
+        os.replace(catalog_temporary, catalog_path)
+    except BaseException:
+        catalog_temporary.unlink(missing_ok=True)
+        raise
     write_index(index_path, current)
     return changed

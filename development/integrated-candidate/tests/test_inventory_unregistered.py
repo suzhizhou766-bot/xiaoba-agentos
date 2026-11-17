@@ -569,8 +569,11 @@ class InventoryUnregisteredTest(unittest.TestCase):
             self.assertEqual("确定漏登记", item_comp["category_display"])
 
     def test_canonical_path_identity_and_rejection_of_fictitious_prefix_mapping(self):
-        # 1. 负例验证：虚构前缀不能被映射到另一个真实存在的文件，必须忠实保留 OS canonical 身份
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+        # 1. 负例验证：虚构前缀不能被映射到另一个真实存在的文件，必须忠实保留 OS canonical 身份。
+        # 必须先对系统临时目录 resolve：macOS 上未展开的 /var/... 前加 /private 会落到真实别名
+        # （与原文件同一 inode）；resolve 后再前加 /private 才是真正的虚构前缀。
+        # 禁止 dir=Path.cwd()：测试被打断时会把 tmp* 留在进程当前目录（常见于仓库根）。
+        with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
             root, codex, index, registry = self._setup_base_environment(base)
 
@@ -579,9 +582,10 @@ class InventoryUnregisteredTest(unittest.TestCase):
             real_file = skill_dir / "SKILL.md"
             real_file.write_text("# genuine skill\n", encoding="utf-8")
 
-            # 构造输入：前置 /private 的虚构路径
+            # 构造输入：前置 /private 的虚构路径（在已 resolve 的路径上，不会撞上 /var→/private/var 别名）
             fictitious_input = "/private" + str(real_file)
             self.assertFalse(Path(fictitious_input).exists())
+            self.assertNotEqual(Path(fictitious_input).resolve(), real_file.resolve())
             expected_canonical = Path(fictitious_input).resolve()
 
             # allow_within_root_only=False 时：必须返回该输入在 OS 中的规范对象，不能篡改成已存在的 real_file
@@ -619,6 +623,31 @@ class InventoryUnregisteredTest(unittest.TestCase):
             if str(file_under_root).startswith("/var"):
                 alt_var = "/private" + str(file_under_root)
                 self.assertEqual(resolved_ctrl, inventory_module._validate_safe_path(root, alt_var))
+
+    def test_canonical_path_fixture_leaves_no_cwd_entries(self):
+        """防回归：夹具运行期间不得在进程当前目录下建临时目录（不只看结束后是否清空）。"""
+        cwd = Path.cwd().resolve()
+        before = {path.name for path in cwd.iterdir()}
+        mid_snapshots: list[set[str]] = []
+        created_under_cwd: list[str] = []
+        real_td = tempfile.TemporaryDirectory
+
+        class _WatchTemporaryDirectory(real_td):
+            def __enter__(self):
+                name = super().__enter__()
+                mid_snapshots.append({path.name for path in cwd.iterdir()})
+                created = Path(name).resolve()
+                if created == cwd or cwd in created.parents:
+                    created_under_cwd.append(str(created))
+                return name
+
+        with patch.object(tempfile, "TemporaryDirectory", _WatchTemporaryDirectory):
+            self.test_canonical_path_identity_and_rejection_of_fictitious_prefix_mapping()
+
+        self.assertTrue(mid_snapshots, "expected TemporaryDirectory enter during fixture")
+        for mid in mid_snapshots:
+            self.assertEqual(before, mid)
+        self.assertEqual(created_under_cwd, [])
 
     def test_same_name_independent_entity_and_true_alias_dedup_control_group(self):
         with tempfile.TemporaryDirectory() as directory:

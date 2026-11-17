@@ -36,22 +36,27 @@ class BackendRegistry:
             if workspace is not None:
                 workspace.ledger_store=self.store.native
                 def record_receipt(path,card,evidence,status):
-                    # Queue files must wait for the owning business transaction to
-                    # commit; a rollback undoes the receipt file and must not leave
-                    # a dangling workday queue entry (卡 66).
-                    def write():
-                        try:
-                            from xiaoba_agentos.workday_ledger import record_reference
-                            record_reference(self.store.native,path,node=source['reviewer_id'],
-                                task_id=card.get('task_id'),agent=source.get('node',{}).get('agent') or source['reviewer_id'],
-                                model=evidence.get('model') or source.get('node',{}).get('model') or '未记录',
-                                kind='回执',status=status)
-                        except Exception:
-                            try:
-                                from xiaoba_agentos.workday_ledger import warn
-                                warn(self.store.native,'registration_failed')
-                            except Exception:pass
-                    self.store.defer_after_commit(write)
+                    # 卡 75C：待登记行与业务同事务；提交后再写侧车队列并删除待登记行。
+                    # 回滚时待登记行一并消失，不会留下悬空队列（卡 66）。
+                    payload={
+                        'path':str(path),
+                        'node':source['reviewer_id'],
+                        'task_id':card.get('task_id'),
+                        'agent':source.get('node',{}).get('agent') or source['reviewer_id'],
+                        'model':evidence.get('model') or source.get('node',{}).get('model') or '未记录',
+                        'kind':'回执',
+                        'status':status,
+                    }
+                    db=getattr(self.store._file_state,'db',None)
+                    if db is None:
+                        with self.store.transaction() as db:
+                            pending_id=self.store.stage_pending_reference(db,payload)
+                            self.store.defer_after_commit(
+                                lambda pending_id=pending_id: self.store.flush_pending_reference(pending_id))
+                        return
+                    pending_id=self.store.stage_pending_reference(db,payload)
+                    self.store.defer_after_commit(
+                        lambda pending_id=pending_id: self.store.flush_pending_reference(pending_id))
                 workspace.on_receipt=record_receipt
             if getattr(adapter,'persistent_resource',False):self.resource_adapters[source['reviewer_id']]=(key,adapter)
             return adapter
