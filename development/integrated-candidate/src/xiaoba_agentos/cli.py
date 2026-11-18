@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import retained as retained_objects
 from .config import AgentConfig, AppConfig, ConfigError
-from .bridge import UnixBridge, dispatch
+from .bridge import UnixBridge, dispatch, _submission_result
 from .health import doctor, execution_blockers
 from .knowledge import KnowledgeCatalog
 from .memory import (
@@ -399,29 +399,93 @@ def _submit_task(
     experience_kind: Optional[str] = None,
     problem_key: str = "",
     experience_trial: Optional[dict] = None,
+    task_purpose: Optional[str] = None,
     work_task_id: Optional[str] = None,
     no_work_task: bool = False,
     release_acceptance: bool = False,
     host: Optional[dict] = None,
     needs_review: bool = True,
+    memory_bridge_cls: Any = None,
+    skill_registry_cls: Any = None,
 ) -> str:
-    kind = experience_kind or ("audit" if prompt.startswith("你是小八 AgentOS 的独立审查者之一，只读审查技能 ") else "method")
-    from .experience_workflow import KINDS, match_trials
+    if release_acceptance and experience_trial is not None:
+        raise ValueError("release acceptance cannot also be an experience trial")
+    if task_purpose == "release_acceptance" and not release_acceptance:
+        raise ValueError("release acceptance purpose requires --release-acceptance")
+    if task_purpose == "experience_trial" and experience_trial is None:
+        raise ValueError("experience trial purpose requires a frozen trial record")
+    controlled_purpose = (
+        "release_acceptance" if release_acceptance else
+        "experience_trial" if experience_trial is not None else
+        task_purpose
+    )
+    if controlled_purpose not in (None, "release_smoke", "release_acceptance", "experience_trial"):
+        raise ValueError("invalid controlled task purpose")
+    if release_acceptance and task_purpose not in (None, "release_acceptance"):
+        raise ValueError("release acceptance purpose conflicts with task-purpose")
+    if experience_trial is not None and task_purpose not in (None, "experience_trial"):
+        raise ValueError("experience trial purpose conflicts with task-purpose")
+    if controlled_purpose in {"release_smoke", "release_acceptance", "experience_trial"}:
+        if experience_kind not in (None, "audit"):
+            raise ValueError("release smoke, acceptance and experience trials must use audit settlement")
+        kind = "audit"
+        if not needs_review:
+            raise ValueError("controlled audit tasks require review")
+    else:
+        kind = experience_kind or ("audit" if prompt.startswith("你是小八 AgentOS 的独立审查者之一，只读审查技能 ") else "method")
+    if controlled_purpose is None:
+        controlled_purpose = "technical_audit" if kind == "audit" else "user_task"
+    from .experience_workflow import KINDS, match_trials, suggest_trials
     if kind not in KINDS:
         raise ValueError("invalid experience kind")
+    if release_acceptance:
+        # 廉价确定性检查前移：构包门禁（build_release._validate_acceptance_payload）要求
+        # 验收任务声明来源工作任务或明确没有。与其跑完整轮双审到构包才被拒收（卡 49
+        # 第四轮返工），提交时当场拒绝。只前移“声明是否存在”这一确定性检查，不改构包
+        # 门禁、评分策略、用户裁决或事件/冻结哈希约束。
+        # 必须早于 MemoryBridge.agent_contexts()：后者可经 formal_review.record_hits 写入
+        # memory.formal_retrieved，知识检索最多等 30 秒，拒收路径不该产生这些副作用。
+        # 用只含 review_context 与 workflow 的最小只读快照调用，与构包同口径；workflow
+        # 也必须在其中，否则“发布验收 + workflow 来源声明”的合法组合会被误拒。
+        from .pool_dispatch import declared_work_tasks
+        probe = {
+            'review_context': {
+                'work_task_id': work_task_id,
+                'no_work_task': no_work_task,
+            },
+        }
+        if workflow:
+            probe['workflow'] = workflow
+        source_ids, explicit_none = declared_work_tasks(probe)
+        if not source_ids and not explicit_none:
+            raise ValueError(
+                '发布验收任务必须声明来源工作任务：提交时用 --work-task 链上工作任务，'
+                '或明确声明 --no-work-task')
+    # 来源工作任务的确定性与存在性检查同样前移到检索之前：无效提交不该白跑
+    # MemoryBridge.agent_contexts（可经 formal_review.record_hits 写 memory.formal_retrieved，
+    # 知识检索最多等 30 秒）。错误语义保持原样。
+    if work_task_id and not store.get_task(work_task_id):
+        raise ValueError('来源工作任务不存在')
+    if work_task_id and no_work_task:
+        raise ValueError('来源工作任务和“没有来源工作任务”只能声明一个')
+    # Validate host identity before retrieval can record formal activity.
+    if host is not None and (set(host) != {'id','entry','model'} or any(not isinstance(v,str) or not v.strip() for v in host.values())):
+        raise ValueError('宿主身份需要 id、entry、model；不能自述未干活')
     frozen_context = freeze_context(task_context)
     frozen_materials = freeze_materials(material_files)
     enabled_names = [agent.name for agent in config.agents if agent.enabled]
-    if kind == "audit":
+    if kind == "audit" or workflow:
         assignment = {"hits": [], "contexts": {}, "receipt": None}
         hits, context = [], ""
         skills = {"selected": [], "context": "", "context_sha256": hashlib.sha256(b"").hexdigest()}
     else:
-        memory = MemoryBridge(config, store)
+        bridge_cls = memory_bridge_cls or MemoryBridge
+        registry_cls = skill_registry_cls or SkillRegistry
+        memory = bridge_cls(config, store)
         assignment = memory.agent_contexts(prompt, enabled_names)
         hits = assignment["hits"]
         context = memory.render_hits(hits)
-        skills = SkillRegistry(config).select_context(prompt)
+        skills = registry_cls(config).select_context(prompt)
     snapshot = {
         "prompt": prompt,
         "task_context": frozen_context,
@@ -429,6 +493,7 @@ def _submit_task(
         "needs_web": needs_web,
         "release_expected_version": config.expected_release_version,
         "source_manifest_sha256": _manifest_fingerprint(config.project_dir),
+        "runtime_manifest_sha256": _runtime_manifest_fingerprint(config.project_dir),
         "knowlp_context": context,
         "knowlp_context_hash": hashlib.sha256(context.encode("utf-8")).hexdigest(),
         "memory_hits": hits,
@@ -443,15 +508,10 @@ def _submit_task(
             "kind": "agentos_multi_adjudicated",
             "minimum_successful_agents": int(config.worker["minimum_successful_agents"]),
         },
+        "task_purpose": controlled_purpose,
     }
     if frozen_materials:
         snapshot["material_files"] = frozen_materials
-    if host is not None and (set(host) != {'id','entry','model'} or any(not isinstance(v,str) or not v.strip() for v in host.values())):
-        raise ValueError('宿主身份需要 id、entry、model；不能自述未干活')
-    if work_task_id and not store.get_task(work_task_id):
-        raise ValueError('来源工作任务不存在')
-    if work_task_id and no_work_task:
-        raise ValueError('来源工作任务和“没有来源工作任务”只能声明一个')
     snapshot['needs_review'] = needs_review
     snapshot['review_context'] = {'work_task_id': work_task_id, 'host': host, 'needs_review': needs_review, 'release_acceptance': release_acceptance}
     if no_work_task:
@@ -469,7 +529,10 @@ def _submit_task(
                                   "minimum_successful_agents": len(workflow["agents"])}
         hits = []
     snapshot["experience_policy"] = {"version": 1, "kind": kind, "problem_key": problem_key}
-    snapshot["trial_suggestions"] = match_trials(store, problem_key) if kind != "audit" else []
+    if kind in {"method", "rule"} and needs_review:
+        snapshot["value_receipt_contract"] = {"version": 2, "review_type": "new_experience"}
+    snapshot.update(suggest_trials(store, problem_key, prompt) if kind != "audit" else {
+        "trial_suggestions": [], "trial_suggestion_status": "ok"})
     if experience_trial is not None:
         if kind != "audit":
             raise ValueError("trial validation must be audit-only")
@@ -488,10 +551,6 @@ def _submit_task(
         route_decision_id=route_decision_id,
         provenance=snapshot["provenance"],
     )
-    for hit in hits:
-        source_task_id = hit.get("source_task_id")
-        if source_task_id and source_task_id != task_id:
-            store.record_memory_reuse(task_id, str(source_task_id), str(hit.get("path") or ""))
     return task_id
 
 
@@ -519,6 +578,28 @@ def _code_fingerprint(project_dir: Path) -> str:
 def _manifest_fingerprint(project_dir: Path) -> Optional[str]:
     path = project_dir / "SOURCE_MANIFEST.json"
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+
+
+def _runtime_manifest_fingerprint(project_dir: Path) -> Optional[str]:
+    path = project_dir / "SOURCE_MANIFEST.json"
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        files = data.get("files")
+        if not isinstance(files, dict) or not files:
+            return None
+        runtime_files = {
+            k: v for k, v in sorted(files.items())
+            if not (k == "README.md" or (k.startswith("docs/") and k.endswith(".md")))
+        }
+        if not runtime_files:
+            return None
+        canonical = json.dumps({"algorithm": "sha256", "files": runtime_files},
+                               ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(canonical).hexdigest()
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 def _write_worker_state(config: AppConfig, store: EventStore) -> Dict[str, Any]:
@@ -1279,7 +1360,9 @@ def build_parser() -> argparse.ArgumentParser:
     intake = sub.add_parser("intake")
     intake.add_argument("prompt")
     intake.add_argument("--message-id")
+    intake.add_argument("--problem-key", default="")
     intake.add_argument("--delivery-receipt", help="当前真实用户交付消息绑定的任务、成品及交付记录；不批准经验")
+    intake.add_argument("--user-decision", action="store_true", help="声明本次由用户明确选择交付；不是自动验收或身份认证")
     intake.add_argument("--active-task-id")
     intake.add_argument("--relation", choices=("auto", "related", "unrelated"), default="auto")
     intake.add_argument("--risk", choices=("auto", "low", "high"), default="auto")
@@ -1297,6 +1380,8 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("prompt")
     submit.add_argument("--priority", type=int, default=0)
     submit.add_argument("--memory-kind", choices=("audit", "rule", "method"))
+    submit.add_argument("--task-purpose", choices=("release_smoke",),
+                        help="受控发布冒烟入口专用；用途冻结进任务快照且只能 audit 结算")
     submit.add_argument("--problem-key", default="")
     submit.add_argument('--work-task', help='待审查产物的来源工作任务；从记录和agent_runs推导参与者')
     submit.add_argument('--no-work-task', action='store_true',
@@ -1348,9 +1433,20 @@ def build_parser() -> argparse.ArgumentParser:
     pending_read.add_argument("task_id")
     pending_read.add_argument("--candidate-sha256", required=True)
     pending_read.add_argument("--delivery-review-id", required=True)
-    for name in ("memory-application-record", "memory-delivery-record", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call"):
+    delivery_view = sub.add_parser("task-delivery-view", help="只读任务交付版本与待处理列表")
+    delivery_view.add_argument("--task-id")
+    delivery_view.add_argument("--version", dest="artifact_version", help="可选：指定查询的成品版本号（如 v1）")
+    historical_basis = sub.add_parser("memory-validation-basis-propose", help="为既有真实任务提议版本化证据包；不会确认或批准")
+    historical_basis.add_argument("task_id")
+    historical_basis.add_argument("--receipt", required=True, help="含完整 history_pack、method_claims 和 application_scope 的 JSON 文件")
+    revoke_basis = sub.add_parser("memory-validation-basis-revoke", help="用户本人撤回明确版本的核验依据；不得由Agent代作决定")
+    revoke_basis.add_argument("task_id")
+    revoke_basis.add_argument("--receipt", required=True, help="绑定basis版本、用户决定来源、原因和幂等键的JSON")
+    for name in ("memory-application-record", "memory-delivery-record", "task-result-register", "task-delivery", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call"):
         command = sub.add_parser(name, help="登记实际应用或真实用户交付事件，不批准经验")
         command.add_argument("--receipt", required=True)
+        if name in {"memory-delivery-record", "task-delivery"}:
+            command.add_argument("--user-decision", action="store_true", help="用户本次显式选择声明；不会代替经验批准")
     for name in ("collaborate", "collaborate-review"):
         command = sub.add_parser(name)
         command.add_argument("prompt")
@@ -1378,6 +1474,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_list = sub.add_parser("review-list")
     review_list.add_argument("--stage", choices=("delivery", "final", "all"), default="all")
     review_list.add_argument("--date")
+    sub.add_parser("memory-value-list", help="列出尚待独立价值评分的经验准备项；不读取正文")
     review = sub.add_parser("review")
     review.add_argument("task_id")
     review.add_argument("--stage", choices=("delivery", "final"), required=True)
@@ -1405,7 +1502,7 @@ def build_parser() -> argparse.ArgumentParser:
     bridge.add_argument("--socket", default=None)
     authored = sub.add_parser(
         "memory-candidate-create",
-        help="登记一条由宿主撰写的经验候选，进入正常的初审队列（不发布）",
+        help="登记宿主撰写的经验草稿；method/rule 先进入独立价值评分准备队列",
     )
     authored.add_argument("--title", required=True)
     authored.add_argument("--body-file", required=True)
@@ -1632,7 +1729,7 @@ def main(argv: Optional[list] = None) -> int:
             "skill-review-prompt", "skill-publish", "knowledge-index-rebuild",
             "memory-retrieve", "memory-retained-list", "memory-retained-resolve",
             "review-list", "memory-trial-status", "memory-trial-match", "review-ui-install",
-            "memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call",
+            "memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "task-result-register", "task-delivery", "task-delivery-view", "memory-validation-basis-propose", "memory-validation-basis-revoke", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call",
         }
         read_only_or_managed = read_only_or_managed or (args.command == "intake" and bool(args.delivery_receipt))
         config, store = _load(args.config, initialize=not read_only_or_managed)
@@ -1640,12 +1737,19 @@ def main(argv: Optional[list] = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    if args.command in {"memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call"}:
+    if args.command in {"memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "task-result-register", "task-delivery", "task-delivery-view", "memory-validation-basis-propose", "memory-validation-basis-revoke", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call"}:
         from .experience_loop import pending_index, read_pending, record_application, record_delivery
         try:
             if not store.schema_status()["ok"]:
                 raise ValueError("database schema must be initialized and verified first")
-            if args.command == "memory-pending-index":
+            if args.command == "task-delivery-view":
+                from .delivery import pending_tasks, detail_tx
+                if args.task_id:
+                    with store.read_only() as conn:
+                        result = detail_tx(conn, args.task_id, getattr(args, "artifact_version", None))
+                else:
+                    result = pending_tasks(store)
+            elif args.command == "memory-pending-index":
                 result = pending_index(store, args.problem_key, args.query)
             elif args.command == "memory-pending-read":
                 result = read_pending(store, args.task_id, args.candidate_sha256, args.delivery_review_id)
@@ -1654,7 +1758,19 @@ def main(argv: Optional[list] = None) -> int:
                 if path.stat().st_size > 65536:
                     raise ValueError("receipt exceeds 64 KiB")
                 value = json.loads(path.read_text(encoding="utf-8"))
-                if args.command == "memory-revision-submit":
+                if args.command == "task-result-register":
+                    from .delivery import register_direct
+                    result = register_direct(store, value)
+                elif args.command in {"task-delivery", "memory-delivery-record"}:
+                    from .delivery import submit as submit_delivery, user_decision, legacy_request
+                    if not args.user_decision:
+                        raise ValueError("--user-decision must explicitly declare this user selection")
+                    request = legacy_request(store, value) if args.command == "memory-delivery-record" else value
+                    result = submit_delivery(config, store, request, authority=user_decision(request, channel="cli_user_declaration", explicit=True))
+                    if not result.get("ok"):
+                        _print(result, True)
+                        return 1
+                elif args.command == "memory-revision-submit":
                     from .formal_review import submit_draft
                     result = submit_draft(store, value['request_id'], value['draft'])
                 elif args.command == "memory-revision-resubmit":
@@ -1663,6 +1779,19 @@ def main(argv: Optional[list] = None) -> int:
                 elif args.command == "memory-formal-call":
                     from .formal_review import record_call
                     result = record_call(store, value['source_task_id'], value['source_sha256'])
+                elif args.command == "memory-validation-basis-revoke":
+                    from .validation_basis import revoke_basis
+                    result = revoke_basis(store, args.task_id, value)
+                elif args.command == "memory-validation-basis-propose":
+                    if args.task_id != value.get("candidate_id"):
+                        raise ValueError("receipt candidate_id must match task_id")
+                    with store.connect() as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        row = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (args.task_id,)).fetchone()
+                        if not row:
+                            raise ValueError("candidate not found")
+                        from .validation_basis import propose_historical_basis_tx
+                        result = propose_historical_basis_tx(store, conn, dict(row), value)
                 else:
                     result = (record_application if args.command == "memory-application-record" else record_delivery)(store, value)
             _print(result, True)
@@ -1835,8 +1964,15 @@ def main(argv: Optional[list] = None) -> int:
                 if not isinstance(value, dict):
                     raise ValueError("delivery receipt must be a JSON object")
                 value.update(origin="user", user_message=args.prompt, message_id=args.message_id)
-                result = record_delivery(store, value)
-                _print({"status": "delivery_recorded", "receipt": result,
+                from .delivery import submit as submit_delivery, user_decision, legacy_request
+                if not args.user_decision:
+                    raise ValueError("--user-decision must explicitly declare this user selection")
+                request = legacy_request(store, value)
+                result = submit_delivery(config, store, request, authority=user_decision(request, channel="cli_user_declaration", explicit=True))
+                if not result.get("ok"):
+                    _print(result, True)
+                    return 1
+                _print({"status": "delivery_recorded", "receipt": result['receipt'],
                         "experience_approval": "human_final_review_required"}, True)
                 return 0
             except (OSError, ValueError, KeyError, TypeError, RuntimeError, sqlite3.Error) as exc:
@@ -1897,6 +2033,8 @@ def main(argv: Optional[list] = None) -> int:
                 else "需要用户补充任务范围"
             ),
         }
+        from .experience_workflow import suggest_trials
+        response.update(suggest_trials(store, args.problem_key, args.prompt))
         blockers = execution_blockers(config, store) if args.submit and route["route"] == AGENTOS_MULTI else []
         if blockers and not args.queue_when_blocked:
             response.update({
@@ -1918,12 +2056,13 @@ def main(argv: Optional[list] = None) -> int:
                     route_decision_id=str(route["id"]),
                     idempotency_key=f"intake:{route['id']}",
                     required_capabilities=tuple(args.requires_capability), needs_web=args.needs_web,
+                    problem_key=args.problem_key,
                 task_context=read_context_file(args.context_file),
                 )
             except (SkillRegistryError, ValueError, OSError) as exc:
                 _print({"status": "blocked", "error": str(exc), **response}, True)
                 return 1
-            response.update({"status": "pending", "task_id": task_id})
+            response.update(_submission_result(store, task_id))
             if blockers:
                 response.update({"execution_blocked": True, "blockers": blockers})
         elif args.submit:
@@ -1968,7 +2107,7 @@ def main(argv: Optional[list] = None) -> int:
         _print(receipt, True)
         return 0 if receipt["retrieval_status"] != "degraded" else 1
     if args.command == "memory-retrieve":
-        receipt = MemoryBridge(config, store).retrieve_with_receipt(args.query)
+        receipt = MemoryBridge(config, store).retrieve_with_receipt(args.query, purpose="diagnostic")
         _print(receipt, True)
         return 0 if receipt["retrieval_status"] != "degraded" else 1
     if args.command == "memory-retained-list":
@@ -2133,6 +2272,7 @@ def main(argv: Optional[list] = None) -> int:
                 task_context=read_context_file(args.context_file),
                 material_files=tuple(args.material),
                 experience_kind=args.memory_kind, problem_key=args.problem_key,
+                task_purpose=args.task_purpose,
                 work_task_id=args.work_task,
                 no_work_task=getattr(args, 'no_work_task', False),
                 release_acceptance=args.release_acceptance,
@@ -2144,10 +2284,8 @@ def main(argv: Optional[list] = None) -> int:
             _print({"status": "blocked", "error": str(exc)}, True)
             return 1
         _print({
-            "task_id": task_id,
-            "status": "pending",
+            **_submission_result(store, task_id),
             "route_id": route["id"],
-            "trial_suggestions": json.loads(store.get_task(task_id)["execution_snapshot_json"]).get("trial_suggestions", []),
             "answer_provenance": "agentos_multi_adjudicated",
         })
         return 0
@@ -2190,6 +2328,7 @@ def main(argv: Optional[list] = None) -> int:
                 experience_kind=args.kind, problem_key=args.problem_key,
                 idempotency_key=args.idempotency_key,
                 session_id=str(active["id"]) if active else None,
+                enforce_value_queue=True,
             )
         except KeyError as exc:
             _print({"status": "blocked", "error": f"source task not found: {exc.args[0]}"}, True)
@@ -2242,6 +2381,7 @@ def main(argv: Optional[list] = None) -> int:
             }, True)
             return 1
         evidence_sha256 = None
+        release = None
         try:
             # Stage the file while the hold is still pending, then release the
             # hold and queue the candidate in one transaction.
@@ -2250,7 +2390,7 @@ def main(argv: Optional[list] = None) -> int:
                 args.task_id, task["prompt"], str(hold["result"]), runs
             )
             evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
-            store.release_constraint_hold(args.task_id, str(staged), evidence_sha256)
+            release = store.release_constraint_hold(args.task_id, str(staged), evidence_sha256)
         except (OSError, RuntimeError, ValueError, KeyError, sqlite3.Error) as exc:
             # An exception does not prove a rollback (the store does
             # maintenance after commit); decide from the database.  Three
@@ -2263,9 +2403,17 @@ def main(argv: Optional[list] = None) -> int:
             except (OSError, RuntimeError, sqlite3.Error) as readback_exc:
                 after, candidate = None, None
                 readback_error = str(readback_exc)
+            value_status = None
+            if evidence_sha256:
+                try:
+                    value_status = store.value_candidate_status(args.task_id, evidence_sha256)
+                except (OSError, RuntimeError, ValueError, sqlite3.Error):
+                    value_status = None
             committed = bool(
-                after and after.get("status") == "released" and candidate
-                and candidate.get("evidence_sha256") == evidence_sha256
+                after and after.get("status") == "released" and (
+                    candidate and candidate.get("evidence_sha256") == evidence_sha256
+                    or value_status in {"awaiting_value_review", "value_discarded"}
+                )
             )
             if not committed and readback_error is not None:
                 # The release may have committed and we cannot tell.  Never put
@@ -2330,12 +2478,31 @@ def main(argv: Optional[list] = None) -> int:
                     payload["retained_note"] = RETAINED_NOTE
                 _print(payload, True)
                 return 1
+        candidate_row = store.get_memory_candidate(args.task_id)
+        candidate_status = (
+            release.get("candidate_status") if release is not None else None
+        ) or (
+            candidate_row.get("status") if candidate_row else None
+        ) or (
+            store.value_candidate_status(args.task_id, evidence_sha256) if evidence_sha256 else None
+        ) or "unknown"
         _print({
             "status": "released",
             "task_id": args.task_id,
-            "candidate_status": "pending_delivery_review",
+            "candidate_status": candidate_status,
             "candidate_sha256": evidence_sha256,
         }, True)
+        return 0
+    if args.command == "memory-value-list":
+        if not store.schema_status()["ok"]:
+            print("数据库需要先迁移", file=sys.stderr)
+            return 1
+        try:
+            items = store.value_review_queue()
+        except ValueError as exc:
+            _print({"status": "blocked", "error": str(exc)}, True)
+            return 2
+        _print({"status": "ok", "count": len(items), "items": items}, True)
         return 0
     if args.command == "review-list":
         if not store.schema_status()["ok"]:
@@ -2597,7 +2764,7 @@ def main(argv: Optional[list] = None) -> int:
             total_polls += 1
             report_key = (result.get("status"), result.get("error"))
             heartbeat = max(1, int(config.worker.get("log_heartbeat_polls", 60)))
-            quiet_statuses = ("idle", "blocked_configuration", "degraded_health", "worker_error")
+            quiet_statuses = ("idle", "blocked_configuration", "degraded_health", "worker_error", "awaiting_host", "ask_user", "blocked_review_nodes")
             if result["status"] not in quiet_statuses or report_key != last_report_key or total_polls % heartbeat == 0:
                 print(json.dumps(result, ensure_ascii=False), flush=True)
                 last_report_key = report_key

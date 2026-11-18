@@ -94,14 +94,14 @@ class Card37IngressTests(unittest.TestCase):
         ctx.hosts = {'127.0.0.1:'+str(ctx.port)};ctx.origins = {'http://127.0.0.1:'+str(ctx.port)}
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close);self.addCleanup(server.shutdown)
-        def post(path, body):
+        def post(path, body, expected_status=200):
             conn = http.client.HTTPConnection('127.0.0.1', ctx.port, timeout=20)
             try:
                 conn.request('POST', '/api/agent-pool/'+path, json.dumps(body),
                              {'Content-Type': 'application/json', 'Origin': next(iter(ctx.origins)), 'X-Xiaoba-Token': ctx.page_token})
                 response = conn.getresponse();value = json.loads(response.read())
-                self.assertEqual(200, response.status, value)
-                return value['result']
+                self.assertEqual(expected_status, response.status, value)
+                return value['result'] if expected_status == 200 else value
             finally:conn.close()
         for name, kind in [('north', 'codex'), ('south', 'claude')]:
             source = post('nodes', {'node_id': name, 'name': name, 'agent': kind, 'kind': 'review',
@@ -111,9 +111,30 @@ class Card37IngressTests(unittest.TestCase):
             self.assertEqual('passed', test['status'])
         prepared = post('prepare', {'required_kinds': ['dsh', 'peer']})
         self.assertEqual('run', prepared['route'], prepared)
-        candidate = self.native.create_authored_candidate('TEST HTTP candidate', 'TEST isolated fixture', self.config.runtime_dir/'memory-outbox', author='fixture', experience_kind='method')
-        result = post('dispatch', {'candidate_id': candidate['task_id'], 'scope': 'TEST fake cli receipt',
-                                  'evidence': [{'ref': 'TEST fake cli receipt', 'sha256': 'a'*64}],
+
+        unscored = self.native.create_authored_candidate(
+            'TEST HTTP unscored candidate', 'TEST isolated fixture',
+            self.config.runtime_dir/'memory-outbox', author='fixture', experience_kind='method',
+        )
+        rejected = post('dispatch', {'candidate_id': unscored['task_id'], 'scope': 'TEST bypass attempt',
+                                    'evidence': [{'ref': 'TEST bypass attempt', 'sha256': 'a'*64}],
+                                    'request_id': 'HTTP-unscored-review', 'review_type': 'new_experience'},
+                        expected_status=400)
+        self.assertIn('专用价值评分双审入口', rejected['error'])
+        self.assertIn(unscored['task_id'], {item['task_id'] for item in self.native.value_review_queue()})
+        self.assertIsNone(self.native.get_memory_candidate(unscored['task_id']))
+
+        task_id = self.native.submit('TEST HTTP eligible historical candidate', 2)
+        self.native.complete_manually(task_id, 'TEST completed historical source task')
+        path = self.config.runtime_dir/'memory-outbox'/f'{task_id}.md'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('TEST historical candidate body', encoding='utf-8')
+        candidate_hash = __import__('hashlib').sha256(path.read_bytes()).hexdigest()
+        self.native.stage_memory_candidate(task_id, str(path), candidate_hash, [])
+        self.native.review_memory(task_id, 'delivery', 'approve', 'TEST historical initial review', candidate_hash)
+        result = post('dispatch', {'candidate_id': task_id, 'scope': 'TEST fake cli receipt',
+                                  'evidence': [{'ref': 'TEST fake cli receipt', 'sha256': 'a'*64},
+                                               {'ref': str(path), 'sha256': candidate_hash}],
                                   'request_id': 'HTTP-review', 'review_type': 'new_experience'})
         self.assertEqual('completed', result['route'], result)
         self.assertEqual(2, len(result['request']['receipts']))

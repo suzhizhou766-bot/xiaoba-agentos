@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fixtures_review import _config
+from fixtures_review import _admit_authored_candidate, _config
 from xiaoba_agentos import cli
 from xiaoba_agentos.config import AppConfig
 from xiaoba_agentos.experience_workflow import trial_summary
@@ -47,8 +47,9 @@ class TrialReviewCenterTest(unittest.TestCase):
                     if task_id is None or row["task_id"] == task_id}
 
     def candidate(self, kind):
-        return self.store.create_authored_candidate("页面候选", "测试正文", self.cfg.runtime_dir / "memory-outbox",
-                                                    author="test", experience_kind=kind)
+        created = self.store.create_authored_candidate("页面候选", "测试正文", self.cfg.runtime_dir / "memory-outbox",
+                                                       author="test", experience_kind=kind or "rule")
+        return _admit_authored_candidate(self.store, created)
 
     def test_method_card_shows_waiting_validation_and_cannot_approve_final(self):
         c = self.candidate("method")
@@ -59,10 +60,10 @@ class TrialReviewCenterTest(unittest.TestCase):
         self.assertNotIn("approve", detail["allowed_decisions"])
         self.assertEqual(detail["body"], Path(c["staged_path"]).read_text())
 
-    def test_legacy_card_is_explicit_and_preserves_prior_manual_path(self):
-        c = self.candidate(None)
+    def test_rule_card_is_explicit_and_preserves_prior_manual_path(self):
+        c = self.candidate("rule")
         detail = self.center.detail(c["task_id"])
-        self.assertEqual(detail["experience_validation"]["state"], "legacy_manual")
+        self.assertEqual(detail["experience_validation"]["state"], "not_required")
         self.assertIn("approve", detail["allowed_decisions"])
 
     def test_browser_atomic_guard_accepts_delivery_and_native_gate_refuses_unvalidated_final(self):

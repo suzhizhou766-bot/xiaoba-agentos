@@ -189,7 +189,8 @@ class MemoryBridge:
 
             if status == "retired":
                 archive = Path(str(candidate.get("published_path") or "")).expanduser()
-                if not archive.is_file() or archive.is_symlink():
+                was_published = bool(candidate.get("published_path") or candidate.get("published_at"))
+                if was_published and (not archive.is_file() or archive.is_symlink()):
                     problems.append(f"{task_id}:retired_archive_missing")
                 if active_target.exists():
                     problems.append(f"{task_id}:retired_target_still_active")
@@ -377,9 +378,8 @@ class MemoryBridge:
             return False
         return status in MEMORY_ACTIVE_RETRIEVAL_STATES
 
-    def retrieve_with_receipt(self, query: str) -> Dict[str, Any]:
+    def retrieve_with_receipt(self, query: str, *, purpose: str = "task") -> Dict[str, Any]:
         sanitized_query = self._sanitize_query(query)
-        index_sha = self.index_sha256()
         verified_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
         memory = self.config.memory
@@ -388,9 +388,11 @@ class MemoryBridge:
                 "retrieval_status": "disabled",
                 "query": sanitized_query,
                 "hits": [],
-                "index_sha256": index_sha,
+                "index_sha256": None,
                 "verified_at": verified_at,
             }
+
+        index_sha = self.index_sha256()
 
         main_limit = max(1, int(memory.get("knowlp_limit", 6)))
         # KnowLP does relevance filtering first. Re-rank only a bounded matching
@@ -484,6 +486,8 @@ class MemoryBridge:
             hit["last_used_at"] = item.get("last_used_at")
         ranked = sorted(verified, key=lambda h: -h["reuse_score"])
         selected = ranked[:main_limit]
+        for hit in selected:
+            hit["retrieval_slot"] = "main"
         remaining = ranked[main_limit:]
         if remaining:
             # Prefer an unseen/lowest-score matching formal experience; ties
@@ -491,12 +495,14 @@ class MemoryBridge:
             # formal-experience exploration candidate.
             formal = [h for h in remaining if h["source_task_id"]]
             if formal:
-                selected.append(min(formal, key=lambda h: h["reuse_score"]))
+                exploration = min(formal, key=lambda h: h["reuse_score"])
+                exploration["retrieval_slot"] = "exploration"
+                selected.append(exploration)
         verified = selected
-        if isinstance(self.store, EventStore):
+        if purpose == "task" and isinstance(self.store, EventStore):
             try:
                 from .formal_review import record_hits
-                record_hits(self.store, verified)
+                record_hits(self.store, selected[:main_limit])
             except (ValueError, TypeError, KeyError, OSError, sqlite3.Error) as exc:
                 score_problems.append("formal retrieval clock unavailable: " + str(exc)[:240])
         status = "canonical_match" if verified else "miss"
@@ -528,13 +534,18 @@ class MemoryBridge:
         receive a deterministic rotation. Agents still reason independently;
         no generated answer is shared before adjudication.
         """
-        if self.retrieve_hits != MemoryBridge.retrieve_hits:
+        overridden_retrieve_hits = (
+            "retrieve_hits" in self.__dict__
+            or type(self).retrieve_hits is not MemoryBridge.retrieve_hits
+        )
+        if overridden_retrieve_hits:
             hits = self.retrieve_hits(query)
+            knowlp_on = bool(self.config.memory.get("knowlp_enabled"))
             receipt = {
-                "retrieval_status": "canonical_match" if hits else "miss",
+                "retrieval_status": "canonical_match" if hits else ("miss" if knowlp_on else "disabled"),
                 "query": self._sanitize_query(query),
                 "hits": hits,
-                "index_sha256": self.index_sha256(),
+                "index_sha256": self.index_sha256() if knowlp_on else None,
                 "verified_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             }
         else:
@@ -568,15 +579,22 @@ class MemoryBridge:
         return self.outbox / f"{task_id}.md"
 
     def stage_experience(self, task_id: str, prompt: str, result: str, runs: List[Dict[str, Any]],
-                         *, value_assessment: Optional[Dict[str, Any]] = None) -> Path:
+                         *, value_assessment: Optional[Dict[str, Any]] = None,
+                         skip_value_scoring: bool = False) -> Path:
         self._secure_runtime_dir(self.config.runtime_dir)
         self._secure_runtime_dir(self.outbox)
         target = self.staged_path(task_id)
         from .value_scoring import native_value, summary
         assessment = value_assessment
-        if assessment is None and self.store is not None:
-            with self.store.read_only() as db:
-                assessment = native_value(db, task_id)
+        if assessment is None and self.store is not None and not skip_value_scoring:
+            try:
+                with self.store.read_only() as db:
+                    assessment = native_value(db, task_id)
+            except (ValueError, KeyError, TypeError, IndexError):
+                # Candidate scoring is a separate disposition. Malformed score
+                # receipts must leave the completed task eligible for the
+                # event-backed preparation queue.
+                assessment = None
         if assessment and assessment['decision'] == 'discard':
             target.write_text(summary(assessment) + '\n', encoding='utf-8')
             os.chmod(target, 0o600)

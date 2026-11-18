@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fixtures_review import _config, _run_cli
+from fixtures_review import _admit_authored_candidate, _config, _run_cli
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.review_flow import execute_review, publish_approved_candidate
 from xiaoba_agentos.store import EventStore
@@ -60,7 +60,8 @@ class Card46Fixture(unittest.TestCase):
 
     # --- 夹具动作 -------------------------------------------------------
     def _candidate(self, title="恢复测试经验", body="正文：先核对再发布。"):
-        created = self.store.create_authored_candidate(title, body, self.bridge.outbox, author="test")
+        created = self.store.create_authored_candidate(title, body, self.bridge.outbox, author="test", experience_kind="rule")
+        created = _admit_authored_candidate(self.store, created)
         return created["task_id"], Path(created["staged_path"]), created["evidence_sha256"]
 
     def _publish(self, task_id, sha):

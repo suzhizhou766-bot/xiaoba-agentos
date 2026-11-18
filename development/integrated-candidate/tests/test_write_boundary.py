@@ -17,7 +17,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fixtures_review import _config, _run_cli
+from fixtures_review import _admit_authored_candidate, _stage_candidate_with_value_review, _config, _run_cli
 from xiaoba_agentos.adapters import (
     AgyAdapter,
     DshAdapter,
@@ -137,10 +137,13 @@ class CandidateCreationBoundaryTest(unittest.TestCase):
     def test_normal_chinese_discussion_of_these_words_is_accepted(self):
         created = self.store.create_authored_candidate("思考标记与工具调用的检查清单", PROSE_BODY,
                                                        self.outbox, author="test")
-        candidate = self.store.get_memory_candidate(created["task_id"])
-        self.assertEqual("pending_delivery_review", candidate["status"])
+        self.assertEqual("awaiting_value_review", created["status"])
+        self.assertIsNone(self.store.get_memory_candidate(created["task_id"]))
+        queued = next(item for item in self.store.value_review_queue()
+                      if item["task_id"] == created["task_id"])
+        self.assertEqual(created["evidence_sha256"], queued["candidate_sha256"])
         self.assertEqual(1, len(_outbox_files(self.outbox)))
-        self.assertIn("思考标记", Path(candidate["staged_path"]).read_text(encoding="utf-8"))
+        self.assertIn("思考标记", Path(queued["staged_path"]).read_text(encoding="utf-8"))
 
     def test_cli_entry_reports_blocked_and_writes_nothing(self):
         """memory-candidate-create 走同一条拒绝路径：blocked、退出码 1、库里什么都没有。"""
@@ -306,7 +309,10 @@ class PublicationBoundaryTest(unittest.TestCase):
 
     def _stage_bypassing_creation(self, title, body):
         """先正常登记，再把暂存文件换成不合格正文并重算哈希——等于绕过创建检查。"""
-        created = self.store.create_authored_candidate(title, CLEAN_BODY, self.bridge.outbox, author="test")
+        created = self.store.create_authored_candidate(
+            title, CLEAN_BODY, self.bridge.outbox, author="test", experience_kind="rule",
+        )
+        created = _admit_authored_candidate(self.store, created)
         staged = Path(created["staged_path"])
         staged.write_text(
             "---\n"
@@ -320,7 +326,11 @@ class PublicationBoundaryTest(unittest.TestCase):
             encoding="utf-8",
         )
         changed = _sha(staged)
-        self.store.stage_memory_candidate(created["task_id"], str(staged), changed)
+        with self.store.connect() as conn:
+            conn.execute(
+                "UPDATE memory_candidates SET evidence_sha256=? WHERE task_id=?",
+                (changed, created["task_id"]),
+            )
         return created["task_id"], staged, changed
 
     # ------------------------------------------------------- 直接调发布路径
@@ -365,8 +375,10 @@ class PublicationBoundaryTest(unittest.TestCase):
     # ------------------------------------------------------- 正常正文不误伤
     def test_normal_chinese_discussion_publishes(self):
         created = self.store.create_authored_candidate(
-            "思考标记与工具调用的检查清单", PROSE_BODY, self.bridge.outbox, author="test"
+            "思考标记与工具调用的检查清单", PROSE_BODY, self.bridge.outbox,
+            author="test", experience_kind="rule",
         )
+        created = _admit_authored_candidate(self.store, created)
         for stage in ("delivery", "final"):
             code, payload = execute_review(self.config, self.store, created["task_id"], stage, "approve", "")
             self.assertEqual(0, code, payload)

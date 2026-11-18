@@ -45,6 +45,13 @@ def _submitted_content(snapshot: Dict[str, Any]) -> Dict[str, Any]:
 # separate: retry_or_fail only accepts a currently leased running row.
 TASK_SETTLEMENT_SOURCE_STATES = frozenset({"pending", "running"})
 
+_PROTECTED_PUBLIC_EVENTS = frozenset({
+    "memory.candidate_staged", "memory.value_unscored", "memory.value_assessed",
+    "memory.value_review_dispatch",
+    "open_review.backend_started", "open_review.backend_receipt_ready",
+    "open_review.source_attested",
+})
+
 
 def b19_write_boundary_reason(text: str) -> Optional[str]:
     """Why `text` may not be written into memory, or None when it is clean.
@@ -151,13 +158,15 @@ MEMORY_PUBLICATION_GATE_STATES: frozenset = MEMORY_PUBLICATION_READY_STATES | {"
 # (stage, decision) -> resulting status for user review decisions.
 MEMORY_REVIEW_STATUS_MAP: Dict[tuple, str] = {
     ("delivery", "approve"): "delivery_approved",
-    ("delivery", "reject"): "delivery_rejected",
+    ("delivery", "reject"): "retired",
     ("delivery", "revise"): "revision_requested",
     ("final", "approve"): "pending_final_review",
     ("final", "reject"): "final_rejected",
     ("final", "revise"): "revision_requested",
     ("final", "retire"): "retired",
 }
+
+LEGACY_DELIVERY_REJECTED = "delivery_rejected"
 
 
 def validate_memory_transition(action: str, current: str) -> None:
@@ -708,6 +717,8 @@ class EventStore:
             # more; no code reads either.
             conn.execute(f"PRAGMA user_version={self.DATABASE_SCHEMA_VERSION}")
 
+        self.recover_discarded_candidate_cleanup()
+
     @staticmethod
     def _append_event_tx(conn: sqlite3.Connection, task_id: Optional[str], event_type: str, payload: Any) -> str:
         # Hold SQLite's writer reservation before reading the chain head.
@@ -736,6 +747,8 @@ class EventStore:
         return event_id
 
     def append_event(self, task_id: Optional[str], event_type: str, payload: Any) -> str:
+        if event_type in _PROTECTED_PUBLIC_EVENTS:
+            raise ValueError(f"{event_type} 必须由对应的事务业务入口写入")
         with self.connect() as conn:
             return self._append_event_tx(conn, task_id, event_type, payload)
 
@@ -828,19 +841,7 @@ class EventStore:
             if existing and existing["local_date"] == local_date:
                 return dict(existing)
             if existing:
-                unresolved = conn.execute(
-                    """SELECT COUNT(*) FROM tasks t LEFT JOIN memory_candidates mc ON mc.task_id=t.id
-                       WHERE t.session_id=? AND (
-                           t.status IN ('pending','running','retry','frozen_paused','resume_ready') OR
-                           mc.status IN ('pending_delivery_review','delivery_approved','revision_requested',
-                                         'pending_final_review','publication_failed') OR
-                           EXISTS (
-                               SELECT 1 FROM constraint_holds ch
-                               WHERE ch.task_id=t.id AND ch.status='pending'
-                           )
-                       )""",
-                    (existing["id"],),
-                ).fetchone()[0]
+                unresolved = self._unresolved_session_count_tx(conn, existing["id"])
                 rollover_status = "closing" if unresolved else "closed"
                 conn.execute(
                     "UPDATE work_sessions SET status=?,closing_at=?,closed_at=? WHERE id=?",
@@ -877,11 +878,20 @@ class EventStore:
                    )
                )"""
 
+    def _unresolved_session_count_tx(self, conn: sqlite3.Connection, session_id: str) -> int:
+        count = conn.execute(self._UNRESOLVED_SESSION_SQL, (session_id,)).fetchone()[0]
+        from .value_queue import pending_items
+        session_tasks = {row["id"] for row in conn.execute(
+            "SELECT id FROM tasks WHERE session_id=?", (session_id,))}
+        queued = {item["task_id"] for item in pending_items(conn)
+                  if item["task_id"] in session_tasks}
+        return int(count) + len(queued)
+
     def _close_resolved_sessions_tx(self, conn: sqlite3.Connection) -> List[str]:
         closed: List[str] = []
         now = time.time()
         for row in conn.execute("SELECT id FROM work_sessions WHERE status='closing'").fetchall():
-            if conn.execute(self._UNRESOLVED_SESSION_SQL, (row["id"],)).fetchone()[0]:
+            if self._unresolved_session_count_tx(conn, row["id"]):
                 continue
             if conn.execute(
                 "UPDATE work_sessions SET status='closed',closed_at=? WHERE id=? AND status='closing'",
@@ -1037,6 +1047,20 @@ class EventStore:
             # then share one boundary no other writer can slip into.
             conn.execute("BEGIN IMMEDIATE")
             self._reject_terminal_memory_reregistration(conn, task_id)
+            task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if task is None:
+                raise KeyError(task_id)
+            from .experience_workflow import policy
+            if policy(dict(task))["kind"] in {"method", "rule"}:
+                existing = conn.execute(
+                    "SELECT staged_path,evidence_sha256 FROM memory_candidates WHERE task_id=?", (task_id,)
+                ).fetchone()
+                same_existing = bool(existing and existing["staged_path"] == staged_path
+                                     and existing["evidence_sha256"] == evidence_sha256)
+                from .value_queue import validated_assessment_tx
+                if not same_existing and not validated_assessment_tx(conn, task_id, evidence_sha256):
+                    raise ValueError("method/rule candidates require a matching independent value assessment before initial review")
+            self._require_staged_evidence(staged_path, evidence_sha256)
             conn.execute(
                 """INSERT INTO memory_candidates(
                        task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at
@@ -1056,6 +1080,240 @@ class EventStore:
             )
             self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
 
+    def value_review_queue(self) -> List[Dict[str, Any]]:
+        from .value_queue import pending_items
+        with self.read_only() as conn:
+            if not self.verify_event_chain_tx(conn)["ok"]:
+                raise ValueError("审计事件链损坏，待评分队列不可用")
+            return pending_items(conn)
+
+    def record_value_review_dispatch(
+        self,
+        task_id: str,
+        candidate_sha256: str,
+        request_id: Optional[str],
+        status: str,
+        reason: str = "",
+        *,
+        conn: Optional[sqlite3.Connection] = None,
+    ) -> str:
+        from .value_queue import dispatch_status_tx
+        payload = {
+            "version": 1,
+            "candidate_sha256": candidate_sha256,
+            "request_id": request_id,
+            "status": status,
+            "reason": reason,
+        }
+        if conn is not None:
+            if not conn.in_transaction:
+                raise ValueError("外部派工状态连接必须持有事务")
+            if not self.verify_event_chain_tx(conn)["ok"]:
+                raise ValueError("审计事件链损坏，拒绝更新价值评分派工状态")
+            return dispatch_status_tx(conn, task_id, payload)
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not self.verify_event_chain_tx(db)["ok"]:
+                raise ValueError("审计事件链损坏，拒绝更新价值评分派工状态")
+            return dispatch_status_tx(db, task_id, payload)
+
+    def value_candidate_status(self, task_id: str, candidate_sha256: str) -> Optional[str]:
+        from .value_queue import _discarded, pending_items
+        with self.read_only() as conn:
+            if not self.verify_event_chain_tx(conn)["ok"]:
+                return None
+            candidate = conn.execute(
+                "SELECT status,evidence_sha256 FROM memory_candidates WHERE task_id=?", (task_id,)
+            ).fetchone()
+            if candidate and candidate["evidence_sha256"] == candidate_sha256:
+                return str(candidate["status"])
+            if any(item["task_id"] == task_id and item["candidate_sha256"] == candidate_sha256
+                   and item.get("queue_status") == "awaiting_value_review"
+                   for item in pending_items(conn)):
+                return "awaiting_value_review"
+            if _discarded(conn, task_id, candidate_sha256):
+                return "value_discarded"
+        return None
+
+    def cleanup_discarded_candidate(self, task_id: str, staged_path: Optional[str], candidate_sha256: Optional[str]) -> bool:
+        """Remove only the exact, hash-bound body of a committed discarded candidate."""
+        if not isinstance(staged_path, str) or not isinstance(candidate_sha256, str):
+            return False
+        with self.read_only() as conn:
+            from .value_queue import _discarded
+            if not self.verify_event_chain_tx(conn)["ok"] or not _discarded(conn, task_id, candidate_sha256):
+                return False
+        outbox = Path(self.path).parent / "memory-outbox"
+        path = Path(staged_path)
+        try:
+            if (outbox.is_symlink() or path.is_symlink() or path.name != f"{task_id}.md"
+                    or path.resolve(strict=False).parent != outbox.resolve(strict=True)):
+                return False
+        except OSError:
+            return False
+        sidecar = path.with_suffix(path.suffix + ".status.json")
+        if path.exists():
+            try:
+                if hashlib.sha256(path.read_bytes()).hexdigest() != candidate_sha256:
+                    return False
+            except OSError:
+                return False
+        if sidecar.exists():
+            try:
+                metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return False
+            if metadata.get("task_id") != task_id or metadata.get("evidence_sha256") != candidate_sha256:
+                return False
+        try:
+            path.unlink(missing_ok=True)
+            sidecar.unlink(missing_ok=True)
+            return True
+        except OSError:
+            return False
+
+    def recover_discarded_candidate_cleanup(self) -> Dict[str, Any]:
+        """Retry cleanup from durable discard assessments after a process restart."""
+        outbox = Path(self.path).parent / "memory-outbox"
+        if outbox.is_symlink() or not outbox.is_dir():
+            return {"ok": True, "checked": 0, "cleaned": 0, "retained": 0}
+        with self.read_only() as conn:
+            if not self.verify_event_chain_tx(conn)["ok"]:
+                return {"ok": False, "reason": "event_chain_invalid", "checked": 0,
+                        "cleaned": 0, "retained": 0}
+            rows = conn.execute(
+                "SELECT task_id,payload_json FROM events "
+                "WHERE event_type='memory.value_assessed' AND task_id IS NOT NULL ORDER BY sequence"
+            ).fetchall()
+
+        from .value_queue import _assessment_payload
+
+        discarded = {}
+        for row in rows:
+            try:
+                assessment = _assessment_payload(json.loads(row["payload_json"]))
+            except (TypeError, ValueError):
+                continue
+            if assessment["decision"] == "discard":
+                discarded[(str(row["task_id"]), assessment["candidate_sha256"])] = None
+
+        cleaned = retained = 0
+        for task_id, candidate_sha256 in discarded:
+            staged_path = outbox / f"{task_id}.md"
+            if self.cleanup_discarded_candidate(task_id, str(staged_path), candidate_sha256):
+                cleaned += 1
+            else:
+                retained += 1
+        return {"ok": True, "checked": len(discarded), "cleaned": cleaned, "retained": retained}
+
+    def assess_value_candidate(
+        self, task_id: str, review_request_id: str, *, conn: Optional[sqlite3.Connection] = None
+    ) -> Dict[str, Any]:
+        """Derive a value decision from a bound Agent Pool request and settle it atomically."""
+        if conn is not None:
+            if not conn.in_transaction:
+                raise ValueError("external value assessment connection must hold a transaction")
+            return self._assess_value_candidate_tx(conn, task_id, review_request_id)
+        cleanup = None
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            result = self._assess_value_candidate_tx(db, task_id, review_request_id)
+            if result.get("decision") == "discard":
+                cleanup = (result.get("staged_path"), result.get("candidate_sha256"))
+        if cleanup:
+            self.cleanup_discarded_candidate(task_id, *cleanup)
+        return result
+
+    def _assess_value_candidate_tx(
+        self, conn: sqlite3.Connection, task_id: str, review_request_id: str
+    ) -> Dict[str, Any]:
+        from .value_queue import (
+            _assessment_payload, assessment_from_review_request_tx, assessment_tx, pending_items,
+        )
+        if not self.verify_event_chain_tx(conn)["ok"]:
+            raise ValueError("审计事件链损坏，拒绝价值评分结算")
+        row = conn.execute("SELECT status,provenance_json FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            raise KeyError(task_id)
+        if row["status"] != "completed":
+            raise ValueError("待评分候选的来源任务尚未完成")
+
+        existing = conn.execute(
+            "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed' ORDER BY sequence DESC",
+            (task_id,),
+        ).fetchall()
+        for event in existing:
+            try:
+                prior = json.loads(event["payload_json"])
+            except (TypeError, ValueError):
+                continue
+            if prior.get("version") != 2 or prior.get("candidate_sha256") is None:
+                continue
+            normalized = _assessment_payload(prior)
+            if normalized["candidate_sha256"] != prior["candidate_sha256"]:
+                continue
+            if normalized["review_request_id"] != review_request_id:
+                raise ValueError("同一候选哈希不能由不同价值审查请求重复结算")
+            derived = assessment_from_review_request_tx(
+                conn, task_id, review_request_id, normalized["candidate_sha256"]
+            )
+            if _canonical(derived) != _canonical(normalized):
+                raise ValueError("已记录价值评分与当前双审回执不一致")
+            candidate = conn.execute(
+                "SELECT status FROM memory_candidates WHERE task_id=?", (task_id,)
+            ).fetchone()
+            return {"status": "already_assessed", "decision": prior["decision"],
+                    "candidate_status": candidate["status"] if candidate else "value_discarded",
+                    "candidate_sha256": prior["candidate_sha256"], "assessment": normalized}
+
+        pending = [item for item in pending_items(conn)
+                   if item["task_id"] == task_id and item.get("queue_status") == "awaiting_value_review"]
+        if len(pending) != 1:
+            raise ValueError("候选没有唯一的待价值评分材料")
+        item = pending[0]
+        payload = assessment_from_review_request_tx(conn, task_id, review_request_id, item["candidate_sha256"])
+
+        path = Path(item["staged_path"])
+        outbox = Path(self.path).parent / "memory-outbox"
+        if (outbox.is_symlink() or path.is_symlink() or path.name != f"{task_id}.md"
+                or not outbox.is_dir() or path.resolve(strict=True).parent != outbox.resolve(strict=True)):
+            raise ValueError("待评分候选路径不在受保护的 memory-outbox 中")
+        self._require_staged_evidence(str(path), item["candidate_sha256"])
+        if conn.execute("SELECT 1 FROM memory_candidates WHERE task_id=?", (task_id,)).fetchone():
+            raise ValueError("待评分候选已经进入审核队列")
+
+        assessment_tx(conn, task_id, payload)
+        if payload["decision"] == "discard":
+            provenance = json.loads(row["provenance_json"] or "{}")
+            provenance.update(memory_disposition="value_discarded",
+                              result_sha256=hashlib.sha256(
+                                  (conn.execute("SELECT result FROM tasks WHERE id=?", (task_id,)).fetchone()[0] or "").encode("utf-8")
+                              ).hexdigest())
+            conn.execute("UPDATE tasks SET provenance_json=?,updated_at=? WHERE id=?",
+                         (_canonical(provenance), time.time(), task_id))
+            return {"status": "value_discarded", "decision": "discard",
+                    "candidate_status": "value_discarded", "candidate_sha256": item["candidate_sha256"],
+                    "staged_path": item["staged_path"], "assessment": payload}
+
+        self._reject_terminal_memory_reregistration(conn, task_id)
+        now = time.time()
+        conn.execute(
+            "INSERT INTO memory_candidates(task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (task_id, "pending_delivery_review", item["staged_path"], item["candidate_sha256"],
+             _canonical(item["source_task_ids"]), now, now),
+        )
+        self._write_candidate_status_sidecar_values(
+            task_id, item["staged_path"], "pending_delivery_review", item["candidate_sha256"], now
+        )
+        self._append_event_tx(conn, task_id, "memory.candidate_staged", {
+            "evidence_sha256": item["candidate_sha256"], "value_assessment": True,
+            "review_request_id": review_request_id,
+        })
+        return {"status": "pending_delivery_review", "decision": "initial_review",
+                "candidate_status": "pending_delivery_review", "candidate_sha256": item["candidate_sha256"],
+                "assessment": payload}
+
     def create_authored_candidate(
         self,
         title: str,
@@ -1066,15 +1324,16 @@ class EventStore:
         source_task_ids: Optional[List[str]] = None,
         idempotency_key: Optional[str] = None,
         session_id: Optional[str] = None,
-        experience_kind: Optional[str] = None,
+        experience_kind: str = "method",
         problem_key: str = "",
+        enforce_value_queue: bool = True,
     ) -> Dict[str, Any]:
         """Register a candidate written by the host, not produced by a task run.
 
         One transaction creates the completed host_authored task, its staged
-        file record and its audit events, so the worker never sees a pending
-        task and the candidate cannot exist without its task. It enters the
-        normal review queue at pending_delivery_review; nothing is published.
+        staged evidence and its audit events, so the candidate cannot exist
+        without its completed task. New method/rule drafts wait for independent
+        value assessment before a user review row is created.
         """
         title, body, author = title.strip(), body.strip(), author.strip()
         if not title or not body or not author:
@@ -1094,10 +1353,12 @@ class EventStore:
             "kind": "host_authored_candidate", "author": author,
             "source_task_ids": sources, "external_agents_called": False,
         }
-        if experience_kind is not None:
-            if experience_kind not in {"method", "rule"}:
-                raise ValueError("authored candidate kind must be method or rule")
-            snapshot["experience_policy"] = {"version": 1, "kind": experience_kind, "problem_key": problem_key}
+        if experience_kind not in {"method", "rule"}:
+            raise ValueError("authored candidate kind must be method or rule")
+        if enforce_value_queue is not True:
+            raise ValueError("new authored candidates must pass independent value review")
+        snapshot["experience_policy"] = {"version": 1, "kind": experience_kind, "problem_key": problem_key}
+        snapshot["value_queue"] = {"version": 1, "required": True}
         snapshot_json = _canonical(snapshot)
         now = time.time()
         with self.connect() as conn:
@@ -1119,12 +1380,19 @@ class EventStore:
                     task = conn.execute(
                         "SELECT execution_mode FROM tasks WHERE id=?", (existing["id"],)
                     ).fetchone()
-                    if not candidate or task["execution_mode"] != "host_authored":
+                    if task["execution_mode"] != "host_authored":
                         raise ValueError("idempotency key belongs to a different kind of task")
                     changed = []
                     if existing["prompt"] != title:
                         changed.append("title")
-                    if existing["result"] != body:
+                    authored = conn.execute(
+                        "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.candidate_authored' ORDER BY sequence LIMIT 1",
+                        (existing["id"],),
+                    ).fetchone()
+                    authored_payload = json.loads(authored["payload_json"]) if authored else {}
+                    stored_body_sha = authored_payload.get("body_sha256")
+                    if (stored_body_sha and stored_body_sha != hashlib.sha256(body.encode("utf-8")).hexdigest()
+                            or not stored_body_sha and existing["result"] != body):
                         changed.append("body")
                     if existing["execution_snapshot_json"] != snapshot_json:
                         changed.append("metadata")
@@ -1133,11 +1401,29 @@ class EventStore:
                             f"idempotency key {idempotency_key!r} is already used by a candidate "
                             "with different content (" + ", ".join(changed) + "); use a new key"
                         )
-                    return {
-                        "task_id": str(existing["id"]), "status": candidate["status"],
-                        "staged_path": candidate["staged_path"],
-                        "evidence_sha256": candidate["evidence_sha256"], "idempotent": True,
-                    }
+                    if candidate:
+                        return {
+                            "task_id": str(existing["id"]), "status": candidate["status"],
+                            "staged_path": candidate["staged_path"],
+                            "evidence_sha256": candidate["evidence_sha256"], "idempotent": True,
+                        }
+                    from .value_queue import pending_items
+                    prepared = [item for item in pending_items(conn)
+                                if item["task_id"] == str(existing["id"])
+                                and item.get("queue_status") == "awaiting_value_review"]
+                    if len(prepared) == 1:
+                        return {
+                            "task_id": str(existing["id"]), "status": "awaiting_value_review",
+                            "staged_path": prepared[0]["staged_path"],
+                            "evidence_sha256": prepared[0]["candidate_sha256"], "idempotent": True,
+                        }
+                    discarded = conn.execute(
+                        "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed' ORDER BY sequence DESC LIMIT 1",
+                        (existing["id"],),
+                    ).fetchone()
+                    if discarded and json.loads(discarded["payload_json"]).get("decision") == "discard":
+                        return {"task_id": str(existing["id"]), "status": "value_discarded", "idempotent": True}
+                    raise ValueError("idempotency key candidate no longer has a matching value-review state")
             for source in sources:
                 if not conn.execute("SELECT 1 FROM tasks WHERE id=?", (source,)).fetchone():
                     raise KeyError(source)
@@ -1181,19 +1467,19 @@ class EventStore:
                         body, now, now,
                     ),
                 )
-                conn.execute(
-                    "INSERT INTO memory_candidates(task_id,status,staged_path,evidence_sha256,"
-                    "source_task_ids_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                    (task_id, "pending_delivery_review", str(staged), evidence_sha256, _canonical(sources), now, now),
-                )
-                self._write_candidate_status_sidecar_values(
-                    task_id, str(staged), "pending_delivery_review", evidence_sha256, now
-                )
                 self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_sha256})
-                self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
+                from .value_queue import defer_tx
+                defer_tx(conn, task_id, {
+                    "version": 1,
+                    "staged_path": str(staged),
+                    "candidate_sha256": evidence_sha256,
+                    "source_task_ids": sources,
+                    "reason": "host_draft",
+                })
                 self._append_event_tx(conn, task_id, "memory.candidate_authored", {
                     "author": author, "source_task_ids": sources,
                     "external_agents_called": False, "scope": "candidate_only",
+                    "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                 })
             except Exception:
                 # The transaction rolls back; do not leave an orphan file behind.
@@ -1204,7 +1490,7 @@ class EventStore:
                         pass
                 raise
             return {
-                "task_id": task_id, "status": "pending_delivery_review",
+                "task_id": task_id, "status": "awaiting_value_review",
                 "staged_path": str(staged), "evidence_sha256": evidence_sha256,
             }
 
@@ -1257,6 +1543,7 @@ class EventStore:
         decision: str,
         note: str,
         candidate_sha256: str,
+        validation_basis_confirmation: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         allowed = {
             "delivery": {"approve", "reject", "revise"},
@@ -1264,10 +1551,14 @@ class EventStore:
         }
         if stage not in allowed or decision not in allowed[stage]:
             raise ValueError("invalid review stage or decision")
-        now = time.time()
+        if validation_basis_confirmation is not None and (stage != "final" or decision != "approve"):
+            raise ValueError("validation-basis confirmation is only accepted with final approval")
         with self.connect() as conn:
             if not conn.in_transaction:
                 conn.execute("BEGIN IMMEDIATE")
+            # Timestamp the decision after acquiring the write lock so review
+            # order follows committed events even when an earlier caller waits.
+            now = time.time()
             candidate = conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (task_id,)).fetchone()
             if not candidate:
                 raise KeyError(task_id)
@@ -1292,6 +1583,10 @@ class EventStore:
                 ).fetchone()
                 if not delivery or delivery["candidate_sha256"] != candidate_sha256:
                     raise ValueError("final review is not bound to the approved delivery candidate")
+            validation_basis_binding = None
+            if stage == "final" and decision == "approve":
+                from .validation_basis import confirm_basis_tx
+                validation_basis_binding = confirm_basis_tx(self, conn, dict(candidate), validation_basis_confirmation)
             from .experience_workflow import require_final_trial
             trial_task_id = require_final_trial(conn, candidate) if stage == "final" and decision == "approve" else None
             from .experience_loop import final_binding
@@ -1340,6 +1635,7 @@ class EventStore:
                     "previous_status": current,
                     "trial_task_id": trial_task_id,
                     "experience_loop_sha256": loop_sha256,
+                    "validation_basis": validation_basis_binding,
                     "status": status,
                     "candidate_sha256": candidate_sha256,
                 },
@@ -1468,7 +1764,7 @@ class EventStore:
         if not session_id:
             return
         # Same definition of "unresolved" as session rollover and the sweep.
-        pending = conn.execute(self._UNRESOLVED_SESSION_SQL, (session_id,)).fetchone()[0]
+        pending = self._unresolved_session_count_tx(conn, session_id)
         if pending == 0:
             updated = conn.execute(
                 "UPDATE work_sessions SET status='closed',closed_at=? WHERE id=? AND status='closing'",
@@ -1502,24 +1798,37 @@ class EventStore:
         entry points cannot drift into different binding checks.
         """
         approval = conn.execute(
-            """SELECT candidate_sha256 FROM memory_reviews
+            """SELECT id,candidate_sha256 FROM memory_reviews
                WHERE task_id=? AND stage='final' AND decision='approve'
-               ORDER BY created_at DESC LIMIT 1""",
+               ORDER BY created_at DESC,rowid DESC LIMIT 1""",
             (str(candidate["task_id"]),),
         ).fetchone()
         if not approval or approval["candidate_sha256"] != candidate["evidence_sha256"]:
             raise ValueError("memory publication is not bound to the final approved candidate")
+        event = conn.execute("SELECT event_id,payload_json FROM events WHERE task_id=? AND event_type='memory.reviewed' ORDER BY sequence DESC LIMIT 1",
+                             (candidate["task_id"],)).fetchone()
+        payload = json.loads(event["payload_json"]) if event else {}
+        if (payload.get("review_id") != approval["id"] or payload.get("stage") != "final"
+                or payload.get("decision") != "approve" or payload.get("candidate_sha256") != candidate["evidence_sha256"]):
+            raise ValueError("final approval event is missing or no longer matches the review row")
+        from .validation_basis import validate_basis, basis_binding
+        basis = validate_basis(conn, dict(candidate))
+        if basis.get("status") == "revoked":
+            raise ValueError("memory publication is blocked because the validation basis was revoked")
+        if basis.get("status") != "missing" and "real_task_acceptance" in basis.get("required_checks", []):
+            basis = validate_basis(conn, dict(candidate), require_confirmed=True)
+        current_basis_binding = basis_binding(basis) if basis.get("status") != "missing" else None
+        if payload.get("validation_basis") != current_basis_binding:
+            raise ValueError("final approval is not bound to the current validation basis")
         from .experience_workflow import require_final_trial
         trial_task_id = require_final_trial(conn, candidate)
         if trial_task_id:
-            event = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.reviewed' ORDER BY sequence DESC LIMIT 1", (candidate["task_id"],)).fetchone()
-            payload = json.loads(event["payload_json"]) if event else {}
             if payload.get("trial_task_id") != trial_task_id or payload.get("stage") != "final" or payload.get("decision") != "approve":
                 raise ValueError("final approval is not bound to the latest trial evidence")
-            from .experience_loop import final_binding
-            loop_sha256 = final_binding(conn, candidate)
-            if loop_sha256 is not None and payload.get("experience_loop_sha256") != loop_sha256:
-                raise ValueError("final approval is not bound to the current application and delivery acceptance")
+        from .experience_loop import final_binding
+        loop_sha256 = final_binding(conn, candidate)
+        if loop_sha256 is not None and payload.get("experience_loop_sha256") != loop_sha256:
+            raise ValueError("final approval is not bound to the current application and delivery acceptance")
 
     def _publication_binding_candidate(self, conn: sqlite3.Connection, task_id: str) -> sqlite3.Row:
         """The candidate a settlement may publish, or a refusal.
@@ -1915,6 +2224,13 @@ class EventStore:
             pending_final = sum(
                 1 for row in rows if row["memory_status"] in {"delivery_approved", "publication_failed"}
             )
+            from .value_queue import pending_items
+            value_items = pending_items(conn)
+            value_by_task = {
+                item["task_id"]: item for item in value_items
+                if item["task_id"] and item.get("queue_status") == "awaiting_value_review"
+            }
+            pending_value_reviews = sum(1 for row in rows if row["id"] in value_by_task)
             now = time.time()
             conn.execute(
                 "UPDATE work_sessions SET status='closing',closing_at=? WHERE id=? AND status='active'",
@@ -1928,10 +2244,14 @@ class EventStore:
                     "routes": len(routes),
                     "pending_final_reviews": pending_final,
                     "pending_constraint_holds": pending_holds,
+                    "pending_value_reviews": pending_value_reviews,
                 },
             )
             tasks = [dict(row) for row in rows]
             for item in tasks:
+                value_item = value_by_task.get(item["id"])
+                item["memory_value_status"] = "awaiting_value_review" if value_item else None
+                item["memory_value_reason"] = value_item["reason"] if value_item else None
                 item["agent_runs"] = [
                     dict(row) for row in conn.execute(
                         "SELECT agent_name,status,output,error,latency_ms FROM agent_runs WHERE task_id=? ORDER BY created_at",
@@ -1956,6 +2276,7 @@ class EventStore:
                 "routes": routes,
                 "tasks": tasks,
                 "pending_final_reviews": pending_final,
+                "pending_value_reviews": pending_value_reviews,
                 "closed_sessions": closed_sessions,
             }
 
@@ -2057,17 +2378,31 @@ class EventStore:
         record_participant(self, task_id, actor_id, role)
 
     def mark_dispatch_wait(self, task_id: str, status: str, reason: str, expected_attempt=None) -> None:
-        """A visible hold without consuming a retry; release only our own lease."""
+        """A visible hold without consuming a retry; release only our own lease.
+
+        Unchanged waiting status/reason is a no-op: avoid write-lock churn while
+        Worker polls awaiting_host / ask_user / blocked_review_nodes.
+        """
+        message = status + ': ' + reason
+        with self.read_only() as conn:
+            peek = conn.execute(
+                'SELECT status,last_error,lease_until FROM tasks WHERE id=?', (task_id,)
+            ).fetchone()
+            if (peek and peek['status'] == 'pending' and peek['last_error'] == message
+                    and peek['lease_until'] is None):
+                return
         with self.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
-            row = conn.execute('SELECT status,attempts,last_error FROM tasks WHERE id=?', (task_id,)).fetchone()
+            row = conn.execute('SELECT status,attempts,last_error,lease_until FROM tasks WHERE id=?', (task_id,)).fetchone()
             if not row or row['status'] not in {'pending','retry','running'}:raise ValueError('任务不在可等待状态')
             if row['status']=='running' and (expected_attempt != row['attempts'] or not self._lease_live_tx(conn, task_id, expected_attempt)):
                 raise ValueError('执行权已失效')
-            message = status+': '+reason
+            if row['status'] == 'pending' and row['last_error'] == message and row['lease_until'] is None:
+                return
             conn.execute("UPDATE tasks SET status='pending',lease_until=NULL,last_error=?,updated_at=? WHERE id=?", (message,time.time(),task_id))
             if row['last_error'] != message:
                 self._append_event_tx(conn, task_id, 'task.dispatch_wait', {'status': status, 'reason': reason})
+
 
     def _lease_live_tx(self, conn, task_id, attempt):
         return bool(conn.execute("SELECT 1 FROM tasks WHERE id=? AND attempts=? AND lease_until>?", (task_id,attempt,time.time())).fetchone())
@@ -2112,11 +2447,14 @@ class EventStore:
                     if 'configured_model' in execution:
                         frozen['model']=execution['configured_model']
                     if 'pool_source_ref' in execution:
+                        # Keep the stable source reference aligned with caller
+                        # bindings without replacing the executable identity.
                         frozen['source_ref']=execution['pool_source_ref']
                     execution['pool_score'] = frozen
                 payload["execution"] = execution
             self._append_event_tx(conn, task_id, "agent.started", payload)
         return run_id
+
 
     def finish_agent_run(
         self,
@@ -2244,13 +2582,121 @@ class EventStore:
         now = time.time()
         previous_sidecar = self._sidecar_snapshot(staged_path)
         try:
-            return self._complete_with_memory_candidate_tx(
+            completed = self._complete_with_memory_candidate_tx(
                 task_id, result, staged_path, evidence_sha256, source_task_ids,
                 provenance, result_sha256, now, expected_attempt=expected_attempt,
             )
         except Exception:
             self._restore_sidecar_unless_committed(task_id, staged_path, evidence_sha256, previous_sidecar)
             raise
+        if self.value_candidate_status(task_id, evidence_sha256) == "value_discarded":
+            self.cleanup_discarded_candidate(task_id, staged_path, evidence_sha256)
+        return completed
+
+    def complete_worker_with_memory_candidate(
+        self,
+        task_id: str,
+        result: str,
+        staged_path: str,
+        stage_candidate,
+        source_task_ids: Optional[List[str]],
+        *,
+        expected_attempt: int,
+        provenance_kind: str = "agentos_multi_adjudicated",
+    ) -> bool:
+        """Stage and settle a Worker result under the same live-lease write lock."""
+        target = Path(staged_path)
+        sidecar = self._sidecar_path(staged_path)
+        staged_sha256 = None
+        previous_body = previous_sidecar = None
+        try:
+            with self.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute(
+                    "SELECT status,attempts,lease_until FROM tasks WHERE id=?", (task_id,)
+                ).fetchone()
+                if row is None:
+                    raise KeyError(task_id)
+                now = time.time()
+                if (row["status"] != "running" or int(row["attempts"]) != int(expected_attempt)
+                        or row["lease_until"] is None or float(row["lease_until"]) <= now):
+                    raise ValueError(f"task {task_id!r} Worker attempt or live lease was lost before staging")
+                if target.is_symlink() or sidecar.is_symlink():
+                    raise ValueError("Worker candidate staging paths cannot be symlinks")
+                previous_body = target.read_bytes() if target.exists() else None
+                previous_sidecar = sidecar.read_bytes() if sidecar.exists() else None
+                try:
+                    staged = Path(stage_candidate())
+                    if staged != target:
+                        raise ValueError("Worker candidate staging returned an unexpected path")
+                    staged_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+                    self._require_staged_evidence(str(target), staged_sha256)
+                    result_sha256 = hashlib.sha256(result.encode()).hexdigest()
+                    provenance = {"kind": provenance_kind, "status": "completed",
+                                  "result_sha256": result_sha256}
+                    completed = self._complete_with_memory_candidate_in_tx(
+                        conn, task_id, result, str(target), staged_sha256,
+                        source_task_ids, provenance, result_sha256, time.time(),
+                        expected_attempt=expected_attempt, require_live_lease=True,
+                    )
+                except BaseException:
+                    self._restore_worker_stage(target, previous_body, sidecar, previous_sidecar)
+                    raise
+        except BaseException:
+            if staged_sha256 is not None:
+                self._restore_worker_stage_unless_committed(
+                    task_id, target, staged_sha256, previous_body, sidecar, previous_sidecar,
+                )
+            raise
+        if self.value_candidate_status(task_id, staged_sha256) == "value_discarded":
+            self.cleanup_discarded_candidate(task_id, str(target), staged_sha256)
+        return completed
+
+    @staticmethod
+    def _restore_worker_stage(target: Path, body: Optional[bytes], sidecar: Path,
+                              sidecar_body: Optional[bytes]) -> None:
+        for path, data in ((target, body), (sidecar, sidecar_body)):
+            if path.is_symlink():
+                raise OSError("Worker staging path changed to a symlink during rollback")
+            if data is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(data)
+                os.chmod(path, 0o600)
+
+    def _restore_worker_stage_unless_committed(
+        self, task_id: str, target: Path, staged_sha256: str,
+        body: Optional[bytes], sidecar: Path, sidecar_body: Optional[bytes],
+    ) -> None:
+        """Handle post-commit maintenance errors without racing a later Worker."""
+        try:
+            with self.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+                candidate = conn.execute(
+                    "SELECT staged_path,evidence_sha256 FROM memory_candidates WHERE task_id=?", (task_id,)
+                ).fetchone()
+                committed_candidate = bool(candidate and candidate["staged_path"] == str(target)
+                                          and candidate["evidence_sha256"] == staged_sha256)
+                from .value_queue import pending_items
+                committed_queue = any(item["task_id"] == task_id
+                    and item.get("queue_status") == "awaiting_value_review"
+                    and item.get("staged_path") == str(target)
+                    and item.get("candidate_sha256") == staged_sha256 for item in pending_items(conn))
+                discarded = bool(task and task["status"] == "completed" and conn.execute(
+                    "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_assessed' "
+                    "AND json_extract(payload_json,'$.decision')='discard' "
+                    "AND json_extract(payload_json,'$.candidate_sha256')=? LIMIT 1",
+                    (task_id, staged_sha256),
+                ).fetchone())
+                if committed_candidate or committed_queue or discarded:
+                    return
+                if target.is_symlink() or (target.exists() and
+                        hashlib.sha256(target.read_bytes()).hexdigest() != staged_sha256):
+                    return
+                self._restore_worker_stage(target, body, sidecar, sidecar_body)
+        except (OSError, sqlite3.Error, ValueError):
+            return
 
     def _candidate_gates_tx(self, conn: sqlite3.Connection, task_id: str) -> bool:
         """The gates every settlement path passes before a candidate is queued.
@@ -2269,7 +2715,12 @@ class EventStore:
             return False
         from .experience_workflow import policy
         full_task = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
-        if policy(full_task)["kind"] == "audit":
+        disposition = policy(full_task)
+        from .workflow import verified_snapshot
+        task_purpose = verified_snapshot(full_task).get("task_purpose")
+        if task_purpose in {"release_smoke", "release_acceptance", "experience_trial"} and disposition["kind"] != "audit":
+            raise ValueError("controlled smoke, acceptance and trial tasks must use audit settlement")
+        if disposition["kind"] == "audit":
             raise ValueError("audit task must use audit-only settlement")
         self._reject_terminal_memory_reregistration(conn, task_id)
         return True
@@ -2285,30 +2736,51 @@ class EventStore:
         *,
         repaired: bool = False,
     ) -> bool:
-        """Queue the candidate row and its status sidecar. Approves nothing."""
-        from .value_scoring import native_value, record_tx, summary
+        """Admit only scored method/rule candidates; defer unscored entries without a review row."""
+        from .value_scoring import native_value, record_tx
+        from .experience_workflow import policy
+        task = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
+        kind = policy(task)["kind"]
         reasons = []
-        assessment = native_value(conn, task_id, reason_out=reasons)
-        record_tx(conn, task_id, assessment)
-        if assessment is None:
-            previous = conn.execute(
-                "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_unscored' ORDER BY sequence DESC LIMIT 1", (task_id,)
-            ).fetchone()
-            previous_reason = json.loads(previous[0]).get('reason') if previous else None
-            reason = reasons[0] if reasons else 'no_scoring_source'
-            if previous_reason != reason:
-                self._append_event_tx(conn, task_id, 'memory.value_unscored', {
-                    'reason': reason, 'previous_reason': previous_reason})
-        if assessment and assessment['decision'] == 'discard':
-            if repaired:
-                # An immutable completion already binds the original result hash.
-                # Record the value decision, but never rewrite its settled result.
+        try:
+            assessment = native_value(conn, task_id, reason_out=reasons)
+            score_error = False
+        except (ValueError, KeyError, TypeError, IndexError):
+            assessment = None
+            score_error = True
+        if kind in {"method", "rule"}:
+            if assessment is None:
+                from .value_queue import defer_tx
+                reason = "invalid_score_receipt" if score_error else (reasons[0] if reasons else "no_scoring_source")
+                defer_tx(conn, task_id, {
+                    "version": 1,
+                    "staged_path": str(staged_path),
+                    "candidate_sha256": evidence_sha256,
+                    "source_task_ids": sorted(set(source_task_ids or [])),
+                    "reason": reason,
+                })
                 return False
-            result = summary(assessment)
-            task = conn.execute('SELECT provenance_json FROM tasks WHERE id=?', (task_id,)).fetchone()
+            from .value_queue import assessment_tx
+            assessment_tx(conn, task_id, {
+                "version": 3,
+                "candidate_sha256": evidence_sha256,
+                **assessment,
+            })
+        else:
+            record_tx(conn, task_id, assessment)
+            if assessment is None:
+                self._append_event_tx(conn, task_id, 'memory.value_unscored', {
+                    'reason': reasons[0] if reasons else 'kind_not_method_rule',
+                })
+        if assessment and assessment['decision'] == 'discard':
+            task = conn.execute('SELECT result,provenance_json FROM tasks WHERE id=?', (task_id,)).fetchone()
             provenance = json.loads(task['provenance_json'] or '{}')
-            provenance.update(memory_disposition='value_discarded',result_sha256=hashlib.sha256(result.encode()).hexdigest())
-            conn.execute('UPDATE tasks SET result=?,provenance_json=? WHERE id=?', (result,_canonical(provenance),task_id))
+            provenance.update(
+                memory_disposition='value_discarded',
+                result_sha256=hashlib.sha256((task['result'] or '').encode('utf-8')).hexdigest(),
+            )
+            conn.execute('UPDATE tasks SET provenance_json=?,updated_at=? WHERE id=?',
+                         (_canonical(provenance), now, task_id))
             return False
         conflict = "" if repaired else """
                    ON CONFLICT(task_id) DO UPDATE SET
@@ -2344,45 +2816,81 @@ class EventStore:
     ) -> bool:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute("SELECT status,attempts FROM tasks WHERE id=?", (task_id,)).fetchone()
-            if row is None:
-                raise KeyError(task_id)
-            if expected_attempt is None:
-                raise TypeError("complete_with_memory_candidate() 必须传入 expected_attempt")
-            if row["status"] not in {"completed"} and int(row["attempts"]) != int(expected_attempt):
-                raise ValueError(f"task {task_id!r} 旧尝试不能结算任务")
-            if not self._candidate_gates_tx(conn, task_id):
-                return False
-            if row["status"] == "completed":
-                if conn.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_assessed' AND json_extract(payload_json,'$.decision')='discard'", (task_id,)).fetchone():
-                    return False
-                if self._existing_candidate_status(conn, task_id) is not None:
-                    # A finished candidate is idempotent (no-op) unless it is
-                    # terminal, where any second registration is refused.
-                    self._reject_terminal_memory_reregistration(conn, task_id)
-                    return False
-                # Completed without a candidate must not exist; if an older
-                # code path left one behind, queue the candidate now instead of
-                # reporting an idempotent no-op that would hide the gap.
-                if self._insert_candidate_tx(
-                    conn, task_id, staged_path, evidence_sha256, source_task_ids, now,
-                    repaired=True,
-                ):
-                    self._append_event_tx(
-                        conn, task_id, "memory.candidate_staged",
-                        {"evidence_sha256": evidence_sha256, "repaired_missing_candidate": True},
-                    )
-                return False
-            conn.execute(
-                "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
-                (result, _canonical(provenance), now, task_id),
+            return self._complete_with_memory_candidate_in_tx(
+                conn, task_id, result, staged_path, evidence_sha256, source_task_ids,
+                provenance, result_sha256, now, expected_attempt=expected_attempt,
             )
-            admitted = self._insert_candidate_tx(conn, task_id, staged_path, evidence_sha256, source_task_ids, now)
-            final = conn.execute('SELECT result FROM tasks WHERE id=?', (task_id,)).fetchone()[0]
-            result_sha256 = hashlib.sha256(final.encode()).hexdigest()
-            self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_sha256})
-            if admitted:
-                self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
+
+    def _complete_with_memory_candidate_in_tx(
+        self, conn: sqlite3.Connection, task_id: str, result: str, staged_path: str,
+        evidence_sha256: str, source_task_ids: Optional[List[str]],
+        provenance: Dict[str, Any], result_sha256: str, now: float,
+        *, expected_attempt: Optional[int], require_live_lease: bool = False,
+    ) -> bool:
+        row = conn.execute("SELECT status,attempts,lease_until FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            raise KeyError(task_id)
+        if expected_attempt is None:
+            raise TypeError("complete_with_memory_candidate() 必须传入 expected_attempt")
+        if require_live_lease:
+            if (row["status"] != "running" or int(row["attempts"]) != int(expected_attempt)
+                    or row["lease_until"] is None or float(row["lease_until"]) <= time.time()):
+                raise ValueError(f"task {task_id!r} Worker attempt or live lease was lost before settlement")
+        elif row["status"] not in {"completed"} and int(row["attempts"]) != int(expected_attempt):
+            raise ValueError(f"task {task_id!r} 旧尝试不能结算任务")
+        if not self._candidate_gates_tx(conn, task_id):
+            if require_live_lease:
+                raise ValueError("Worker task is held and cannot stage a candidate")
+            return False
+        if row["status"] == "completed":
+            if conn.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_assessed' AND json_extract(payload_json,'$.decision')='discard'", (task_id,)).fetchone():
+                return False
+            if self._existing_candidate_status(conn, task_id) is not None:
+                # A finished candidate is idempotent (no-op) unless it is
+                # terminal, where any second registration is refused.
+                self._reject_terminal_memory_reregistration(conn, task_id)
+                return False
+            from .value_queue import pending_items
+            prior_prepared = [item for item in pending_items(conn)
+                              if item["task_id"] == task_id
+                              and item.get("queue_status") == "awaiting_value_review"]
+            if prior_prepared:
+                if (len(prior_prepared) != 1 or prior_prepared[0]["candidate_sha256"] != evidence_sha256
+                        or prior_prepared[0]["staged_path"] != staged_path):
+                    raise ValueError("completed task already has different prepared candidate evidence")
+                return False
+            # Completed without a candidate must not exist; if an older
+            # code path left one behind, queue the candidate now instead of
+            # reporting an idempotent no-op that would hide the gap.
+            if self._insert_candidate_tx(
+                conn, task_id, staged_path, evidence_sha256, source_task_ids, now,
+                repaired=True,
+            ):
+                self._append_event_tx(
+                    conn, task_id, "memory.candidate_staged",
+                    {"evidence_sha256": evidence_sha256, "repaired_missing_candidate": True},
+                )
+            return False
+        if require_live_lease:
+            changed = conn.execute(
+                "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? "
+                "WHERE id=? AND status='running' AND attempts=? AND lease_until>?",
+                (result, _canonical(provenance), now, task_id, expected_attempt, time.time()),
+            ).rowcount
+        else:
+            changed = conn.execute(
+                "UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? "
+                "WHERE id=? AND status IN ('pending','running')",
+                (result, _canonical(provenance), now, task_id),
+            ).rowcount
+        if changed != 1:
+            raise ValueError(f"task {task_id!r} Worker attempt or live lease was lost before settlement")
+        admitted = self._insert_candidate_tx(conn, task_id, staged_path, evidence_sha256, source_task_ids, now)
+        final = conn.execute('SELECT result FROM tasks WHERE id=?', (task_id,)).fetchone()[0]
+        result_sha256 = hashlib.sha256(final.encode()).hexdigest()
+        self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_sha256})
+        if admitted:
+            self._append_event_tx(conn, task_id, "memory.candidate_staged", {"evidence_sha256": evidence_sha256})
         return True
 
     def hold_constraint_task(self, task_id: str, result: str, details: Dict[str, Any]) -> None:
@@ -2446,10 +2954,13 @@ class EventStore:
         self._require_staged_evidence(staged_path, evidence_sha256)
         previous_sidecar = self._sidecar_snapshot(staged_path)
         try:
-            return self._release_constraint_hold_tx(task_id, staged_path, evidence_sha256)
+            result = self._release_constraint_hold_tx(task_id, staged_path, evidence_sha256)
         except Exception:
             self._restore_sidecar_unless_committed(task_id, staged_path, evidence_sha256, previous_sidecar)
             raise
+        if result.get("candidate_status") == "value_discarded":
+            self.cleanup_discarded_candidate(task_id, staged_path, evidence_sha256)
+        return result
 
     def _release_constraint_hold_tx(
         self, task_id: str, staged_path: Optional[str], evidence_sha256: Optional[str]
@@ -2495,7 +3006,19 @@ class EventStore:
                     result=conn.execute('SELECT result FROM tasks WHERE id=?',(task_id,)).fetchone()[0]
                     result_hash=hashlib.sha256(result.encode()).hexdigest()
             self._append_event_tx(conn, task_id, "task.completed", {"result_sha256": result_hash})
-            return {"task_id": task_id, "result": result, "result_sha256": result_hash}
+            candidate = conn.execute("SELECT status FROM memory_candidates WHERE task_id=?", (task_id,)).fetchone()
+            if candidate:
+                candidate_status = candidate["status"]
+            elif staged_path is None:
+                candidate_status = "none"
+            else:
+                from .value_queue import pending_items
+                pending = any(item["task_id"] == task_id
+                              and item.get("queue_status") == "awaiting_value_review"
+                              for item in pending_items(conn))
+                candidate_status = "awaiting_value_review" if pending else "value_discarded"
+            return {"task_id": task_id, "result": result, "result_sha256": result_hash,
+                    "candidate_status": candidate_status}
 
     def retry_or_fail(self, task: Dict[str, Any], error: str, delay_seconds: int) -> str:
         with self.connect() as conn:
@@ -2829,12 +3352,23 @@ class EventStore:
                 )
             } if allowed else {}
             frozen_at = float(task["updated_at"])
-            retested = {str(name) for name, at in (retested_nodes or {}).items() if float(at) >= frozen_at}
-            if failed_agents and any(
-                current.get(name) != "healthy" and name not in retested for name in failed_agents
-            ):
+            retested = {str(name) for name, at in (retested_nodes or {}).items()
+                        if float(at) >= max(frozen_at, cutoff)}
+            # Allow a healthy third-node substitute to cover a still-unhealthy
+            # failed seat; do not require the original failed node itself to heal.
+            uncovered = {
+                name for name in failed_agents
+                if current.get(name) != "healthy" and name not in retested
+            }
+            completed_agents = {str(item.get("agent")) for item in completed.values()}
+            healthy_substitutes = ({
+                name for name, status in current.items()
+                if status == "healthy" and name not in failed_agents
+            } | (retested - failed_agents)) - completed_agents
+            if uncovered and len(healthy_substitutes) < len(uncovered):
                 raise ValueError(
                     "failed Agent has no current healthy probe; 请先在 Agent 池重新测试失败的节点"
+                    "或启用健康的第3审查节点替补"
                 )
             generation = int(task["resume_generation"] or 0) + 1
             max_attempts = max(int(task["max_attempts"]), int(task["attempts"]) + 1)
@@ -2875,6 +3409,7 @@ class EventStore:
                 )
             return result
 
+
     def abandon_task(self, task_id: str, expected_freeze_hash: Optional[str]) -> Dict[str, Any]:
         """用户放弃一个冻结任务：结束为 failed，冻结记录和已有结论原样保留，不再运行。"""
         with self.connect() as conn:
@@ -2890,6 +3425,41 @@ class EventStore:
                 raise ValueError("freeze hash mismatch")
             self._verify_frozen_record_integrity(task)
             now = time.time()
+            released = []
+            tables = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            if "experience_validation_records" in tables:
+                attempts = conn.execute(
+                    "SELECT * FROM experience_validation_records WHERE task_id=? AND status='running'",
+                    (task_id,),
+                ).fetchall()
+                for attempt in attempts:
+                    link = conn.execute(
+                        "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.trial_linked' "
+                        "AND json_extract(payload_json,'$.task_id')=? "
+                        "AND json_extract(payload_json,'$.attempt_id')=? LIMIT 1",
+                        (attempt["candidate_id"], task_id, attempt["id"]),
+                    ).fetchone()
+                    lineage = conn.execute(
+                        "SELECT * FROM experience_validation_lineages WHERE candidate_id=?",
+                        (attempt["candidate_id"],),
+                    ).fetchone() if "experience_validation_lineages" in tables else None
+                    if not link or not lineage or lineage["current_round"] != attempt["round"]:
+                        raise ValueError("frozen trial task has no matching validation attempt binding")
+                    conn.execute(
+                        "UPDATE experience_validation_records SET status='pending',task_id=NULL,plan_digest=NULL,"
+                        "execution_digest=NULL,pause_reason=NULL,failure_class=NULL,dsh_receipt_id=NULL,"
+                        "peer_receipt_id=NULL,dsh_verdict=NULL,peer_verdict=NULL,updated_at=? WHERE id=?",
+                        (now, attempt["id"]),
+                    )
+                    next_state = f"pending_round_{attempt['round']}"
+                    conn.execute(
+                        "UPDATE experience_validation_lineages SET lineage_status=?,updated_at=? WHERE candidate_id=?",
+                        (next_state, now, attempt["candidate_id"]),
+                    )
+                    released.append({"candidate_id": attempt["candidate_id"], "attempt_id": attempt["id"],
+                                     "round": attempt["round"], "lineage_status": next_state})
             conn.execute(
                 "UPDATE tasks SET status='failed',lease_until=NULL,last_error=?,updated_at=? WHERE id=?",
                 ("用户放弃：冻结后不再恢复", now, task_id),
@@ -2898,8 +3468,18 @@ class EventStore:
                 "freeze_hash": task["freeze_hash"], "abandoned_from": str(task["status"]),
                 "abandoned_by": "explicit_user_command",
             })
+            for item in released:
+                self._append_event_tx(conn, item["candidate_id"], "memory.validation_attempt_released", {
+                    "attempt_id": item["attempt_id"], "round": item["round"],
+                    "abandoned_task_id": task_id, "freeze_hash": task["freeze_hash"],
+                    "rounds_used": conn.execute(
+                        "SELECT rounds_used FROM experience_validation_lineages WHERE candidate_id=?",
+                        (item["candidate_id"],),
+                    ).fetchone()[0],
+                })
             return {"task_id": task_id, "status": "failed", "abandoned": True,
-                    "freeze_hash": task["freeze_hash"], "abandoned_from": str(task["status"])}
+                    "freeze_hash": task["freeze_hash"], "abandoned_from": str(task["status"]),
+                    "validation_attempts_released": released}
 
     def cancel_task(self, task_id: str) -> Dict[str, Any]:
         """用户取消一个还在排队、没有开始的任务；正在跑的不取消。"""

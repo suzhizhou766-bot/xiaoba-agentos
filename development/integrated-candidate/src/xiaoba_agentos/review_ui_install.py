@@ -1,7 +1,7 @@
 """Install the source-bound portal adapter, with exact preimages and no backups.
 
 This is a separate user-terminal action after the native release switch. The
-four external files are not part of the AgentOS runtime source mirror.
+external files are not part of the AgentOS runtime source mirror.
 """
 import fcntl
 import hashlib
@@ -12,6 +12,10 @@ import tempfile
 
 ASSETS = Path(__file__).with_name("review_ui_assets")
 TARGETS = {
+    "agentos_config.py": ("assistant", "工具/小八监看/monitor_core/agentos_config.py"),
+    "monitor_config.py": ("assistant", "工具/小八监看/monitor_core/config.py"),
+    "monitor_overview.py": ("assistant", "工具/小八监看/monitor_core/modules/overview.py"),
+    "monitor_review.py": ("assistant", "工具/小八监看/monitor_core/modules/review.py"),
     "workflow_query.py": ("project", "integrations/review-center/workflow_query.py"),
     "review_action.py": ("project", "integrations/review-center/review_action.py"),
     "server.py": ("project", "integrations/review-center/server.py"),
@@ -32,7 +36,7 @@ def current(path):
 def prepare(project, assistant, assets=ASSETS):
     manifest = json.loads((assets / "manifest.json").read_text())
     entries = manifest["files"]
-    if manifest.get("version") != 1 or len(entries) != 4 or {e["asset"] for e in entries} != set(TARGETS):
+    if manifest.get("version") != 1 or len(entries) != len(TARGETS) or {e["asset"] for e in entries} != set(TARGETS):
         raise ValueError("invalid UI asset manifest")
     roots = {"project": Path(project).resolve(), "assistant": Path(assistant).resolve()}
     plan = []

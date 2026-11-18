@@ -102,6 +102,20 @@ def agent_provider_model(agent_config) -> Tuple[str, str]:
         from .gateway import local_cli_route
         selection = local_cli_route(agent_config.app_config, str(raw.get("cli_route", "")), agent_config.name)
         return selection["provider"], selection["model"]
+    if agent_config.type == "pool_cli":
+        # Pool adapters freeze node data, not a legacy provider route. Resolve
+        # only a declared identity; never inspect a CLI's login/settings or pick
+        # a model on its behalf. Unknown families stay unknown at the gate.
+        source = raw.get("pool_source")
+        node = source.get("node") if isinstance(source, dict) else {}
+        node = node if isinstance(node, dict) else {}
+        from .pool_dispatch import infer_agent_type
+        kind = infer_agent_type(node) if node else raw.get("driver")
+        provider = raw.get("provider") or node.get("provider") or {
+            "agy": "Antigravity", "dsh": "DeepSeekHarness",
+        }.get(kind, "")
+        model = raw.get("model") or node.get("model") or ""
+        return str(provider), str(model)
     return str(raw.get("provider", "")), str(raw.get("model", ""))
 
 

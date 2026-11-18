@@ -39,6 +39,13 @@ class EventStoreTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def _stage_candidate(self, task_id, name, content):
+        staged = Path(self.tmp.name) / f"{name}.md"
+        staged.write_text(content, encoding="utf-8")
+        digest = hashlib.sha256(staged.read_bytes()).hexdigest()
+        self.store.stage_memory_candidate(task_id, str(staged), digest)
+        return digest
+
     def test_submit_lease_complete_and_chain(self):
         task_id = self.store.submit("hello", max_attempts=3)
         task = self.store.lease_next(60)
@@ -75,9 +82,9 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual("pending_delivery_review", json.loads(sidecar.read_text())["status"])
         before = staged.read_bytes()
         candidate = self.store.review_memory(task_id, "delivery", "reject", "reject", evidence_hash)
-        self.assertEqual("delivery_rejected", candidate["status"])
+        self.assertEqual("retired", candidate["status"])
         self.assertEqual(before, staged.read_bytes())
-        self.assertEqual("delivery_rejected", json.loads(sidecar.read_text())["status"])
+        self.assertEqual("retired", json.loads(sidecar.read_text())["status"])
 
     def test_pending_constraint_hold_keeps_session_open_for_review(self):
         session = self.store.start_session()
@@ -463,9 +470,9 @@ class EventStoreTest(unittest.TestCase):
     def test_two_stage_review_and_reuse_lifecycle(self):
         source_task = self.store.submit("source", 1)
         self.store.complete_manually(source_task, "source result")
-        self.store.stage_memory_candidate(source_task, "/tmp/source.md", "a" * 64)
-        self.store.review_memory(source_task, "delivery", "approve", "第一次审核通过", "a" * 64)
-        self.store.review_memory(source_task, "final", "approve", "最终审核通过", "a" * 64)
+        evidence_hash = self._stage_candidate(source_task, "source", "source evidence")
+        self.store.review_memory(source_task, "delivery", "approve", "第一次审核通过", evidence_hash)
+        self.store.review_memory(source_task, "final", "approve", "最终审核通过", evidence_hash)
         self.store.mark_memory_published(source_task, "/vault/source.md")
 
         current_task = self.store.submit("reuse", 1)
@@ -480,9 +487,9 @@ class EventStoreTest(unittest.TestCase):
     def test_formal_reuse_old_settlement_does_not_change_failure_counts(self):
         source_task = self.store.submit("source", 1)
         self.store.complete_manually(source_task, "source result")
-        self.store.stage_memory_candidate(source_task, "/tmp/source.md", "e" * 64)
-        self.store.review_memory(source_task, "delivery", "approve", "first", "e" * 64)
-        self.store.review_memory(source_task, "final", "approve", "final", "e" * 64)
+        evidence_hash = self._stage_candidate(source_task, "source", "source evidence")
+        self.store.review_memory(source_task, "delivery", "approve", "first", evidence_hash)
+        self.store.review_memory(source_task, "final", "approve", "final", evidence_hash)
         self.store.mark_memory_published(source_task, "/vault/source.md")
 
         failed_once = self.store.submit("failed once", 1)
@@ -509,16 +516,16 @@ class EventStoreTest(unittest.TestCase):
     def test_final_review_cannot_skip_delivery_reapproval_after_revision(self):
         task_id = self.store.submit("revise", 1)
         self.store.complete_manually(task_id, "result")
-        self.store.stage_memory_candidate(task_id, "/tmp/revise.md", "b" * 64)
-        self.store.review_memory(task_id, "delivery", "revise", "需要修改", "b" * 64)
+        evidence_hash = self._stage_candidate(task_id, "revise", "revise evidence")
+        self.store.review_memory(task_id, "delivery", "revise", "需要修改", evidence_hash)
         with self.assertRaises(ValueError):
             self.store.review_memory(task_id, "final", "approve", "不应跳级", "b" * 64)
 
     def test_final_review_is_bound_to_delivery_candidate_hash(self):
         task_id = self.store.submit("hash", 1)
         self.store.complete_manually(task_id, "result")
-        self.store.stage_memory_candidate(task_id, "/tmp/hash.md", "c" * 64)
-        self.store.review_memory(task_id, "delivery", "approve", "通过", "c" * 64)
+        evidence_hash = self._stage_candidate(task_id, "hash", "hash evidence")
+        self.store.review_memory(task_id, "delivery", "approve", "通过", evidence_hash)
         with self.assertRaises(ValueError):
             self.store.review_memory(task_id, "final", "approve", "被篡改", "d" * 64)
 
@@ -588,7 +595,9 @@ class MemoryLifecycleStateMachineTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = EventStore(Path(self.tmp.name) / "test.sqlite3")
         self.store.initialize()
-        self.sha = "a" * 64
+        self.candidate_path = Path(self.tmp.name) / "candidate.md"
+        self.candidate_path.write_text("TEST candidate evidence", encoding="utf-8")
+        self.sha = hashlib.sha256(self.candidate_path.read_bytes()).hexdigest()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -596,7 +605,7 @@ class MemoryLifecycleStateMachineTest(unittest.TestCase):
     def _candidate_in_state(self, status: str) -> str:
         task_id = self.store.submit("source", 1)
         self.store.complete_manually(task_id, "result")
-        self.store.stage_memory_candidate(task_id, "/tmp/candidate.md", self.sha)
+        self.store.stage_memory_candidate(task_id, str(self.candidate_path), self.sha)
         if status == "pending_delivery_review":
             return task_id
         if status == "delivery_approved":
@@ -1247,7 +1256,7 @@ class AtomicCompletionTest(unittest.TestCase):
             store.initialize()
             task_id = store.submit("unknown", 3)
             orchestrator = Orchestrator(config, store)
-            with patch.object(store, "complete_with_memory_candidate", side_effect=OSError("io")), patch.object(
+            with patch.object(store, "complete_worker_with_memory_candidate", side_effect=OSError("io")), patch.object(
                 orchestrator, "_completion_committed", side_effect=OSError("cannot read")
             ), patch.object(store, "retry_or_fail") as retry:
                 with self.assertRaises(OSError):

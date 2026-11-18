@@ -2,7 +2,7 @@
 
 现有测试只走外层哈希检查（送审哈希对不上登记的证据就拒），从没到达
 `review_memory()` 的初审绑定分支和 `mark_memory_published()` 的终审绑定分支。
-这里的夹具先批准、再换掉候选内容并重新登记证据哈希，让外层检查通过，
+这里的夹具先批准、再换掉候选内容并直接篡改登记哈希，让外层检查通过，
 于是还能拦住请求的只剩这两处批准绑定。
 """
 
@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_review import _config
+from fixtures_review import _admit_authored_candidate, _config
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.review_flow import execute_review
 from xiaoba_agentos.store import EventStore
@@ -31,10 +31,11 @@ def _approve(store, task_id, sha256, stages):
 
 
 def _re_register_with_changed_content(store, task_id, staged):
-    """换掉候选内容，并按新内容重新登记证据哈希（外层哈希检查因此会通过）。"""
+    """模拟数据库登记被越权改写，使防御性批准绑定测试越过外层哈希检查。"""
     staged.write_text(BODY_CHANGED, encoding="utf-8")
     changed = hashlib.sha256(staged.read_bytes()).hexdigest()
-    store.stage_memory_candidate(task_id, str(staged), changed)
+    with store.connect() as conn:
+        conn.execute("UPDATE memory_candidates SET evidence_sha256=? WHERE task_id=?", (changed, task_id))
     return changed
 
 
@@ -72,8 +73,9 @@ class ApprovalBindingTest(unittest.TestCase):
 
     def _candidate(self):
         created = self.store.create_authored_candidate(
-            "绑定测试候选", BODY_APPROVED, self.bridge.outbox, author="test"
+            "绑定测试候选", BODY_APPROVED, self.bridge.outbox, author="test", experience_kind="rule"
         )
+        created = _admit_authored_candidate(self.store, created)
         return created["task_id"], Path(created["staged_path"]), created["evidence_sha256"]
 
     def _reviews(self, task_id):

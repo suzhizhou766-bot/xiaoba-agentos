@@ -95,15 +95,28 @@ class Center:
         label=LABELS.get(x['status'],x['status'])
         decisions=['approve','revise','reject'] if x['status'] in PENDING else []
         if stage=='final' and x['status'] in PENDING and validation.get('required'):
-            label={'awaiting_trial':'待隔离验证','trial_running':'隔离验证中','trial_failed':'验证未通过','application_delivery_required':'待应用或用户交付验收证据','ready_for_final':'待终审 · 验证已通过'}.get(state,'待隔离验证')
+            basis_value=validation.get('validation_basis')
+            basis=basis_value if isinstance(basis_value, dict) else {}
+            basis_checks=basis.get('required_checks', [])
+            expected_checks={'real_task_acceptance':['real_task_acceptance'],
+                             'combined':['real_task_acceptance','sandbox']}.get(basis.get('route'))
+            confirmation_pending=(state=='validation_basis_confirmation_required'
+                and basis.get('status')=='proposed'
+                and isinstance(basis_checks, list)
+                and basis_checks==expected_checks)
+            label={'awaiting_trial':'待隔离验证','trial_running':'隔离验证中','trial_failed':'验证未通过',
+                   'application_delivery_required':'待应用或用户交付验收证据','ready_for_final':'待终审 · 验证已通过',
+                   'awaiting_evidence':'待补结构化方法主张与核验类别',
+                   'validation_basis_confirmation_required':'待终审 · 真实依据待确认'}.get(state,'待隔离验证')
             if validation.get('disagreement'): label='待终审 · 第二轮有分歧'
-            if not validation.get('ready'): decisions=['revise','reject']
+            if not validation.get('ready') and not confirmation_pending: decisions=['revise','reject']
         return {k:x[k] for k in ('task_id','status','evidence_sha256','updated_at','created_at')} | {
             'title':self.title(x['prompt']) or x['task_id'], 'prompt':x['prompt'],
             'status_label':label, 'stage':stage,'experience_validation':validation,
             'expected':{k:x[k] for k in ('status','evidence_sha256','updated_at')},'obsidian_url':obsidian,
             'allowed_decisions': decisions,
-            'published_path':x.get('published_path')}
+            'published_path':x.get('published_path'),
+            'assessment': (validation or {}).get('assessment')}
 
     def workflow_views(self, task_id=None):
         self.verify()
@@ -250,6 +263,29 @@ class Center:
                 conn.execute('UPDATE submissions SET result=? WHERE id=?',(json.dumps(response,ensure_ascii=False),batch))
             return response
 
+    def delivery_detail(self, task_id=None, version=None):
+        self.verify()
+        request={'verifier':str(self.verifier),'config_path':str(self.config_path),
+                 'binding_sha256':self.binding['files_manifest_sha256'],
+                 'delivery_query':True,'delivery_task_id':task_id,'delivery_version':version}
+        proc=subprocess.run([sys.executable,'-B',str(HERE/'workflow_query.py')],input=json.dumps(request),capture_output=True,text=True,timeout=55)
+        value=json.loads(proc.stdout)
+        if proc.returncode or not value.get('ok'): raise ValueError(value.get('error','交付状态读取失败'))
+        return value['delivery']
+
+    def deliver(self, request):
+        # Called only by Handler.do_POST after its local Origin and CSRF checks.
+        # user_selected binds this explicit action; it is never supplied by GET.
+        if request.get('user_selected') is not True: raise ValueError('需要本次明确选择交付或撤回')
+        with self.lock:
+            binding=self.verify()
+            packet=dict(request,operation='task_delivery')
+            action={'verifier':str(self.verifier),'config_path':str(self.config_path),
+                    'binding_sha256':binding['files_manifest_sha256'],'packet':packet}
+            proc=subprocess.run([sys.executable,'-B',str(HERE/'review_action.py')],input=json.dumps(action,ensure_ascii=False),capture_output=True,text=True,timeout=55)
+            result=json.loads(proc.stdout)
+            return result['result']
+
     def watch(self):
         # Database metadata changes trigger writes; idle polling never rewrites notes.
         while True:
@@ -276,6 +312,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path.path=='/': return self.respond(200,(HERE/'index.html').read_bytes(),'text/html; charset=utf-8')
             if path.path=='/app.js': return self.respond(200,(HERE/'app.js').read_bytes(),'text/javascript; charset=utf-8')
+            if path.path=='/api/deliveries': return self.respond(200,self.center.delivery_detail())
+            if path.path=='/api/delivery':
+                q=parse_qs(path.query)
+                return self.respond(200,self.center.delivery_detail(q['id'][0], q.get('version',[None])[0]))
             if path.path=='/api/state': return self.respond(200,self.center.state())
             if path.path=='/api/candidate': return self.respond(200,self.center.detail(parse_qs(path.query)['id'][0]))
             return self.respond(404,{'error':'not found'})
@@ -288,6 +328,7 @@ class Handler(BaseHTTPRequestHandler):
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=1024*1024 or not self.headers.get('Content-Type','').startswith('application/json'): raise ValueError('无效请求')
             data=json.loads(self.rfile.read(length))
+            if self.path=='/api/delivery': return self.respond(200,self.center.deliver(data))
             if self.path=='/api/decisions': return self.respond(200,self.center.decide(data))
             if self.path=='/api/sync':
                 self.center.sync(force=True);return self.respond(200,self.center.sync_status)

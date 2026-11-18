@@ -69,6 +69,7 @@ class CliWorklogResource:
     material_byte_limit = MATERIAL_BYTE_LIMIT
 
     def __init__(self, source, workspace_root=None):
+        self.review_source = json.loads(json.dumps(source))
         self.kind, self.source_ref = source['kind'], source['source_ref']
         self.entry, self.model = source['node']['entry'], source['node']['model']
         self.reasoning_effort = source['node'].get('reasoning_effort')
@@ -458,7 +459,7 @@ class CliWorklogResource:
             for name in dirnames:
                 os.chmod(Path(dirpath) / name, 0o555)
 
-    def _stage_materials(self, record, materials):
+    def _stage_materials(self, record, materials, *, deny_video=False):
         """派活前把声明材料复制进 任务记录/<记录>/材料/，副本只读。
 
         每份材料都要过：符号链接拒绝、目录跳过 .git/__pycache__、总量上限、
@@ -500,6 +501,11 @@ class CliWorklogResource:
                 if path.is_symlink():
                     raise WorkspaceError('material_symlink',
                         '任务材料“%s”内含符号链接，本次不派活。' % item['path'])
+                if deny_video:
+                    from xiaoba_agentos.media_review_materials import VIDEO_SUFFIXES
+                    if path.suffix.casefold() in VIDEO_SUFFIXES:
+                        raise WorkspaceError('missing_materials',
+                            '视频审查材料必须先经受控入口抽帧；不能向审查 CLI 裸传视频，请补材料或人工核查。')
             total_files += len(files)
             total_bytes += sum(path.stat().st_size for path in files)
             if total_files > self.material_file_limit or total_bytes > self.material_byte_limit:
@@ -568,7 +574,9 @@ class CliWorklogResource:
                 directory = self.workspace.ensure()
                 self.workspace.verify()
                 record = self.workspace.begin(kind, record_id or task_id, payload)
-                staged = self._stage_materials(record, materials)
+                materials, media_packet = self._prepare_review_materials(materials) if kind == 'review' else (materials, None)
+                staged = self._stage_materials(record, materials, deny_video=kind == 'review')
+                media_readback = self._media_readback(materials, staged, media_packet)
                 ticket = self.workday.prepare(record, task_id, step_code, instruction, materials,
                     review=kind == 'review', health_only=health_only, staged=staged)
                 self._call_id = call_id
@@ -578,6 +586,8 @@ class CliWorklogResource:
                 self._turns += 1
                 evidence = dict(self._evidence(call_id), reply_source='daily_worklog',
                                 worklog=value['worklog'])
+                if media_readback is not None:
+                    evidence['media_materials'] = media_readback
                 if terminated: evidence['process_terminated_after_receipt'] = True
                 self.workspace.finish(record,
                     'execution_completed' if value['status'] == 'completed' else value['status'],
@@ -650,3 +660,75 @@ class CliWorklogResource:
                 'body': value['body'], 'metadata': value.get('metadata', {}),
                 'evidence_refs': value.get('evidence_refs', []),
                 'execution_evidence': evidence, 'score_assigned': False}
+
+
+    def _prepare_review_materials(self, materials):
+        """Preprocess the frozen video locally; the CLI receives only derivatives."""
+        request = materials.get('media_review')
+        if request is None:
+            return materials, None
+        required = {'version', 'route', 'source_video', 'workspace', 'basis_id',
+                    'basis_sha256', 'model_read_verified'}
+        if (not isinstance(request, dict) or set(request) != required or type(request.get('version')) is not int or request.get('version') != 1
+                or request.get('route') != 'combined' or request.get('model_read_verified') is not False):
+            raise WorkspaceError('missing_materials', '视频审查请求未绑定完整的混合路线依据，请补材料或人工核查。')
+        ledger = getattr(self.workspace, 'ledger_store', None)
+        candidate_id = materials.get('candidate_id')
+        if ledger is None or not isinstance(candidate_id, str):
+            raise WorkspaceError('missing_materials', '视频审查缺少可复验的当前依据来源，请人工核查。')
+        with ledger.read_only() as db:
+            row = db.execute('SELECT * FROM memory_candidates WHERE task_id=?', (candidate_id,)).fetchone()
+            if row is None:
+                raise WorkspaceError('missing_materials', '视频审查依据对应的候选已不存在，请人工核查。')
+            from xiaoba_agentos.validation_basis import validate_basis
+            try:
+                basis = validate_basis(db, dict(row), basis_id=request['basis_id'])
+            except (ValueError, KeyError, TypeError, OSError):
+                raise WorkspaceError('missing_materials', '视频审查依据已撤回、过期或无法复验，请人工核查。') from None
+        artifact = basis.get('artifact')
+        if (basis.get('status') == 'revoked' or basis.get('basis_sha256') != request['basis_sha256']
+                or basis.get('route') != 'combined' or not isinstance(artifact, dict)
+                or {key: artifact.get(key) for key in ('path', 'sha256')} != request.get('source_video')
+                or basis.get('real_task', {}).get('workspace') != request.get('workspace')):
+            raise WorkspaceError('missing_materials', '视频审查依据或源素材已不再匹配当前任务，请人工核查。')
+        from xiaoba_agentos.media_review_materials import prepare_video_review_materials
+        packet = prepare_video_review_materials(request['source_video'], request['workspace'],
+            route=request['route'], review_source=self.review_source)
+        if packet.get('status') != 'ready':
+            raise WorkspaceError('missing_materials', packet.get('reason') or '视频审查缺少可用材料，请人工核查。')
+        source_path = request['source_video']['path']
+        prepared = dict(materials)
+        prepared['material_files'] = [item for item in materials.get('material_files', [])
+            if not isinstance(item, dict) or item.get('path') != source_path] + packet['material_files']
+        prepared['evidence_refs'] = [dict(item, ref='video-sha256:' + request['source_video']['sha256'])
+            if isinstance(item, dict) and item.get('ref') == source_path else item
+            for item in materials.get('evidence_refs', [])]
+        prepared['media_review'] = {key: request[key] for key in
+            ('version', 'route', 'basis_id', 'basis_sha256', 'model_read_verified')}
+        prepared['media_review'].update(source_video_sha256=request['source_video']['sha256'],
+            sampling='four deterministic frames; not exhaustive video coverage')
+        return prepared, packet
+
+
+    @staticmethod
+    def _media_readback(materials, staged, packet):
+        if packet is None:
+            return None
+        from xiaoba_agentos.task_context import material_digest
+        declared = CliWorklogResource.declared_materials(materials)
+        if len(declared) != len(staged):
+            raise WorkspaceError('missing_materials', '视频派工材料副本数不符，停止派工。')
+        copied = []
+        derivative_paths = {item['path'] for item in packet['material_files']}
+        for item, path in zip(declared, staged):
+            if item['path'] not in derivative_paths:
+                continue
+            actual = material_digest(path)
+            if path.is_symlink() or actual != item['sha256']:
+                raise WorkspaceError('material_hash_mismatch', '视频派工材料回读哈希不符，停止派工。')
+            copied.append({'path': str(path), 'sha256': actual})
+        if len(copied) != len(derivative_paths):
+            raise WorkspaceError('missing_materials', '视频派工材料未完整送达，停止派工。')
+        return {'version': 1, 'status': 'staged_hash_verified',
+                'source_video_sha256': packet['source_video']['sha256'],
+                'files': copied, 'model_read_verified': False}

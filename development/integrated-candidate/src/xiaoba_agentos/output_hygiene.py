@@ -105,7 +105,16 @@ def detect_non_answer_markers(text: str) -> list[str]:
 
 
 def strip_reasoning_markup(text: str) -> str:
-    """Remove reasoning blocks, stray reasoning tags and reasoning labels."""
+    """Remove reasoning blocks, stray reasoning tags and reasoning labels.
+
+    This is a *cleaner*, not a hygiene gate: it strips ``<think>`` markup so a
+    leaked reasoning prefix does not hide a legitimate answer.  Unexecuted
+    tool-invocation markup is deliberately NOT stripped here — it is a hard
+    B19 signature detected by :func:`contains_non_answer_markers`.  Stripping
+    it would let a tool-only placeholder be washed into "already executed", so
+    pool persistence and build_release judge on the reasoning-stripped text
+    *and* still run the marker/leak gates (C11-01).
+    """
     if not text:
         return text
     stripped = _REASONING_BLOCK.sub("", text)

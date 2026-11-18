@@ -133,6 +133,7 @@ class FormalReviewTests(unittest.TestCase):
         from xiaoba_agentos import formal_review as f
         def schema():
             with self.store.read_only() as db:return [tuple(r) for r in db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name')]
+        self.formal()  # Initialize review-ingress tables before taking the projection baseline.
         before=schema();self.request();f.check_inactivity(self.store,now=100);count=self.event_count('memory.formal_enabled')
         self.items();self.items();self.assertEqual(count,self.event_count('memory.formal_enabled'));self.assertEqual(before,schema())
 

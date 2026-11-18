@@ -57,6 +57,8 @@ class JsonStdioResource:
         return value
 
     def run(self, card):
+        if isinstance(card, dict) and card.get('media_review') is not None:
+            raise ValueError('missing_materials: stdio entry lacks controlled media staging and vision check; manual_review')
         value=self.call({'protocol':self.protocol,'operation':'review','card':card})
         if value.get('card_digest')!=card['card_digest']:raise ValueError('入口响应未绑定本任务')
         result = {

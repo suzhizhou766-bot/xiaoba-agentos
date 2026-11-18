@@ -98,28 +98,14 @@ def resolve(config, relative):
 WORKER_PLIST = Path.home() / "Library" / "LaunchAgents" / "com.xiaoba.agentos.plist"
 
 
+from .agentos_config import agentos_runtime
+from .agentos_config import agentos_config_path as _agentos_config_path
+from .agentos_config import worker_config_path as _worker_config_path
+
+
 def worker_config_path(plist=None):
-    """Worker 的 LaunchAgent 里写的 XIAOBA_CONFIG：Worker 实际使用的那份配置。"""
-    try:
-        with open(plist or WORKER_PLIST, "rb") as handle:
-            value = (plistlib.load(handle).get("EnvironmentVariables") or {}).get("XIAOBA_CONFIG")
-        return Path(value) if value else None
-    except (OSError, ValueError, plistlib.InvalidFileException):
-        return None
+    return _worker_config_path(plist or WORKER_PLIST)
 
 
 def agentos_config_path(config):
-    """裁决后端与运行总览用哪份 AgentOS 配置。
-
-    顺序：monitor.json 明确指定 → 环境变量 XIAOBA_CONFIG → 与 Worker 的 LaunchAgent 一致 → 项目默认。
-    默认跟随 Worker，这样裁决与 Worker 永远是同一份配置，不会各用各的。
-    """
-    explicit = config.get("agentos_config") or os.environ.get("XIAOBA_CONFIG")
-    if explicit:
-        return Path(explicit)
-    worker = worker_config_path()
-    if worker and worker.is_file():
-        return worker
-    project = Path(config["agentos_project"])
-    override = project / ".runtime" / "model-overrides" / "agentos-agy-flash-high.json"
-    return override if override.exists() else project / "config" / "agentos.json"
+    return _agentos_config_path(config, worker_plist=WORKER_PLIST)

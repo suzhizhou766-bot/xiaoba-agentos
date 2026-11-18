@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fixtures_review import _config
+from fixtures_review import _admit_authored_candidate, _config
 from xiaoba_agentos import retained as retained_objects
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.review_flow import execute_review
@@ -40,7 +40,8 @@ class PublicationRegressionsTest(unittest.TestCase):
             config, store, bridge, catalog = self.fixture(Path(directory))
             title = '工作搬家要在旧位置留指路，登记页写明版本号'
             body = '搬家后在旧位置留指路；登记页写明版本号。' * 8
-            result = store.create_authored_candidate(title, body, bridge.outbox, author='test')
+            result = store.create_authored_candidate(title, body, bridge.outbox, author='test', experience_kind='rule')
+            result = _admit_authored_candidate(store, result)
             task_id = result['task_id']
             staged = Path(result['staged_path'])
             self.assertIn('title: ' + json.dumps(title, ensure_ascii=False), staged.read_text())
@@ -61,7 +62,8 @@ class PublicationRegressionsTest(unittest.TestCase):
     def test_changing_only_candidate_title_invalidates_final_approval(self):
         with tempfile.TemporaryDirectory() as directory:
             config, store, bridge, _ = self.fixture(Path(directory))
-            result = store.create_authored_candidate('原题', '正文', bridge.outbox, author='test')
+            result = store.create_authored_candidate('原题', '正文', bridge.outbox, author='test', experience_kind='rule')
+            result = _admit_authored_candidate(store, result)
             task_id = result['task_id']
             self.assertEqual(0, execute_review(config, store, task_id, 'delivery', 'approve', '')[0])
             staged = Path(result['staged_path'])
@@ -78,7 +80,8 @@ class PublicationRegressionsTest(unittest.TestCase):
             existing.write_bytes(b'user-owned backup')
             before = {str(p.relative_to(existing.parent)): p.read_bytes()
                       for p in existing.parent.rglob('*') if p.is_file()}
-            result = store.create_authored_candidate('标题', '正文', bridge.outbox, author='test')
+            result = store.create_authored_candidate('标题', '正文', bridge.outbox, author='test', experience_kind='rule')
+            result = _admit_authored_candidate(store, result)
             for stage in ('delivery', 'final'):
                 store.review_memory(result['task_id'], stage, 'approve', 'isolated fixture', result['evidence_sha256'])
             bridge.publish_candidate(result['task_id'], result['evidence_sha256'])
@@ -89,7 +92,8 @@ class PublicationRegressionsTest(unittest.TestCase):
     def test_publication_failure_restores_catalog_without_backup(self):
         with tempfile.TemporaryDirectory() as directory:
             config, store, bridge, catalog = self.fixture(Path(directory))
-            result = store.create_authored_candidate('标题', '正文', bridge.outbox, author='test')
+            result = store.create_authored_candidate('标题', '正文', bridge.outbox, author='test', experience_kind='rule')
+            result = _admit_authored_candidate(store, result)
             for stage in ('delivery', 'final'):
                 store.review_memory(result['task_id'], stage, 'approve', 'isolated fixture', result['evidence_sha256'])
             original = catalog.read_bytes()

@@ -1,4 +1,4 @@
-# v1.6.15 发布验收
+# v1.6.16 发布验收
 
 - 审查节点来自 Agent 池，成功门槛 2。v1.6.9 起构包接受“1 份池节点结论 ＋ 1 份宿主结论”，但至少 1 份必须来自已开启且测试通过的池节点，不能两票都是宿主，宿主也不能是这次的作者或执行者；宿主票只从 `task-host-complete` 留下的结算记录取，手写的 JSON 不算。构包从验收数据库取证。“干过活的节点不能计票”只查得到任务记录里有的执行者：验收任务必须用 `--work-task` 链上来源工作任务，确实没有时用 `--no-work-task` 明确写明，两者都不写构包拒收；工作如果不是通过小八任务做的，门禁看不出来，要由发版的人选没参与过的节点。固定后台名字和备用补位组合不再验收。登录材料与节点上的模型选择不在任何自动改动范围。
 - 全回归、Skill结构验证、8技能和16知识来源哈希、源码与发布清单校验通过。
@@ -33,11 +33,13 @@
 - 本节是验收门槛，不是已达成结论；正式独立审核仍由 Agent 池里合格的审查节点执行，辅助模型的报告与预审不替代它。
 
 
-新增经验分类与受控验证的运行契约及验收条件见 docs/EXPERIENCE_TRIALS.md；技术审计仅结算审计回执，方法必须真实新执行与独立双审后用户终审。历史候选不批量迁移。
+v1.6.15 的经验分类与受控验证契约见 docs/EXPERIENCE_TRIALS.md；该版 method 仍需真实新执行与独立双审后再由用户终审。历史候选不批量迁移。
+
+J11b 将该方法门禁更新排在 v1.6.16；v1.6.15 的历史验收文本不因此追改。v1.6.16 的候选验收要求、阻断反例和实测状态见 [ACCEPTANCE_V1.6.16.md](ACCEPTANCE_V1.6.16.md)。
 
 ## v1.6.11 候选：显式发布验收声明
 
-发版工具用 `scripts/submit_release_acceptance.py --config CONFIG PROMPT --memory-kind audit --work-task TASK_ID` 提交；确实没有来源任务时改用 `--no-work-task`。工具强制传入 `submit --release-acceptance`，快照冻结 `review_context.release_acceptance: true`。普通 submit 冻结 false，不会因为题面引用两个验收结论标记而被识别成发布验收。宿主审查、宿主补票仍按自己的身份与上下文要求结论。
+发版工具用 `scripts/submit_release_acceptance.py` 提交，且派审前必须完整声明预检上下文；缺目标版本、活动前驱清单哈希、项目/助理安装根、实际审查员或作者/执行者身份（或明确无人）时 fail-closed，不派审。示例：`scripts/submit_release_acceptance.py --config CONFIG PROMPT --memory-kind audit --work-task TASK_ID --preflight-expected-version VERSION --preflight-predecessor-sha256 LIVE_SOURCE_MANIFEST_SHA --preflight-project-root PROJECT_ROOT --preflight-assistant-root ASSISTANT_ROOT --preflight-reviewer REVIEWER_ID --preflight-author AUTHOR_ID --preflight-executor EXECUTOR_ID`；多个身份可重复对应参数，无作者/执行者时分别使用 `--preflight-no-author` / `--preflight-no-executor`。前驱哈希应取活动发布的 `agentos_source_manifest_sha256`，不能用候选树自身清单哈希替代。`--preflight-only` 只报告，不派审。工具强制传入 `submit --release-acceptance`，快照冻结 `review_context.release_acceptance: true`。普通 submit 冻结 false，不会因为题面引用两个验收结论标记而被识别成发布验收。宿主审查、宿主补票仍按自己的身份与上下文要求结论。
 
 兼容口径：仅缺少该字段的历史快照保留原题面双标记判据；显式 false 不回退，显式 true 不要求题面标记。历史快照及哈希不重写。
 

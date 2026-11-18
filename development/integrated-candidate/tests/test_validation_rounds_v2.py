@@ -20,11 +20,12 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from fixtures_review import _config, _event_count
+from fixtures_review import _admit_authored_candidate, _config, _event_count
 from fixtures_validation import make_execution, native_trial, bound_diff
 from xiaoba_agentos.experience_loop import (
-    application_packet, final_binding, record_application, record_delivery,
+    application_packet, final_binding, record_application, record_delivery as _record_delivery,
 )
 from xiaoba_agentos.experience_workflow import (
     advance_validation_round, complete_audit, extract_trial_verdict, prepare_trial,
@@ -34,12 +35,22 @@ from xiaoba_agentos.experience_workflow import (
 )
 from xiaoba_agentos.store import EventStore
 from xiaoba_agentos.workflow import verified_snapshot
+from xiaoba_agentos.validation_evidence import pool_review_verdicts
+from xiaoba_agentos.orchestrator import Orchestrator
+from xiaoba_agentos.pool_dispatch import _agent_from_node, load_nodes, select_reviewers
+from test_pool_dispatch import _seed, _source
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "review-ingress"))
 import xiaoba_agentos  # noqa: E402,F401
 import xiaoba_review  # noqa: E402,F401
 from xiaoba_review.store import DecisionInbox, ReviewStore  # noqa: E402
+
+
+def record_delivery(store, value):
+    from xiaoba_agentos.delivery import user_decision
+    return _record_delivery(store, value, authority=user_decision(value, channel="cli_user_declaration", explicit=True))
+
 
 
 def review_output(verdict):
@@ -109,12 +120,37 @@ class ValidationRoundsV2Tests(unittest.TestCase):
     def candidate(self):
         c = self.store.create_authored_candidate("TEST parse-fixture method", "TEST reusable method steps",
             self.outbox, author="test", experience_kind="method", problem_key="parse-fixture")
+        c = _admit_authored_candidate(self.store, c)
         self.store.review_memory(c["task_id"], "delivery", "approve", "TEST human initial review", c["evidence_sha256"])
         return c
 
     def gate(self, c):
         with self.store.read_only() as db:
             return verify_final_qualification(db, c["task_id"])
+
+    def pool_review_votes(self, specs):
+        task_id = self.store.submit("TEST动态池双审", 1)
+        sources = []
+        for spec in specs:
+            node_id = spec["node_id"]
+            source = _source(node_id, "cli:" + node_id, spec.get("model", "TEST model"))
+            if "source_ref" in spec:
+                source["source_ref"] = spec["source_ref"]
+            if "entry_program" in spec:
+                source["node"]["entry_program"] = spec["entry_program"]
+            sources.append(source)
+        _seed(self.store, sources)
+        for spec in specs:
+            node_id = spec["node_id"]
+            metadata = {
+                "purpose": spec.get("purpose", "review"),
+                "configured_model": spec.get("model", "TEST model"),
+                "pool_source_ref": spec.get("source_ref", "agent-entry:" + node_id),
+            }
+            run_id = self.store.start_agent_run(task_id, node_id, metadata)
+            self.store.finish_agent_run(run_id, "completed", review_output(spec.get("verdict", "PASS")), None, 1)
+        with self.store.read_only() as db:
+            return task_id, pool_review_verdicts(db, task_id)
 
     def records(self, c):
         return self.store.get_validation_records(c["task_id"])
@@ -145,7 +181,8 @@ class ValidationRoundsV2Tests(unittest.TestCase):
                 "environment": "TEST local fixture environment"},
             "artifact": artifact or self.artifact, "application_location": "TEST parser step 2",
             "steps_applied": "TEST applied the candidate normalization steps", "deviations": "TEST no deviations",
-            "execution_evidence": [evidence or self.evidence]}
+            "execution_evidence": [evidence or self.evidence],
+            "method_claims": [{"claim": "TEST run the parser normalization command", "class": "code"}]}
 
     def delivery(self, **changes):
         return dict({"origin": "user", "user_message": "交付", "message_id": "TEST-message-1",
@@ -190,6 +227,130 @@ class ValidationRoundsV2Tests(unittest.TestCase):
         self.assertEqual(extract_trial_verdict('<invoke name="x">\nTRIAL_VALIDATION: PASS\n'), "FAIL")
         # 非字符串。
         self.assertEqual(extract_trial_verdict(None), "FAIL")
+
+    def test_pool_validation_votes_use_bound_run_ids_and_accept_two_independent_nodes(self):
+        _, verdicts = self.pool_review_votes([
+            {"node_id": "TEST-pool-west", "model": "TEST model west"},
+            {"node_id": "TEST-pool-east", "model": "TEST model east"},
+        ])
+        self.assertEqual(len(verdicts), 2)
+        self.assertEqual(set(verdicts.values()), {"PASS"})
+
+    def test_pool_validation_votes_bind_real_worker_runs_to_selected_node_ids(self):
+        nodes = [
+            _source("TEST-worker-west", "cli:codex", "TEST model west", kind="review"),
+            _source("TEST-worker-east", "cli:claude", "TEST model east", kind="both"),
+        ]
+        _seed(self.store, nodes)
+        selected = select_reviewers(load_nodes(self.store))
+        self.assertEqual("run", selected["route"])
+        self.assertEqual(2, len(selected["reviewers"]))
+        self.assertEqual(2, len({tuple(node["independence"]) for node in selected["reviewers"]}))
+        selected_identity = {
+            node["node_id"]: (node["source_ref"], node["model"])
+            for node in selected["reviewers"]
+        }
+
+        task_id = self.store.submit("TEST dynamic pool validation", 1)
+
+        class ValidationReceiptResource:
+            def __init__(self, source, workspace=None):
+                self.source = source
+
+            def run_task(self, _task_id, _step_code, _instruction, _materials):
+                return {
+                    "status": "completed",
+                    "body": "TEST independent review\nTRIAL_VALIDATION: PASS\n",
+                    "execution_evidence": {"provider": "test-fixture", "route_source": "test"},
+                }
+
+        def resource_factory(source, workspace=None):
+            return ValidationReceiptResource(source, workspace)
+
+        orchestrator = Orchestrator(self.cfg, self.store)
+        run_ids = {}
+        with patch("xiaoba_agentos.adapters._pool_cli_factory", return_value=resource_factory):
+            for node in selected["reviewers"]:
+                agent = _agent_from_node(self.cfg, node, self.store)
+                result = orchestrator._run_agent(task_id, agent, "TEST validation prompt", "TEST context")
+                run_ids[node["node_id"]] = result.run_id
+
+        with self.store.read_only() as db:
+            rows = db.execute(
+                "SELECT id,agent_name,status,output FROM agent_runs WHERE task_id=? ORDER BY agent_name",
+                (task_id,),
+            ).fetchall()
+            events = [json.loads(row[0]) for row in db.execute(
+                "SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.started'",
+                (task_id,),
+            )]
+            verdicts = pool_review_verdicts(db, task_id)
+
+        self.assertEqual(set(run_ids), {row["agent_name"] for row in rows})
+        self.assertTrue(all(row["status"] == "completed" for row in rows))
+        self.assertEqual(set(run_ids.values()), {row["id"] for row in rows})
+        self.assertEqual(2, len(events))
+        for event in events:
+            node_id = event["agent"]
+            self.assertEqual(run_ids[node_id], event["run_id"])
+            self.assertEqual("review", event["execution"]["purpose"])
+            self.assertEqual(node_id, event["execution"]["pool_score"]["node_id"])
+            self.assertEqual("review", event["execution"]["pool_score"]["role"])
+            self.assertEqual(selected_identity[node_id], (
+                event["execution"]["pool_score"]["source_ref"],
+                event["execution"]["pool_score"]["model"],
+            ))
+        self.assertEqual(2, len(verdicts))
+        self.assertEqual({"PASS"}, set(verdicts.values()))
+
+    def test_pool_validation_votes_fail_closed_for_duplicate_node_or_entry_identity(self):
+        _, same_node = self.pool_review_votes([
+            {"node_id": "TEST-pool-only", "model": "TEST model"},
+            {"node_id": "TEST-pool-only", "model": "TEST model"},
+        ])
+        self.assertEqual(len(same_node), 2)
+        self.assertEqual(set(same_node.values()), {"FAIL"})
+
+        _, same_source = self.pool_review_votes([
+            {"node_id": "TEST-pool-a", "source_ref": "TEST shared source",
+             "entry_program": "TEST shared entry", "model": "TEST shared model"},
+            {"node_id": "TEST-pool-b", "source_ref": "TEST shared source",
+             "entry_program": "TEST shared entry", "model": "TEST shared model"},
+        ])
+        self.assertEqual(len(same_source), 2)
+        self.assertEqual(set(same_source.values()), {"FAIL"})
+
+    def test_pool_validation_uses_latest_review_run_for_each_node(self):
+        _, verdicts = self.pool_review_votes([
+            {"node_id": "TEST-pool-repeat", "model": "TEST model repeat", "verdict": "PASS"},
+            {"node_id": "TEST-pool-repeat", "model": "TEST model repeat", "verdict": "FAIL"},
+            {"node_id": "TEST-pool-other", "model": "TEST model other", "verdict": "PASS"},
+        ])
+        self.assertEqual(len(verdicts), 2)
+        self.assertEqual(set(verdicts.values()), {"PASS", "FAIL"})
+
+    def test_pool_validation_ignores_forged_run_id_and_non_review_purpose(self):
+        task_id, _ = self.pool_review_votes([
+            {"node_id": "TEST-pool-collab", "model": "TEST model collab", "purpose": "collaboration"},
+            {"node_id": "TEST-pool-review", "model": "TEST model review"},
+        ])
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self.store._append_event_tx(db, task_id, "agent.started", {
+                "agent": "TEST-pool-forged",
+                "run_id": "TEST-forged-run-id",
+                "execution": {
+                    "purpose": "review",
+                    "pool_score": {
+                        "role": "review", "node_id": "TEST-pool-forged",
+                        "source_ref": "TEST forged source", "model": "TEST forged model",
+                    },
+                },
+            })
+        with self.store.read_only() as db:
+            verdicts = pool_review_verdicts(db, task_id)
+        self.assertEqual(len(verdicts), 2)
+        self.assertEqual(set(verdicts.values()), {"FAIL"})
 
     # ---------- 验收 1：NEEDS_INFO 暂停不消耗轮次，恢复回原轮次 ----------
     def test_needs_info_first_round_pauses_without_consuming_round(self):
@@ -387,9 +548,9 @@ class ValidationRoundsV2Tests(unittest.TestCase):
         self.assertTrue(result["disagreement"])
         self.assertEqual(self.status(c), "pending_final_review")
 
-    # ---------- 验收 9：ingress_evidence 仍然拒绝 NEEDS_INFO 与第 1 轮 FAIL ----------
-    def test_ingress_evidence_still_rejects_fail_needs_info_and_round1_fail(self):
-        """9a 第 2 轮回执含 NEEDS_INFO → 拒绝；9b 第 1 轮有 FAIL 回执 → 拒绝（已知遗留）。"""
+    # ---------- 验收 9：三态外部回执优先参与轮次结算 ----------
+    def test_ingress_evidence_needs_info_pauses_and_round1_fail_consumes_round(self):
+        """9a 第 2 轮 NEEDS_INFO 暂停；9b 首轮外部 FAIL 消耗失败轮次。"""
         # 9a：第 2 轮，一 FAIL 一 NEEDS_INFO。
         c = self.candidate()
         native_trial(self.store, c, False, card=trial_card())
@@ -402,7 +563,7 @@ class ValidationRoundsV2Tests(unittest.TestCase):
         self.assertEqual(self.lineage(c)["rounds_used"], 1)
         self.assertEqual(self.lineage(c)["lineage_status"], "paused")
         self.assertEqual(self.records(c)[1]["status"], "paused")
-        self.assertEqual(self.records(c)[1]["failure_class"], "external_receipt")
+        self.assertEqual(self.records(c)[1]["failure_class"], "needs_info")
         self.assertNotEqual(self.status(c), "retired")
         self.assertEqual(self.resume(c)["resumed_round"], 2)
         # 修复前：ingress_evidence 只有二值判定，NEEDS_INFO 一样被当成“未通过”，
@@ -414,10 +575,10 @@ class ValidationRoundsV2Tests(unittest.TestCase):
         req2 = self.request(c2, task2)
         self.receipts(req2, verdicts={"dsh": "FAIL", "peer": "PASS"})
         complete_audit(self.store, task2["task_id"], "TEST round1 fail ingress receipt")
-        # 第 1 轮外部 FAIL：暂停可恢复，不耗轮次，也不进待终审。
-        self.assertEqual(self.lineage(c2)["rounds_used"], 0)
-        self.assertEqual(self.lineage(c2)["lineage_status"], "paused")
-        self.assertEqual(self.records(c2)[0]["status"], "paused")
+        # 第 1 轮外部 FAIL：保留失败证据并进入第二轮，不伪装成材料暂停。
+        self.assertEqual(self.lineage(c2)["rounds_used"], 1)
+        self.assertEqual(self.lineage(c2)["lineage_status"], "pending_round_2")
+        self.assertEqual(self.records(c2)[0]["status"], "failed")
         self.assertEqual(self.events(c2, "memory.retired"), 0)
         self.assertFalse(self.gate(c2)["qualified"])
 

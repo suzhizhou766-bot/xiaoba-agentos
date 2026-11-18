@@ -14,13 +14,32 @@ from pathlib import Path
 from .experience_workflow import digest, latest_delivery, policy
 
 
+def _event_payload(kind, value):
+    if kind == 'memory.application_recorded':
+        for key in ('application_id', 'candidate_id', 'candidate_sha256'):
+            if not isinstance(value.get(key), str) or not value[key]:
+                raise ValueError('invalid application ' + key)
+        if (not isinstance(value.get('real_task'), dict) or
+                not all(isinstance(value['real_task'].get(k), str) and value['real_task'][k] for k in ('id','workspace'))
+                or not isinstance(value.get('artifact'), dict) or not isinstance(value.get('execution_evidence'), list)):
+            raise ValueError('invalid application task/artifact/evidence')
+    elif kind == 'task.delivery_recorded':
+        if (value.get('decision') not in {'accept','withdraw'} or
+                not all(isinstance(value.get(k), str) and value[k] for k in ('real_task_id','message_id','input_sha256'))
+                or not isinstance(value.get('artifact'), dict) or not isinstance(value.get('application_ids'), list)):
+            raise ValueError('invalid delivery binding')
+
+
 def _events(conn, kind, candidate_id=None):
-    sql, args = "SELECT * FROM events WHERE event_type=?", [kind]
-    if candidate_id is not None:
-        sql += " AND task_id=?"
-        args.append(candidate_id)
-    return [dict(json.loads(r["payload_json"]), event_id=r["event_id"], sequence=r["sequence"])
-            for r in conn.execute(sql + " ORDER BY sequence", args)]
+    from .delivery_events import rows
+    events, _ = rows(conn, (kind,), _event_payload)
+    return [dict(e['value'], event_id=e['event_id'], sequence=e['sequence'])
+            for e in events if candidate_id is None or e['task_id'] == candidate_id]
+
+
+def payload_problems(conn):
+    from .delivery_events import rows
+    return rows(conn, ('memory.application_recorded','task.delivery_recorded'), _event_payload)[1]
 
 
 def _chain(conn):
@@ -75,28 +94,56 @@ def pending_index(store, problem_key=None, query=None):
     with store.read_only() as conn:
         chain = _chain(conn)
         entries = []
+        from .pending_matching import explain, LIMIT
         for row in conn.execute("SELECT task_id FROM memory_candidates WHERE status IN ('delivery_approved','revalidation_required') ORDER BY task_id"):
             try:
+                published = conn.execute("SELECT * FROM memory_candidates WHERE task_id=? AND status='revalidation_required' AND published_path IS NOT NULL", (row[0],)).fetchone()
+                if published and published["published_path"]:
+                    c = dict(published)
+                    source = dict(conn.execute("SELECT * FROM tasks WHERE id=?", (row[0],)).fetchone())
+                    p = policy(source)
+                    approved = latest_delivery(conn, c)
+                    from .validation_evidence import protect_final_decision
+                    protect_final_decision(conn, c)
+                    path = Path(c["published_path"])
+                    if path.is_symlink() or not path.is_file() or path.stat().st_size > 1_000_000:
+                        continue
+                    match = explain(problem_key, query, source["prompt"], p)
+                    if match is not None:
+                        entries.append({"candidate_id": c["task_id"], "task_id": c["task_id"], "title": source["prompt"],
+                            "candidate_sha256": c["evidence_sha256"], "delivery_review_id": approved["id"],
+                            "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                            "problem_key": p.get("problem_key", ""), "task_type": p.get("task_type"),
+                            "applicability_conditions": p.get("applicability_conditions"),
+                            "exclusions": p.get("exclusions"), "environment": p.get("environment"),
+                            "missing_conditions": [k for k in ("task_type", "applicability_conditions", "exclusions", "environment") if not p.get(k)],
+                            "conditions_require_task_check": True, "validation_state": "revalidation_required",
+                            "classification": "formal_revalidation_required", "source_path": str(path),
+                            "retrieval_blocker": "已隔离正式经验，需本人复验裁决后方可恢复普通复用；本条仅供发现",
+                            "evidence_command": "memory-trial-status " + c["task_id"],
+                            **match, "normal_retrieval": False})
+                    continue
                 c, approved, source, p, _ = _candidate(conn, row[0])
                 status = _verify_trial_qualification(conn, c)
                 if status.get("qualified") or status.get("state") in {"invalid_schema", "awaiting_check", "retired", "final_decision"}:
                     continue
-                exact = bool(problem_key and p.get("problem_key") == problem_key)
-                words = bool(query and query.strip().casefold() in source["prompt"].casefold())
-                if (problem_key or query) and not (exact or words):
+                match = explain(problem_key, query, source["prompt"], p)
+                if match is None:
                     continue
-                entries.append({"task_id": c["task_id"], "title": source["prompt"],
+                entries.append({"candidate_id": c["task_id"], "task_id": c["task_id"], "title": source["prompt"],
                     "candidate_sha256": c["evidence_sha256"], "delivery_review_id": approved["id"],
                     "problem_key": p.get("problem_key", ""), "task_type": p.get("task_type"),
                     "applicability_conditions": p.get("applicability_conditions"),
                     "exclusions": p.get("exclusions"), "environment": p.get("environment"),
                     "conditions_require_task_check": True, "validation_state": status["state"],
                     "source_path": c["staged_path"], "evidence_command": "memory-trial-status " + c["task_id"],
-                    "match_basis": "problem_key" if exact else "title" if words else "inventory",
+                    **match, "missing_conditions": [k for k in ("task_type", "applicability_conditions", "exclusions", "environment") if not p.get(k)],
                     "normal_retrieval": False})
             except (ValueError, OSError, UnicodeError):
                 continue  # Invalid objects never leak into the pending view.
-        entries.sort(key=lambda e: (e["match_basis"] != "problem_key", e["task_id"]))
+        entries.sort(key=lambda e: (-e["match_score"], e["task_id"]))
+        if problem_key or query:
+            entries = entries[:LIMIT]
         value = {"version": 1, "source": "candidate_database", "normal_retrieval": False,
                  "event_chain_head": chain["head"], "entries": entries}
         return dict(value, index_sha256=digest(value))
@@ -150,6 +197,9 @@ def record_application(store, value):
     if not isinstance(value, dict):
         raise ValueError("application must be a JSON object")
     _safe(value)
+    value = dict(value)
+    for field in ("validation_basis_policy_version", "formal_reuse", "application_id", "normal_retrieval", "trial_binding"):
+        value.pop(field, None)
     if any(not isinstance(value.get(k), dict) for k in ("real_task", "artifact", "conditions_checked")):
         raise ValueError("real_task/artifact/conditions_checked must be JSON objects")
     for key in ("candidate_id", "candidate_sha256", "application_location", "steps_applied", "deviations"):
@@ -160,6 +210,9 @@ def record_application(store, value):
         _text(value.get("conditions_checked", {}).get(key), "conditions_checked." + key)
     _text(value.get("artifact", {}).get("version"), "artifact.version")
     _application_files(value)
+    if "method_claims" in value:
+        from .validation_basis import normalize_method_claims
+        value = dict(value, method_claims=normalize_method_claims(value.get("method_claims"), value["steps_applied"]))
     application = dict(value, application_id=digest(value))
     application.pop("formal_reuse", None)  # Server-derived classification, never caller authority.
     with store.connect() as conn:
@@ -181,6 +234,9 @@ def record_application(store, value):
             return dict(application, normal_retrieval=True)
         _text(value.get("delivery_review_id"), "delivery_review_id")
         c, approved, _, p, _ = _candidate(conn, value["candidate_id"])
+        if p.get("kind") == "method":
+            application = dict(value, validation_basis_policy_version=1)
+            application["application_id"] = digest(application)
         if value["real_task"]["id"] == c["task_id"]:
             raise ValueError("a later real task must differ from the candidate-authoring task")
         if (value["candidate_sha256"], value["delivery_review_id"]) != (c["evidence_sha256"], approved["id"]):
@@ -329,6 +385,12 @@ def require_application_delivery(conn, candidate, verdict):
             raise ValueError("current isolated validation is not bound to this real-task application")
         if (app["candidate_sha256"], app["delivery_review_id"]) != (candidate["evidence_sha256"], latest_delivery(conn, candidate)["id"]):
             raise ValueError("application refers to a superseded candidate or initial review")
+        task_row = conn.execute("SELECT * FROM tasks WHERE id=?", (app["real_task"]["id"],)).fetchone()
+        if task_row:
+            from .validation_basis import _task_origin, _workspace
+            origin, _, _ = _task_origin(conn, app, _workspace(app["real_task"].get("workspace")))
+            if origin != "native_task":
+                raise ValueError("registered applications require a completed ordinary user task")
         _application_files(app)
         deliveries = [d for d in packet["deliveries"] if d["real_task_id"] == app["real_task"]["id"]]
         latest = deliveries[-1] if deliveries else {}
@@ -366,10 +428,12 @@ def final_binding(conn, candidate):
                    "reviews_sha256": digest({"native": reviews, "external": packet["external_reviews"]})})
 
 
-def record_delivery(store, value):
+def record_delivery(store, value, *, authority=None):
     """Attach a genuine user event. This function cannot create approval rows."""
     if not isinstance(value, dict):
         raise ValueError("delivery must be a JSON object")
+    from .delivery import require_decision
+    require_decision(value, authority)
     _safe(value)
     decision = value.get("decision", "accept")
     allowed = r"交付[。！!]?" if decision == "accept" else r"撤回验收[。！!]?" if decision == "withdraw" else r"(?!)"
@@ -387,8 +451,23 @@ def record_delivery(store, value):
                 raise ValueError("delivery message identity was already used for different input")
             return same_message
         apps = [a for a in _events(conn, "memory.application_recorded") if a["real_task"]["id"] == value["real_task_id"] and a["artifact"] == value.get("artifact")]
+        if 'expected' in value:
+            from .delivery import detail_tx
+            detail = detail_tx(conn, value['real_task_id'], value.get('artifact'))
+            if detail['expected'] != value['expected'] or value.get('real_task') != detail['real_task']:
+                raise ValueError('task/application/product version changed; refresh before deciding')
         if not apps:
-            raise ValueError("no actual applications bind this task and artifact version")
+            from .delivery import completed_task_tx, _ref_shape
+            real = value.get('real_task')
+            if not isinstance(real, dict):
+                raise ValueError('no actual applications; completed task workspace evidence required')
+            completed_task_tx(conn, value['real_task_id'], real, value.get('artifact'),
+                              verify_artifact_bytes=(decision == 'accept'))
+            if decision == 'accept':
+                _file(value['artifact'], Path(real['workspace']))
+            else:
+                _ref_shape(value['artifact'], Path(real['workspace']))
+            _file(value['delivery_record'], Path(real['workspace']))
         from .reuse_scores import settle_delivery_tx
         formal = [a for a in apps if a.get("formal_reuse")]
         pending = [a for a in apps if not a.get("formal_reuse")]
@@ -400,9 +479,25 @@ def record_delivery(store, value):
         latest = next((d for d in reversed(history) if d["real_task_id"] == value["real_task_id"]), None)
         if latest and (latest["decision"], latest["artifact"], latest["application_ids"]) == (decision, value["artifact"], app_ids):
             return latest
+        if decision == 'withdraw':
+            if not latest or latest['decision'] != 'accept' or latest['artifact'] != value['artifact']:
+                raise ValueError('withdrawal must select the current accepted product version')
+            supplied = value.get('withdraws_delivery_event_id')
+            if supplied is not None and supplied != latest['event_id']:
+                raise ValueError('withdrawal acceptance event is stale')
         delivery = dict(value, decision=decision, input_sha256=digest(value), application_ids=app_ids)
+        if decision == 'withdraw':
+            delivery['withdraws_delivery_event_id'] = latest['event_id']
         delivery_id = store._append_event_tx(conn, None, "task.delivery_recorded", delivery)
         for candidate_id in sorted({a["candidate_id"] for a in pending}):
-            attach_delivery_tx(store, conn, candidate_id, delivery_id, [a for a in pending if a["candidate_id"] == candidate_id])
+            candidate_applications = [a for a in pending if a["candidate_id"] == candidate_id]
+            attach_delivery_tx(store, conn, candidate_id, delivery_id, candidate_applications)
+            explicit = [a for a in candidate_applications if a.get("method_claims")]
+            if decision == "accept" and explicit:
+                from .validation_basis import propose_from_delivery_tx
+                event = conn.execute("SELECT created_at FROM events WHERE event_id=?", (delivery_id,)).fetchone()
+                for application in explicit:
+                    propose_from_delivery_tx(store, conn, candidate_id, application, delivery,
+                                             delivery_id, float(event["created_at"]))
         settle_delivery_tx(store, conn, delivery, delivery_id, formal)
         return dict(delivery, event_id=delivery_id)

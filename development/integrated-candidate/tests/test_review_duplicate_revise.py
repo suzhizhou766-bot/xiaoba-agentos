@@ -83,7 +83,8 @@ class DuplicateReviseStoreTest(unittest.TestCase):
     def test_reject_still_works_after_revision_requested(self):
         self.store.review_memory(self.task_id, "delivery", "revise", "调整", self.sha)
         rejected = self.store.review_memory(self.task_id, "delivery", "reject", "不予采用", self.sha)
-        self.assertEqual("delivery_rejected", rejected["status"])
+        # 卡07 C07-04：新初审拒绝写 retired（终态），不再写 delivery_rejected。
+        self.assertEqual("retired", rejected["status"])
         self.assertEqual(2, len(self._reviews()))
 
     def test_approve_still_works_after_revision_requested(self):
@@ -101,22 +102,30 @@ class ReturnedRevisionPageTest(unittest.TestCase):
     def test_returned_item_notice_and_last_time_are_rendered_in_list(self):
         source = render_list_source(self.html)
         script = """
-const els={rcSearch:{value:""},rcList:{innerHTML:""}};
+const els={rcSearch:{value:""},rcList:{innerHTML:"",querySelector:()=>null}};
 const $=id=>els[id]; const esc=s=>String(s); const day=t=>t?"2026-11-05":"d";
-const DECISION={}; const saved={}; let selected=null;
+const DECISION={}; const saved={}; let selected=null, returnedExpanded=false;
 let state={items:[
   {task_id:"t1",title:"已退回稿",status:"revision_requested",status_label:"待修改",created_at:0},
   {task_id:"t2",title:"待初审稿",status:"pending_delivery_review",status_label:"待初审",created_at:0}
 ],reviews:[{task_id:"t1",decision:"revise",created_at:1762300000}]};
 """ + source + """
 renderList();
-console.log(JSON.stringify({html:els.rcList.innerHTML, seq:[...els.rcList.innerHTML.matchAll(/class="rc-seq"[^>]*>([^<]+)</g)].map(m=>m[1])}));
+const html=els.rcList.innerHTML;
+const defaultOpen=html.includes("<details data-returned-list open>");
+const seq=[...html.matchAll(/class="rc-seq"[^>]*>([^<]+)</g)].map(m=>m[1]);
+$("rcSearch").value="已退回稿";
+renderList();
+const searchOpen=els.rcList.innerHTML.includes("<details data-returned-list open>");
+console.log(JSON.stringify({html,seq,defaultOpen,searchOpen}));
 """
         out = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=20, check=True)
         rendered = json.loads(out.stdout)
         self.assertIn("已退回，等作者修改", rendered["html"])
         self.assertIn("2026-11-05", rendered["html"])
-        self.assertEqual(["#1", "#2"], rendered["seq"])
+        self.assertEqual(["#1", "#2"], sorted(rendered["seq"]))
+        self.assertFalse(rendered["defaultOpen"])
+        self.assertTrue(rendered["searchOpen"])
         # 只有已退回那一条带提示；未退回的条目不受影响。
         self.assertEqual(1, rendered["html"].count("已退回，等作者修改"))
 

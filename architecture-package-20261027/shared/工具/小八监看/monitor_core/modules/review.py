@@ -60,6 +60,28 @@ def short(value, limit=160):
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def legacy_port_decision(previous, previous_alive, legacy_alive, probe_warning, manage, script_exists):
+    """卡 07 C07-02：把 review.py 的旧端口（默认 8797）分支的判定抽成纯函数，便于反例验证。
+
+    背景与解释（不是错误复用，未证实前不得盲目删除兼容）：
+      - 自 v1.5.5 起裁决后端由监看中心拉起在每次临时分配的端口；monitor.json 的
+        review.port（默认 8797）只是“旧独立服务端口”，用于发现别人是否又启动了旧服务。
+      - 若旧服务确实在 legacy_port 上监听，继续使用它可以避免两个后端同时改写第二大脑
+        待审队列导致脑裂；这是为防双写而保留的兼容探测，不是把 8797 当默认后端。
+      - 默认态（legacy_port 上没有服务）应走“自己拉起临时端口”；探测不可用时不另起。
+    返回动作字符串：adopt / use_legacy / defer_probe / spawn / missing_script / idle。
+    """
+    if previous and previous_alive:
+        return "adopt"
+    if probe_warning:
+        return "defer_probe"
+    if legacy_alive:
+        return "use_legacy"
+    if manage:
+        return "spawn" if script_exists else "missing_script"
+    return "idle"
+
+
 class ReviewModule(Module):
     id, title, kind = "review", "裁决中心", "view"
 
@@ -142,6 +164,7 @@ class ReviewModule(Module):
 
         端口监听检测不可用时返回 None 并把原因写进 self.probe_warning：不认领——不确定它还在不在。
         """
+        self.probe_warning = ""
         try:
             record = json.loads(self.state_file.read_text(encoding="utf-8"))
             pid, port = int(record["pid"]), int(record["port"])
@@ -208,22 +231,25 @@ class ReviewModule(Module):
                     self.mode = "idle"
             if self.mode == "idle":
                 previous = self._previous_backend()
-                if previous and self._alive(previous[1]):
+                previous_alive = bool(previous and self._alive(previous[1]))
+                legacy_alive = False if previous_alive else self._alive(self.legacy_port)
+                decision = legacy_port_decision(previous, previous_alive, legacy_alive,
+                                                self.probe_warning, self.manage, self.script.is_file())
+                if decision == "adopt":
                     self.adopted_pid, self.port = previous
                     self.mode = "adopted"
                     self.ctx.log(self.id, "re-adopted backend started by a previous run", pid=previous[0], port=previous[1])
-                elif self._alive(self.legacy_port):
+                elif decision == "use_legacy":
                     self.port, self.mode = self.legacy_port, "external"
                     self.ctx.log(self.id, "legacy standalone review service is running; using it", "warning", port=self.port)
-                elif self.probe_warning:
+                elif decision == "defer_probe":
                     # 端口监听检测不可用：上一次留下的后端可能还在监听，认不出它就绝不另起一个
                     self.ctx.log(self.id, "listener detection unavailable; not starting a backend", "warning",
                                  detail=self.probe_warning)
-                elif self.manage:
-                    if not self.script.is_file():
-                        self.ctx.log(self.id, "backend script missing", "error", script=str(self.script))
-                    else:
-                        self._spawn()
+                elif decision == "missing_script":
+                    self.ctx.log(self.id, "backend script missing", "error", script=str(self.script))
+                elif decision == "spawn":
+                    self._spawn()
             self._stop.wait(10)
 
     def reset(self):
@@ -298,11 +324,33 @@ class ReviewModule(Module):
         return [
             Route("GET", "/api/review/state", lambda req: self.state(), "read"),
             Route("GET", "/api/review/candidate", self.candidate, "read"),
+            Route("GET", "/api/review/deliveries", lambda req: self.deliveries(), "read"),
+            Route("GET", "/api/review/delivery", self.delivery_get, "read"),
+            Route("POST", "/api/review/delivery", self.delivery_post, "write"),
             Route("POST", "/api/review/decisions", self.decisions, "write"),
             Route("POST", "/api/review/sync", self.sync, "write"),
             Route("GET", "/api/review/retained", self.retained, "read"),
             Route("POST", "/api/review/retained/resolve", self.retained_resolve, "write"),
         ]
+
+    def deliveries(self):
+        return self.call("/api/deliveries", timeout=25)
+
+    def delivery_get(self, req):
+        task_id = req.param("id")
+        if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 256:
+            return 400, {"ok": False, "error": "任务编号无效"}
+        qs = "id=" + urllib.parse.quote(task_id.strip(), safe="")
+        ver = req.param("version")
+        if isinstance(ver, str) and ver.strip() and len(ver) <= 256:
+            qs += "&version=" + urllib.parse.quote(ver.strip(), safe="")
+        return self.call("/api/delivery?" + qs, timeout=25)
+
+    def delivery_post(self, req):
+        body = req.json()
+        if not isinstance(body, dict) or body.get("user_selected") is not True:
+            return 400, {"ok": False, "error": "需要本次明确选择交付或撤回"}
+        return self._post("/api/delivery", body, timeout=90)
 
     def candidate(self, req):
         task_id = req.param("id")

@@ -10,6 +10,7 @@
 import collections
 import datetime
 import json
+import math
 import os
 import socket
 import sqlite3
@@ -172,9 +173,14 @@ def short(s, n=40):
 class Monitor:
     def __init__(self, project, config_path, review=None):
         self.project = Path(project)
-        self.runtime = self.project / ".runtime"
-        self.db_path = self.runtime / "agentos.sqlite3"
         self.config_path = Path(config_path)
+        self.config_error = None
+        try:
+            self.runtime = cfg.agentos_runtime(self.config_path)
+            self.db_path = self.runtime / "agentos.sqlite3"
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            self.runtime = self.db_path = None
+            self.config_error = "AgentOS 配置不可读：" + type(exc).__name__
         self.review = review
         self.last_seq = None
         self.log_size = None
@@ -212,6 +218,17 @@ class Monitor:
             return self._snapshot()
 
     def _snapshot(self):
+        if self.config_error:
+            unavailable = {"available": False, "items": [], "problems": [self.config_error]}
+            return {"ts": now_iso(), "source": "live", "schema": SCHEMA_VERSION,
+                    "system": {"status": "down", "version": "?", "uptimeSec": None, "note": self.config_error},
+                    "metrics": {}, "nodes": [], "links": [], "agents": [], "events": [], "eventsMode": "replace",
+                    "reviewQueue": {"online": False, "pending": 0, "items": []},
+                    "ops": {"available": False, "schema": OPS_SCHEMA_VERSION,
+                            **{key: dict(unavailable) for key in ("todayLedger", "weeklyScores", "permanentRanking", "b19")},
+                            "poolNodes": {"available": False, "nodes": [], "enabled": 0, "healthy": 0,
+                                          "problems": [self.config_error]}},
+                    "nodeHealth": {"available": False, "source": "unavailable", "ready": None, "enabled": None}}
         t = time.time()
         nodes = {}
         facts = collections.defaultdict(dict)
@@ -254,6 +271,12 @@ class Monitor:
         runs_by_agent = collections.Counter()
         running_by_agent = {}
         route_counts = collections.Counter()
+        ops = {"available": False, "schema": OPS_SCHEMA_VERSION,
+               "todayLedger": {"available": False, "items": [], "problems": ["数据库不可读"]},
+               "weeklyScores": {"available": False, "week_start": None, "items": [], "problems": ["数据库不可读"]},
+               "permanentRanking": {"available": False, "items": [], "problems": ["数据库不可读"]},
+               "b19": {"available": False, "items": [], "problems": ["数据库不可读"]},
+               "poolNodes": {"available": False, "nodes": [], "healthy": 0, "enabled": 0, "problems": ["数据库不可读"]}}
         try:
             con = self.connect()
             tcols = self.columns(con, "tasks")
@@ -334,6 +357,14 @@ class Monitor:
             self.last_seq = max_seq
             for r in con.execute("SELECT sequence, task_id, event_type, payload_json, created_at FROM events ORDER BY sequence DESC LIMIT 60"):
                 events_out.append(self.format_event(r))
+            # 卡 07 补充投影：复用同一只读连接，绝不写库、不派活、不调模型。
+            # 每个投影自带 available 标志与 problems，API 不可用与数量 0 明确区分。
+            ops = {"available": True, "schema": OPS_SCHEMA_VERSION,
+                   "todayLedger": today_ledger(con),
+                   "weeklyScores": weekly_agent_model_scores(con),
+                   "permanentRanking": permanent_total_ranking(con),
+                   "b19": b19_consecutive_failures(con),
+                   "poolNodes": dynamic_pool_nodes(con)}
             con.close()
         except Exception as e:  # 数据库不可读时仍返回其余状态
             warnings.append("数据库读取失败：%s" % e)
@@ -440,6 +471,16 @@ class Monitor:
 
         sys_status = "down" if not worker_up else ("warn" if gate_status in ("warn", "down") else "ok")
         healthy = sum(1 for n in ("agy_review", "dsh_review") if (health.get(n) or {}).get("status") in ("healthy", "ok"))
+        pool = ops["poolNodes"]
+        # 卡 07：全局节点健康以真实动态 Agent 池为准，removed 不计、旧固定双槽不再作为统计来源。
+        # pool 不可读时明确标记，而不是回退到旧的固定两槽当“健康”。
+        dynamic_node_health = {
+            "source": "agent_pool" if pool["available"] else "unavailable",
+            "ready": pool["healthy"] if pool["available"] else None,
+            "enabled": pool["enabled"] if pool["available"] else None,
+            "available": pool["available"],
+            "legacyFixedTwo": healthy,
+        }
         return {
             "ts": now_iso(),
             "source": "live",
@@ -453,6 +494,9 @@ class Monitor:
             "reviewQueue": rq,
             "events": events_out,
             "eventsMode": "replace",
+            # 卡 07 C07-03：新增只读投影，独立于旧字段，旧读者忽略即可。
+            "ops": ops,
+            "nodeHealth": dynamic_node_health,
         }
 
     def review_queue(self):
@@ -502,6 +546,341 @@ def fmt_dur(s):
     return "%d天%d时" % (d, h) if d else ("%d时%d分" % (h, m) if h else "%d分" % m)
 
 
+# ---------------------------------------------------------------------------
+# 卡 07 C07-03：运行总览补充投影。全部只读，不调用 CLI、不改库、不派活、不调模型。
+# 每个投影都区分“API 不可用 / 数量 0”两种状态，绝不把读不到缓存成假健康。
+# event payload 结构随版本变化，所以这里只做防御式解析，坏行跳过并在 problems 里可见。
+# ---------------------------------------------------------------------------
+SHANGHAI_ZONE = datetime.timezone(datetime.timedelta(hours=8))
+OPS_SCHEMA_VERSION = 1
+
+
+def _week_start(day):
+    """自然周（周一）起始 ISO 日期，Asia/Shanghai。"""
+    d = datetime.date.fromisoformat(day) if isinstance(day, str) else day
+    return (d - datetime.timedelta(days=d.weekday())).isoformat()
+
+
+def _op_available(items, problems, available=True):
+    """available 只表示“数据源可读”；坏行被隔离写进 problems，不等于不可用。"""
+    return {"available": available, "items": items, "problems": problems}
+
+
+def today_ledger(con, day=None, limit=200):
+    """今日台账：今天的任务、执行者、进度。只读 tasks + agent_runs。
+
+    available=False 表示读不到（表/列缺失或查询失败），与“今天 0 个任务”严格区分。
+    """
+    day = day or datetime.datetime.now(SHANGHAI_ZONE).date().isoformat()
+    problems = []
+    try:
+        tcols = [r[1] for r in con.execute("PRAGMA table_info(tasks)")]
+        if not tcols:
+            return _op_available([], ["tasks 表不可读"], available=False)
+        t_id = pick(tcols, "task_id", "id")
+        t_title = pick(tcols, "title", "summary", "prompt")
+        t_status = pick(tcols, "status")
+        t_created = pick(tcols, "created_at", "submitted_at")
+        t_attempts = pick(tcols, "attempts")
+        t_max = pick(tcols, "max_attempts")
+        if not (t_id and t_status and t_created):
+            return _op_available([], ["tasks 缺少台账所需列"], available=False)
+        day_start = datetime.datetime.combine(datetime.date.fromisoformat(day), datetime.time.min, tzinfo=SHANGHAI_ZONE).timestamp()
+        day_end = day_start + 86400
+        cursor = con.execute(
+            "SELECT %s FROM tasks WHERE (typeof(%s) IN ('real','integer') AND %s>=? AND %s<?) "
+            "OR %s LIKE ? ORDER BY %s DESC LIMIT ?" % (
+                ", ".join(c for c in {t_id, t_title, t_status, t_created, t_attempts, t_max} if c),
+                t_created, t_created, t_created, t_created, t_created),
+            (day_start, day_end, day + "%", limit))
+        cols = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        acols = [r[1] for r in con.execute("PRAGMA table_info(agent_runs)")]
+        a_name = pick(acols, "agent_name", "agent")
+        a_task = pick(acols, "task_id")
+        a_status = pick(acols, "status")
+        executors = {}
+        if a_name and a_task:
+            try:
+                where = "status='running'" if a_status else "1=0"
+                for r in con.execute("SELECT %s,%s FROM agent_runs WHERE %s" % (a_task, a_name, where)):
+                    executors.setdefault(str(r[0]), []).append(str(r[1]))
+            except sqlite3.Error as exc:
+                problems.append("执行者读取跳过：" + type(exc).__name__)
+        ledger = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            tid = str(d.get(t_id))
+            ledger.append({
+                "task_id": tid[:8],
+                "title": short(d.get(t_title)) if t_title else "",
+                "status": d.get(t_status),
+                "executor": executors.get(tid, []),
+                "attempts": d.get(t_attempts) if t_attempts else None,
+                "max_attempts": d.get(t_max) if t_max else None,
+                "progress": ("%s/%s" % (d.get(t_attempts), d.get(t_max))) if (t_attempts and t_max) else (d.get(t_status) or "—"),
+                "created": ts_text(d.get(t_created)),
+            })
+        return _op_available(ledger, problems)
+    except sqlite3.Error as exc:
+        return _op_available([], ["台账读取失败：" + type(exc).__name__], available=False)
+
+
+def _finite_number(val):
+    if type(val) not in (int, float):
+        return False
+    try:
+        return math.isfinite(val)
+    except OverflowError:
+        return False
+
+
+def _event_payloads(con, event_type, problems):
+    for row in con.execute("SELECT sequence,created_at,payload_json FROM events WHERE event_type=? ORDER BY sequence", (event_type,)):
+        try:
+            value = json.loads(row["payload_json"])
+            if not isinstance(value, dict):
+                raise ValueError("事件不是对象")
+            yield value, row["created_at"]
+        except (ValueError, TypeError, OverflowError):
+            problems.append("事件 %s 结构无效，已隔离" % row["sequence"])
+
+
+def _assessments(con):
+    """Use the release-owned ledger audit; never infer scores from raw revisions."""
+    try:
+        from xiaoba_agentos.task_scores import audit_ledger_tx
+        if not exists_table(con, "events"):
+            return [], ["events 表不可读"], False
+        audit = audit_ledger_tx(con)
+        problems = list(audit["problems"])
+        rows = []
+        for value in audit["valid_rows"]:
+            if value.get("outcome") == "void":
+                continue
+            if (not all(isinstance(value.get(k), str) and value[k].strip()
+                        for k in ("source_ref", "node_id", "task_id", "week_start", "role"))
+                    or value.get("role") not in ("review", "collaborate")
+                    or value.get("model") is not None and not isinstance(value["model"], str)):
+                problems.append("评分 %s 身份字段无效，已隔离" % value["id"])
+                continue
+            rows.append(value)
+        return rows, problems, audit["reason"] != "chain_invalid"
+    except (ImportError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+        return [], ["评分账本核验不可用：" + type(exc).__name__], False
+
+
+def weekly_agent_model_scores(con, day=None):
+    """Aggregate only the latest audited nonvoid assessment for each task/node/role."""
+    day = day or datetime.datetime.now(SHANGHAI_ZONE).date().isoformat()
+    start = _week_start(day)
+    rows, problems, available = _assessments(con)
+    groups = {}
+    for current in rows:
+        if current["week_start"] != start:
+            continue
+        role, reviewer, model = current["role"], current["source_ref"], current.get("model") or "未登记模型"
+        group = groups.setdefault((role, reviewer, model), {
+            "role": role, "reviewer": reviewer, "model": model,
+            "points": 0, "tasks": 0, "good_tasks": 0})
+        group["points"] += current["points"]
+        group["tasks"] += 1
+        group["good_tasks"] += current["points"]
+    ranking = list(groups.values())
+    for group in ranking:
+        group["success_rate"] = round(group["good_tasks"] / group["tasks"], 4)
+    ranking.sort(key=lambda g: (-g["points"], -g["success_rate"], g["reviewer"], g["model"]))
+    return {"available": available, "week_start": start, "items": ranking, "problems": problems}
+
+
+def permanent_total_ranking(con):
+    """正式经验永久总分排名：支持撤回冲正（memory.reuse_reversed）及重新接受，校验真实交付/撤回绑定。只读。"""
+    problems, scores = [], {}
+    try:
+        if not exists_table(con, "events"):
+            return _op_available([], ["events 表不可读"], available=False)
+        deliveries = {}
+        for drow in con.execute(
+            "SELECT sequence,event_id,payload_json FROM events WHERE event_type='task.delivery_recorded' ORDER BY sequence"
+        ).fetchall():
+            try:
+                dval = json.loads(drow["payload_json"])
+                d_apps = dval.get("application_ids") if isinstance(dval, dict) else None
+                if (not isinstance(dval, dict)
+                        or not isinstance(drow["event_id"], str) or not drow["event_id"]
+                        or dval.get("decision") not in ("accept", "withdraw")
+                        or not all(isinstance(dval.get(k), str) and dval[k] for k in ("real_task_id", "message_id", "input_sha256"))
+                        or not isinstance(dval.get("artifact"), dict)
+                        or not isinstance(d_apps, list)
+                        or not all(isinstance(aid, str) and aid for aid in d_apps)):
+                    raise ValueError("交付事件字段无效")
+                deliveries[drow["event_id"]] = dval
+            except (ValueError, TypeError, KeyError, OverflowError):
+                problems.append("事件 %s 交付记录无效，已隔离" % drow["sequence"])
+        active = {}
+        reversed_ids = set()
+        rows = con.execute(
+            "SELECT sequence,event_id,event_type,payload_json FROM events "
+            "WHERE event_type IN ('memory.reuse_scored','memory.reuse_reversed') ORDER BY sequence"
+        ).fetchall()
+        for row in rows:
+            try:
+                value = json.loads(row["payload_json"])
+                if not isinstance(value, dict):
+                    raise ValueError("事件不是对象")
+                kind = row["event_type"]
+                source = value.get("source_task_id")
+                task = value.get("real_task_id")
+                if not isinstance(source, str) or not source.strip() or not isinstance(task, str) or not task.strip():
+                    problems.append("复用分事件字段无效，已跳过")
+                    continue
+                key = (task, source)
+                if kind == "memory.reuse_scored":
+                    score = value.get("score")
+                    if (type(score) is not int or score not in (0, 1)
+                            or not _finite_number(value.get("used_at"))):
+                        problems.append("复用分事件字段无效，已跳过")
+                        continue
+                    deliv_eid = value.get("delivery_event_id")
+                    if "delivery_event_id" in value or "application_ids" in value:
+                        app_ids = value.get("application_ids")
+                        delivery = deliveries.get(deliv_eid) if isinstance(deliv_eid, str) else None
+                        if (not isinstance(deliv_eid, str) or not deliv_eid
+                                or not isinstance(app_ids, list) or not app_ids
+                                or not all(isinstance(aid, str) and aid for aid in app_ids)
+                                or len(set(app_ids)) != len(app_ids)
+                                or not isinstance(value.get("source_sha256"), str) or len(value["source_sha256"]) != 64
+                                or not delivery or delivery.get("decision") != "accept"
+                                or delivery.get("real_task_id") != task
+                                or not set(app_ids) <= set(delivery.get("application_ids", []))):
+                            problems.append("复用分缺少有效交付绑定，已隔离")
+                            continue
+                    if key in active:
+                        problems.append("重复复用分事件，已跳过")
+                        continue
+                    active[key] = {
+                        "event_id": row["event_id"],
+                        "score": score,
+                        "delivery_event_id": deliv_eid if isinstance(deliv_eid, str) else None,
+                    }
+                    item = scores.setdefault(source, {"source_task_id": source, "score": 0, "used": 0})
+                    item["score"] += score
+                    item["used"] += 1
+                else:
+                    prior = active.get(key)
+                    contrib = value.get("contribution")
+                    score_eid = value.get("score_event_id")
+                    deliv_eid = value.get("delivery_event_id")
+                    withdrawal = deliveries.get(deliv_eid) if isinstance(deliv_eid, str) else None
+                    withdraws_id = value.get("withdraws_delivery_event_id")
+                    if (not prior or not isinstance(score_eid, str) or score_eid != prior["event_id"]
+                            or score_eid in reversed_ids
+                            or type(contrib) is not int or contrib not in (0, 1)
+                            or contrib != prior["score"]
+                            or not isinstance(deliv_eid, str) or not deliv_eid
+                            or not withdrawal or withdrawal.get("decision") != "withdraw"
+                            or withdrawal.get("real_task_id") != task
+                            or not isinstance(withdraws_id, str) or not withdraws_id
+                            or withdrawal.get("withdraws_delivery_event_id") != withdraws_id
+                            or (prior.get("delivery_event_id") is not None and prior.get("delivery_event_id") != withdraws_id)):
+                        problems.append("复用冲正事件字段或撤回绑定无效，已隔离")
+                        continue
+                    reversed_ids.add(score_eid)
+                    active.pop(key, None)
+                    item = scores.setdefault(source, {"source_task_id": source, "score": 0, "used": 0})
+                    item["score"] = max(0, item["score"] - contrib)
+                    item["used"] = max(0, item["used"] - 1)
+            except (ValueError, TypeError, KeyError, OverflowError):
+                problems.append("事件 %s 结构无效，已隔离" % row["sequence"])
+                continue
+        ranking = list(scores.values())
+        ranking.sort(key=lambda x: (-x["score"], -x["used"], x["source_task_id"]))
+        return _op_available(ranking, problems)
+    except sqlite3.Error as exc:
+        return _op_available([], ["永久总分读取失败：" + type(exc).__name__], available=False)
+
+
+def b19_consecutive_failures(con):
+    """Latest audited assessments, ordered by original task completion, not correction time."""
+    rows, problems, available = _assessments(con)
+    streams = {}
+    for current in rows:
+        # Ledger insertion order breaks same-day ties for historical manual rows.
+        # Native tasks have an exact completion timestamp that corrections retain.
+        try:
+            run = con.execute("SELECT finished_at FROM agent_runs WHERE id=?", (current.get("run_id"),)).fetchone()
+            task = con.execute("SELECT updated_at FROM tasks WHERE id=?", (current["task_id"],)).fetchone()
+            raw_completed = run[0] if run and run[0] is not None else (task[0] if task else 0)
+            completed = raw_completed if _finite_number(raw_completed) else 0
+        except sqlite3.Error as exc:
+            return _op_available([], problems + ["B19 任务证据读取失败：" + type(exc).__name__], False)
+        key = (current["source_ref"], current.get("model") or "未登记模型")
+        streams.setdefault(key, []).append((current.get("completed_date", current.get("date", "")),
+                                           completed, current["points"] == 0))
+    items = []
+    for (reviewer, model), values in streams.items():
+        flags = [v[2] for v in sorted(values, key=lambda v: (v[0], v[1]))]
+        streak = 0
+        for flag in reversed(flags):
+            if not flag:
+                break
+            streak += 1
+        if streak:
+            items.append({"reviewer": reviewer, "model": model, "consecutive": streak,
+                          "total_unqualified": sum(flags), "total": len(flags)})
+    items.sort(key=lambda x: (-x["consecutive"], x["reviewer"]))
+    return _op_available(items, problems, available)
+
+
+def dynamic_pool_nodes(con):
+    """真实动态节点状态：从 ri_sources 读 Agent 池节点，removed 不计入可用。
+
+    返回 available、节点明细与可用计数；读不到返回 available=False，绝不回退成
+    旧的 AGY/DSH 固定双槽，也不用过期健康状态覆盖池节点新状态。
+    """
+    problems = []
+    try:
+        if not exists_table(con, "ri_sources"):
+            return {"available": False, "nodes": [], "healthy": 0, "enabled": 0,
+                    "problems": ["ri_sources 表不可读（未加载 Agent 池或只读连接失败）"]}
+        nodes = []
+        enabled = healthy = 0
+        for row in con.execute("SELECT id,data FROM ri_sources"):
+            try:
+                source = json.loads(row["data"])
+            except (ValueError, TypeError):
+                problems.append("节点记录解析失败，已跳过")
+                continue
+            if not isinstance(source, dict) or not isinstance(source.get("node"), dict):
+                problems.append("节点 %s 缺少动态节点资料，已隔离" % row["id"])
+                continue
+            node = source["node"]
+            if type(node.get("enabled")) is not bool or type(node.get("removed")) is not bool:
+                problems.append("节点 %s 启用状态无效，已隔离" % row["id"])
+                continue
+            removed = node["removed"]
+            on = node["enabled"] and not removed
+            test = node.get("test") if isinstance(node.get("test"), dict) else {}
+            ready = bool(test.get("status") == "passed")
+            if on:
+                enabled += 1
+                if ready:
+                    healthy += 1
+            nodes.append({"node_id": row["id"], "name": str(node.get("name") or row["id"])[:60],
+                          "model": node.get("model"), "enabled": on, "removed": removed,
+                          "ready": ready, "test_status": test.get("status")})
+        nodes.sort(key=lambda n: (n["removed"], not n["enabled"], n["node_id"]))
+        return {"available": True, "nodes": nodes, "healthy": healthy, "enabled": enabled,
+                "problems": problems}
+    except sqlite3.Error as exc:
+        return {"available": False, "nodes": [], "healthy": 0, "enabled": 0,
+                "problems": ["动态节点读取失败：" + type(exc).__name__]}
+
+
+def exists_table(con, table):
+    return bool(con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone())
+
+
 class OverviewModule(Module):
     id, title, kind = "overview", "运行总览", "view"
 
@@ -519,6 +898,8 @@ class OverviewModule(Module):
         return 200, self.monitor.snapshot()
 
     def health(self):
+        if self.monitor.config_error:
+            return {"status": "failed", "detail": self.monitor.config_error}
         if not self.monitor.db_path.exists():
             return {"status": "failed", "detail": "找不到 AgentOS 数据库：%s" % self.monitor.db_path}
         return {"status": "ok", "detail": "只读读取 AgentOS 运行数据"}

@@ -361,6 +361,77 @@ class PoolVoteReuseTests(unittest.TestCase):
             _submit_task(self.config, self.store, "TEST 验收丙", work_task_id=work,
                          no_work_task=True, host=self.host())
 
+    def test_release_acceptance_without_any_work_source_is_refused_at_submit(self):
+        # 卡 49 第四轮返工：验收 submit 既没 --work-task 也没 --no-work-task，
+        # 跑完整轮双审后构包才拒收。现在提交时用同一口径当场拒绝，且不污染库。
+        self.seed()
+        with self.assertRaisesRegex(ValueError, "发布验收任务必须声明来源工作任务"):
+            _submit_task(self.config, self.store, "TEST 验收无声明", experience_kind="audit",
+                         release_acceptance=True, host=self.host())
+        with self.store.read_only() as db:
+            self.assertEqual(0, db.execute("SELECT count(*) FROM tasks").fetchone()[0])
+
+        # 两种合法声明都能进入同一任务，冻结的 review_context 与构端口径一致。
+        work = _submit_task(self.config, self.store, "TEST 工作", needs_review=False)
+        declared = _submit_task(self.config, self.store, "TEST 验收甲", work_task_id=work,
+                                release_acceptance=True, host=self.host())
+        none = _submit_task(self.config, self.store, "TEST 验收乙", no_work_task=True,
+                            release_acceptance=True, host=self.host())
+        for task, expected in ((declared, ([work], False)), (none, ([], True))):
+            snapshot = json.loads(self.store.get_task(task)["execution_snapshot_json"])
+            self.assertIs(snapshot["review_context"]["release_acceptance"], True)
+            self.assertEqual(expected, declared_work_tasks(snapshot))
+
+    def test_release_acceptance_with_workflow_source_is_accepted_at_submit(self):
+        # declared_work_tasks 也读 workflow.work_task_id。预检的最小输入快照必须带上
+        # workflow，否则“发布验收 + workflow 来源声明”这个签名允许的合法组合会被误拒。
+        # 构包门禁同样按 declared_work_tasks 收，两侧口径一致。
+        self.seed()
+        work = _submit_task(self.config, self.store, "TEST 来源工作", needs_review=False)
+        plan = {"version": 1, "phase": "review", "agents": ["0"], "work_task_id": work}
+        task = _submit_task(self.config, self.store, "TEST 验收工作流来源",
+                            experience_kind="audit", release_acceptance=True,
+                            workflow=plan, host=self.host())
+        snapshot = json.loads(self.store.get_task(task)["execution_snapshot_json"])
+        self.assertEqual(plan, snapshot["workflow"])
+        self.assertIs(snapshot["review_context"]["release_acceptance"], True)
+        self.assertEqual(([work], False), declared_work_tasks(snapshot))
+        self.assertEqual('pending', self.store.get_task(task)['status'])
+
+    def _assert_rejected_before_retrieval(self, error_regex, **submit_kwargs):
+        # 用 method 任务（非 audit）强制走到 agent_contexts 检索分支；
+        # 若被拒绝的检查排在该调用之后，spy 会被触发，断言即失败。
+        with patch('xiaoba_agentos.cli.MemoryBridge') as bridge:
+            bridge.return_value.agent_contexts.return_value = {
+                'hits': [], 'contexts': {}, 'receipt': None}
+            bridge.return_value.render_hits.return_value = ''
+            with patch('xiaoba_agentos.cli.SkillRegistry') as skills:
+                skills.return_value.select_context.return_value = {
+                    'selected': [], 'context': '', 'context_sha256': 'TEST'}
+                with self.assertRaisesRegex(ValueError, error_regex):
+                    _submit_task(self.config, self.store, "TEST 提前拒绝", **submit_kwargs)
+                bridge.return_value.agent_contexts.assert_not_called()
+
+    def test_rejected_release_acceptance_does_not_call_agent_contexts(self):
+        # 缺失源：来源声明预检必须早于 MemoryBridge.agent_contexts()：后者可经
+        # formal_review.record_hits 写入 memory.formal_retrieved，知识检索最多等 30 秒。
+        self.seed()
+        self._assert_rejected_before_retrieval(
+            "发布验收任务必须声明来源工作任务", release_acceptance=True, host=self.host())
+
+    def test_invalid_work_task_id_is_rejected_before_agent_contexts(self):
+        # 无效源：work_task_id 不存在仍须在检索前拒绝，错误语义不变。
+        self.seed()
+        self._assert_rejected_before_retrieval(
+            "来源工作任务不存在", work_task_id="TEST-不存在的工作", host=self.host())
+
+    def test_conflicting_work_source_is_rejected_before_agent_contexts(self):
+        # 互斥冲突：work_task_id 与 no_work_task 只许声明一个，且在检索前拒绝。
+        self.seed()
+        work = _submit_task(self.config, self.store, "TEST 工作", needs_review=False)
+        self._assert_rejected_before_retrieval(
+            "只能声明一个", work_task_id=work, no_work_task=True, host=self.host())
+
     def test_pool_vote_without_review_receipt_fields_is_not_a_vote(self):
         self.seed()
         task = _submit_task(self.config, self.store, "TEST 审查", experience_kind="audit", host=self.host())

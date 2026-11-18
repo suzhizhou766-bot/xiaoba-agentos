@@ -21,6 +21,7 @@ from xiaoba_agentos.config import AppConfig
 from xiaoba_agentos.experience_workflow import trial_summary
 from monitor_core import config, logs
 from monitor_core.web import App, Context
+from xiaoba_review.agent_pool import AgentPool
 from xiaoba_review.store import ReviewStore, DecisionInbox, Conflict
 from xiaoba_review.backends import BackendRegistry, NativeDsh
 from xiaoba_review.monitor import OpenReviewModule
@@ -35,14 +36,81 @@ class FixtureMixin:
         self.native.initialize()
         self.store = ReviewStore(self.native, self.root / 'memory-outbox')
         self.inbox = DecisionInbox()
-        self.candidate = self.native.create_authored_candidate('方法夹具', '隔离测试，非真实经验。',
-                    self.root / 'memory-outbox', author='test', experience_kind='method')
-        self.native.review_memory(self.candidate['task_id'], 'delivery', 'approve', '仅测试初审', self.candidate['evidence_sha256'])
+        task_id = self.native.submit('历史候选隔离夹具', 2)
+        self.native.complete_manually(task_id, '仅测试：历史候选来源任务已完成')
+        candidate_path = self.root / 'memory-outbox' / f'{task_id}.md'
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+        candidate_path.write_text('隔离测试，非真实经验。', encoding='utf-8')
+        candidate_hash = __import__('hashlib').sha256(candidate_path.read_bytes()).hexdigest()
+        # Existing ingress tests exercise the legacy review contract, not new candidate admission.
+        self.native.stage_memory_candidate(task_id, str(candidate_path), candidate_hash, [])
+        self.candidate = {'task_id': task_id, 'staged_path': str(candidate_path),
+                          'evidence_sha256': candidate_hash}
+        self.native.review_memory(task_id, 'delivery', 'approve', '仅测试初审', candidate_hash)
         for reviewer, kind, ref in [('fixture-dsh', 'dsh', 'fixture-source-a'),
                                      ('fixture-peer', 'peer', 'fixture-source-b'),
                                      ('other-peer', 'peer', 'fixture-source-c')]:
             self.store.register_source({'reviewer_id': reviewer, 'kind': kind,
                 'source_ref': ref, 'provenance': '隔离测试夹具，未调用真实后台'})
+
+    def make_method_candidate(self):
+        """Create a method candidate through the J11b two-review value gate."""
+        import hashlib
+        from xiaoba_agentos.value_queue import defer_tx
+
+        task_id = self.native.submit('TEST method candidate for trial workflow', 2, snapshot={
+            'experience_policy': {'version': 1, 'kind': 'method', 'problem_key': 'TEST-review-ingress'},
+        })
+        self.native.complete_manually(task_id, 'TEST completed source task')
+        path = (self.root.resolve() / 'memory-outbox' / f'{task_id}.md').resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('TEST candidate for isolated validation fixture', encoding='utf-8')
+        candidate_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        with self.native.connect() as db:
+            defer_tx(db, task_id, {
+                'version': 1, 'staged_path': str(path), 'candidate_sha256': candidate_hash,
+                'source_task_ids': [], 'reason': 'no_scoring_source',
+            })
+
+        suffix = task_id[:8]
+        pool = AgentPool(self.store, BackendRegistry(self.store))
+        reviewers = []
+        for reviewer, kind in (
+            ('TEST-value-review-' + suffix, 'review'),
+            ('TEST-value-both-' + suffix, 'both'),
+        ):
+            source = pool.add({
+                'node_id': reviewer, 'name': reviewer, 'agent': reviewer,
+                'kind': kind, 'interface': 'cli', 'entry': str((self.root / reviewer).resolve()),
+                'model': 'TEST ' + reviewer, 'agent_type': 'other',
+            })
+            pool.change(reviewer, source['node']['revision'], 'toggle', True)
+            reviewers.append(reviewer)
+        request = self.store.create(
+            task_id, reviewers[0], reviewers[1], 'TEST value assessment before initial review',
+            [{'ref': str(path), 'sha256': candidate_hash}],
+            review_type='new_experience', value_review=True,
+        )
+        for assignment in request['assignments']:
+            card = assignment['card']
+            receipt = {key: card[key] for key in (
+                'review_request_id', 'assignment_id', 'reviewer_role', 'plan_revision',
+                'reviewer_id', 'source_ref', 'candidate_sha256', 'input_digest', 'card_digest',
+            )}
+            receipt.update({
+                'receipt_id': 'TEST-value-' + assignment['id'], 'verdict': 'FAIL',
+                'findings': 'TEST synthetic value score only; no model call or user approval',
+                'evidence_refs': [str(path)], 'review_type': 'new_experience', 'score': 8,
+                'applicability': 'TEST fixture only',
+                'started_at': time.time() - 1, 'finished_at': time.time(),
+            })
+            accepted = self.store.receive(receipt)
+            self.store.attest(accepted['id'], accepted['digest'], 'TEST verified fixture source')
+        self.store.deliver(self.inbox)
+        candidate = self.native.get_memory_candidate(task_id)
+        self.assertEqual('pending_delivery_review', candidate['status'])
+        self.native.review_memory(task_id, 'delivery', 'approve', 'TEST initial review', candidate_hash)
+        return {'task_id': task_id, 'staged_path': str(path), 'evidence_sha256': candidate_hash}
 
     def request(self, **kwargs):
         return self.store.create(self.candidate['task_id'], 'fixture-dsh', 'fixture-peer',
@@ -87,8 +155,11 @@ class ReviewTest(FixtureMixin, unittest.TestCase):
         self.assertEqual(self.count('memory_candidates'), 1)
         self.assertEqual(self.count('memory_reviews'), 1)
         with self.native.read_only() as db:
-            candidate = db.execute('SELECT * FROM memory_candidates').fetchone()
-            self.assertFalse(trial_summary(db, candidate)['ready'])
+            candidate = db.execute('SELECT * FROM memory_candidates WHERE task_id=?',
+                                   (self.candidate['task_id'],)).fetchone()
+            summary = trial_summary(db, candidate)
+            self.assertEqual('legacy', summary['kind'])
+            self.assertEqual([], summary['trials'])
         self.assertTrue(self.native.verify_event_chain()['ok'])
 
     def test_missing_dsh_or_peer_never_submits(self):
@@ -199,7 +270,8 @@ class ReviewTest(FixtureMixin, unittest.TestCase):
         self.assertEqual(self.count('ri_receipts'), 3)
         self.assertEqual(self.store.get(request['id'])['state'], 'submitted')
         packet = next(p for p in self.store.state()['decision_packets'] if p['current'])
-        self.assertFalse(packet['data']['all_pass'])
+        # C04-02: current seats both PASS → all_pass; historical FAIL stays in prior_failures only.
+        self.assertTrue(packet['data']['all_pass'])
         self.assertEqual(len(packet['data']['prior_failures']), 1)
         stale = next(a for a in replacement['assignments'] if not a['active'])
         payload = self.receipt(stale)
@@ -358,10 +430,11 @@ class HttpTest(FixtureMixin, unittest.TestCase):
 
     def test_http_resume_preserves_round_two_without_execution(self):
         from xiaoba_agentos.experience_workflow import advance_validation_round, verify_final_qualification
+        self.candidate = self.make_method_candidate()
         self.native.apply_validation_extension()
         sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'integrated-candidate'/'tests'))
         from fixtures_validation import native_trial
-        native_trial(self.native,self.candidate,False,runtime=self.root)
+        native_trial(self.native,self.candidate,False,card={'problem_key':'TEST-review-ingress'},runtime=self.root)
         with self.native.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             advance_validation_round(self.native,db,self.candidate['task_id'],{'failure_class':'tool_unavailable'})
@@ -371,12 +444,13 @@ class HttpTest(FixtureMixin, unittest.TestCase):
         self.assertEqual(self.fetch('/api/open-review/validation/resume',{'candidate_id':self.candidate['task_id']})[0],400)
 
     def test_http_bound_diff_is_idempotent_and_preserves_human_rejection(self):
+        self.candidate = self.make_method_candidate()
         self.native.apply_validation_extension()
         sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'integrated-candidate'/'tests'))
         from fixtures_validation import native_trial,bound_diff
         from xiaoba_agentos.experience_workflow import verify_final_qualification
-        native_trial(self.native,self.candidate,False,runtime=self.root)
-        native_trial(self.native,self.candidate,runtime=self.root)
+        native_trial(self.native,self.candidate,False,card={'problem_key':'TEST-review-ingress'},runtime=self.root)
+        native_trial(self.native,self.candidate,card={'problem_key':'TEST-review-ingress'},runtime=self.root)
         materials=bound_diff(self.native,self.candidate['task_id'])
         payload={'candidate_id':self.candidate['task_id'],'materials':materials}
         for _ in range(2):

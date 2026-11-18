@@ -26,11 +26,18 @@ def write(path, payload):
     path.write_bytes(payload if isinstance(payload, bytes) else payload.encode())
 
 
-def seal(package):
+def seal(package, bind_evidence=True):
     source = package / 'agentos'
     write(source / 'SOURCE_MANIFEST.json', switch.encoded({'algorithm': 'sha256', 'files': switch.source_files(source)}))
+    manifest_sha = switch.state(source / 'SOURCE_MANIFEST.json')['sha256']
     release = json.loads((package / 'RELEASE.json').read_bytes())
-    release['agentos_source_manifest_sha256'] = switch.state(source / 'SOURCE_MANIFEST.json')['sha256']
+    release['agentos_source_manifest_sha256'] = manifest_sha
+    ev = (release.get('acceptance') or {}).get('end_to_end_evidence')
+    if bind_evidence and isinstance(ev, dict) and 'source_manifest_sha256' in ev:
+        ev['source_manifest_sha256'] = manifest_sha
+        for c in ev.get('conclusions') or []:
+            if isinstance(c, dict) and 'manifest_sha256' in c:
+                c['manifest_sha256'] = manifest_sha
     write(package / 'RELEASE.json', switch.encoded(release))
     payload = ''.join(f'{sha}  ./{rel}\n' for rel, sha in switch.files(package).items() if rel != 'FILES.sha256')
     write(package / 'FILES.sha256', payload)

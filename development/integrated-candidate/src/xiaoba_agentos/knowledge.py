@@ -125,16 +125,17 @@ class KnowledgeCatalog:
 
     def retrieve_with_receipt(self, query: str) -> Dict[str, Any]:
         verified_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-        index_sha = self.index_sha256()
 
         if hasattr(self.config, "knowledge_enabled") and not self.config.knowledge_enabled:
             return {
                 "retrieval_status": "disabled",
                 "query": query,
                 "hits": [],
-                "index_sha256": index_sha,
+                "index_sha256": None,
                 "verified_at": verified_at,
             }
+
+        index_sha = self.index_sha256()
 
         report = self.verify()
         if not report.get("ok"):

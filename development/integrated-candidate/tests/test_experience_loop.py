@@ -8,14 +8,20 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fixtures_review import _config, _run_cli
+from fixtures_review import _admit_authored_candidate, _config, _run_cli
 from fixtures_validation import native_trial
 from xiaoba_agentos.experience_loop import (
-    pending_index, read_pending, record_application, record_delivery, application_packet,
+    pending_index, read_pending, record_application, record_delivery as _record_delivery, application_packet,
 )
 from xiaoba_agentos.experience_workflow import digest, verify_final_qualification, match_trials, trial_summary
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.store import EventStore
+
+
+def record_delivery(store, value):
+    from xiaoba_agentos.delivery import user_decision
+    return _record_delivery(store, value, authority=user_decision(value, channel="cli_user_declaration", explicit=True))
+
 
 
 class ExperienceLoopTests(unittest.TestCase):
@@ -33,6 +39,9 @@ class ExperienceLoopTests(unittest.TestCase):
         self.artifact["version"] = "v1"
         self.evidence = self.file("execution.txt", "TEST actual application assertions and execution log")
         self.delivery_record = self.file("delivery.md", "TEST user acceptance and task delivery record")
+        self.real_task_id = self.store.submit("TEST ordinary completed user task", 1,
+            snapshot={"task_purpose":"user_task", "experience_policy":{"version":1,"kind":"method","problem_key":"parse-fixture"}})
+        self.store.complete_manually(self.real_task_id, "TEST ordinary user task completed")
 
     def file(self, name, content):
         path = self.project / name
@@ -42,6 +51,7 @@ class ExperienceLoopTests(unittest.TestCase):
     def candidate(self, kind="method", approve=True):
         c = self.store.create_authored_candidate("TEST parse-fixture method", "TEST reusable method steps",
             self.cfg.runtime_dir / "memory-outbox", author="test", experience_kind=kind, problem_key="parse-fixture")
+        c = _admit_authored_candidate(self.store, c)
         if approve:
             self.store.review_memory(c["task_id"], "delivery", "approve", "TEST human initial review", c["evidence_sha256"])
         return c
@@ -50,18 +60,19 @@ class ExperienceLoopTests(unittest.TestCase):
         with self.store.read_only() as conn:
             review = conn.execute("SELECT id FROM memory_reviews WHERE task_id=? ORDER BY rowid DESC LIMIT 1", (c["task_id"],)).fetchone()[0]
         return {"candidate_id": c["task_id"], "candidate_sha256": c["evidence_sha256"], "delivery_review_id": review,
-            "real_task": {"id": "host:TEST-task-1", "problem_key": "parse-fixture", "task_type": "TEST parsing",
+            "real_task": {"id": self.real_task_id, "problem_key": "parse-fixture", "task_type": "TEST parsing",
                 "description": "TEST similar real task, not the candidate-authoring task", "workspace": str(self.project),
                 "authorization_ref": "TEST user request 1"},
             "conditions_checked": {"applicability": "TEST same input format", "exclusions": "TEST no excluded conditions",
                 "environment": "TEST local fixture environment"},
             "artifact": self.artifact, "application_location": "TEST parser step 2",
             "steps_applied": "TEST applied the candidate normalization steps", "deviations": "TEST no deviations",
-            "execution_evidence": [self.evidence]}
+            "execution_evidence": [self.evidence],
+            "method_claims": [{"claim": "TEST run the normalization steps", "class": "code"}]}
 
     def delivery(self, **changes):
         return dict({"origin": "user", "user_message": "交付", "message_id": "TEST-message-1",
-            "source_ref": "TEST explicit human event", "real_task_id": "host:TEST-task-1", "artifact": self.artifact,
+            "source_ref": "TEST explicit human event", "real_task_id": self.real_task_id, "artifact": self.artifact,
             "delivery_record": self.delivery_record}, **changes)
 
     def trial(self, c, app, passed=True):
@@ -98,7 +109,7 @@ class ExperienceLoopTests(unittest.TestCase):
         self.assertEqual(self.count("events"), before)
         self.assertEqual(self.count("memory_reuse"), 0)
         self.assertFalse(MemoryBridge(self.cfg, self.store)._database_active({"source_task_id": c["task_id"]}))
-        self.assertEqual(match_trials(self.store, "parse-fixture"), [{k: entry[k] for k in ("task_id", "title", "candidate_sha256")}])
+        self.assertEqual(match_trials(self.store, "parse-fixture"), [entry])
 
     def test_index_excludes_unapproved_rule_drift_and_ready_candidates(self):
         self.candidate(approve=False)
@@ -134,6 +145,33 @@ class ExperienceLoopTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 record_application(self.store, value)
         self.assertEqual(self.event_count("memory.application_recorded"), 0)
+
+    def test_client_cannot_inject_formal_reuse_classification(self):
+        c = self.candidate()
+        value = self.application(c)
+        value["formal_reuse"] = True
+        application = record_application(self.store, value)
+        self.assertNotIn("formal_reuse", application)
+        event = [item for item in self.packet(c)["applications"] if item["application_id"] == application["application_id"]][0]
+        self.assertNotIn("formal_reuse", event)
+
+    def test_withdrawal_does_not_propose_positive_validation_basis(self):
+        c = self.candidate()
+        task = self.store.submit("TEST ordinary task", 1, snapshot={"task_purpose": "user_task",
+            "experience_policy": {"version": 1, "kind": "method", "problem_key": "parse-fixture"}})
+        self.store.complete(task, "TEST ordinary result", expected_attempt=0)
+        application_value = self.application(c)
+        application_value["real_task"]["id"] = task
+        application_value["method_claims"] = [{"claim": "TEST inspect the accepted artifact", "class": "artifact"}]
+        record_application(self.store, application_value)
+        delivery_value = self.delivery(real_task_id=task)
+        record_delivery(self.store, delivery_value)
+        withdrawn = dict(delivery_value, user_message="撤回验收", message_id="TEST-message-withdraw",
+                         decision="withdraw")
+        result = record_delivery(self.store, withdrawn)
+        self.assertEqual("withdraw", result["decision"])
+        self.assertEqual(1, self.event_count("memory.validation_basis_proposed"))
+        self.assertEqual(2, self.event_count("task.delivery_recorded"))
 
     def test_real_execution_and_delivery_return_to_original_for_human_final(self):
         c = self.candidate()
@@ -280,7 +318,7 @@ class ExperienceLoopTests(unittest.TestCase):
         code, app = _run_cli(["--config", str(self.cfg.path), "memory-application-record", "--receipt", str(path)])
         self.assertEqual(code, 0, app)
         path.write_text(json.dumps(self.delivery()))
-        code, receipt = _run_cli(["--config", str(self.cfg.path), "memory-delivery-record", "--receipt", str(path)])
+        code, receipt = _run_cli(["--config", str(self.cfg.path), "memory-delivery-record", "--user-decision", "--receipt", str(path)])
         self.assertEqual(code, 0, receipt)
         self.assertEqual(self.count("work_sessions"), 0)
         self.assertEqual(self.count("agent_runs"), 0)
@@ -312,7 +350,7 @@ class ExperienceLoopTests(unittest.TestCase):
         record_delivery(self.store, self.delivery(message_id="TEST-withdraw", user_message="撤回验收", decision="withdraw"))
         record_delivery(self.store, self.delivery(message_id="TEST-reaccept"))
         self.assertTrue(self.gate(c)["qualified"])
-        with self.assertRaisesRegex(ValueError, "current application"), self.store.publication_transaction(c["task_id"]):
+        with self.assertRaisesRegex(ValueError, "current validation basis"), self.store.publication_transaction(c["task_id"]):
             pass
 
     def test_failed_reviews_and_execution_remain_attached_to_original(self):
@@ -346,7 +384,7 @@ class ExperienceLoopTests(unittest.TestCase):
         for key in ("origin", "message_id", "user_message"):
             value.pop(key)
         path.write_text(json.dumps(value))
-        args = ["--config", str(self.cfg.path), "intake", "交付", "--message-id", "TEST-intake-delivery", "--delivery-receipt", str(path)]
+        args = ["--config", str(self.cfg.path), "intake", "交付", "--user-decision", "--message-id", "TEST-intake-delivery", "--delivery-receipt", str(path)]
         code, receipt = _run_cli(args)
         self.assertEqual(code, 0, receipt)
         self.assertEqual(receipt["status"], "delivery_recorded")
@@ -384,6 +422,39 @@ class ExperienceLoopTests(unittest.TestCase):
         self.assertIn("approve", view()["allowed_decisions"])
         record_delivery(self.store, self.delivery(message_id="TEST-withdraw", user_message="撤回验收", decision="withdraw"))
         self.assertNotIn("approve", view()["allowed_decisions"])
+
+    def test_center_exposes_approve_only_for_a_valid_pending_basis_confirmation(self):
+        from test_trial_review_center import module
+        center = object.__new__(module("server").Center)
+        center.vault = self.root / "vault"
+        item = {
+            "task_id": "TEST-candidate", "status": "pending_final_review",
+            "evidence_sha256": "a" * 64, "updated_at": 1, "created_at": 1,
+            "prompt": "TEST review item",
+        }
+        basis = {
+            "status": "proposed", "route": "combined",
+            "required_checks": ["real_task_acceptance", "sandbox"],
+        }
+        valid = center.item(dict(item, experience_validation={
+            "required": True, "ready": False,
+            "state": "validation_basis_confirmation_required", "validation_basis": basis,
+        }))
+        self.assertIn("approve", valid["allowed_decisions"])
+        self.assertEqual("待终审 · 真实依据待确认", valid["status_label"])
+
+        unqualified = center.item(dict(item, experience_validation={
+            "required": True, "ready": False, "state": "awaiting_trial",
+            "validation_basis": basis,
+        }))
+        self.assertNotIn("approve", unqualified["allowed_decisions"])
+
+        malformed = dict(basis, required_checks=["real_task_acceptance"])
+        invalid = center.item(dict(item, experience_validation={
+            "required": True, "ready": False,
+            "state": "validation_basis_confirmation_required", "validation_basis": malformed,
+        }))
+        self.assertNotIn("approve", invalid["allowed_decisions"])
 
     def test_external_review_history_remains_visible_after_later_failure(self):
         from test_review_ingress_native_integration import ReviewIngressNativeIntegrationTests as Fixture

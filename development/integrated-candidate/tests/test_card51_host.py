@@ -2,6 +2,7 @@
 import hashlib
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import test_card37 as fixture
@@ -32,7 +33,7 @@ class Card51HostTests(unittest.TestCase):
     def test_host_and_worker_discard_low_value_but_still_score_accepted_work(self):
         self.seed(2)
         def low(resource,task_id,step_code,instruction,materials):
-            return {'status':'completed','body':'审查结论：FAIL\n评分：4\nTEST low value evidence','execution_evidence':{}}
+            return {'status':'completed','body':'审查结论：FAIL\n评分：4\n审查类型：new_experience\n适用条件：TEST only\n证据引用：task:'+task_id+'\nTEST low value evidence','execution_evidence':{}}
         with patch.object(_FakePoolResource,'run_task',low):
             task=self.submit('method',host=self.host())
             # With two reviewers this is the ordinary Worker path.
@@ -40,40 +41,61 @@ class Card51HostTests(unittest.TestCase):
         self.assertEqual('completed',result['status'],result)
         self.assertEqual('discarded',result['delivery_review']['status'])
         self.assertIsNone(self.store.get_memory_candidate(task))
-        self.assertNotIn('TEST low value evidence',result['result'])
+        settled = self.store.get_task(task)
+        self.assertIn('TEST low value evidence', settled['result'])
+        self.assertEqual(result['result'], settled['result'])
+        outbox = self.config.runtime_dir / 'memory-outbox'
+        self.assertFalse((outbox / f'{task}.md').exists())
+        self.assertFalse((outbox / f'{task}.md.status.json').exists())
+        self.assertEqual('value_discarded', json.loads(settled['provenance_json'])['memory_disposition'])
         self.assertEqual(2,len(self.scores()))
         self.assertTrue(all(r['points']==1 for r in self.scores()))
 
-    def test_host_low_value_fallback_and_score_failure_rollback(self):
+    def test_legacy_host_value_queue_failure_rolls_back_and_retry_stays_queued(self):
         self.seed()
         def low(resource,task_id,step_code,instruction,materials):
-            return {'status':'completed','body':'审查结论：PASS\n评分：4\nTEST accepted low value','execution_evidence':{}}
+            return {'status':'completed','body':'审查结论：PASS\nTEST accepted low value','execution_evidence':{}}
         with patch.object(_FakePoolResource,'run_task',low):
-            task=self.submit('method',host=self.host())
+            # An already frozen v1 task retains its original receipt contract.
+            task=self.store.submit('TEST legacy value review', 2, snapshot={
+                'needs_review': True, 'review_context': {'host': self.host()},
+                'experience_policy': {'version': 1, 'kind': 'method'},
+            })
             self.assertEqual('awaiting_host',Orchestrator(self.config,self.store).run_once()['status'])
         receipt=dict(self.receipt(task),score=4)
         with self.store.connect() as db:
-            db.execute("CREATE TRIGGER fail_score BEFORE INSERT ON events WHEN NEW.event_type='task_scoring.assessed' BEGIN SELECT RAISE(ABORT,'TEST rollback'); END")
-        with self.assertRaises(Exception):complete_host(self.config,self.store,task,receipt)
+            db.execute("CREATE TRIGGER fail_score BEFORE INSERT ON events WHEN NEW.event_type='memory.value_unscored' BEGIN SELECT RAISE(ABORT,'TEST rollback'); END")
+        with self.assertRaises(Exception): complete_host(self.config,self.store,task,receipt)
         self.assertEqual('pending',self.store.get_task(task)['status'])
         with self.store.connect() as db:db.execute('DROP TRIGGER fail_score')
         result=complete_host(self.config,self.store,task,receipt)
-        self.assertEqual('discard',result['value_assessment']['decision'])
+        self.assertIsNone(result['value_assessment'])
+        self.assertEqual('completed', self.store.get_task(task)['status'])
         self.assertIsNone(self.store.get_memory_candidate(task))
+        queued=next(item for item in self.store.value_review_queue() if item['task_id']==task)
+        self.assertEqual('awaiting_value_review', self.store.value_candidate_status(task, queued['candidate_sha256']))
         self.assertEqual(1,self.scores()[0]['points'])
 
-    def test_host_combined_score_preserves_full_candidate_inside_same_transaction(self):
+    def test_host_completion_preserves_candidate_in_value_queue_until_pool_review(self):
         self.seed()
         def low(resource,task_id,step_code,instruction,materials):
-            return {'status':'completed','body':'审查结论：PASS\n评分：4\nTEST actual pool conclusion','execution_evidence':{}}
+            return {'status':'completed','body':'审查结论：PASS\n评分：4\n审查类型：new_experience\n适用条件：TEST only\n证据引用：task:'+task_id+'\nTEST actual pool conclusion','execution_evidence':{}}
         with patch.object(_FakePoolResource,'run_task',low):
             task=self.submit('method',host=self.host())
             self.assertEqual('awaiting_host',Orchestrator(self.config,self.store).run_once()['status'])
         result=complete_host(self.config,self.store,task,dict(self.receipt(task),score=8))
-        self.assertEqual('initial_review',result['value_assessment']['decision'])
-        candidate=self.store.get_memory_candidate(task)
-        from pathlib import Path
+        self.assertEqual('pool_plus_host', result['value_assessment']['review_mode'])
+        self.assertEqual('pending_delivery_review', result['candidate_status'])
+        candidate = self.store.get_memory_candidate(task)
+        self.assertEqual('pending_delivery_review', candidate['status'])
+        self.assertEqual([], [item for item in self.store.value_review_queue() if item['task_id']==task])
         body=Path(candidate['staged_path']).read_text()
         self.assertIn('TEST actual pool conclusion',body)
         self.assertIn('TEST 宿主实际结论',body)
-        self.assertNotIn('丢弃候选',body)
+        with self.store.read_only() as db:
+            assessment = json.loads(db.execute(
+                "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed'",
+                (task,),
+            ).fetchone()[0])
+        self.assertEqual(3, assessment['version'])
+        self.assertEqual('pool_plus_host', assessment['review_mode'])

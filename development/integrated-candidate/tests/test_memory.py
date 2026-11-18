@@ -495,7 +495,6 @@ class MemoryRetrievalLifecycleGateTest(unittest.TestCase):
         (self.vault / "AgentOS").mkdir(parents=True)
         self.store = EventStore(self.root / "agentos.sqlite3")
         self.store.initialize()
-        self.sha = hashlib.sha256(b"candidate-bytes").hexdigest()
         self.task_id = self.store.submit("source prompt", 1)
         self.store.complete_manually(self.task_id, "source result")
         self.note = self.vault / "AgentOS" / f"{self.task_id}.md"
@@ -507,6 +506,7 @@ class MemoryRetrievalLifecycleGateTest(unittest.TestCase):
             "---\n\n# 经验\n\n必须先把候选状态写进数据库。\n",
             encoding="utf-8",
         )
+        self.sha = hashlib.sha256(self.note.read_bytes()).hexdigest()
 
     def tearDown(self):
         self.tmp.cleanup()

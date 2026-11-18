@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
-from fixtures_review import _config
+from fixtures_review import _admit_authored_candidate, _config
 from fixtures_validation import native_trial, bound_diff
 from xiaoba_agentos.store import EventStore
 from xiaoba_agentos.experience_workflow import verify_final_qualification, complete_audit
@@ -26,6 +26,7 @@ class ReviewIngressNativeIntegrationTests(unittest.TestCase):
 
     def candidate(self):
         c=self.store.create_authored_candidate('TEST方法','仅测试证据连接',self.outbox,author='test',experience_kind='method')
+        c=_admit_authored_candidate(self.store,c)
         self.store.review_memory(c['task_id'],'delivery','approve','TEST初审',c['evidence_sha256']); return c
 
     def gate(self,c):

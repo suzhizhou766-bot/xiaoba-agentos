@@ -28,8 +28,11 @@ def complete_host(config, store, task_id, receipt, *, user_chose_host=False):
     checksum = hashlib.sha256(json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     staged = []
     try:
-        return _settle_host(config, store, task_id, receipt, checksum,
-                            user_chose_host=user_chose_host, staged_out=staged.append)
+        result = _settle_host(config, store, task_id, receipt, checksum,
+                              user_chose_host=user_chose_host, staged_out=staged.append)
+        if result.get('candidate_status') == 'value_discarded' and staged:
+            store.cleanup_discarded_candidate(task_id, str(staged[0]), result.get('candidate_sha256'))
+        return result
     except Exception:
         # 事务回滚后不留一个没有数据库行的候选文件；提交与否由数据库决定。
         if staged and not _settlement_committed(store, task_id):
@@ -51,9 +54,10 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
             if json.loads(old[0])['receipt_sha256'] != checksum:raise ValueError('同一任务已接收不同宿主回执')
             return {'status': 'completed', 'task_id': task_id, 'replayed': True}
         if task['status'] not in {'pending','retry'}:raise ValueError('宿主不能结算正在运行或已结束的任务')
-        if snapshot.get('experience_trial'):
-            # 受控验证的轮次由 complete_audit 推进；宿主结算不走这条线，放行会让轮次卡住。
-            raise ValueError('受控验证任务不能由宿主结算，请等池节点凑够审查结论')
+        trial = snapshot.get('experience_trial')
+        if trial and not needs_review(task):
+            # Execution-only trial shells still settle via complete_audit.
+            raise ValueError('受控验证执行任务不能由宿主结算，请等池节点凑够审查结论')
         context = execution_context(store, task, db)
         host = context.get('host')
         if not host or receipt.get('reviewer_id') != host['id']:raise ValueError('回执不属于本任务指定宿主')
@@ -68,11 +72,33 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
         produces_candidate = policy(task)['kind'] != 'audit'
         if produces_candidate and not store._candidate_gates_tx(db, task_id):
             raise ValueError('约束保留还没由用户释放，宿主不能结算这个任务')
+        from .value_scoring import requires_value_receipt, value_receipt_problem
+
+        def incomplete(reason):
+            if not requires_value_receipt(task):
+                raise ValueError(reason)
+            # Rejected evidence is retained separately, never a completion or
+            # an accepted receipt. The same receipt can be corrected and sent
+            # again without changing the frozen task or double settlement.
+            message = 'NEEDS_INFO: ' + reason
+            db.execute("UPDATE tasks SET status='pending',last_error=?,lease_until=NULL,updated_at=? WHERE id=?",
+                       (message, time.time(), task_id))
+            prior = db.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='host.receipt_needs_info' AND json_extract(payload_json,'$.receipt_sha256')=?",
+                               (task_id, checksum)).fetchone()
+            if not prior:
+                store._append_event_tx(db, task_id, 'host.receipt_needs_info', {
+                    'receipt_sha256': checksum, 'receipt': receipt,
+                    'verdict': 'NEEDS_INFO', 'reason': reason,
+                })
+            return {'status': 'needs_info', 'verdict': 'NEEDS_INFO', 'task_id': task_id,
+                    'reason': reason, 'candidate_status': 'none'}
         label = None
         verdict = None
         pool_runs = []
         if needs_review(task):
             if host['worked'] or host['author']:raise ValueError('宿主这次干过活或是作者，不能审查')
+            if host['id'] in set(context['excluded_ids']):
+                raise ValueError('宿主是本任务来源作者或执行者，不能自审补票')
             decision = select_reviewers(load_nodes(store), exclude_ids=set(context['excluded_ids']) | set(task_exclude_ids(task)),
                                         host=host, user_chose_host=user_chose_host)
             if not decision.get('host') or decision['route'] not in {'run','host_fallback'}:
@@ -84,9 +110,9 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                 run = votes.get(node['node_id'])
                 if not run or run['status'] != 'completed' or not _text(run['output']):
                     raise ValueError('池节点还没有交合格结论')
-                problem = review_vote_problem(run['output'])
+                problem = review_vote_problem(run['output'], task)
                 if problem:
-                    raise ValueError('池节点这一票不能当审查回执：' + problem)
+                    return incomplete('池节点这一票不能当审查回执：' + problem)
                 pool_runs.append(run)
             if decision['route'] != 'host_fallback' and len(pool_runs) < 1:raise ValueError('至少需要一份池节点结论')
             from .adapters import AgentResult
@@ -100,21 +126,32 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                 error = Orchestrator(config, store)._verify_settlement_receipts(task, results)
                 if error:raise ValueError(error)
             if not receipt.get('receipt_id') or receipt.get('verdict') not in {'PASS','FAIL','NEEDS_INFO'} or not _text(receipt.get('findings')):
-                raise ValueError('缺少有效审查正文、结论或回执ID，或违反B19')
+                return incomplete('缺少有效审查正文、结论或回执ID，或违反B19')
+            problem = value_receipt_problem(task, receipt)
+            if problem:
+                return incomplete(problem)
             refs = receipt.get('evidence_refs')
-            allowed = {'task:'+task_id}
-            work_id = snapshot.get('review_context', {}).get('work_task_id')
-            if work_id:allowed.add('task:'+work_id)
-            if not isinstance(refs,list) or not refs or any(not isinstance(ref,str) or ref not in allowed for ref in refs):
-                raise ValueError('证据引用未对应任务卡材料')
+            from .value_scoring import value_evidence
+            allowed_map = value_evidence(task)
+            if not isinstance(refs, list) or not refs:
+                return incomplete('证据引用未对应任务卡材料')
+            for item in refs:
+                ref_key = item.get('ref') if isinstance(item, dict) else item
+                if not isinstance(ref_key, str) or ref_key not in allowed_map:
+                    return incomplete('证据引用未对应任务卡材料')
+                if isinstance(item, dict):
+                    expected_sha = allowed_map[ref_key]
+                    sha = item.get('sha256')
+                    if not isinstance(sha, str) or len(sha) != 64 or (expected_sha is not None and sha != expected_sha):
+                        return incomplete('证据引用哈希与任务卡材料不符')
             score = receipt.get('score')
-            if type(score) not in (int,float) or not math.isfinite(score) or not 0 <= score <= 10:raise ValueError('评分无效')
+            if type(score) not in (int,float) or not math.isfinite(score) or not 0 <= score <= 10:return incomplete('评分无效')
             if receipt.get('review_type') not in {'new_experience','revalidation','reuse_change'} or not _text(receipt.get('applicability')):
-                raise ValueError('缺少审查类型、适用条件与限制')
-            if receipt.get('duplicate_of') is not None and not isinstance(receipt['duplicate_of'],str):raise ValueError('重复经验标识无效')
+                return incomplete('缺少审查类型、适用条件与限制')
+            if receipt.get('duplicate_of') is not None and not isinstance(receipt['duplicate_of'],str):return incomplete('重复经验标识无效')
             start, finish = receipt.get('started_at'), receipt.get('finished_at')
             if any(type(v) not in (int,float) or not math.isfinite(v) for v in (start,finish)) or not 0 < start <= finish <= time.time()+300:
-                raise ValueError('执行时间无效')
+                return incomplete('执行时间无效')
             label = decision.get('label')
             final = receipt['findings']
             if pool_runs:
@@ -131,32 +168,69 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                       'result_sha256': hashlib.sha256(final.encode()).hexdigest(), 'receipt_sha256': checksum,
                       'host_id': host['id'], 'pool_run_ids': [r['id'] for r in pool_runs], 'label': label}
         evidence_sha256 = None
+        stage_candidate = produces_candidate and (not needs_review(task) or receipt.get('verdict') == 'PASS')
         # Bind the host vote before evaluating admission, in this same locked
         # transaction. A failed staging or score write rolls this back too.
+        pool_run_digests = {
+            r['id']: hashlib.sha256((r.get('output') or '').encode()).hexdigest() for r in pool_runs
+        }
         store._append_event_tx(db, task_id, 'host.receipt_accepted', {'receipt_sha256': checksum, 'receipt': receipt,
-                               'user_chose_host': user_chose_host, 'label': label, 'pool_run_ids': provenance['pool_run_ids']})
-        from .value_scoring import native_value, record_tx, summary
-        assessment = native_value(db, task_id) if produces_candidate else None
-        record_tx(db, task_id, assessment)
-        if assessment and assessment['decision'] == 'discard':
-            final = summary(assessment)
-            produces_candidate = False
-            provenance['memory_disposition'] = 'value_discarded'
-            provenance['result_sha256'] = hashlib.sha256(final.encode()).hexdigest()
-        if produces_candidate:
+                               'user_chose_host': user_chose_host, 'label': label, 'pool_run_ids': provenance['pool_run_ids'],
+                               'pool_run_digests': pool_run_digests})
+        from .value_scoring import ConflictingValueReceipt, native_value
+        score_parse_error = False
+        try:
+            assessment = native_value(db, task_id) if stage_candidate else None
+        except ConflictingValueReceipt:
+            raise
+        except (ValueError, KeyError, TypeError, IndexError):
+            # Keep the completed work result; _insert_candidate_tx will place
+            # malformed scoring receipts in the value-review preparation queue.
+            assessment = None
+            score_parse_error = True
+        if stage_candidate:
             # The host vote is still uncommitted: pass the combined assessment
             # instead of reading only the pool vote on a second connection.
             staged = MemoryBridge(config, store).stage_experience(task_id, task['prompt'], final,
-                store.task_runs(task_id), value_assessment=assessment)
+                store.task_runs(task_id), value_assessment=assessment,
+                skip_value_scoring=score_parse_error)
             staged_out(staged)
             evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
             store._require_staged_evidence(str(staged), evidence_sha256)
         db.execute("UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
                    (final,json.dumps(provenance,ensure_ascii=False,sort_keys=True),time.time(),task_id))
         store._append_event_tx(db, task_id, 'task.completed', {'result_sha256': provenance['result_sha256'], 'manual': True})
-        if produces_candidate:
+        candidate_status = 'none'
+        if stage_candidate:
             source_task_ids = [str(hit.get('source_task_id')) for hit in snapshot.get('memory_hits', []) if hit.get('source_task_id')]
-            if store._insert_candidate_tx(db, task_id, str(staged), evidence_sha256, source_task_ids, time.time()):
+            admitted = store._insert_candidate_tx(db, task_id, str(staged), evidence_sha256, source_task_ids, time.time())
+            if admitted:
                 store._append_event_tx(db, task_id, 'memory.candidate_staged', {'evidence_sha256': evidence_sha256})
+                candidate_status = 'pending_delivery_review'
+            else:
+                from .value_queue import pending_items
+                pending = any(item['task_id'] == task_id
+                              and item.get('queue_status') == 'awaiting_value_review'
+                              for item in pending_items(db))
+                candidate_status = 'awaiting_value_review' if pending else 'value_discarded'
+        if trial and not produces_candidate:
+            # The host vote joins the audit and round advancement in the same
+            # transaction; the round reads the bound receipts itself.
+            store._append_event_tx(db, task_id, 'audit.settled', {'result_sha256': provenance['result_sha256'], 'host_vote': True})
+            from .experience_workflow import advance_validation_round, _table_exists
+            round_data = {
+                'task_id': task_id,
+                'candidate_sha256': trial.get('candidate_sha256'),
+                'delivery_review_id': trial.get('delivery_review_id'),
+                'plan_digest': trial.get('card_sha256'),
+                'execution': trial.get('execution'),
+                'execution_digest': trial.get('execution_sha256'),
+                'diff_explanation': (trial.get('card') or {}).get('diff_explanation'),
+            }
+            if _table_exists(db, 'experience_validation_lineages'):
+                advance_validation_round(store, db, trial['source_task_id'], round_data)
+            store._append_event_tx(db, trial['source_task_id'], 'memory.trial_review_settled',
+                                  {'task_id': task_id, 'host_vote': True})
         return {'status': 'completed', 'task_id': task_id, 'label': label,
-                'value_assessment': assessment}
+                'value_assessment': assessment, 'candidate_status': candidate_status,
+                'candidate_sha256': evidence_sha256}

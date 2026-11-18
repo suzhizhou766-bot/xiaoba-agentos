@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fixtures_review import _candidate_count, _config, _event_count, _sha
 from xiaoba_agentos.cli import execute_review, main
 from xiaoba_agentos.config import AppConfig
+from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.orchestrator import Orchestrator
 from xiaoba_agentos.output_hygiene import detect_reasoning_leak
 from xiaoba_agentos.store import EventStore
@@ -131,7 +132,7 @@ class SessionClosingTest(unittest.TestCase):
 
 
 class AuthoredCandidateTest(unittest.TestCase):
-    def test_candidate_enters_the_review_queue_without_ever_being_runnable(self):
+    def test_candidate_waits_for_value_review_without_ever_being_runnable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = _config(root)
@@ -143,16 +144,20 @@ class AuthoredCandidateTest(unittest.TestCase):
                 author="host_assistant", source_task_ids=[source], idempotency_key="rule-1")
             task = store.get_task(created["task_id"])
             self.assertEqual(("completed", "host_authored"), (task["status"], task["execution_mode"]))
-            candidate = store.get_memory_candidate(created["task_id"])
-            self.assertEqual("pending_delivery_review", candidate["status"])
-            self.assertEqual(candidate["evidence_sha256"], _sha(Path(candidate["staged_path"])))
-            self.assertEqual([source], json.loads(candidate["source_task_ids_json"]))
+            self.assertEqual("awaiting_value_review", created["status"])
+            self.assertIsNone(store.get_memory_candidate(created["task_id"]))
+            self.assertEqual("awaiting_value_review", store.value_candidate_status(
+                created["task_id"], created["evidence_sha256"]))
+            queued = next(item for item in store.value_review_queue()
+                          if item["task_id"] == created["task_id"])
+            self.assertEqual(created["evidence_sha256"], _sha(Path(queued["staged_path"])))
+            self.assertEqual([source], queued["source_task_ids"])
             self.assertEqual(1, _event_count(store, created["task_id"], "memory.candidate_authored"))
             self.assertEqual(0, _event_count(store, created["task_id"], "task.leased"))
             self.assertTrue(store.verify_event_chain()["ok"])
-            # It flows through the ordinary review path.
-            code, payload = execute_review(config, store, created["task_id"], "delivery", "approve", "")
-            self.assertEqual((0, "delivery_approved"), (code, payload["memory_status"]))
+            with self.assertRaises(KeyError):
+                store.review_memory(created["task_id"], "delivery", "approve", "must wait for value review",
+                                    created["evidence_sha256"])
             # A retry with the same key gets the same record back, and nothing is duplicated.
             # The replay has to carry the same content; a key reused for different
             # content is refused (see test_write_boundary.py).
@@ -160,7 +165,7 @@ class AuthoredCandidateTest(unittest.TestCase):
                                                     author="host_assistant", source_task_ids=[source],
                                                     idempotency_key="rule-1")
             self.assertEqual((created["task_id"], True), (again["task_id"], again["idempotent"]))
-            self.assertEqual("delivery_approved", again["status"])
+            self.assertEqual("awaiting_value_review", again["status"])
             self.assertEqual(1, len(list((config.runtime_dir / "memory-outbox").glob("*.md"))))
             ordinary = store.submit("普通任务", 1, idempotency_key="ordinary-key")
             with self.assertRaises(ValueError):
@@ -176,9 +181,14 @@ class AuthoredCandidateTest(unittest.TestCase):
             outbox = root / "runtime" / "memory-outbox"
             with self.assertRaises(KeyError):
                 store.create_authored_candidate("标题", "正文", outbox, author="a", source_task_ids=["missing"])
-            with patch.object(store, "_write_candidate_status_sidecar_values", side_effect=OSError("disk full")):
-                with self.assertRaises(OSError):
-                    store.create_authored_candidate("标题", "正文", outbox, author="a")
+            with store.connect() as conn:
+                conn.execute("""CREATE TRIGGER fail_value_queue BEFORE INSERT ON events
+                    WHEN NEW.event_type='memory.value_unscored'
+                    BEGIN SELECT RAISE(ABORT,'disk full'); END""")
+            with self.assertRaisesRegex(Exception, "disk full"):
+                store.create_authored_candidate("标题", "正文", outbox, author="a")
+            with store.connect() as conn:
+                conn.execute("DROP TRIGGER fail_value_queue")
             for bad in ({"title": " ", "body": "正文"}, {"title": "标题", "body": ""}):
                 with self.assertRaises(ValueError):
                     store.create_authored_candidate(bad["title"], bad["body"], outbox, author="a")
@@ -199,7 +209,11 @@ class AuthoredCandidateTest(unittest.TestCase):
                 code = main(["--config", str(config.path), "memory-candidate-create",
                              "--title", "规则标题", "--body-file", str(body)])
             self.assertEqual(0, code)
-            self.assertEqual("pending_delivery_review", json.loads(output.getvalue())["status"])
+            created = json.loads(output.getvalue())
+            self.assertEqual("awaiting_value_review", created["status"])
+            store = EventStore(config.database_path)
+            self.assertIsNone(store.get_memory_candidate(created["task_id"]))
+            self.assertEqual([created["task_id"]], [item["task_id"] for item in store.value_review_queue()])
             output = io.StringIO()
             with redirect_stdout(output):
                 code = main(["--config", str(config.path), "memory-candidate-create",
@@ -344,7 +358,13 @@ class ReviewedDefectsTest(unittest.TestCase):
             with patch.object(EventStore, "_append_event_tx", side_effect=RuntimeError("late failure")):
                 with self.assertRaises(RuntimeError):
                     Orchestrator(config, store).run_once()
-            with patch.object(EventStore, "complete_with_memory_candidate", side_effect=OSError("disk full")):
+            original_stage = MemoryBridge.stage_experience
+
+            def write_then_fail(bridge, *args, **kwargs):
+                original_stage(bridge, *args, **kwargs)
+                raise OSError("disk full after staged body")
+
+            with patch.object(MemoryBridge, "stage_experience", new=write_then_fail):
                 store.expire_running_leases()
                 result = Orchestrator(config, store).run_once()
             self.assertIn(result["status"], {"failed", "retry"})

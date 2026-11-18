@@ -1,5 +1,6 @@
 """Module for the existing Xiaoba monitoring HTTP kernel and its CSRF guards."""
 import json
+import uuid
 from pathlib import Path
 import threading
 
@@ -41,6 +42,8 @@ class OpenReviewModule(Module):
                 Route('POST', '/api/agent-pool/weekly-scores', lambda req: self.perform(lambda: self.pool.runtime.scoring.weekly(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/interactive-confirm', lambda req: self.perform(lambda: self.pool.runtime.confirm_interactive_workspace(**req.json())), 'write'),
                 Route('POST', '/api/agent-pool/dispatch', self.dispatch, 'write'),
+                Route('GET', '/api/agent-pool/value-review-queue', self.value_review_queue, 'read'),
+                Route('POST', '/api/agent-pool/value-review-dispatch', self.value_review_dispatch, 'write'),
                 Route('GET', '/open-review', self.page, 'page'),
                 Route('GET', '/open-review.js', self.script, 'page'),
                 Route('GET', '/open-review-native.js', self.native_script, 'page'),
@@ -217,6 +220,8 @@ class OpenReviewModule(Module):
     def create(self, req):
         data=req.json()
         def action():
+            if 'value_review' in data:
+                raise ValueError('价值评分只能从待价值评分队列专用派工')
             if 'contract_version' in data:
                 raise ValueError('接口不再接受 contract_version；第 1 版只留给已存在的任务卡')
             task_type=data.pop('task_type',None)
@@ -260,6 +265,104 @@ class OpenReviewModule(Module):
             return {'route':'completed','questions':[],'request':self.store.get(request['id'])}
         return self.perform(action)
 
+    def value_review_queue(self, req):
+        try:
+            items = self.store.native.value_review_queue()
+            return 200, {
+                'ok': True,
+                'items': [{
+                    'task_id': item['task_id'],
+                    'candidate_sha256': item['candidate_sha256'],
+                    'reason': item['reason'],
+                    'dispatch': item['dispatch'],
+                } for item in items],
+            }
+        except Exception as exc:
+            return 503, {'ok': False, 'error': str(exc)}
+
+    def value_review_dispatch(self, req):
+        data = req.json()
+        if (not isinstance(data, dict) or set(data) != {'candidate_id', 'candidate_sha256'}
+                or not isinstance(data.get('candidate_id'), str)
+                or not isinstance(data.get('candidate_sha256'), str)):
+            return 400, {'ok': False, 'error': '需要候选 task_id 和当前正文哈希'}
+
+        def action():
+            candidate_id = data['candidate_id']
+            candidate_sha256 = data['candidate_sha256']
+            request_id = str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                'xiaoba:value-review:' + candidate_id + ':' + candidate_sha256,
+            ))
+            items = self.store.native.value_review_queue()
+            item = next((row for row in items if row['task_id'] == candidate_id
+                         and row['candidate_sha256'] == candidate_sha256), None)
+            if item is None:
+                raise ValueError('候选已变化或不在待价值评分队列，请刷新')
+            self.store.record_value_dispatch(
+                candidate_id, candidate_sha256, request_id, 'started',
+            )
+            try:
+                with self.store.native.read_only() as db:
+                    existing = db.execute('SELECT 1 FROM ri_requests WHERE id=?', (request_id,)).fetchone()
+                if existing:
+                    request = self.store.get(request_id)
+                else:
+                    prepared = self.pool.runtime.prepare(
+                        ['review', 'review_2'], candidate_id=candidate_id,
+                    )
+                    if prepared.get('route') != 'run':
+                        questions = prepared.get('questions') or []
+                        reason = prepared.get('reason') or (questions[0].get('question') if questions else '')
+                        if prepared.get('route') == 'blocked' and not reason:
+                            reason = prepared.get('reason') or 'Agent 池当前不能派工'
+                        self.store.record_value_dispatch(
+                            candidate_id, candidate_sha256, request_id, 'blocked', str(reason)[:512],
+                        )
+                        return {'route': prepared.get('route', 'blocked'), 'request_id': request_id,
+                                'reason': str(reason)[:512]}
+                    pair = prepared['selections']
+                    request = self.store.create(
+                        candidate_id, pair['review'], pair['review_2'],
+                        '新经验价值评分：两名独立审查节点分别给出 0–10 分、重复经验标识、判断依据，并引用候选材料；核心按 6/4 规则自动结算，不代表用户批准。',
+                        [{'ref': item['staged_path'], 'sha256': candidate_sha256}],
+                        request_id=request_id,
+                        dsh_channel='backend_adapter', peer_channel='backend_adapter',
+                        review_type='new_experience', value_review=True,
+                    )
+                receipts = request['receipts']
+                for assignment in request['assignments']:
+                    if not assignment['active']:
+                        continue
+                    latest = next((receipt for receipt in reversed(receipts)
+                                   if receipt['assignment_id'] == assignment['id']), None)
+                    if latest and latest['status'] == 'valid':
+                        continue
+                    self.backends.execute(assignment['id'], require_test=True)
+                request = self.store.get(request_id)
+                still_pending = any(
+                    row['task_id'] == candidate_id and row['candidate_sha256'] == candidate_sha256
+                    for row in self.store.native.value_review_queue()
+                )
+                if still_pending:
+                    reason = '两份有效价值评分回执尚未齐备；候选仍留在待价值评分队列。'
+                    self.store.record_value_dispatch(
+                        candidate_id, candidate_sha256, request_id, 'waiting_receipts', reason,
+                    )
+                    return {'route': 'waiting_receipts', 'request_id': request_id, 'reason': reason,
+                            'state': request['state']}
+                return {'route': 'completed', 'request_id': request_id, 'state': request['state']}
+            except Exception as exc:
+                try:
+                    self.store.record_value_dispatch(
+                        candidate_id, candidate_sha256, request_id, 'failed', str(exc)[:512],
+                    )
+                except ValueError:
+                    pass
+                return {'route': 'failed', 'request_id': request_id, 'reason': str(exc)[:512]}
+
+        return self.perform(action)
+
     def receive(self, req):
         return self.perform(lambda: self.store.receive(req.json()))
 
@@ -281,7 +384,17 @@ class OpenReviewModule(Module):
         return self.perform(lambda: self.store.attest(**req.json()))
 
     def replace(self, req):
-        return self.perform(lambda: self.store.replace_peer(**req.json()))
+        data = dict(req.json())
+        assignment_id = data.pop('assignment_id', None)
+        old_source_id = data.pop('old_source_id', None)
+        role = data.pop('role', None)
+        if assignment_id is None and old_source_id is None:
+            role = 'peer' if role is None else role
+            if role not in {'dsh', 'peer'}:
+                raise ValueError('只能更换有效审查席位')
+        return self.perform(lambda: self.store.replace_reviewer(
+            role=role, assignment_id=assignment_id, old_source_id=old_source_id, **data))
+
 
     def run(self, req):
         # Synchronous HTTP call; native DSH retains its progress/deadline logic.

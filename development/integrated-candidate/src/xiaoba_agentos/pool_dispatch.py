@@ -108,10 +108,14 @@ def entry_program(node: Dict[str, Any]) -> str:
 
 def independence_pair(node: Dict[str, Any]) -> Tuple[str, str]:
     """入口程序＋模型，走 independence_key。DSH 忽略节点里的模型名。"""
+    from .validation_evidence import _is_dsh_identity
+
     program = entry_program(node)
     kind = infer_agent_type(node)
     model = node.get("model")
-    if node.get("interface") == "cli" and kind == "dsh":
+    entry = node.get("entry")
+    # cli:dsh / 路径式 / 裸 dsh：任何 DSH 同源一律忽略模型，避免入口写法不对称。
+    if _is_dsh_identity(program, kind) or _is_dsh_identity(entry, kind):
         model = None
     if not program:
         program = str(node.get("source_ref") or node.get("node_id") or node.get("entry") or "unknown")
@@ -120,6 +124,7 @@ def independence_pair(node: Dict[str, Any]) -> Tuple[str, str]:
         identity, _, labeled = key.partition("|model:")
         return (identity, labeled)
     return (key, "")
+
 
 
 def no_progress_seconds(node: Dict[str, Any]) -> int:
@@ -244,14 +249,18 @@ def retired_engine_warnings(nodes: Iterable[Dict[str, Any]]) -> List[str]:
 
 
 def retested_nodes(store: Any) -> Dict[str, float]:
-    """已开启且测试通过的节点及其最近测试时间，供冻结任务恢复判断。"""
+    """已开启、具备审查资格且测试通过的节点及其最近测试时间，供冻结任务恢复判断。
+
+    collab-only 节点不可充当审查席替补，必须 ready_review。
+    """
     found: Dict[str, float] = {}
     for source in load_sources(store):
         view = node_view(source, store)
         test = (source.get("node") or {}).get("test") or {}
-        if view["enabled"] and view["test_passed"] and test.get("finished_at"):
+        if view["enabled"] and view["test_passed"] and view.get("ready_review") and test.get("finished_at"):
             found[str(view["node_id"])] = float(test["finished_at"])
     return found
+
 
 
 def _distinct(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -573,14 +582,24 @@ REVIEW_HEADER_FIELDS = (
 
 
 def pool_receipt_output(result: Dict[str, Any]) -> str:
-    """文件回执的审查页眉和正文只在入口合并一次，后续取证统一读取 output。"""
-    body = str(result.get("body") or "").strip()
+    """文件回执的审查页眉和正文只在入口合并一次，后续取证统一读取 output。
+
+    C11-01: the body is stripped of reasoning markup with the same
+    ``strip_reasoning_markup`` that build_release uses before judging a vote,
+    so a leaked <think> prefix never reaches the persisted receipt.  This is a
+    sanitizer, not a verdict: unexecuted tool markup is deliberately preserved
+    and rejected by the downstream marker/leak gates (B19), and an empty result
+    or tool-only placeholder is still refused — never washed into success.
+    """
+    from .output_hygiene import strip_reasoning_markup
+    body = strip_reasoning_markup(str(result.get("body") or "")).strip()
     metadata = result.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     header = [key + ": " + str(metadata[key]) for key in REVIEW_HEADER_FIELDS if key in metadata]
     refs = result.get("evidence_refs")
     if isinstance(refs, list):
-        header.extend("证据引用: " + str(ref) for ref in refs)
+        header.extend("证据引用: " + (json.dumps(ref, ensure_ascii=False, sort_keys=True)
+                      if isinstance(ref, (dict, list)) else str(ref)) for ref in refs)
     return "\n".join(header) + "\n---\n" + body if header else body
 
 
@@ -588,7 +607,7 @@ REVIEW_VERDICT_FIELD = re.compile(
     r"(?:审查结论|结论|verdict|FINAL_ACCEPTANCE)\s*[:：]\s*(?:\*\*)?\s*(PASS|FAIL|NEEDS_INFO)")
 
 
-def review_vote_problem(text: Any) -> str:
+def review_vote_problem(text: Any, task=None) -> str:
     """池节点这一票的完整回执（保留页眉和正文）必须能当审查回执用：非空、过 B19、写明审查结论字段。
 
     缺结论字段的正文（例如节点测试运行回显的挑战原文）不是审查回执，不能算这一票。
@@ -599,10 +618,19 @@ def review_vote_problem(text: Any) -> str:
     if contains_non_answer_markers(text) or detect_reasoning_leak(text):
         return "正文违反 B19"
     verdicts = set(REVIEW_VERDICT_FIELD.findall(text))
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        payload = None
+    if isinstance(payload, dict) and payload.get('verdict') in {'PASS', 'FAIL', 'NEEDS_INFO'}:
+        verdicts.add(payload['verdict'])
     if not verdicts:
         return "缺少审查结论字段（PASS / FAIL / NEEDS_INFO）"
     if len(verdicts) > 1:
         return "审查结论自相矛盾"
+    if task is not None:
+        from .value_scoring import value_receipt_problem
+        return value_receipt_problem(dict(task), text)
     return ""
 
 

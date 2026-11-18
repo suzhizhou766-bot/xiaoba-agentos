@@ -7,7 +7,7 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
-from fixtures_review import _config, _run_cli
+from fixtures_review import _admit_authored_candidate, _config, _run_cli
 from fixtures_validation import native_trial, make_execution, bound_diff
 from xiaoba_agentos.store import EventStore
 from xiaoba_agentos.experience_workflow import (
@@ -26,6 +26,7 @@ class AuthoritativeGateAndStateMachineTests(unittest.TestCase):
 
     def create_candidate(self):
         c=self.store.create_authored_candidate('TEST方法','仅用于测试的实现步骤',self.outbox,author='test',experience_kind='method')
+        c=_admit_authored_candidate(self.store,c)
         self.store.review_memory(c['task_id'],'delivery','approve','TEST初审',c['evidence_sha256'])
         return c
 
@@ -294,3 +295,22 @@ class AuthoritativeGateAndStateMachineTests(unittest.TestCase):
         new=reserve_validation_attempt(self.store,c['task_id'],card);self.assertNotEqual(old,new)
         with self.assertRaises(ValueError):prepare_trial(self.store,c['task_id'],card,execution,attempt_id=old)
         self.assertEqual(self.store.get_validation_lineage(c['task_id'])['rounds_used'],0)
+
+
+    def test_rollback_preserves_unknown_extension_metadata(self):
+        from xiaoba_agentos.validation_migration import rollback_validation_schema_migration
+        raw=EventStore(self.root/'metadata.sqlite');raw.initialize();raw.apply_validation_extension()
+        with raw.connect() as db:
+            db.execute("INSERT INTO experience_validation_meta VALUES ('TEST extension payload','keep',0)")
+            db.commit()
+            with self.assertRaisesRegex(ValueError,'non-installation metadata'):
+                rollback_validation_schema_migration(db)
+            self.assertEqual('keep',db.execute(
+                "SELECT value FROM experience_validation_meta WHERE key='TEST extension payload'"
+            ).fetchone()[0])
+            self.assertEqual(3,db.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name LIKE 'experience_validation_%'"
+            ).fetchone()[0])
+            db.execute("DELETE FROM experience_validation_meta WHERE key='TEST extension payload'")
+        raw.rollback_validation_extension()
+        self.assertFalse(raw.is_validation_extension_installed())

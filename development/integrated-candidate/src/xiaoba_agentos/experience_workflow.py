@@ -10,6 +10,7 @@ import json
 import re
 import os
 import signal
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -321,10 +322,18 @@ def match_trials(store, problem_key=None, query=None):
     if not (isinstance(problem_key, str) and problem_key.strip()) and not (isinstance(query, str) and query.strip()):
         return []
     from .experience_loop import pending_index
-    # Preserve the existing suggestion contract; the explicit pending-index
-    # endpoint carries initial-review IDs and applicability metadata.
-    return [{k: e[k] for k in ("task_id", "title", "candidate_sha256")}
-            for e in pending_index(store, problem_key, query)["entries"]]
+    return pending_index(store, problem_key, query)["entries"]
+
+
+def suggest_trials(store, problem_key=None, query=None):
+    """Optional advice cannot prevent a normal task from being handled."""
+    try:
+        return {"trial_suggestions": match_trials(store, problem_key, query),
+                "trial_suggestion_status": "ok"}
+    except (ValueError, OSError, UnicodeError, sqlite3.Error) as exc:
+        return {"trial_suggestions": [], "trial_suggestion_status": "unavailable",
+                "trial_suggestion_error": str(exc)}
+
 
 
 def complete_audit(store, task_id, result, *, release_hold=False):
@@ -356,19 +365,25 @@ def complete_audit(store, task_id, result, *, release_hold=False):
         if trial:
             source_task_id = trial["source_task_id"]
             runs = [dict(r) for r in conn.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at", (task_id,)).fetchall()]
-            run_map = {r["agent_name"]: r for r in runs}
-            dsh_run = None
-            peer_run = None
-            for name, r in run_map.items():
-                if "dsh" in name.lower():
-                    dsh_run = r
-                else:
-                    peer_run = r
+            from .validation_evidence import current_pool_review_participants
+            participants = current_pool_review_participants(conn, task_id)
+            if participants is None:
+                # Historical local-agent tasks keep their frozen name-based lanes.
+                run_map = {run["agent_name"]: run for run in runs}
+                dsh_run = next((run for name, run in run_map.items() if "dsh" in name.lower()), None)
+                peer_run = next((run for name, run in run_map.items() if "dsh" not in name.lower()), None)
+            elif len(participants) == 2:
+                ordered = sorted(participants, key=lambda item: (
+                    item["source_identity"][0], item["source_identity"][1] or "", item["run"]["id"],
+                ))
+                dsh_run, peer_run = ordered[0]["run"], ordered[1]["run"]
+            else:
+                dsh_run = peer_run = None
             dsh_out = dsh_run.get("output") or "" if dsh_run and dsh_run.get("status") == "completed" else ""
             peer_out = peer_run.get("output") or "" if peer_run and peer_run.get("status") == "completed" else ""
             dsh_verdict = extract_trial_verdict(dsh_out) if dsh_run and dsh_run.get("status") == "completed" else "FAIL"
             peer_verdict = extract_trial_verdict(peer_out) if peer_run and peer_run.get("status") == "completed" else "FAIL"
-            if len(set(run_map.keys())) < 2 or not dsh_run or not peer_run:
+            if not dsh_run or not peer_run:
                 dsh_verdict = "FAIL"
                 peer_verdict = "FAIL"
 
@@ -395,6 +410,7 @@ def complete_audit(store, task_id, result, *, release_hold=False):
             refresh_delivery_tx(store, conn, source_task_id)
         store._close_session_if_resolved_tx(conn, task_id)
     return True
+
 
 
 def audit_committed(store, task):
@@ -479,22 +495,65 @@ def _verify_trial_qualification(conn, candidate) -> dict:
     except ValueError as exc:
         return {"qualified": False, "ready": False, "state": "final_decision", "kind": kind, "reasons": [str(exc)]}
 
-    from .validation_migration import is_validation_extension_installed
-    extension_present = any(_table_exists(conn, t) for t in (
-        "experience_validation_meta", "experience_validation_lineages", "experience_validation_records"))
-    if extension_present and not is_validation_extension_installed(conn):
-        return {"qualified": False, "ready": False, "state": "invalid_schema", "kind": kind, "reasons": ["验证扩展结构或版本异常"]}
-
     from .store import EventStore
     if not EventStore.verify_event_chain_tx(conn)["ok"]:
         return {"qualified": False, "ready": False, "state": "invalid_event_chain", "kind": kind, "reasons": ["审计事件链损坏"]}
 
+    from .validation_basis import validate_basis
+    try:
+        basis = validate_basis(conn, candidate)
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        return {"qualified": False, "ready": False, "state": "invalid_validation_basis", "kind": kind,
+                "reasons": [str(exc)]}
+    if basis.get("status") == "awaiting_evidence":
+        return {"qualified": False, "ready": False, "state": "awaiting_evidence", "kind": kind,
+                "validation_basis": basis,
+                "reasons": [basis.get("reason") or "缺少结构化方法主张及核验类别"]}
+    confirmation_pending = False
+    if basis.get("status") != "missing":
+        checks = basis.get("required_checks", [])
+        needs_acceptance = "real_task_acceptance" in checks
+        if basis.get("status") == "revoked":
+            return {"qualified": False, "ready": False, "state": "validation_basis_revoked", "kind": kind,
+                    "validation_basis": basis, "reasons": ["真实任务依据已撤回"]}
+        confirmation_pending = needs_acceptance and basis.get("status") != "confirmed"
+        if "sandbox" not in checks:
+            lineage = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?",
+                                   (candidate["task_id"],)).fetchone() if _table_exists(conn, "experience_validation_lineages") else None
+            old_trials = conn.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='memory.trial_linked' LIMIT 1",
+                                      (candidate["task_id"],)).fetchone()
+            if (lineage and (int(lineage["rounds_used"]) > 0 or lineage["lineage_status"] not in {"pending_round_1"})
+                    or old_trials):
+                return {"qualified": False, "ready": False, "state": "validation_route_conflict", "kind": kind,
+                        "validation_basis": basis, "reasons": ["已有隔离验证谱系，不能切换路线清除轮次或失败记录"]}
+            try:
+                from .validation_basis import candidate_evidence_bytes
+                candidate_evidence_bytes(candidate)
+            except (OSError, ValueError, KeyError, TypeError):
+                return {"qualified": False, "ready": False, "state": "content_drift", "kind": kind,
+                        "validation_basis": basis, "reasons": ["候选正文发生变化，真实任务依据失效"]}
+            if confirmation_pending:
+                return {"qualified": False, "ready": False, "state": "validation_basis_confirmation_required", "kind": kind,
+                        "route": basis["route"], "validation_basis": basis,
+                        "reasons": ["终审前需确认本条真实任务证据及其范围"]}
+            return {"qualified": True, "ready": True, "state": "ready_for_final", "kind": kind,
+                    "route": basis["route"], "validation_basis": basis, "reasons": []}
+
+    from .validation_migration import is_validation_extension_installed
+    extension_present = any(_table_exists(conn, t) for t in (
+        "experience_validation_meta", "experience_validation_lineages", "experience_validation_records"))
+    if extension_present and not is_validation_extension_installed(conn):
+        return {"qualified": False, "ready": False, "state": "invalid_schema", "kind": kind,
+                "validation_basis": basis if basis.get("status") != "missing" else None,
+                "reasons": ["验证扩展结构或版本异常"]}
+
     # 1. 检查磁盘正文与哈希一致性
-    staged_path = Path(candidate["staged_path"])
-    if not staged_path.is_file():
+    try:
+        from .validation_basis import candidate_evidence_bytes
+        candidate_evidence_bytes(candidate)
+    except OSError:
         return {"qualified": False, "ready": False, "state": "file_missing", "kind": kind, "reasons": ["暂存文件不存在"]}
-    current_bytes_hash = hashlib.sha256(staged_path.read_bytes()).hexdigest()
-    if current_bytes_hash != candidate["evidence_sha256"]:
+    except (ValueError, KeyError, TypeError):
         return {"qualified": False, "ready": False, "state": "content_drift", "kind": kind, "reasons": ["正文发生变动，历史核验证据失效"]}
 
     # 2. 查询两轮验证谱系及轮次记录
@@ -581,6 +640,22 @@ def _verify_trial_qualification(conn, candidate) -> dict:
         except (ValueError, KeyError, TypeError, OSError) as exc:
             return {"qualified": False, "ready": False, "state": "invalid_evidence", "kind": kind, "reasons": [str(exc)]}
 
+        if confirmation_pending:
+            return {
+                "qualified": False,
+                "ready": False,
+                "kind": kind,
+                "state": "validation_basis_confirmation_required",
+                "route": basis["route"],
+                "round": rec_round,
+                "rounds_used": rounds_used,
+                "task_id": latest_record.get("task_id") or latest_record.get("id"),
+                "disagreement": disagreement,
+                "dsh_verdict": dsh_verdict,
+                "peer_verdict": peer_verdict,
+                "validation_basis": basis,
+                "reasons": ["隔离验证已满足；终审前需确认本条真实任务证据及其范围"],
+            }
         return {
             "qualified": True,
             "ready": True,
@@ -592,6 +667,7 @@ def _verify_trial_qualification(conn, candidate) -> dict:
             "disagreement": disagreement,
             "dsh_verdict": dsh_verdict,
             "peer_verdict": peer_verdict,
+            "validation_basis": basis if basis.get("status") != "missing" else None,
             "reasons": [],
         }
 
@@ -617,13 +693,21 @@ def _verify_trial_qualification(conn, candidate) -> dict:
             raise ValueError("真实执行或独立双审未通过")
     except (ValueError, KeyError, TypeError, OSError) as exc:
         return {"qualified": False, "ready": False, "state": "trial_running" if task and task["status"] in {"pending", "running", "retry"} else "trial_failed", "kind": kind, "reasons": [str(exc)]}
+    if confirmation_pending:
+        return {"qualified": False, "ready": False, "state": "validation_basis_confirmation_required", "kind": kind,
+                "route": basis["route"], "round": 1, "rounds_used": 1, "task_id": task_id,
+                "validation_basis": basis,
+                "reasons": ["隔离验证已满足；终审前需确认本条真实任务证据及其范围"]}
     return {"qualified": True, "ready": True, "state": "ready_for_final", "kind": kind,
-            "round": 1, "rounds_used": 1, "task_id": task_id, "reasons": []}
+            "round": 1, "rounds_used": 1, "task_id": task_id,
+            "validation_basis": basis if basis.get("status") != "missing" else None, "reasons": []}
 
 
 def verify_final_qualification(conn, candidate) -> dict:
     verdict = _verify_trial_qualification(conn, candidate)
     if verdict.get("qualified"):
+        if verdict.get("validation_basis") is not None:
+            return verdict
         if isinstance(candidate, (str, bytes)):
             candidate = dict(conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (str(candidate),)).fetchone())
         from .experience_loop import require_application_delivery
@@ -677,7 +761,9 @@ def reserve_validation_attempt(store, candidate_id, card):
         lineage = conn.execute("SELECT * FROM experience_validation_lineages WHERE candidate_id=?", (candidate_id,)).fetchone()
         if lineage and (lineage["rounds_used"] >= 2 or lineage["lineage_status"] in {"paused", "awaiting_check", "awaiting_diff_materials", "ready_for_final"}):
             raise ValueError("轮次已结束、暂停或等待补材料，禁止新执行")
-        if conn.execute("SELECT 1 FROM experience_validation_records WHERE candidate_id=? AND status IN ('pending','running')", (candidate_id,)).fetchone():
+        if conn.execute("SELECT 1 FROM experience_validation_records WHERE candidate_id=? "
+                        "AND (status='running' OR (status='pending' AND task_id IS NOT NULL))",
+                        (candidate_id,)).fetchone():
             raise ValueError("已有在途验证任务，禁止重复执行；请查询 memory-trial-status")
         used = lineage["rounds_used"] if lineage else 0
         round_number = used + 1
@@ -754,31 +840,45 @@ def advance_validation_round(store, conn, candidate_id: str, round_data: dict) -
     from .validation_evidence import task_evidence, ingress_evidence, decide_round
     evidence=task_evidence(conn,candidate,approved,record)
     verdicts=dict(evidence["verdicts"])
-    # 外部回执是可选项：原生全通过、或本轮是第二轮审查时再核一遍，且只许更严。
-    # 回执核不过（第一轮有 FAIL、含 NEEDS_INFO、未投递等）时暂停并写明原因：
-    # 这里抛错会让整笔结算回滚，记录永远停在 running，候选再也走不动。
-    # 原生全部 FAIL 时回执改变不了结论，不必再核，照常退役。
+    # 只要执行已过，就尝试读当前绑定的外部业务票（只许更严）。
+    # 未形成/已失效的外部包：原生全 FAIL 时允许直接退役；其余完整性错误才暂停不耗轮。
+    # 业务 FAIL/NEEDS_INFO 由 ingress 返回后交给 decide_round，不能被原生全 FAIL 短路。
     receipts={"bound":False,"verdicts":{},"all_pass":None,"disagreement":False}
     receipt_error=None
-    if evidence["execution_passed"] and (all(v=="PASS" for v in verdicts.values()) or (number==2 and any(v!="FAIL" for v in verdicts.values()))):
+    _unformed=("待认证","计划失效","已被撤销","未投递","尚未认证")
+    if evidence["execution_passed"]:
         try:
             receipts=ingress_evidence(conn,candidate,approved,record,evidence["execution"])
         except (ValueError,KeyError,TypeError,OSError) as exc:
-            receipt_error=str(exc)
+            msg=str(exc)
+            if any(token in msg for token in _unformed):
+                # 外部包未形成当前绑定：不覆盖原生结论；原生全 FAIL 由 decide_round 退役。
+                receipt_error=None
+            else:
+                receipt_error=msg
     outcome,columns=decide_round(number,evidence["execution_passed"],verdicts,receipts.get("verdicts"))
-    if receipt_error:
+    missing_independent_review = evidence.get("independent_review") is False
+    if receipt_error or missing_independent_review:
+        # Integrity / missing-independent only — business FAIL/NEEDS_INFO no longer raise.
         outcome="paused"
     disagreement=outcome=="disagreement"
     if outcome=="paused":
-        pause_class=EXTERNAL_RECEIPT_CLASS if receipt_error else NEEDS_INFO_CLASS
-        reason=("external_receipt: 外部回执未通过核对（"+receipt_error+"），本轮不消耗轮次，处理后恢复并重新发起本轮"
-                if receipt_error else "needs_info: 审查结论为需补充材料，本轮不消耗轮次，补齐后按原轮次重判")
+        parts=[]
+        if receipt_error:
+            parts.append("external_receipt: 外部回执未通过核对（"+receipt_error+"），本轮不消耗轮次，处理后恢复并重新发起本轮")
+        if missing_independent_review:
+            parts.append("needs_info: 用户选择宿主兜底，但无独立审查；本轮暂停且不消耗轮次，补齐独立审查后恢复")
+        if not parts:
+            parts.append("needs_info: 审查结论为需补充材料，本轮不消耗轮次，补齐后按原轮次重判")
+        reason="；".join(parts)
+        # 无独立审查是主因时保留 needs_info；原因串可同时带 external_receipt，不伪装两票。
+        pause_class=NEEDS_INFO_CLASS if (missing_independent_review or not receipt_error) else EXTERNAL_RECEIPT_CLASS
         if not lineage:
             conn.execute("INSERT INTO experience_validation_lineages VALUES (?,?,2,'paused',?,?,?)",(candidate_id,number,used,now,now))
         else:
             conn.execute("UPDATE experience_validation_lineages SET current_round=?,lineage_status='paused',updated_at=? WHERE candidate_id=?",(number,now,candidate_id))
         # 原尝试的审查已结束，清空 task_id，恢复后才能在同一轮重新发起，否则“补完再判”会卡死。
-        # 两列结论照写，审计直读记录表也能看到两侧各自的结论。
+        # 两列结论照写；无独立审查时 dsh 列可为 NULL，不伪装双票 PASS。
         conn.execute("INSERT INTO experience_validation_records(id,candidate_id,round,candidate_sha256,delivery_review_id,status,plan_digest,execution_digest,pause_reason,failure_class,dsh_verdict,peer_verdict,created_at,updated_at) VALUES (?,?,?,?,?,'paused',?,?,?,?,?,?,?,?) ON CONFLICT(candidate_id,round) DO UPDATE SET status='paused',task_id=NULL,plan_digest=excluded.plan_digest,execution_digest=excluded.execution_digest,pause_reason=excluded.pause_reason,failure_class=excluded.failure_class,dsh_verdict=excluded.dsh_verdict,peer_verdict=excluded.peer_verdict,updated_at=excluded.updated_at",
                      (record["id"],candidate_id,number,record["candidate_sha256"],record["delivery_review_id"],record["plan_digest"],execution_digest,reason,pause_class,columns["dsh"],columns["peer"],now,now))
         store._append_event_tx(conn,candidate_id,"memory.validation_paused",{"round":number,"attempt_id":record["id"],"task_id":task_id,"failure_class":pause_class,"pause_reason":reason,"needs_info":pause_class==NEEDS_INFO_CLASS,"dsh_verdict":columns["dsh"],"peer_verdict":columns["peer"]})
@@ -815,6 +915,7 @@ def advance_validation_round(store, conn, candidate_id: str, round_data: dict) -
         payload["disagreement"]=True
         store._append_event_tx(conn,candidate_id,"memory.validation_disagreement",payload)
     return {"ok":True,"round":number,"rounds_used":number,"passed":passed,"outcome":outcome,"status":record["status"],"candidate_status":status,"lineage_status":state,"disagreement":disagreement,"dsh_verdict":columns["dsh"],"peer_verdict":columns["peer"]}
+
 
 
 def resume_paused_validation(store, conn, candidate_id: str) -> dict:
@@ -935,17 +1036,24 @@ def migrate_legacy_validation_records(conn) -> dict:
         conn.execute("BEGIN IMMEDIATE")
     if not EventStore.verify_event_chain_tx(conn)["ok"]:
         raise ValueError("审计事件链损坏，禁止迁移验证记录")
-    migrated = flagged = preserved = 0
+    migrated = flagged = preserved = skipped = 0
     now = time.time()
     for row in conn.execute("SELECT * FROM memory_candidates").fetchall():
         cand = dict(row)
         cid = cand["task_id"]
-        if conn.execute("SELECT 1 FROM experience_validation_lineages WHERE candidate_id=?", (cid,)).fetchone():
-            continue
         try:
             protect_final_decision(conn, cand)
         except ValueError:
             preserved += 1
+            continue
+        source = conn.execute("SELECT * FROM tasks WHERE id=?", (cid,)).fetchone()
+        # Migration is not a new review decision. Rules/legacy entries and
+        # rejected/revision candidates must never acquire a sandbox lineage.
+        if (not source or policy(dict(source))["kind"] != "method"
+                or cand["status"] not in {"delivery_approved", "revalidation_required", "pending_final_review"}):
+            skipped += 1
+            continue
+        if conn.execute("SELECT 1 FROM experience_validation_lineages WHERE candidate_id=?", (cid,)).fetchone():
             continue
         links = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.trial_linked' ORDER BY sequence", (cid,)).fetchall()
         state, used = "awaiting_check", 0
@@ -982,7 +1090,8 @@ def migrate_legacy_validation_records(conn) -> dict:
         conn.execute("INSERT INTO experience_validation_lineages VALUES (?,1,2,?,?,?,?)", (cid,state,used,now,now))
         EventStore._append_event_tx(conn,cid,"memory.validation_migrated",{
             "lineage_status":state,"rounds_used":used,"needs_human_check":state=="awaiting_check"})
-    return {"migrated":migrated,"flagged_for_human_check":flagged,"preserved_terminal":preserved}
+    return {"migrated":migrated,"flagged_for_human_check":flagged,"preserved_terminal":preserved,
+            "skipped_ineligible":skipped}
 
 
 def _trial_display(conn, task_id):
@@ -1028,6 +1137,16 @@ def trial_summary(conn, candidate):
         "peer_verdict": verdict.get("peer_verdict"),
         "trials": [],
     }
+    if verdict.get("validation_basis") is not None:
+        summary["validation_basis"] = verdict["validation_basis"]
+    else:
+        from .validation_basis import validate_basis
+        try:
+            basis = validate_basis(conn, candidate)
+            if basis.get("status") != "missing":
+                summary["validation_basis"] = basis
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            summary["validation_basis"] = {"status": "invalid", "error": str(exc)}
     from .experience_loop import application_packet
     summary["experience_loop"] = application_packet(conn, candidate)
     # 加载已有的轮次记录以供展示
@@ -1081,7 +1200,7 @@ def require_final_trial(conn, candidate):
         raise ValueError("technical audit records cannot be published as experience candidates")
     if not verdict.get("qualified"):
         reasons = "; ".join(verdict.get("reasons", ["经验候选未满足两轮核验或初审条件"]))
-        raise ValueError(f"经验终审门禁拒绝: {reasons}; method candidate requires fresh execution evidence and independent AGY/DSH validation before final approval")
+        raise ValueError(f"经验终审门禁拒绝: {reasons}; method candidate must satisfy every server-derived validation check before final approval; sandbox route still requires fresh execution evidence and independent AGY/DSH validation")
     return verdict.get("task_id")
 
 

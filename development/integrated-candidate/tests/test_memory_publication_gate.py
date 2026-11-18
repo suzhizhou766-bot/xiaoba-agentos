@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fixtures_review import _config, _run_cli
+from fixtures_review import _admit_authored_candidate, _stage_candidate_with_value_review, _config, _run_cli
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.review_flow import execute_review
 from xiaoba_agentos.store import EventStore
@@ -70,8 +70,10 @@ class PublicationGateTest(unittest.TestCase):
     def _publish_background_memory(self):
         """预置一篇合法发布的经验，让目录与图索引非空。"""
         created = self.store.create_authored_candidate(
-            "已发布背景经验", "背景正文，用来让索引非空。", self.bridge.outbox, author="test"
+            "已发布背景经验", "背景正文，用来让索引非空。", self.bridge.outbox, author="test",
+            experience_kind="rule",
         )
+        created = _admit_authored_candidate(self.store, created)
         for stage in ("delivery", "final"):
             code, payload = execute_review(
                 self.config, self.store, created["task_id"], stage, "approve", ""
@@ -81,8 +83,9 @@ class PublicationGateTest(unittest.TestCase):
 
     def _candidate(self):
         created = self.store.create_authored_candidate(
-            "绑定测试候选", BODY_APPROVED, self.bridge.outbox, author="test"
+            "绑定测试候选", BODY_APPROVED, self.bridge.outbox, author="test", experience_kind="rule"
         )
+        created = _admit_authored_candidate(self.store, created)
         return created["task_id"], Path(created["staged_path"]), created["evidence_sha256"]
 
     def _approve(self, task_id, sha256, stages):
@@ -90,9 +93,11 @@ class PublicationGateTest(unittest.TestCase):
             self.store.review_memory(task_id, stage, "approve", "用户在裁决中心批准", sha256)
 
     def _re_register_with_changed_content(self, task_id, staged):
+        """Simulate a database hash rewrite so the publication binding is the rejecting gate."""
         staged.write_text(BODY_CHANGED, encoding="utf-8")
         changed = hashlib.sha256(staged.read_bytes()).hexdigest()
-        self.store.stage_memory_candidate(task_id, str(staged), changed)
+        with self.store.connect() as conn:
+            conn.execute("UPDATE memory_candidates SET evidence_sha256=? WHERE task_id=?", (changed, task_id))
         return changed
 
     def _cli(self, argv):

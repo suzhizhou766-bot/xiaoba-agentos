@@ -50,6 +50,108 @@ _SERVICE_LABELS = {
 # Written by the review backend while it runs (the monitor centre starts it on demand).
 _REVIEW_BACKEND_STATE = ("review-center", "backend-state.json")
 
+def monitor_database_identity(
+    config: AppConfig,
+    monitor_json: Optional[Path] = None,
+    *,
+    backend_state: Optional[Path] = None,
+    env: Optional[Dict[str, str]] = None,
+    worker_plist: Optional[Path] = None,
+):
+    """Read-only B09 check using the exact resolver shipped to the monitor.
+
+    Missing optional monitor installation is unavailable, not a daily-task gate.
+    A configured monitor with a different database/config is a real mismatch.
+    """
+    from .review_ui_assets.agentos_config import agentos_config_path
+    monitor_json = Path(monitor_json) if monitor_json else (
+        Path(config.memory["obsidian_vault"]).expanduser().resolve().parent / "工具/小八监看/monitor.json")
+    out = {"ok": False, "status": "unavailable", "monitor_json": str(monitor_json),
+           "identities": {}, "problems": [], "warnings": []}
+    if not monitor_json.is_file():
+        out["warnings"].append("监看配置未安装或不可读，B09 无法核验")
+        return out
+    issues = []
+    shared = monitor_json.parent / "monitor_core/agentos_config.py"
+    canonical = Path(__file__).with_name("review_ui_assets") / "agentos_config.py"
+    try:
+        matches = shared.read_bytes() == canonical.read_bytes()
+    except OSError:
+        issues.append("unavailable")
+        out["problems"].append("监看公共配置解析器未安装或不可读")
+    else:
+        if not matches:
+            issues.append("different_config")
+            out["problems"].append("监看公共配置解析器与当前发布不一致")
+    try:
+        raw = json.loads(monitor_json.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("monitor.json 必须是对象")
+        raw = dict(raw, root=str(monitor_json.parent))
+        raw.setdefault("agentos_project", str(config.project_dir))
+        selected = agentos_config_path(raw, env=env, worker_plist=worker_plist)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        out["problems"].append("监看配置不可读：" + type(exc).__name__)
+        return out
+
+    def identity(label, path):
+        try:
+            path = Path(path).expanduser().resolve()
+            native = AppConfig.load(path)
+            item = {"path": str(path), "database": str(native.database_path.resolve()),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            out["identities"][label] = item
+            return item
+        except Exception as exc:
+            issues.append("unavailable")
+            out["problems"].append(label + " 配置不可读：" + type(exc).__name__)
+            return None
+    session = identity("session", config.path)
+    monitor = identity("monitor", selected)
+    def compare(label, other):
+        if session is None or other is None:
+            return
+        if session["database"] != other["database"]:
+            issues.append("different_database")
+            out["problems"].append(label + " 的库不同于当前会话库")
+        elif session["sha256"] != other["sha256"]:
+            issues.append("different_config")
+            out["problems"].append(label + " 的配置内容不同于当前会话配置")
+    compare("monitor", monitor)
+    state_path = Path(backend_state) if backend_state else config.runtime_dir.joinpath(*_REVIEW_BACKEND_STATE)
+    if state_path.is_file():
+        try:
+            record = json.loads(state_path.read_text(encoding="utf-8"))
+            pid = record["pid"]
+            recorded_path = record["config_path"]
+            if type(pid) is not int or pid <= 0 or not isinstance(recorded_path, str) or not recorded_path.strip():
+                raise ValueError("后端身份字段无效")
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except ProcessLookupError:
+                alive = False
+            except PermissionError:
+                alive = True
+            if not alive:
+                issues.append("stale")
+                out["warnings"].append("裁决后端进程记录已过期（stale）")
+                out["identities"]["review_backend"] = {"path": recorded_path, "pid": pid, "alive": False}
+            else:
+                backend = identity("review_backend", recorded_path)
+                if backend:
+                    backend.update(pid=pid, alive=True)
+                compare("review_backend", backend)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            issues.append("unavailable")
+            out["problems"].append("裁决后端状态记录损坏：" + type(exc).__name__)
+    else:
+        out["warnings"].append("没有运行中的裁决后端，当前只核 monitor 与会话两方")
+    priority = ("different_database", "different_config", "unavailable", "stale")
+    out["status"] = next((v for v in priority if v in issues), "ok")
+    out["ok"] = out["status"] == "ok"
+    return out
+
 
 def _inside(path: Path, parent: Path) -> bool:
     try:
@@ -91,6 +193,7 @@ def config_consistency(
     release_binding: Optional[Dict[str, Any]] = None,
     *,
     home: Optional[Path] = None,
+    monitor_json: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Check that the known consumers of this project run on one configuration.
 
@@ -180,6 +283,17 @@ def config_consistency(
     if backend_config is not None:
         register("review_backend", backend_config)
 
+    monitor = monitor_database_identity(
+        config, monitor_json, worker_plist=home / "Library/LaunchAgents/com.xiaoba.agentos.plist")
+    # Only an actual mismatch gates execution. An absent monitor or stopped
+    # backend remains explicit diagnostic information, never blocks daily work.
+    if monitor["status"] in {"different_database", "different_config"}:
+        problems.extend(monitor["problems"])
+    elif Path(monitor["monitor_json"]).is_file():
+        warnings.extend(monitor["problems"])
+    if Path(monitor["monitor_json"]).is_file():
+        warnings.extend(monitor["warnings"])
+
     hashes = {entry["sha256"] for entry in consumers.values() if entry["sha256"]}
     if len(hashes) > 1:
         problems.append(
@@ -195,6 +309,7 @@ def config_consistency(
         "ok": not problems,
         "consumers": consumers,
         "installed_entrypoints": entrypoints,
+        "monitor_database_identity": monitor,
         "problems": problems,
         "warnings": warnings,
     }
@@ -477,7 +592,7 @@ def doctor(config: AppConfig, store: EventStore, entity_root: Optional[Path] = N
     reuse_scores = reuse_ledger_check(store)
     checks["reuse_scores"] = reuse_scores
     if not reuse_scores["ok"]:
-        checks["warnings"].append("复用分历史事件异常，本轮记分全局熔断：" + "; ".join(reuse_scores["problems"]))
+        checks["warnings"].append("复用分历史事件异常，单条坏payload已隔离：" + "; ".join(reuse_scores["problems"]))
     # 卡 43：doctor 只读展示节点测试失败时已脱敏的错误尾部（review-ingress 在
     # 测试记录里写好 error_tail，这里只读取既有字段）；不参与 ok 判定，不改变
     # 其它 doctor 语义。
