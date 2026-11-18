@@ -304,6 +304,40 @@ print(json.dumps(result,ensure_ascii=False))
                 with self.store.read_only() as db:
                     self.assertEqual(0, db.execute("SELECT count(*) FROM events WHERE task_id=? AND event_type IN ('task.completed','task_scoring.assessed')", (task,)).fetchone()[0])
 
+    def test_default_submit_completes_without_value_receipts(self):
+        fixture.Card37Tests.seed(self, 2)
+        answer = "A checklist makes the remaining work visible.\n审查结论：PASS\n评分：8 是本例的进度评分。"
+        instructions = []
+
+        class OrdinaryResource(_FakePoolResource):
+            def run_task(resource, task_id, step_code, instruction, materials):
+                instructions.append(instruction)
+                result = super().run_task(task_id, step_code, instruction, materials)
+                return {**result, "body": answer}
+
+        task = self.cli("submit", "TEST default question: why does a checklist help?")["task_id"]
+        with patch("xiaoba_agentos.adapters._pool_cli_factory", return_value=OrdinaryResource):
+            result = Orchestrator(self.config, self.store).run_once()
+
+        self.assertEqual("completed", result["status"], result)
+        self.assertTrue(all("价值审查回执 v2" not in instruction for instruction in instructions))
+        self.assertIn(answer, self.store.get_task(task)["result"])
+        self.assertIsNone(self.store.get_memory_candidate(task))
+        queue = self.store.value_review_queue()
+        self.assertEqual([(task, "awaiting_value_review", "no_scoring_source")],
+                         [(item["task_id"], item["queue_status"], item["reason"]) for item in queue])
+        self.assertEqual(1, _event_count(self.store, task, "task.completed"))
+        self.assertEqual(1, _event_count(self.store, task, "memory.value_unscored"))
+        self.assertEqual(0, _event_count(self.store, task, "memory.value_assessed"))
+        with self.store.read_only() as db:
+            score_rows = db.execute(
+                "SELECT data FROM ri_task_assessments WHERE json_extract(data,'$.task_id')=?",
+                (task,),
+            ).fetchall()
+        scores = [json.loads(row[0]) for row in score_rows]
+        self.assertEqual({"0", "1"}, {row["node_id"] for row in scores})
+        self.assertTrue(all(row["points"] == 1 and row["receipt_accepted"] for row in scores))
+
     def test_structured_pool_evidence_keeps_reference_and_hash(self):
         from xiaoba_agentos.pool_dispatch import pool_receipt_output, review_vote_problem
         task_id = self.submit('method', host=self.host())

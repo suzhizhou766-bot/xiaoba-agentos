@@ -64,10 +64,8 @@ def requires_review_vote(db, task, snapshot):
     provenance = json.loads(task['provenance_json'] or '{}')
     if provenance.get('kind') == 'host_review':
         return True
-    from .experience_workflow import policy
-    if needs_review(task) and policy(task)['kind'] in {'method', 'rule'}:
-        # Value review is required for new reusable experience even when the
-        # task has no separately bound host identity.
+    from .value_scoring import expects_value_receipt
+    if expects_value_receipt(task):
         return True
     if needs_review(task) and (snapshot.get('review_context', {}).get('host') or task_host(task)
             or db.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='task.host_bound'",

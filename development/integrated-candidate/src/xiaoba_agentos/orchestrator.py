@@ -314,7 +314,7 @@ def _substitution_payload(
     }
 
 
-def _reusable_run(run: Optional[Dict[str, Any]], task=None, is_pool: bool = True) -> bool:
+def _reusable_run(run: Optional[Dict[str, Any]], task=None, is_pool: bool = True, *, host_review=False) -> bool:
     """A finished run whose answer may stand as this side's conclusion as-is.
 
     Reusing an answer that still carries model reasoning only gets it
@@ -322,13 +322,13 @@ def _reusable_run(run: Optional[Dict[str, Any]], task=None, is_pool: bool = True
     still bounds this). A side that already answered this way is a real
     conclusion, so it is also a side the standby must never be swapped in for.
     """
-    from .value_scoring import value_receipt_problem
+    from .value_scoring import settlement_value_receipt_problem
     return bool(
         run
         and run["status"] == "completed"
         and run.get("output")
         and not detect_reasoning_leak(run["output"])
-        and not (task and is_pool and value_receipt_problem(task, run["output"]))
+        and not (task and is_pool and settlement_value_receipt_problem(task, run["output"], host_review=host_review))
     )
 
 
@@ -756,7 +756,8 @@ class Orchestrator:
                     # vote is looked up by this task's review run, so a test run of
                     # the same node (or any other purpose) cannot void it.
                     if candidate_roster.get("host") and all(
-                        _reusable_run(self._review_votes(candidate["id"]).get(a.name), candidate, bool(a.raw.get("pool_node")))
+                        _reusable_run(self._review_votes(candidate["id"]).get(a.name), candidate,
+                                      bool(a.raw.get("pool_node")), host_review=True)
                         for a in candidate_roster["agents"]
                     ):
                         hold = {"status": "awaiting_host", "task_id": candidate["id"], "host": True,
@@ -858,6 +859,7 @@ class Orchestrator:
             self._fail_task(task, "invalid collaboration evidence: " + str(exc))
             return task_result({"status": "failed", "task_id": task["id"], "errors": [str(exc)]})
         workflow = _snap.get("workflow", {})
+        host_review = bool(roster.get("host"))
         _req_caps = list(_snap.get("required_capabilities") or [])
         _needs_web = bool(_snap.get("needs_web")) or "native_web_search" in _req_caps
         _gate_agents = list(enabled)
@@ -922,7 +924,8 @@ class Orchestrator:
                         AgentResult(agent.name, latest[agent.name]["output"],
                                     int(latest[agent.name].get("latency_ms") or 0))
                         for agent in enabled
-                        if _reusable_run(latest.get(agent.name), task, bool(agent.raw.get("pool_node")))
+                        if _reusable_run(latest.get(agent.name), task, bool(agent.raw.get("pool_node")),
+                                         host_review=host_review)
                     ],
                     [{
                         "agent": replaced_name,
@@ -937,7 +940,7 @@ class Orchestrator:
                     }],
                     prior_substitution,
                 )
-            if not _reusable_run(latest.get(replaced_name), task):
+            if not _reusable_run(latest.get(replaced_name), task, host_review=host_review):
                 position = next(
                     index for index, agent in enumerate(enabled) if agent.name == replaced_name
                 )
@@ -967,7 +970,7 @@ class Orchestrator:
         candidates = []
         for agent in enabled:
             previous = latest.get(agent.name)
-            if _reusable_run(previous, task, bool(agent.raw.get("pool_node"))):
+            if _reusable_run(previous, task, bool(agent.raw.get("pool_node")), host_review=host_review):
                 reused = AgentResult(agent.name, previous["output"], int(previous.get("latency_ms") or 0))
                 reused.run_id = previous["id"]
                 reused.is_new_run = False
@@ -1065,7 +1068,8 @@ class Orchestrator:
                 is_work = bool(workflow and workflow.get("phase") == "work")
                 prompt = agent_prompt(task["prompt"], workflow, agent.name)
                 from .value_scoring import value_receipt_instruction
-                contract_instruction = value_receipt_instruction(task) if agent.raw.get("pool_node") and not is_work else ""
+                contract_instruction = (value_receipt_instruction(task, host_review=host_review)
+                                        if agent.raw.get("pool_node") and not is_work else "")
                 if contract_instruction:
                     prompt += "\n\n" + contract_instruction
                 futures[pool.submit(self._run_agent, task["id"], effective, prompt, context,
@@ -1229,12 +1233,13 @@ class Orchestrator:
                                 expected_attempt=int(task["attempts"]))
             return task_result({**bundle, "status": "completed", "task_id": task["id"], "next_stage": "integration"})
 
-        from .value_scoring import value_receipt_problem
+        from .value_scoring import settlement_value_receipt_problem
         pool_agents = {agent.name for agent in enabled if agent.raw.get("pool_node")}
         incomplete = [{"node_id": result.agent, "run_id": getattr(result, "run_id", None),
                        "error": problem, "verdict": "NEEDS_INFO"}
                       for result in results
-                      if result.agent in pool_agents and (problem := value_receipt_problem(task, result.output))]
+                      if result.agent in pool_agents and (problem := settlement_value_receipt_problem(
+                          task, result.output, host_review=host_review))]
         if incomplete:
             # A semantic receipt problem is repairable input, not a backend
             # outage. Freeze without changing node health or settling scores.

@@ -17,6 +17,45 @@ def requires_value_receipt(task):
             and policy(task)['kind'] in {'method', 'rule'})
 
 
+def expects_value_receipt(task):
+    """An explicit review requires a vote. Ordinary adjudication may just answer."""
+    from .pool_dispatch import declared_work_tasks, snapshot_of, task_host
+    if not requires_value_receipt(task):
+        return False
+    snapshot = snapshot_of(task)
+    context = snapshot.get('review_context') or {}
+    work_tasks, _ = declared_work_tasks(snapshot)
+    return bool(context.get('host') or task_host(task) or work_tasks
+                or (snapshot.get('workflow') or {}).get('phase') == 'review')
+
+
+def declares_value_receipt(text):
+    """Recognize a submitted review without treating a score in an answer as a vote."""
+    if not isinstance(text, str):
+        return False
+    if text.lstrip().startswith('{'):
+        try:
+            structured = json.loads(text)
+        except ValueError:
+            pass
+        else:
+            if isinstance(structured, dict):
+                return structured.get('review_type') == 'new_experience' or (
+                    structured.get('verdict') in ('PASS', 'FAIL', 'NEEDS_INFO') and 'evidence_refs' in structured
+                )
+    if re.search(r'^[ \t]*(?:审查类型|review_type)[ \t]*[:：][ \t]*new_experience[ \t]*$', text, re.M | re.I):
+        return True
+    from .pool_dispatch import REVIEW_VERDICT_FIELD
+    return bool(REVIEW_VERDICT_FIELD.search(text)
+                and re.search(r'^[ \t]*(?:证据引用|evidence_refs)[ \t]*[:：]', text, re.M | re.I))
+
+
+def settlement_value_receipt_problem(task, text, *, host_review=False):
+    if host_review or expects_value_receipt(task) or declares_value_receipt(text):
+        return value_receipt_problem(task, text)
+    return ''
+
+
 def value_evidence(task):
     from .pool_dispatch import snapshot_of
     snapshot = snapshot_of(task)
@@ -108,8 +147,8 @@ def value_receipt_problem(task, receipt):
     return ''
 
 
-def value_receipt_instruction(task):
-    if not requires_value_receipt(task):
+def value_receipt_instruction(task, *, host_review=False):
+    if not (expects_value_receipt(task) or (host_review and requires_value_receipt(task))):
         return ''
     return ('价值审查回执 v2：正文须逐行写明审查结论（PASS / FAIL / NEEDS_INFO）、'
             '审查类型: new_experience、评分（0–10）、适用条件与限制、证据引用。'
@@ -273,13 +312,16 @@ def native_value(db, task_id, host_receipt=None, *, reason_out=None):
                 return unscored('non_independent_pool_reviewers')
             pool_node_ids.add(node_id)
             pool_review_runs.append((node_id, run))
+    optional_receipts = requires_value_receipt(task) and not (expects_value_receipt(task) or host_receipt)
     for node_id, run in pool_review_runs:
+        if optional_receipts and not declares_value_receipt(run['output']):
+            continue
         if value_receipt_problem(task, run['output']):
             return unscored('invalid_score_receipt')
         pool_reviews.append(from_body(node_id, run['output']))
     if not pool_reviews and not host_receipt:
         reason = 'host_draft' if row['execution_mode'] == 'host_authored' else 'mock_or_non_pool'
-        if current_seats == []:
+        if optional_receipts or current_seats == []:
             reason = 'no_scoring_source'
         return unscored(reason)
 
