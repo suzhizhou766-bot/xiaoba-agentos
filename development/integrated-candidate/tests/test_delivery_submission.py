@@ -47,10 +47,10 @@ class DeliverySubmissionClassificationTests(unittest.TestCase):
             "allowed_decisions": ["accept"],
         }
 
-    def run_submit(self, *, current=None, record_side_effect=None, archive_side_effect=None):
+    def run_submit(self, *, current=None, history_error=None, record_side_effect=None, archive_side_effect=None):
         with (
             patch("xiaoba_agentos.experience_loop._chain"),
-            patch("xiaoba_agentos.experience_loop._events", return_value=[]),
+            patch("xiaoba_agentos.experience_loop.delivery_history", return_value=[], side_effect=history_error),
             patch("xiaoba_agentos.delivery.detail_tx", return_value=current or self.current),
             patch("xiaoba_agentos.experience_loop.record_delivery", side_effect=record_side_effect) as record,
             patch("xiaoba_agentos.delivery.archive_delivery", side_effect=archive_side_effect) as archive,
@@ -75,6 +75,14 @@ class DeliverySubmissionClassificationTests(unittest.TestCase):
         )
         self.assertEqual((False, False), (response["ok"], response["pending"]))
         record.assert_called_once()
+        archive.assert_not_called()
+
+    def test_invalid_related_history_never_reaches_recording(self):
+        response, record, archive = self.run_submit(
+            history_error=ValueError("related delivery history is invalid"),
+        )
+        self.assertEqual((False, False), (response["ok"], response["pending"]))
+        record.assert_not_called()
         archive.assert_not_called()
 
     def test_database_failure_during_recording_remains_retryable(self):

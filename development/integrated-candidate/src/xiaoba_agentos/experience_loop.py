@@ -37,6 +37,22 @@ def _events(conn, kind, candidate_id=None):
             for e in events if candidate_id is None or e['task_id'] == candidate_id]
 
 
+def delivery_history(conn, task_id, message_id):
+    """Check records that could affect this decision or already use its identity."""
+    from .delivery_events import rows
+
+    def relevant(row, value):
+        return row['task_id'] == task_id or (
+            isinstance(value, dict)
+            and (value.get('real_task_id') == task_id or value.get('message_id') == message_id)
+        )
+
+    events, problems = rows(conn, ('task.delivery_recorded',), _event_payload, relevant=relevant)
+    if problems:
+        raise ValueError('related delivery history is invalid: ' + problems[0]['event_id'])
+    return [dict(e['value'], event_id=e['event_id'], sequence=e['sequence']) for e in events]
+
+
 def payload_problems(conn):
     from .delivery_events import rows
     return rows(conn, ('memory.application_recorded','task.delivery_recorded'), _event_payload)[1]
@@ -504,7 +520,7 @@ def record_delivery(store, value, *, authority=None):
     with store.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         _chain(conn)
-        history = _events(conn, "task.delivery_recorded")
+        history = delivery_history(conn, value["real_task_id"], value["message_id"])
         same_message = next((d for d in history if d["message_id"] == value["message_id"]), None)
         if same_message:
             if same_message["input_sha256"] != digest(value):

@@ -53,6 +53,8 @@ process.stdout.write(JSON.stringify(result));
             "stage": "final",
             "decision": "approve",
             "experience_validation": {
+                "ready": status == "confirmed",
+                "state": "ready_for_final" if status == "confirmed" else "validation_basis_confirmation_required",
                 "validation_basis": {
                     "status": status,
                     "basis_id": "TEST-basis-" + task_id,
@@ -80,6 +82,13 @@ process.stdout.write(JSON.stringify(result));
             },
         }
 
+    @staticmethod
+    def basis_check(item):
+        basis = item["experience_validation"]["validation_basis"]
+        return {"checked": True, "dataset": {
+            "taskId": item["task_id"], "basisId": basis["basis_id"], "basisSha256": basis["basis_sha256"],
+        }}
+
     def basis_harness(self, items, checks=(), packet_items=None):
         setup = f"""
 const items = {json.dumps(items, ensure_ascii=False)};
@@ -87,7 +96,13 @@ const checks = {json.dumps(checks, ensure_ascii=False)};
 const packetItems = {json.dumps(packet_items, ensure_ascii=False)};
 const packet = packetItems === null ? null : {{items: packetItems}};
 const root = {{hidden: false}};
-const list = {{innerHTML: "", querySelectorAll: () => checks}};
+const list = {{
+  innerHTML: "",
+  querySelectorAll() {{
+    return [...this.innerHTML.matchAll(/<input class="rc-basis-confirm" type="checkbox" data-task-id="([^"]*)" data-basis-id="([^"]*)" data-basis-sha256="([^"]*)"([^>]*)>/g)]
+      .map(([,taskId,basisId,basisSha256,attrs])=>({{dataset:{{taskId,basisId,basisSha256}},checked:attrs.includes(" checked")}}));
+  }}
+}};
 const submit = {{disabled: false}};
 const feedback = {{textContent: ""}};
 const elements = {{rcBasisConfirmations: root, rcBasisItems: list, rcSubmit: submit, rcFeedback: feedback}};
@@ -96,14 +111,16 @@ const esc = value => String(value ?? "").replace(/[&<>\"]/g, ch => ({{"&":"&amp;
 """
         return self.run_helpers(
             ["basisOf", "needsBasisConfirmation", "basisReady", "basisValue",
-             "basisRequirementsMatch", "syncBasisConfirmationState", "renderBasisConfirmations"],
+             "basisRequirementsMatch", "basisApprovalReady", "basisCheckboxMatches",
+             "basisConfirmationMatches", "basisClaimClass", "basisCheckLabel",
+             "syncBasisConfirmationState", "renderBasisConfirmations"],
             setup,
-            "(() => { renderBasisConfirmations(items); return {hidden:root.hidden, html:list.innerHTML, disabled:submit.disabled, feedback:feedback.textContent}; })()"
+            "(() => { renderBasisConfirmations(items,checks); return {hidden:root.hidden, html:list.innerHTML, disabled:submit.disabled, feedback:feedback.textContent}; })()"
         )
 
     def test_basis_confirmation_renders_full_scope_and_requires_each_proposed_item(self):
         items = [self.basis_item("one"), self.basis_item("two")]
-        checks = [{"dataset": {"taskId": "one"}, "checked": True}]
+        checks = [self.basis_check(items[0])]
         result = self.basis_harness(items, checks)
 
         self.assertFalse(result["hidden"])
@@ -113,11 +130,11 @@ const esc = value => String(value ?? "").replace(/[&<>\"]/g, ch => ({{"&":"&amp;
         self.assertIn("成品/实际工作", result["html"])
         self.assertIn("TEST-real-task-one", result["html"])
         self.assertIn("TEST-delivery-one", result["html"])
-        self.assertIn("我确认这些材料对应已采用的方法范围", result["html"])
+        self.assertIn("我确认所列方法主张的分类及核验路线正确，且这些材料对应已采用的方法范围", result["html"])
         self.assertEqual(result["html"].count("rc-basis-confirm-row"), 2)
         self.assertTrue(result["disabled"], "one candidate checkbox must not confirm a second candidate")
 
-        checks.append({"dataset": {"taskId": "two"}, "checked": True})
+        checks.append(self.basis_check(items[1]))
         confirmed = self.basis_harness(items, checks)
         self.assertFalse(confirmed["disabled"])
 
@@ -141,6 +158,7 @@ const esc = value => String(value ?? "").replace(/[&<>\"]/g, ch => ({{"&":"&amp;
 
     def test_code_claim_explicitly_keeps_sandbox_requirement(self):
         item = self.basis_item("code")
+        item["experience_validation"].update(ready=True, state="ready_for_final")
         basis = item["experience_validation"]["validation_basis"]
         basis["status"] = "not_required"
         basis["method_claims"] = [{"claim": "TEST 可断言命令步骤", "class": "code"}]
@@ -156,10 +174,13 @@ const esc = value => String(value ?? "").replace(/[&<>\"]/g, ch => ({{"&":"&amp;
         self.assertIn("代码/命令", result["html"])
         self.assertIn("隔离沙箱验证", result["html"])
         self.assertIn("隔离沙箱", result["html"])
-        self.assertIn("沙箱路线：资格由服务端核验", result["html"])
-        self.assertNotIn("rc-basis-confirm-row", result["html"])
+        self.assertIn("我确认所列方法主张的分类及核验路线正确。", result["html"])
+        self.assertNotIn("这些材料对应已采用的方法范围", result["html"])
+        self.assertIn("rc-basis-confirm-row", result["html"])
         self.assertNotIn("真实任务证据 · 免隔离试验", result["html"])
-        self.assertFalse(result["disabled"], "a sandbox-qualified code route must not require a real-task confirmation")
+        self.assertNotIn("采用时间", result["html"])
+        self.assertTrue(result["disabled"])
+        self.assertFalse(self.basis_harness([item], [self.basis_check(item)])["disabled"])
 
     def test_detail_status_and_actions_follow_the_validation_route(self):
         result = self.run_helpers(
@@ -367,24 +388,66 @@ async function refresh(){ return null; }
             {"claim": "TEST 自动处理命令", "class": "code"},
         ]
         basis["required_checks"] = ["real_task_acceptance", "sandbox"]
-        result = self.basis_harness([item], checks=[{"dataset": {"taskId": "mixed"}, "checked": True}])
+        result = self.basis_harness([item], checks=[self.basis_check(item)])
 
         self.assertIn("真实任务证据 + 隔离沙箱", result["html"])
-        self.assertIn("我确认这些材料对应已采用的方法范围", result["html"])
-        self.assertTrue(result["disabled"] is False)
+        self.assertIn("这些材料对应已采用的方法范围", result["html"])
+        self.assertFalse(result["disabled"])
 
-    def test_confirmed_basis_is_shown_without_a_second_checkbox(self):
-        result = self.basis_harness([self.basis_item("confirmed", status="confirmed")])
+        item["experience_validation"]["state"] = "awaiting_trial"
+        result = self.basis_harness([item], checks=[self.basis_check(item)])
+        self.assertNotIn("rc-basis-confirm-row", result["html"])
+        self.assertTrue(result["disabled"], "classification confirmation must leave sandbox qualification in force")
+
+    def test_previous_real_task_confirmation_still_requires_classification(self):
+        item = self.basis_item("confirmed", status="confirmed")
+        result = self.basis_harness([item])
 
         self.assertFalse(result["hidden"])
         self.assertIn("真实任务依据已确认", result["html"])
-        self.assertNotIn("rc-basis-confirm-row", result["html"])
+        self.assertIn("rc-basis-confirm-row", result["html"])
+        self.assertIn("我确认所列方法主张的分类及核验路线正确。", result["html"])
+        self.assertNotIn("这些材料对应已采用的方法范围", result["html"])
+        self.assertTrue(result["disabled"])
+        self.assertFalse(self.basis_harness([item], [self.basis_check(item)])["disabled"])
+
+    def test_refresh_carries_confirmation_only_for_the_same_basis_id_and_hash(self):
+        updated, untouched = self.basis_item("updated"), self.basis_item("untouched")
+        checks = [self.basis_check(updated), self.basis_check(untouched)]
+        basis = updated["experience_validation"]["validation_basis"]
+        for field, changed in (("basis_id", "TEST-new-basis"), ("basis_sha256", "e" * 64)):
+            with self.subTest(field=field):
+                previous, basis[field] = basis[field], changed
+                result = self.basis_harness([updated, untouched], checks=checks)
+                self.assertTrue(result["disabled"])
+                self.assertEqual(result["html"].count(" checked>"), 1)
+                self.assertFalse(self.basis_harness([updated, untouched],
+                                                   checks=[self.basis_check(updated), checks[1]])["disabled"])
+                basis[field] = previous
+
+    def test_retry_requires_the_classification_flag_and_exact_basis(self):
+        item = self.basis_item("retry")
+        basis = item["experience_validation"]["validation_basis"]
+        confirmation = {"basis_id": basis["basis_id"], "basis_sha256": basis["basis_sha256"], "confirmed": True}
+        packet_items = [{"task_id": item["task_id"], "validation_basis_confirmation": confirmation}]
+        result = self.basis_harness([item], checks=[self.basis_check(item)], packet_items=packet_items)
+        self.assertTrue(result["disabled"])
+        self.assertIn(" disabled>", result["html"])
+        self.assertNotIn(" checked", result["html"])
+
+        confirmation["classification_confirmed"] = True
+        result = self.basis_harness([item], packet_items=packet_items)
         self.assertFalse(result["disabled"])
+        self.assertIn(" checked disabled>", result["html"])
+
+        basis["basis_sha256"] = "e" * 64
+        self.assertTrue(self.basis_harness([item], packet_items=packet_items)["disabled"])
 
     def test_final_approve_is_the_only_new_confirmation_route(self):
         needs = extract_function(self.source, "needsBasisConfirmation")
+        basis_of = extract_function(self.source, "basisOf")
         result = self.run_node(f"""
-const basisOf = item => item.experience_validation?.validation_basis || null;
+{basis_of}
 {needs}
 const basis = {{status:"proposed",required_checks:["real_task_acceptance"]}};
 const item = {{stage:"final",decision:"approve",experience_validation:{{validation_basis:basis}}}};
@@ -392,7 +455,9 @@ process.stdout.write(JSON.stringify({{
   finalApprove:needsBasisConfirmation(item),
   deliveryApprove:needsBasisConfirmation({{...item,stage:"delivery"}}),
   finalReject:needsBasisConfirmation({{...item,decision:"reject"}}),
-  confirmed:needsBasisConfirmation({{...item,experience_validation:{{validation_basis:{{status:"confirmed"}}}}}}),
+  confirmed:needsBasisConfirmation({{...item,experience_validation:{{validation_basis:{{...basis,status:"confirmed"}}}}}}),
+  sandbox:needsBasisConfirmation({{...item,experience_validation:{{validation_basis:{{status:"not_required",route:"sandbox",required_checks:["sandbox"]}}}}}}),
+  missing:needsBasisConfirmation({{...item,experience_validation:{{validation_basis:{{status:"missing"}}}}}}),
   oldContract:needsBasisConfirmation({{stage:"final",decision:"approve",experience_validation:{{kind:"method",state:"ready_for_final"}}}})
 }}));
 """)
@@ -400,7 +465,9 @@ process.stdout.write(JSON.stringify({{
             "finalApprove": True,
             "deliveryApprove": False,
             "finalReject": False,
-            "confirmed": False,
+            "confirmed": True,
+            "sandbox": True,
+            "missing": False,
             "oldContract": False,
         })
 
@@ -408,9 +475,9 @@ process.stdout.write(JSON.stringify({{
         # not trusted or copied back as user confirmation data.
         self.assertRegex(self.source, re.compile(
             r"item\.validation_basis_confirmation=\{basis_id:basis\.basis_id,"
-            r"basis_sha256:basis\.basis_sha256,confirmed:true\}"
+            r"basis_sha256:basis\.basis_sha256,confirmed:true,classification_confirmed:true\}"
         ))
-        self.assertIn("if(!basisReady(basis)||!checked) return null;", self.source)
+        self.assertIn("if(!syncBasisConfirmationState(submittedItems())) return;", self.source)
 
     def test_returned_items_are_folded_by_default_and_search_opens_the_group(self):
         render_list = extract_function(self.source, "renderList")

@@ -536,7 +536,7 @@ def _verify_trial_qualification(conn, candidate) -> dict:
             if confirmation_pending:
                 return {"qualified": False, "ready": False, "state": "validation_basis_confirmation_required", "kind": kind,
                         "route": basis["route"], "validation_basis": basis,
-                        "reasons": ["终审前需确认本条真实任务证据及其范围"]}
+                        "reasons": ["终审前需确认方法主张分类、核验路线及本条真实任务证据的适用范围"]}
             return {"qualified": True, "ready": True, "state": "ready_for_final", "kind": kind,
                     "route": basis["route"], "validation_basis": basis, "reasons": []}
 
@@ -655,7 +655,7 @@ def _verify_trial_qualification(conn, candidate) -> dict:
                 "dsh_verdict": dsh_verdict,
                 "peer_verdict": peer_verdict,
                 "validation_basis": basis,
-                "reasons": ["隔离验证已满足；终审前需确认本条真实任务证据及其范围"],
+                "reasons": ["隔离验证已满足；终审前需确认方法主张分类、核验路线及本条真实任务证据的适用范围"],
             }
         return {
             "qualified": True,
@@ -698,7 +698,7 @@ def _verify_trial_qualification(conn, candidate) -> dict:
         return {"qualified": False, "ready": False, "state": "validation_basis_confirmation_required", "kind": kind,
                 "route": basis["route"], "round": 1, "rounds_used": 1, "task_id": task_id,
                 "validation_basis": basis,
-                "reasons": ["隔离验证已满足；终审前需确认本条真实任务证据及其范围"]}
+                "reasons": ["隔离验证已满足；终审前需确认方法主张分类、核验路线及本条真实任务证据的适用范围"]}
     return {"qualified": True, "ready": True, "state": "ready_for_final", "kind": kind,
             "round": 1, "rounds_used": 1, "task_id": task_id,
             "validation_basis": basis if basis.get("status") != "missing" else None, "reasons": []}

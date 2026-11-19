@@ -142,44 +142,59 @@ process.stdout.write(JSON.stringify(out));
 
     def test_delivery_rejection_clears_retry_while_unknown_outcome_keeps_same_packet(self):
         submit = extract_function(self.source, "submitTaskDelivery")
+        open_delivery = extract_function(self.source, "openTaskDelivery")
+        open_confirmation = extract_function(self.source, "openTaskDeliveryConfirmation")
         script = r"""
 let taskDeliverySelection={decision:"accept",packet:null};
-let taskDeliveryDetail={task_id:"task-1",real_task:{workspace:"/tmp"},artifact:{version:"v1"},expected:{version:1}};
-let taskDeliveryBusy=false,taskDeliveryPendingPacket=null,calls=0,ids=0,submittedPackets=[];
+let taskDeliveryDetailRequest=0;
+const detail={task_id:"task-1",real_task:{workspace:"/tmp"},artifact:{version:"v1"},expected:{version:1}};
+let taskDeliveryDetail=detail;
+const taskDeliveryPendingPackets=new Map();
+let taskDeliveryBusy=false,calls=0,ids=0,submittedPackets=[],queries=[];
 const TOKEN="test-token";
 const crypto={randomUUID:()=>"id-"+(++ids)};
 const elements={
   taskDeliveryConfirm:{disabled:false},taskDeliveryFeedback:{textContent:""},
-  taskDeliveryMessage:{textContent:""},taskDeliveryDialog:{close(){},showModal(){}}
+  taskDeliveryMessage:{textContent:""},taskDeliveryDialog:{close(){},showModal(){}},
+  taskDeliveryConfirmFacts:{replaceChildren(){},append(){}},taskDeliveryCaution:{textContent:""}
 };
 const $=id=>elements[id];
+const document={createElement:()=>({textContent:""})};
+function deliveryActionLabel(value){return value;}
 function renderTaskDeliveryDetail(){}
 async function refreshTaskDeliveries(){}
-async function openTaskDelivery(){}
+async function api(query){queries.push(query);return detail;}
 let nextFetch;
 const fetch=async(_url,options)=>{calls++;submittedPackets.push(JSON.parse(options.body));if(nextFetch instanceof Error)throw nextFetch;return nextFetch;};
-""" + submit + r"""
+""" + "\n".join((open_delivery, open_confirmation, submit)) + r"""
 async function run(fetchResult){
   taskDeliverySelection={decision:"accept",packet:null};taskDeliveryBusy=false;
-  taskDeliveryPendingPacket=null;calls=0;submittedPackets=[];nextFetch=fetchResult;
+  taskDeliveryPendingPackets.clear();calls=0;submittedPackets=[];nextFetch=fetchResult;
   await submitTaskDelivery();
-  return {pending:taskDeliveryPendingPacket,feedback:elements.taskDeliveryFeedback.textContent,calls,
-    sent:submittedPackets[0]};
+  return {pending:taskDeliveryPendingPackets.get(detail.task_id)||null,feedback:elements.taskDeliveryFeedback.textContent,calls,
+    sent:submittedPackets[0],disabled:elements.taskDeliveryConfirm.disabled};
 }
 (async()=>{
  const http4xx=await run({ok:false,status:409,json:async()=>({ok:false,pending:false,error:"stale version"})});
+ await submitTaskDelivery();
+ const callsAfterRejection=calls;
  const http200=await run({ok:true,status:200,json:async()=>({ok:false,pending:false,error:"B1 rejected"})});
  const http503=await run({ok:false,status:503,json:async()=>({ok:false,error:"gateway timeout"})});
  const unknown=await run(new Error("connection reset"));
- taskDeliverySelection={decision:"accept",packet:unknown.pending};taskDeliveryBusy=false;
  nextFetch={ok:true,status:200,json:async()=>({ok:false,pending:true,error:"still unresolved"})};
  await submitTaskDelivery();
- const retry={calls,packet:submittedPackets[1],pending:taskDeliveryPendingPacket};
- process.stdout.write(JSON.stringify({http4xx,http200,http503,unknown,retry}));
+ const retry={calls,packet:submittedPackets[1],pending:taskDeliveryPendingPackets.get(detail.task_id)};
+ await openTaskDelivery("task-1","newer");
+ openTaskDeliveryConfirmation(null,true);
+ await submitTaskDelivery();
+ const reopened={calls,packet:submittedPackets[2],query:queries[0]};
+ process.stdout.write(JSON.stringify({http4xx,http200,http503,unknown,retry,reopened,callsAfterRejection}));
 })().catch(e=>{process.stderr.write(String(e.stack||e));process.exit(1)});
 """
         result = self.run_node(script)
         self.assertIsNone(result["http4xx"]["pending"])
+        self.assertTrue(result["http4xx"]["disabled"])
+        self.assertEqual(1, result["callsAfterRejection"])
         self.assertNotIn("暂不确定", result["http4xx"]["feedback"])
         self.assertIsNone(result["http200"]["pending"])
         self.assertNotIn("暂不确定", result["http200"]["feedback"])
@@ -190,6 +205,9 @@ async function run(fetchResult){
         self.assertEqual(2, result["retry"]["calls"], "只在测试显式调用重试后才发出第二次请求")
         self.assertEqual(result["unknown"]["pending"], result["retry"]["packet"])
         self.assertEqual(result["unknown"]["pending"]["message_id"], result["retry"]["pending"]["message_id"])
+        self.assertEqual("delivery?id=task-1&version=v1", result["reopened"]["query"])
+        self.assertEqual(result["unknown"]["pending"], result["reopened"]["packet"])
+        self.assertEqual(3, result["reopened"]["calls"])
 
     def test_topo_anchor_is_single_and_unchanged(self):
         # C07-01：锚点必须在权威页面里唯一且不被删改；agent-pool-native.js 由 mount_pool

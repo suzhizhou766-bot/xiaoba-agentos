@@ -278,6 +278,17 @@ class ReviewTest(FixtureMixin, unittest.TestCase):
         payload['receipt_id'] = 'late-replaced'
         self.assertEqual(self.store.receive(payload)['status'], 'invalid')
 
+    def test_replacing_a_reviewer_with_itself_preserves_the_active_plan(self):
+        request = self.request()
+        self.complete(request)
+        self.store.deliver(self.inbox)
+        before = self.store.get(request['id'])
+        current_peer = next(seat for seat in before['assignments'] if seat['role'] == 'peer')
+        with self.assertRaisesRegex(ValueError, '替换前后实际来源相同'):
+            self.store.replace_reviewer(request['id'], current_peer['source_id'], 'TEST replacement',
+                                        assignment_id=current_peer['id'])
+        self.assertEqual(before, self.store.get(request['id']))
+
     def test_b19_and_version_mismatch_retained_as_invalid(self):
         assignment = self.request()['assignments'][0]
         for i, changed in enumerate([{'findings':''}, {'findings':'<invoke tool="x"></invoke>'},

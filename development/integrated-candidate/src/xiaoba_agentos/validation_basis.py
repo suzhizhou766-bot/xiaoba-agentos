@@ -605,6 +605,17 @@ def validate_basis(conn, candidate: Dict[str, Any], *, require_confirmed: bool =
     return selected
 
 
+def matches_basis_confirmation(basis: Dict[str, Any], confirmation: Optional[Dict[str, Any]]) -> bool:
+    return (
+        isinstance(confirmation, dict)
+        and set(confirmation) == {"basis_id", "basis_sha256", "confirmed", "classification_confirmed"}
+        and confirmation["confirmed"] is True
+        and confirmation["classification_confirmed"] is True
+        and confirmation["basis_id"] == basis["basis_id"]
+        and confirmation["basis_sha256"] == basis["basis_sha256"]
+    )
+
+
 def confirm_basis_tx(store, conn, candidate: Dict[str, Any], confirmation: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     requested = confirmation.get("basis_id") if isinstance(confirmation, dict) else None
     basis = validate_basis(conn, candidate, basis_id=requested)
@@ -616,16 +627,11 @@ def confirm_basis_tx(store, conn, candidate: Dict[str, Any], confirmation: Optio
         raise ValueError(basis.get("reason") or "awaiting_evidence: method claims are incomplete")
     if basis["status"] == "revoked":
         raise ValueError("validation basis was revoked")
-    if "real_task_acceptance" not in basis["required_checks"]:
-        if confirmation is not None:
-            raise ValueError("this validation route does not require a separate real-task confirmation")
-        return basis_binding(basis)
+    if confirmation is None:
+        raise ValueError("终审批准前须在裁决中心确认方法主张分类与核验路线")
+    if not matches_basis_confirmation(basis, confirmation):
+        raise ValueError("validation-basis confirmation does not match the current evidence or lacks explicit method classification confirmation")
     if basis["status"] == "proposed":
-        if not isinstance(confirmation, dict) or set(confirmation) != {"basis_id", "basis_sha256", "confirmed"}:
-            raise ValueError("final approval requires explicit real-task evidence confirmation")
-        if (confirmation.get("confirmed") is not True or confirmation.get("basis_id") != basis["basis_id"]
-                or confirmation.get("basis_sha256") != basis["basis_sha256"]):
-            raise ValueError("validation-basis confirmation does not match the current evidence")
         event = {
             "version": 1,
             "policy_version": basis["policy_version"],
@@ -639,9 +645,6 @@ def confirm_basis_tx(store, conn, candidate: Dict[str, Any], confirmation: Optio
         }
         store._append_event_tx(conn, candidate["task_id"], "memory.validation_basis_confirmed", event)
         basis = validate_basis(conn, candidate, require_confirmed=True, basis_id=basis["basis_id"])
-    elif confirmation is not None and (confirmation.get("basis_id"), confirmation.get("basis_sha256"), confirmation.get("confirmed")) != (
-            basis["basis_id"], basis["basis_sha256"], True):
-        raise ValueError("stale validation-basis confirmation")
     return basis_binding(basis)
 
 

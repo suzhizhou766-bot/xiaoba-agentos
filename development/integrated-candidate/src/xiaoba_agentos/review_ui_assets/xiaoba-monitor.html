@@ -1338,9 +1338,9 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
         <p class="foot" id="rcSummaryCount"></p>
         <div class="rc-phase" data-for="review">
           <section class="rc-basis-confirmations" id="rcBasisConfirmations" hidden aria-labelledby="rcBasisTitle">
-            <h4 id="rcBasisTitle">方法核验依据</h4>
+            <h4 id="rcBasisTitle">方法主张分类与核验依据</h4>
+            <p class="rc-basis-trust">请逐项核对主张类别与核验路线。如有分类错误，返回候选，选择“需要修改”并写明需要修正的主张。</p>
             <div id="rcBasisItems"></div>
-            <p class="rc-basis-trust">真实任务证据确认按本机现有业务信任边界记录，不构成独立的人类身份认证。</p>
           </section>
           <textarea id="rcOutput" readonly aria-label="综合裁决交接文本"></textarea>
         </div>
@@ -3075,7 +3075,7 @@ const ReviewCenter = (() => {
 
   let state=null, selected=null, detail=null, ticket=0, saved={}, drafts={}, packet=null, submitting=false, wanted=null, returnedExpanded=false;
   let refreshSeq=0;   // 卡07 C07-03：轮询请求序号，迟到响应不得覆盖新依据/新详情
-  let packetReviewBaseline=new Set(), packetTitles={}, progressAttempt=0;
+  let packetReviewBaseline=new Set(), packetDetails={}, progressAttempt=0;
   try{ drafts = JSON.parse(localStorage.getItem(DRAFT_KEY)||"{}") || {}; }catch(e){ drafts={}; }
   const stash = ()=>{ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts)); }catch(e){} };
   const forget = id=>{ delete saved[id]; delete drafts[id]; stash(); };
@@ -3151,7 +3151,8 @@ const ReviewCenter = (() => {
 
   /* ---- 单条任务交付确认：读取可轮询，写入只在用户二次确认后发送 ---- */
   let taskDeliveries=null, taskDeliveryDetail=null, taskDeliveryBusy=false;
-  let taskDeliverySelection=null, taskDeliveryPendingPacket=null;
+  let taskDeliverySelection=null, taskDeliveryDetailRequest=0;
+  const taskDeliveryPendingPackets=new Map();
   function deliveryActionLabel(value){ return value==="withdraw"?"撤回验收":"接受此版本"; }
   function deliveryDigest(value){ return JSON.stringify(value); }
   function renderTaskDeliveries(){
@@ -3192,6 +3193,7 @@ const ReviewCenter = (() => {
   function renderTaskDeliveryDetail(){
     const detail=taskDeliveryDetail, panel=$("taskDeliveryDetail");
     if(!detail){panel.hidden=true;return;}
+    const pending=taskDeliveryPendingPackets.get(detail.task_id);
     panel.hidden=false;
     const task=detail.real_task||{}, artifact=detail.artifact||{}, expected=detail.expected||{}, history=detail.latest_delivery;
     $("taskDeliveryTitleDetail").textContent=task.description||detail.task_id||"任务交付";
@@ -3217,28 +3219,37 @@ const ReviewCenter = (() => {
     const allowed=Array.isArray(detail.allowed_decisions)?detail.allowed_decisions:[];
     $("taskDeliveryAccept").hidden=!allowed.includes("accept");
     $("taskDeliveryWithdraw").hidden=!allowed.includes("withdraw");
-    $("taskDeliveryRetry").hidden=!taskDeliveryPendingPacket;
-    $("taskDeliveryAccept").disabled=!!taskDeliveryPendingPacket;
-    $("taskDeliveryWithdraw").disabled=!!taskDeliveryPendingPacket;
-    $("taskDeliveryMessage").textContent=taskDeliveryPendingPacket
+    $("taskDeliveryRetry").hidden=!pending;
+    $("taskDeliveryAccept").disabled=!!pending;
+    $("taskDeliveryWithdraw").disabled=!!pending;
+    $("taskDeliveryMessage").textContent=pending
       ?"上次提交结果不确定。可重试同一提交编号；系统不会自动重发。"
       :"接受或撤回不会替代经验候选的初审、终审或发布。";
   }
   async function openTaskDelivery(taskId,version){
-    if(!taskId)return;
-    taskDeliveryDetail=null;taskDeliveryPendingPacket=null;taskDeliverySelection=null;
+    if(!taskId||(taskDeliveryBusy&&taskDeliverySelection))return;
+    const request=++taskDeliveryDetailRequest;
+    const pending=taskDeliveryPendingPackets.get(taskId);
+    version=pending?.artifact.version||version;
+    taskDeliveryDetail=null;taskDeliverySelection=null;
     $("taskDeliveryMessage").textContent="正在核对当前版本与验收记录…";renderTaskDeliveryDetail();
     try{
       const qs="id="+encodeURIComponent(taskId)+(version?"&version="+encodeURIComponent(version):"");
       const detail=await api("delivery?"+qs);
-      if(detail.task_id!==taskId||!detail.expected||!detail.artifact||!detail.real_task)throw new Error("交付详情与任务清单不匹配");
+      if(request!==taskDeliveryDetailRequest)return;
+      if(detail.task_id!==taskId||!detail.expected||!detail.artifact||!detail.real_task||
+         (version&&detail.artifact.version!==version))throw new Error("交付详情与任务清单不匹配");
       taskDeliveryDetail=detail;$("taskDeliveryMessage").textContent="";renderTaskDeliveryDetail();
-    }catch(error){$("taskDeliveryMessage").textContent="任务依据暂不可读："+String(error.message||error);}
+    }catch(error){
+      if(request===taskDeliveryDetailRequest)$("taskDeliveryMessage").textContent="任务依据暂不可读："+String(error.message||error);
+    }
   }
   function openTaskDeliveryConfirmation(decision,retry=false){
     if(!taskDeliveryDetail||taskDeliveryBusy)return;
     const detail=taskDeliveryDetail;
-    taskDeliverySelection=retry?{decision:taskDeliveryPendingPacket.decision,packet:taskDeliveryPendingPacket}: {decision,packet:null};
+    const pending=taskDeliveryPendingPackets.get(detail.task_id);
+    if(retry!==Boolean(pending))return;
+    taskDeliverySelection={decision:pending?.decision||decision,packet:pending||null};
     const action=taskDeliverySelection.decision, artifact=detail.artifact||{};
     const rows=[["任务编号",detail.task_id],["决定",deliveryActionLabel(action)],["成品版本",artifact.version],
       ["成品 SHA-256",artifact.sha256],["冻结依据 SHA-256",detail.expected_sha256]];
@@ -3263,12 +3274,15 @@ const ReviewCenter = (() => {
     taskDeliveryBusy=true;$("taskDeliveryConfirm").disabled=true;
     $("taskDeliveryFeedback").textContent="正在提交这一个明确选择…";
     const keepPending=(message)=>{
-      taskDeliveryPendingPacket=packet;
+      taskDeliveryPendingPackets.set(packet.task_id,packet);
+      selection.packet=packet;
+      $("taskDeliveryConfirm").textContent="重试同一提交";
       $("taskDeliveryFeedback").textContent=message+"。重试会沿用同一提交编号；不会自动重发。";
       renderTaskDeliveryDetail();
     };
     const rejectKnown=(message)=>{
-      taskDeliveryPendingPacket=null;
+      taskDeliveryPendingPackets.delete(packet.task_id);
+      taskDeliverySelection=null;
       $("taskDeliveryFeedback").textContent="本次未记录："+message;
       renderTaskDeliveryDetail();
     };
@@ -3294,10 +3308,12 @@ const ReviewCenter = (() => {
       if(!result||typeof result!=="object"){
         keepPending("提交结果暂不确定：服务器没有返回有效状态");
       }else if(result.ok){
-        taskDeliveryPendingPacket=null;$("taskDeliveryDialog").close();
+        taskDeliveryPendingPackets.delete(packet.task_id);
+        taskDeliverySelection=null;
+        $("taskDeliveryDialog").close();
         $("taskDeliveryMessage").textContent=(result.receipt&&result.receipt.decision==="withdraw"?"撤回已记录。":"交付已记录。")+
           " 经验批准与发布仍需单独裁决。";
-        try{await refreshTaskDeliveries();await openTaskDelivery(detail.task_id);}
+        try{await refreshTaskDeliveries();await openTaskDelivery(detail.task_id,detail.artifact.version);}
         catch(error){$("taskDeliveryMessage").textContent+=" 状态刷新失败："+String(error.message||error);}
       }else if(result.pending===true){
         keepPending("本次尚未完成："+(result.error||"可重试"));
@@ -3306,17 +3322,12 @@ const ReviewCenter = (() => {
       }else{
         keepPending("提交结果暂不确定：服务器没有明确返回是否已记录");
       }
-    }finally{taskDeliveryBusy=false;$("taskDeliveryConfirm").disabled=false;}
+    }finally{taskDeliveryBusy=false;$("taskDeliveryConfirm").disabled=!taskDeliverySelection;}
   }
-  $("taskDeliveryList").addEventListener("click",ev=>{
-    const button=ev.target.closest("button");if(!button)return;
-    const row=button.closest("li");const id=row&&row.querySelector(".delivery-name")?.textContent;
-    if(id)openTaskDelivery(id);
-  });
   $("taskDeliveryRefresh").addEventListener("click",refreshTaskDeliveries);
   $("taskDeliveryAccept").addEventListener("click",()=>openTaskDeliveryConfirmation("accept"));
   $("taskDeliveryWithdraw").addEventListener("click",()=>openTaskDeliveryConfirmation("withdraw"));
-  $("taskDeliveryRetry").addEventListener("click",()=>openTaskDeliveryConfirmation(taskDeliveryPendingPacket?.decision,true));
+  $("taskDeliveryRetry").addEventListener("click",()=>openTaskDeliveryConfirmation(null,true));
   $("taskDeliveryConfirm").addEventListener("click",submitTaskDelivery);
   ["taskDeliveryDialogClose","taskDeliveryCancel"].forEach(id=>$(id).addEventListener("click",()=>$("taskDeliveryDialog").close()));
 
@@ -3690,15 +3701,18 @@ const ReviewCenter = (() => {
   function stopTimers(){ clearInterval(progressTimer); clearInterval(clockTimer); progressTimer=clockTimer=null; progressAttempt++; }
 
   function submittedItems(){
-    return packet? packet.items.map(x=>({...x, experience_validation:saved[x.task_id]?.experience_validation,
-      title:packetTitles[x.task_id] || saved[x.task_id]?.title || x.task_id})) : Object.values(saved);
+    return packet? packet.items.map(x=>({...packetDetails[x.task_id],...x})) : Object.values(saved);
   }
 
-  function basisOf(item){ return item.experience_validation?.validation_basis || null; }
+  function basisOf(item){
+    const basis=item.experience_validation?.validation_basis;
+    return item.stage==="final"&&item.decision==="approve"&&basis?.status!=="missing"? basis||null : null;
+  }
   function needsBasisConfirmation(item){
     const basis=basisOf(item);
-    return item.stage==="final" && item.decision==="approve" && basis?.status==="proposed"
-      && Array.isArray(basis.required_checks) && basis.required_checks.includes("real_task_acceptance");
+    if(!Array.isArray(basis?.required_checks)) return false;
+    if(basis.status==="not_required") return basis.route==="sandbox";
+    return ["proposed","confirmed"].includes(basis.status)&&basis.required_checks.includes("real_task_acceptance");
   }
   function basisRequirementsMatch(basis){
     const claims=basis?.method_claims;
@@ -3718,8 +3732,25 @@ const ReviewCenter = (() => {
       && Array.isArray(basis.evidence_items) && basis.evidence_items.length>0
       && basis.evidence_items.every(e=>e && e.label && e.ref && e.sha256);
   }
-  function basisValue(value){ return typeof value==="string"? value : JSON.stringify(value??"—",null,2); }
-  function basisClaimClass(value){ return value==="code"? "代码/命令" : value==="artifact"? "成品/实际工作" : "类别无法识别"; }
+  function basisApprovalReady(item){
+    const basis=basisOf(item), validation=item.experience_validation;
+    return needsBasisConfirmation(item)&&basisReady(basis)&&(validation.ready===true
+      || (validation.state==="validation_basis_confirmation_required"&&basis.status==="proposed"));
+  }
+  function basisCheckboxMatches(check,item,basis){
+    return check.checked&&check.dataset.taskId===item.task_id
+      &&check.dataset.basisId===basis.basis_id&&check.dataset.basisSha256===basis.basis_sha256;
+  }
+  function basisConfirmationMatches(confirmation,basis){
+    return confirmation?.confirmed===true&&confirmation.classification_confirmed===true
+      &&confirmation.basis_id===basis.basis_id&&confirmation.basis_sha256===basis.basis_sha256;
+  }
+  function basisValue(value){
+    return typeof value==="string"? value : JSON.stringify(value??"—",null,2);
+  }
+  function basisClaimClass(value){
+    return value==="code"? "代码/命令" : value==="artifact"? "成品/实际工作" : "类别无法识别";
+  }
   function basisCheckLabel(value){
     return value==="real_task_acceptance"? "真实任务与用户认可" : value==="sandbox"? "隔离沙箱" : String(value??"未知检查");
   }
@@ -3751,18 +3782,18 @@ const ReviewCenter = (() => {
     let approveHint;
     if(stage==="delivery"){
       approveHint=!trial.required? "进入终审，尚不发布经验"
-        : route==="real_task_acceptance"? "初审通过；终审时一次确认真实任务依据"
-        : route==="combined"? "初审通过后进入隔离验证；真实任务依据在终审时一次确认"
+        : route==="real_task_acceptance"? "终审时一起确认方法主张分类与真实任务依据"
+        : route==="combined"? "初审通过后进入隔离验证；终审时一起确认分类和真实任务依据"
         : needsSandbox? "初审通过后进入隔离验证，尚不发布经验"
         : "补齐核验依据后进入终审，尚不发布经验";
     }else if(basisPending){
-      approveHint=needsSandbox? "隔离验证已满足；核对真实任务证据并在本次终审确认"
-        : "核对真实任务、应用范围和用户认可材料，并在本次终审确认";
+      approveHint=needsSandbox? "隔离验证已满足；在本次终审确认分类和真实任务证据"
+        : "核对真实任务、应用范围、用户认可材料和方法主张分类，并在本次终审确认";
     }else if(trial.required&&!trial.ready){
       approveHint=basis.status==="awaiting_evidence"? "补齐结构化方法主张和证据后才能继续"
         : needsSandbox? "须先完成隔离执行与独立双审" : "真实任务证据尚未就绪，暂不能终审";
     }else{
-      approveHint="执行敏感检查、发布与索引验证";
+      approveHint=!missingBasis? "确认方法主张分类后，执行发布与索引验证" : "执行敏感检查、发布与索引验证";
     }
     return {stageLabel,panelTitle,stateLabel,showTrialRequest,trialRequestLabel:route==="combined"? "复制混合路线隔离验证请求" : "复制隔离验证任务请求",approveHint};
   }
@@ -3785,46 +3816,45 @@ const ReviewCenter = (() => {
       "证据项：", ...(evidence.length? evidence.map((item,index)=>`${index+1}. ${item.label}\n${item.ref}\n${item.sha256}`) : ["无证据项"]),
       "信任边界："+basisValue(basis.trust_boundary)].join("\n");
   }
-  function renderBasisConfirmations(items){
+  function renderBasisConfirmations(items, priorChecks=[]){
     const root=$("rcBasisConfirmations"), list=$("rcBasisItems");
-    const entries=items.filter(item=>item.stage==="final"&&item.decision==="approve"&&basisOf(item));
+    const entries=items.filter(basisOf);
     root.hidden=!entries.length;
     list.innerHTML=entries.map(item=>{
-      const basis=basisOf(item), required=needsBasisConfirmation(item), ready=basisReady(basis);
-      const sent=item.validation_basis_confirmation;
-      const fixed=!!packet, checked=sent?.confirmed===true&&sent.basis_id===basis.basis_id&&sent.basis_sha256===basis.basis_sha256;
+      const basis=basisOf(item), required=needsBasisConfirmation(item);
+      const checked=packet? basisConfirmationMatches(packet.items.find(x=>x.task_id===item.task_id)?.validation_basis_confirmation,basis)
+        : priorChecks.some(check=>basisCheckboxMatches(check,item,basis));
       const evidence=Array.isArray(basis.evidence_items)?basis.evidence_items:[];
       const hasRealTask=Array.isArray(basis.required_checks)&&basis.required_checks.includes("real_task_acceptance");
-      const sandboxOnly=basis.status==="not_required"&&basis.route==="sandbox"&&basis.required_checks?.length===1&&basis.required_checks[0]==="sandbox";
-      const controls=required
-        ? ready? `<label class="rc-basis-confirm-row"><input class="rc-basis-confirm" type="checkbox" data-task-id="${esc(item.task_id)}"${checked?" checked":""}${fixed?" disabled":""}><span>我确认这些材料对应已采用的方法范围</span></label>`
-          : `<p class="rc-basis-trust">证据包缺少方法范围或完整证据项，当前无法确认。</p>`
-        : hasRealTask&&basis.status==="confirmed"&&ready? `<span class="pill ok">真实任务依据已确认</span>`
-          : hasRealTask&&basis.status==="confirmed"? `<p class="rc-basis-trust">已确认依据缺少完整展示材料，当前不能提交终审。</p>`
-          : sandboxOnly&&ready? `<span class="pill warn">沙箱路线：资格由服务端核验</span>`
-          : !hasRealTask&&basis.status==="confirmed"? `<p class="rc-basis-trust">沙箱路线出现多余的依据确认事件，当前不能提交终审。</p>`
+      const confirmationText=basis.status==="proposed"
+        ? "我确认所列方法主张的分类及核验路线正确，且这些材料对应已采用的方法范围。"
+        : "我确认所列方法主张的分类及核验路线正确。";
+      const controls=basisApprovalReady(item)
+        ? `<label class="rc-basis-confirm-row"><input class="rc-basis-confirm" type="checkbox" data-task-id="${esc(item.task_id)}" data-basis-id="${esc(basis.basis_id)}" data-basis-sha256="${esc(basis.basis_sha256)}"${checked?" checked":""}${packet?" disabled":""}><span>${esc(confirmationText)}</span></label>`
+        : required? `<p class="rc-basis-trust">核验尚未就绪或证据材料不完整，当前无法确认。</p>`
           : `<p class="rc-basis-trust">依据状态或路线无法识别，当前不能提交终审。</p>`;
       const route=basis.route==="real_task_acceptance"? "真实任务证据 · 免隔离试验"
         : basis.route==="sandbox"? "隔离沙箱验证"
         : basis.route==="combined"? "真实任务证据 + 隔离沙箱"
         : basis.route;
-      const status=basis.status==="proposed"? "待你确认"
-        : basis.status==="confirmed"? "已确认"
+      const status=basis.status==="proposed"? "真实任务依据待确认"
+        : basis.status==="confirmed"? "真实任务依据已确认"
         : basis.status==="awaiting_evidence"? "待补证据主张"
-        : sandboxOnly? "沙箱核验" : "状态无法识别";
+        : required? "沙箱核验" : "状态无法识别";
       const claims=Array.isArray(basis.method_claims)?basis.method_claims:[];
       return `<article class="rc-basis-card">
         <div class="meta"><strong>${esc(item.title||item.task_id)}</strong><span class="pill ${basis.status==="confirmed"?"ok":"warn"}">${esc(status)}</span><span class="num">${esc(item.task_id)}</span></div>
         <div><strong>方法范围</strong><pre>${esc(basisValue(basis.method_scope))}</pre></div>
-        <div><strong>方法主张与核验类别</strong>${claims.length? `<ul class="rc-basis-evidence">${claims.map(claim=>`<li><strong>${esc(basisClaimClass(claim.class))}</strong><br>${esc(claim.claim)}</li>`).join("")}</ul>` : `<p class="rc-basis-trust">缺少结构化方法主张</p>`}</div>
+        <div><strong>方法主张与核验类别</strong>${claims.length? `<ul class="rc-basis-evidence">${claims.map(claim=>`<li><strong>${esc(basisClaimClass(claim?.class))}</strong><br>${esc(claim?.claim)}</li>`).join("")}</ul>` : `<p class="rc-basis-trust">缺少结构化方法主张</p>`}</div>
         <div><strong>核验路线</strong><pre>${esc(basisValue(route))}</pre></div>
         <div><strong>所需核验</strong><ul class="rc-basis-evidence">${Array.isArray(basis.required_checks)? basis.required_checks.map(check=>`<li>${esc(basisCheckLabel(check))}</li>`).join("") : `<li>检查路线缺失</li>`}</ul></div>
-        <div><strong>实际任务</strong><pre>${esc(basisValue(basis.real_task))}</pre></div>
+        ${hasRealTask? `<div><strong>实际任务</strong><pre>${esc(basisValue(basis.real_task))}</pre></div>
         <div><strong>应用范围与交付记录</strong><pre>${esc(basisValue({application_id:basis.application_id,application_scope:basis.application_scope,delivery_event_id:basis.delivery_event_id}))}</pre></div>
         <div><strong>成品、执行及认可材料</strong><pre>${esc(basisValue({artifact:basis.artifact,execution_evidence:basis.execution_evidence,acceptance_ref:basis.acceptance_ref,acceptance_sha256:basis.acceptance_sha256}))}</pre></div>
-        <div><strong>依据编号 / 哈希</strong><pre>${esc(basis.basis_id)}\n${esc(basis.basis_sha256)}</pre></div>
-        <div><strong>证据项（${evidence.length}）</strong>${evidence.length? `<ul class="rc-basis-evidence">${evidence.map(e=>`<li><strong>${esc(e.label)}</strong><br>${esc(e.ref)}<br><code>${esc(e.sha256)}</code></li>`).join("")}</ul>` : `<p class="rc-basis-trust">没有证据项</p>`}</div>
         <div><strong>采用时间</strong><pre>${esc(basisValue(basis.accepted_at))}</pre></div>
+        <p class="rc-basis-trust">真实任务证据确认按本机现有业务信任边界记录，不构成独立的人类身份认证。</p>` : ""}
+        <div><strong>依据编号 / 哈希</strong><pre>${esc(basis.basis_id)}\n${esc(basis.basis_sha256)}</pre></div>
+        <div><strong>证据项（${evidence.length}）</strong>${evidence.length? `<ul class="rc-basis-evidence">${evidence.map(e=>`<li><strong>${esc(e?.label)}</strong><br>${esc(e?.ref)}<br><code>${esc(e?.sha256)}</code></li>`).join("")}</ul>` : `<p class="rc-basis-trust">没有证据项</p>`}</div>
         <div><strong>信任边界</strong><pre>${esc(basisValue(basis.trust_boundary))}</pre></div>
         ${controls}
       </article>`;
@@ -3835,20 +3865,19 @@ const ReviewCenter = (() => {
     const checks=[...$("rcBasisItems").querySelectorAll(".rc-basis-confirm")];
     const missing=items.some(item=>{
       const basis=basisOf(item);
-      if(item.stage!=="final"||item.decision!=="approve"||!basis) return false;
-      if(basis.status==="confirmed") return !basisReady(basis)||!Array.isArray(basis.required_checks)||!basis.required_checks.includes("real_task_acceptance");
-      if(basis.status==="not_required") return !basisReady(basis)||basis.route!=="sandbox"||basis.required_checks.length!==1||basis.required_checks[0]!=="sandbox";
-      if(basis.status!=="proposed"||!basisReady(basis)) return true;
-      if(!needsBasisConfirmation(item)) return false;
+      if(!basis) return false;
+      if(!basisApprovalReady(item)) return true;
       if(packet){
         const sent=packet.items.find(x=>x.task_id===item.task_id)?.validation_basis_confirmation;
-        return !(sent?.confirmed===true&&sent.basis_id===basis.basis_id&&sent.basis_sha256===basis.basis_sha256);
+        return !basisConfirmationMatches(sent,basis);
       }
-      return !checks.some(check=>check.dataset.taskId===item.task_id&&check.checked);
+      return !checks.some(check=>basisCheckboxMatches(check,item,basis));
     });
-    $("rcSubmit").disabled=missing;
-    if(missing) $("rcFeedback").textContent="依据材料不完整或尚未按要求确认，无法提交终审。";
-    else if($("rcFeedback").textContent==="依据材料不完整或尚未按要求确认，无法提交终审。") $("rcFeedback").textContent="";
+    const feedback=$("rcFeedback"), prompt="依据材料未就绪或尚未确认方法主张分类，无法提交终审。";
+    $("rcSubmit").disabled=!items.length||missing;
+    if(missing) feedback.textContent=prompt;
+    else if(feedback.textContent===prompt) feedback.textContent="";
+    return items.length>0&&!missing;
   }
 
   // 卡07 C07-03：迟到轮询/旧缓存不得覆盖最新依据详情。
@@ -3861,6 +3890,25 @@ const ReviewCenter = (() => {
       return current.experience_validation;
     }
     return item.experience_validation;
+  }
+  function refreshOpenSummary(previous){
+    const dialog=$("rcDialog");
+    if(packet||!dialog.open||dialog.dataset.phase!=="review") return;
+    Object.values(saved).forEach(item=>{
+      const previousItem=previous?.items.find(x=>x.task_id===item.task_id);
+      const current=state.items.find(x=>x.task_id===item.task_id);
+      // A newly read detail may be newer than an unchanged list projection.
+      if(current&&!same(current.experience_validation,previousItem?.experience_validation)){
+        item.experience_validation=current.experience_validation;
+        if(detail?.task_id===item.task_id&&same(detail.expected,item.expected)) detail.experience_validation=item.experience_validation;
+      }
+    });
+    const items=submittedItems();
+    const checks=[...$("rcBasisItems").querySelectorAll(".rc-basis-confirm")];
+    $("rcSummaryCount").textContent=`本次 ${items.length} 项裁决。未选择的候选保持原状。`;
+    $("rcOutput").value=handoffText(items);
+    $("rcSubmit").textContent=`确认提交 ${items.length} 项裁决`;
+    renderBasisConfirmations(items, checks);
   }
   function openSummary(){
     if(!packet){
@@ -3885,25 +3933,20 @@ const ReviewCenter = (() => {
 
   async function submit(){
     if(submitting || (!packet && !Object.keys(saved).length)) return;
+    if(!syncBasisConfirmationState(submittedItems())) return;
     // 重试沿用同一提交编号，裁决中心据此查验，避免重复审核
     if(!packet){
       const items=Object.values(saved).map(({task_id,stage,decision,note,expected,entry_type})=>{
         const item={task_id,stage,decision,note,expected,entry_type};
         const basis=basisOf(saved[task_id]);
         if(needsBasisConfirmation(saved[task_id])){
-          const checked=[...$("rcBasisItems").querySelectorAll(".rc-basis-confirm")].some(input=>input.dataset.taskId===task_id&&input.checked);
-          if(!basisReady(basis)||!checked) return null;
-          item.validation_basis_confirmation={basis_id:basis.basis_id,basis_sha256:basis.basis_sha256,confirmed:true};
+          item.validation_basis_confirmation={basis_id:basis.basis_id,basis_sha256:basis.basis_sha256,confirmed:true,classification_confirmed:true};
         }
         return item;
       });
-      if(items.some(item=>!item)){
-        syncBasisConfirmationState(submittedItems());
-        return;
-      }
       packet = {id:crypto.randomUUID(), items};
       packetReviewBaseline = new Set((state?.reviews||[]).map(r=>r.id));
-      packetTitles = Object.fromEntries(Object.values(saved).map(x=>[x.task_id,x.title]));
+      packetDetails = Object.fromEntries(Object.values(saved).map(({task_id,title,experience_validation})=>[task_id,{title,experience_validation}]));
     }
     const items = submittedItems();
     const status = Object.fromEntries(items.map(x=>[x.task_id,{record:"active"}]));
@@ -3973,7 +4016,7 @@ const ReviewCenter = (() => {
       $("rcCopy").textContent = "复制回执";
       $("rcBarNote").textContent = `刚刚提交 ${r.items.length} 项：${done} 项已记录`+(sync.ok===true? "，第二大脑已同步 "+(sync.at||"").slice(11) : "，第二大脑待同步");
       r.items.forEach(x=>{ if(x.recorded) forget(x.task_id); });
-      packet=null; packetReviewBaseline=new Set(); packetTitles={};
+      packet=null; packetReviewBaseline=new Set(); packetDetails={};
     }catch(e){
       stopTimers();
       phase("error");
@@ -3996,12 +4039,13 @@ const ReviewCenter = (() => {
     try{
       const next = await api("state");
       if(mine!==refreshSeq) return;
-      const changed = !state || state.revision!==next.revision;
+      const previous=state, changed=!previous||previous.revision!==next.revision;
       state = next; renderState();
       refreshBadge();
       loadKept(force);
       // 已不在待审队列里的候选，从本次清单中移除
       Object.keys(saved).forEach(id=>{ const cur=state.items.find(x=>x.task_id===id); if(!cur || !same(cur.expected, saved[id].expected)) forget(id); });
+      if(changed) refreshOpenSummary(previous);
       counts();
       if(!state.items.length && !selected){ blank("所有待审已处理","新候选产生后会自动出现在这里。"); return; }
       if(!selected || wanted){

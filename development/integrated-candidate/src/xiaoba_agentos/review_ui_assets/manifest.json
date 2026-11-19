@@ -55,7 +55,7 @@
       "base": "assistant",
       "relative": "工具/小八监看/xiaoba-monitor.html",
       "before_sha256": "506f113864a9e90f3a4e45f16cdf56b0db525cb389518735a83e01ffa9538b24",
-      "after_sha256": "def6cb71b33fcfebe3c5deeb6d2cd3bf3833e0e317771e2cf64fd39b38ebe5b4"
+      "after_sha256": "961c174d5b0af58c7fe681d5aac57b0ca4bad64ccd8a587f1165641604bea3bf"
     }
   ]
 }

@@ -123,7 +123,10 @@ class ValidationBasisTests(unittest.TestCase):
         )
 
     def confirm(self, basis):
-        return {"basis_id": basis["basis_id"], "basis_sha256": basis["basis_sha256"], "confirmed": True}
+        return {
+            "basis_id": basis["basis_id"], "basis_sha256": basis["basis_sha256"],
+            "confirmed": True, "classification_confirmed": True,
+        }
 
     def test_artifact_route_confirms_in_final_transaction_and_publish_rechecks_same_basis(self):
         candidate = self.candidate()
@@ -132,10 +135,10 @@ class ValidationBasisTests(unittest.TestCase):
         self.assertEqual(["real_task_acceptance"], basis["required_checks"])
         self.assertIn("TEST native real task prompt", basis["real_task"]["prompt"])
         self.assertTrue(any(item["label"] == "交付认可原件" for item in basis["evidence_items"]))
-        stale = {"basis_id": basis["basis_id"], "basis_sha256": "0" * 64, "confirmed": True}
+        stale = self.confirm(basis) | {"basis_sha256": "0" * 64}
         with self.assertRaisesRegex(ValueError, "does not match the current evidence"):
             self.final_approval(candidate, basis, stale)
-        with self.assertRaisesRegex(ValueError, "explicit real-task evidence confirmation"):
+        with self.assertRaisesRegex(ValueError, "确认方法主张分类"):
             self.final_approval(candidate, basis)
         self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
 
@@ -149,6 +152,7 @@ class ValidationBasisTests(unittest.TestCase):
             current = validate_basis(conn, self.store.get_memory_candidate(candidate["task_id"]))
         self.assertEqual("confirmed", current["status"])
         self.assertEqual(basis_binding(current), events[-1]["validation_basis"])
+        self.assertIs(events[-1]["method_classification_confirmed"], True)
         self.final_approval(candidate, basis, self.confirm(basis))
         self.assertEqual(1, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
         with self.store.publication_transaction(candidate["task_id"]):
@@ -232,12 +236,15 @@ class ValidationBasisTests(unittest.TestCase):
         candidate = self.candidate()
         _, _, _, basis = self.proposed(candidate, [{"claim": "TEST inspect the delivered artifact", "class": "artifact"}])
         stale = self.confirm(basis) | {"basis_sha256": "0" * 64}
-        code, payload = execute_review(
-            self.config, self.store, candidate["task_id"], "final", "approve", "TEST final decision",
-            expected_sha256=candidate["evidence_sha256"], validation_basis_confirmation=stale,
-        )
-        self.assertNotEqual(0, code)
-        self.assertEqual("blocked", payload["status"])
+        old_packet = {key: value for key, value in self.confirm(basis).items() if key != "classification_confirmed"}
+        for confirmation in (None, stale, old_packet, self.confirm(basis) | {"classification_confirmed": 1}):
+            with self.subTest(confirmation=confirmation):
+                code, payload = execute_review(
+                    self.config, self.store, candidate["task_id"], "final", "approve", "TEST final decision",
+                    expected_sha256=candidate["evidence_sha256"], validation_basis_confirmation=confirmation,
+                )
+                self.assertNotEqual(0, code)
+                self.assertEqual("blocked", payload["status"])
         self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
         self.assertEqual(0, self.final_review_event_count(candidate["task_id"]))
 
@@ -269,7 +276,7 @@ class ValidationBasisTests(unittest.TestCase):
             basis = validate_basis(conn, self.store.get_memory_candidate(candidate["task_id"]))
         self.assertEqual("combined", basis["route"])
         self.assertEqual(["real_task_acceptance", "sandbox"], basis["required_checks"])
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "尚未.*隔离验证"):
             self.final_approval(candidate, basis, self.confirm(basis))
         self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
         self.assertEqual(0, self.final_review_event_count(candidate["task_id"]))
@@ -277,10 +284,15 @@ class ValidationBasisTests(unittest.TestCase):
         native_trial(self.store, candidate, card={
             "problem_key": "parse-fixture", "experience_application": app["trial_binding"],
         })
-        with self.assertRaisesRegex(ValueError, "explicit real-task evidence confirmation"):
+        with self.assertRaisesRegex(ValueError, "确认方法主张分类"):
             self.final_approval(candidate, basis)
+        with self.assertRaisesRegex(ValueError, "lacks explicit method classification confirmation"):
+            self.final_approval(candidate, basis, self.confirm(basis) | {"classification_confirmed": False})
+        self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
+        self.assertEqual(0, self.final_review_event_count(candidate["task_id"]))
         self.final_approval(candidate, basis, self.confirm(basis))
         self.assertEqual(1, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
+        self.assertEqual(1, self.final_review_event_count(candidate["task_id"]))
 
     def test_code_only_stays_on_existing_sandbox_route_and_cannot_be_downgraded(self):
         self.store.apply_validation_extension()
@@ -295,17 +307,60 @@ class ValidationBasisTests(unittest.TestCase):
         self.assertEqual("sandbox", basis["route"])
         self.assertEqual(["sandbox"], basis["required_checks"])
         self.assertEqual("not_required", basis["status"])
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "尚未.*隔离验证"):
             self.final_approval(candidate, basis, self.confirm(basis))
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "确认方法主张分类"):
             self.final_approval(candidate, basis)
         self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
+        self.assertEqual(0, self.final_review_event_count(candidate["task_id"]))
 
         native_trial(self.store, candidate, card={
             "problem_key": "parse-fixture", "experience_application": app["trial_binding"],
         })
-        self.final_approval(candidate, basis)
+        stale = self.confirm(basis) | {"basis_sha256": "0" * 64}
+        old_packet = {key: value for key, value in self.confirm(basis).items() if key != "classification_confirmed"}
+        for confirmation in (None, stale, old_packet, self.confirm(basis) | {"classification_confirmed": False}):
+            with self.subTest(confirmation=confirmation):
+                with self.assertRaises(ValueError):
+                    self.final_approval(candidate, basis, confirmation)
+        self.assertEqual(0, self.final_review_event_count(candidate["task_id"]))
+        self.final_approval(candidate, basis, self.confirm(basis))
         self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
+        self.assertEqual(1, self.final_review_event_count(candidate["task_id"]))
+        with self.store.read_only() as conn:
+            event = json.loads(conn.execute(
+                "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.reviewed' "
+                "AND json_extract(payload_json,'$.stage')='final'", (candidate["task_id"],),
+            ).fetchone()[0])
+        self.assertEqual(basis_binding(basis), event["validation_basis"])
+        self.assertIs(event["method_classification_confirmed"], True)
+        with self.store.publication_transaction(candidate["task_id"]):
+            pass
+
+    def test_existing_sandbox_final_approval_remains_publishable_without_classification_marker(self):
+        self.store.apply_validation_extension()
+        candidate = self.candidate()
+        _, application, _, basis = self.proposed(candidate, [
+            {"claim": "TEST run the normalization command", "class": "code"},
+        ])
+        native_trial(self.store, candidate, card={
+            "problem_key": "parse-fixture", "experience_application": application["trial_binding"],
+        })
+        append_event = self.store._append_event_tx
+
+        def append_legacy_final_review(conn, task_id, event_type, payload):
+            if event_type == "memory.reviewed" and payload["stage"] == "final":
+                # Record the exact shape emitted before explicit classification confirmation.
+                payload = {key: value for key, value in payload.items() if key != "method_classification_confirmed"}
+            return append_event(conn, task_id, event_type, payload)
+
+        with patch.object(self.store, "_append_event_tx", side_effect=append_legacy_final_review):
+            self.final_approval(candidate, basis, self.confirm(basis))
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertEqual(1, self.final_review_event_count(candidate["task_id"]))
+        self.assertEqual(0, self.event_count(candidate["task_id"], "memory.validation_basis_confirmed"))
+        with self.store.publication_transaction(candidate["task_id"]):
+            pass
 
     def test_missing_method_claims_require_evidence_and_cannot_select_a_route(self):
         candidate = self.candidate()
@@ -399,6 +454,13 @@ class ValidationBasisTests(unittest.TestCase):
         self.assertEqual("missing", basis["status"])
         self.assertTrue(verdict["qualified"], verdict)
         self.assertEqual("ready_for_final", verdict["state"])
+        self.final_approval(candidate, basis)
+        with self.store.read_only() as conn:
+            event = json.loads(conn.execute(
+                "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.reviewed' "
+                "AND json_extract(payload_json,'$.stage')='final'", (candidate["task_id"],),
+            ).fetchone()[0])
+        self.assertNotIn("method_classification_confirmed", event)
 
     def test_claims_are_monotonic_and_unknown_classes_fail_closed(self):
         candidate = self.candidate()

@@ -141,7 +141,7 @@ class ValidationBasisAdversarialTests(unittest.TestCase):
     def test_client_cannot_supply_or_reuse_a_confirmation_id(self):
         candidate, _, _, _, basis = self.artifact_basis()
         supplied = dict(self.confirm(basis), confirmation_id="TEST-reused-client-id")
-        with self.assertRaisesRegex(ValueError, "explicit real-task evidence confirmation"):
+        with self.assertRaisesRegex(ValueError, "does not match the current evidence"):
             self.final_approval(candidate, basis, supplied)
         self.assert_no_confirmation(candidate)
         self.final_approval(candidate, basis, self.confirm(basis))

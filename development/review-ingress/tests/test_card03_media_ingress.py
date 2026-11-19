@@ -80,7 +80,7 @@ class MediaIngressTests(test_agy_cli.CliFixture, unittest.TestCase):
         with self.native.read_only() as db:
             return validate_basis(db, self.native.get_memory_candidate(self.candidate['task_id']))
 
-    def request(self, *, video=None, request_id='TEST-media-review'):
+    def request(self, *, video=None, request_id='TEST-media-review', peer_channel='backend_adapter'):
         if not any(node['node_id'] == 'TEST-media-a' for node in self.pool.state()['nodes']):
             self.add('TEST-media-a', model='TEST media model a', name='TEST media a')
             self.add('TEST-media-b', model='TEST media model b', name='TEST media b')
@@ -88,7 +88,7 @@ class MediaIngressTests(test_agy_cli.CliFixture, unittest.TestCase):
             'TEST independent code and derived-frame review',
             [{'ref': self.video['path'], 'sha256': self.video['sha256']}],
             request_id=request_id, review_type='new_experience',
-            dsh_channel='backend_adapter', peer_channel='backend_adapter',
+            dsh_channel='backend_adapter', peer_channel=peer_channel,
             media_review={'version': 1, 'source_video': video or self.video})
 
     def fake_tool(self, command, **kwargs):
@@ -145,6 +145,15 @@ class MediaIngressTests(test_agy_cli.CliFixture, unittest.TestCase):
             self.request()
         self.assertEqual([], self.tool_calls)
         self.assertEqual([], self.starts())
+
+    def test_media_review_requires_controlled_channel_for_each_seat(self):
+        self.basis()
+        with self.assertRaisesRegex(ValueError, '需要受控 CLI 通道'):
+            self.request(peer_channel='external_handoff')
+        with self.native.read_only() as db:
+            self.assertIsNone(db.execute('SELECT 1 FROM ri_requests WHERE id=?',
+                                         ('TEST-media-review',)).fetchone())
+        self.assertEqual(2, len(self.request()['assignments']))
 
     def test_unknown_capability_blocks_before_tools_or_cli(self):
         self.basis()

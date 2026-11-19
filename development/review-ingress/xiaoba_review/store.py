@@ -736,6 +736,8 @@ class ReviewStore:
         if channel not in {'external_handoff', 'backend_adapter'}:
             raise ValueError('未知接入通道')
         common = json.loads(request['common'])
+        if common.get('media_review') and channel != 'backend_adapter':
+            raise ValueError('missing_materials: 视频审查需要受控 CLI 通道；请人工核查')
         contract_version = common.get('contract_version') or (2 if common.get('review_type') is not None else 1)
         if contract_version >= 2:
             receipt_contract = {
@@ -1510,6 +1512,8 @@ class ReviewStore:
             ).fetchall()
             from .agent_pool import independence
             new_ind = independence(self.source(db, source_id))
+            if new_ind == independence(self.source(db, old['source_id'])):
+                raise ValueError('替换前后实际来源相同，不能重开原审查')
             if any(new_ind == independence(self.source(db, r['source_id'])) for r in others):
                 raise ValueError('实际来源不独立')
             db.execute('UPDATE ri_assignments SET active=0 WHERE id=?', (old['id'],))

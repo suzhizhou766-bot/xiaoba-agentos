@@ -32,11 +32,8 @@ def _matches_pending_basis_confirmation(verdict: Dict[str, Any], confirmation: O
             or not isinstance(basis, dict) or basis.get("status") != "proposed"
             or "real_task_acceptance" not in basis.get("required_checks", [])):
         return False
-    return (isinstance(confirmation, dict)
-            and set(confirmation) == {"basis_id", "basis_sha256", "confirmed"}
-            and confirmation.get("confirmed") is True
-            and confirmation.get("basis_id") == basis.get("basis_id")
-            and confirmation.get("basis_sha256") == basis.get("basis_sha256"))
+    from .validation_basis import matches_basis_confirmation
+    return matches_basis_confirmation(basis, confirmation)
 
 
 class PublicationUncertain(RuntimeError):

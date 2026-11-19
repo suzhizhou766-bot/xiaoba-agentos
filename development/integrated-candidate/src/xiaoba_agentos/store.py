@@ -1655,6 +1655,7 @@ class EventStore:
                     "trial_task_id": trial_task_id,
                     "experience_loop_sha256": loop_sha256,
                     "validation_basis": validation_basis_binding,
+                    **({"method_classification_confirmed": True} if validation_basis_binding is not None else {}),
                     "status": status,
                     "candidate_sha256": candidate_sha256,
                 },
@@ -1839,6 +1840,9 @@ class EventStore:
         current_basis_binding = basis_binding(basis) if basis.get("status") != "missing" else None
         if payload.get("validation_basis") != current_basis_binding:
             raise ValueError("final approval is not bound to the current validation basis")
+        if "method_classification_confirmed" in payload and (
+                payload["method_classification_confirmed"] is not True or current_basis_binding is None):
+            raise ValueError("final approval has an invalid method classification confirmation")
         from .experience_workflow import require_final_trial
         trial_task_id = require_final_trial(conn, candidate)
         if trial_task_id:

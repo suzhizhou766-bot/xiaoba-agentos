@@ -73,14 +73,31 @@ def _read(ref, workspace):
     return _answer(text)
 
 
-def _direct_rows(conn):
+def _direct_rows(conn, *, task_id=None):
     from .delivery_events import rows
     def validate(kind, value):
         if (value.get('version') != 1 or not isinstance(value.get('real_task'), dict)
                 or not isinstance(value['real_task'].get('id'), str)
-                or not isinstance(value.get('artifact'), dict) or not isinstance(value.get('result'), dict)):
+                or not isinstance(value.get('artifact'), dict)
+                or not isinstance(value['artifact'].get('version'), str)
+                or not value['artifact']['version'] or not isinstance(value.get('result'), dict)):
             raise ValueError('incomplete direct completion')
-    return rows(conn, ('task.direct_completed', 'task.delivery_materials_registered'), validate)[0]
+    def relevant(row, value):
+        if row['task_id'] == task_id:
+            return True
+        real = value.get('real_task') if isinstance(value, dict) else None
+        return isinstance(real, dict) and real.get('id') == task_id
+
+    valid, problems = rows(conn, ('task.direct_completed', 'task.delivery_materials_registered'),
+                           validate, relevant=relevant if task_id is not None else None)
+    if task_id is not None and problems:
+        raise ValueError('related direct completion history is invalid: ' + problems[0]['event_id'])
+    if task_id is not None and any(
+        row['value']['real_task']['id'] != task_id or row['task_id'] not in (None, task_id)
+        for row in valid
+    ):
+        raise ValueError('related direct completion history has conflicting task IDs')
+    return valid
 
 
 def register_direct(store, value):
@@ -104,7 +121,7 @@ def register_direct(store, value):
             completed = completed_task_tx(conn, real['id'])
             if completed['result_sha256'] != value['result']['sha256']:
                 raise ValueError('registered result differs from native completion')
-        prior = [e for e in _direct_rows(conn) if e['value']['real_task']['id'] == real['id']]
+        prior = _direct_rows(conn, task_id=real['id'])
         identical = next((e for e in prior if e['value'] == value), None)
         if identical:
             return dict(value, event_id=identical['event_id'], idempotent=True)
@@ -131,7 +148,7 @@ def completed_task_tx(conn, task_id, real_task=None, artifact=None, verify_artif
             raise ValueError('native completion result does not match its event and provenance')
         return {'real_task_id': task_id, 'result': result, 'result_sha256': sha,
                 'completion_event_id': matching[-1]['event_id'], 'completion_kind': 'native'}
-    direct = [e for e in _direct_rows(conn) if e['value']['real_task']['id'] == task_id]
+    direct = _direct_rows(conn, task_id=task_id)
     if not direct:
         raise ValueError('direct task has no registered completion evidence')
     if verify_artifact_bytes:
@@ -358,10 +375,11 @@ def submit(config, store, request, *, authority):
     delivery_attempted = False
     delivery_recorded = False
     try:
-        from .experience_loop import _events, _chain
+        from .experience_loop import delivery_history, _chain
         with store.read_only() as conn:
             _chain(conn)
-            previous = next((d for d in _events(conn, 'task.delivery_recorded') if d['message_id'] == request['message_id']), None)
+            history = delivery_history(conn, request['task_id'], request['message_id'])
+            previous = next((d for d in history if d['message_id'] == request['message_id']), None)
             current = None if previous else detail_tx(conn, request['task_id'], request['artifact'])
         if current and request['expected'] != current['expected']:
             raise ValueError('task/application/product version changed; refresh before deciding')

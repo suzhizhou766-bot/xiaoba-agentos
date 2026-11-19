@@ -17,6 +17,7 @@ from xiaoba_agentos.experience_loop import (
 from xiaoba_agentos.experience_workflow import digest, verify_final_qualification, match_trials, trial_summary
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.store import EventStore
+from xiaoba_agentos.validation_basis import validate_basis
 
 
 def record_delivery(store, value):
@@ -82,6 +83,19 @@ class ExperienceLoopTests(unittest.TestCase):
         if approve:
             self.store.review_memory(c["task_id"], "delivery", "approve", "TEST human initial review", c["evidence_sha256"])
         return c
+
+    def approve_classified_final(self, candidate, note):
+        task_id = candidate["task_id"]
+        current = self.store.get_memory_candidate(task_id)
+        with self.store.read_only() as conn:
+            basis = validate_basis(conn, current)
+        return self.store.review_memory(
+            task_id, "final", "approve", note, candidate["evidence_sha256"],
+            validation_basis_confirmation={
+                "basis_id": basis["basis_id"], "basis_sha256": basis["basis_sha256"],
+                "confirmed": True, "classification_confirmed": True,
+            },
+        )
 
     def application(self, c):
         with self.store.read_only() as conn:
@@ -317,7 +331,7 @@ class ExperienceLoopTests(unittest.TestCase):
         app = record_application(self.store, self.application(c))
         self.trial(c, app)
         record_delivery(self.store, self.delivery())
-        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final only", c["evidence_sha256"])
+        self.approve_classified_final(c, "TEST human final only")
         record_delivery(self.store, self.delivery(message_id="TEST-withdraw", user_message="撤回验收", decision="withdraw"))
         with self.assertRaises(ValueError), self.store.publication_transaction(c["task_id"]):
             pass
@@ -564,7 +578,7 @@ class ExperienceLoopTests(unittest.TestCase):
         app = record_application(self.store, self.application(c))
         self.trial(c, app)
         record_delivery(self.store, self.delivery())
-        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final", c["evidence_sha256"])
+        self.approve_classified_final(c, "TEST human final")
         event_id = self.malformed_withdrawal()
 
         code, result = _run_cli([
@@ -582,7 +596,7 @@ class ExperienceLoopTests(unittest.TestCase):
         app = record_application(self.store, self.application(c))
         self.trial(c, app)
         record_delivery(self.store, self.delivery())
-        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final", c["evidence_sha256"])
+        self.approve_classified_final(c, "TEST human final")
         record_delivery(self.store, self.delivery(message_id="TEST-withdraw", user_message="撤回验收", decision="withdraw"))
         record_delivery(self.store, self.delivery(message_id="TEST-reaccept"))
         self.assertTrue(self.gate(c)["qualified"])
@@ -708,7 +722,7 @@ class ExperienceLoopTests(unittest.TestCase):
         record_delivery(self.store, self.delivery())
         self.assertEqual(len(self.packet(c)["attachments"][-1]["external_reviews"]), 2)
         old = receipts["peer"]
-        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final with original reviews", c["evidence_sha256"])
+        self.approve_classified_final(c, "TEST human final with original reviews")
         revised = dict(old, receipt_id=old["receipt_id"]+"-new-pass", findings="TEST revised limitations with PASS")
         received = fixture.rs.receive(revised)
         fixture.rs.attest(received["id"], received["digest"], "TEST source confirmation")
