@@ -68,7 +68,7 @@ v1.6.9（卡 51）已移除 `recovery.probe_on_session_start` 及 doctor 的
 `outcome` 取 `unchanged`（原样好用）、`modified`（改过）、`inapplicable`
 （不适用）。后两种必须在 changed／added／discarded 至少一项说明改动、补充或
 摒弃，其余可空；unchanged 三项须空。缺项或相互矛盾时不猜分，记跳过事件。
-`memory-delivery-record --receipt FILE` 仍绑定该应用的任务、成品版本和用户交付记录。
+`memory-delivery-record --user-decision --receipt FILE`（以及新版 `task-delivery --user-decision --receipt FILE`、`intake '交付'|'撤回验收' --user-decision --message-id ... --delivery-receipt FILE`）均须显式传入必填无值布尔声明 `--user-decision`（缺少时 CLI fail-closed 拒绝，`accept`/`withdraw` 由消息或回执 `decision` 区分），并绑定该应用的任务、成品版本和用户交付记录。
 
 同任务同经验永久只结算一次，重新发送消息、交付新成品版本、撤回再交付均不重复加分。
 原样好用记1；改过或不适用记0；同任务同成品对同一来源有多份应用记录时，必须全部

@@ -87,16 +87,17 @@
 主力先完成既有交付记录、资产清单与 Playbook 回流，再向现有入口传入明确的任务和版本：
 
 ```sh
-xiaoba intake '交付' --message-id 稳定用户消息ID --delivery-receipt /绝对路径/delivery.json
+xiaoba intake '交付' --user-decision --message-id 稳定用户消息ID --delivery-receipt /绝对路径/delivery.json
+xiaoba intake '撤回验收' --user-decision --message-id 稳定用户消息ID --delivery-receipt /绝对路径/withdraw.json
 ```
 
-delivery.json 提供 real_task_id、artifact（与应用的路径/版本/摘要一致）、source_ref（真实用户消息来源）、delivery_record（项目内交付记录的 path/sha256）。入口绑定原始用户消息及 ID，不启动会话或后台；不可与 --submit 或强制路由合用。宿主适配也可调用 `memory-delivery-record --receipt FILE`，额外提供 origin=user、user_message、message_id；不得伪造用户来源。此为可信宿主的事件登记契约，不是独立的人类身份认证服务。
+delivery.json 提供 real_task_id、artifact（与应用的路径/版本/摘要一致）、source_ref（真实用户消息来源）、delivery_record（项目内交付记录的 path/sha256）。入口绑定原始用户消息及 ID，不启动会话或后台；不可与 --submit 或强制路由合用。宿主适配也可调用 `memory-delivery-record --user-decision --receipt FILE`（或新版 `task-delivery --user-decision --receipt FILE`），额外提供 origin=user、user_message、message_id；`--user-decision` 为无值必填布尔开关，用于显式声明由用户本人作出交付或撤回决定（缺省时所有 CLI 交付/撤回入口均 fail-closed 拒绝，`accept`/`withdraw` 由“交付”/“撤回验收”或回执 `decision` 区分）；不得伪造用户来源。此为可信宿主的事件登记契约，不是独立的人类身份认证服务。
 
 保守识别单独的“交付”及句号/感叹号；引用、否定、问句和口令讨论不触发。任务/版本不明确时先澄清，不从整段聊天猜测。没有实际应用的经验不能回流。成品采用不证明每条方法都有因果贡献。
 
 同一事务保存交付事件，逐条回挂原候选：应用位置、执行证据、成品版本、用户验收事件、当轮执行摘要、审查任务及各来源原文/定性 PASS/FAIL。失败和分歧保留。缺数值评分标 null，不用相关性、回答排名或模型赞同补分。交付先到、审查后完成时，原生审计结算自动追加更新的回流材料；不重复建经验卡。
 
-既有技术门禁通过且当前应用、成品、交付记录、用户验收及隔离任务绑定一致，才具备人工终审资格。`review-list --stage final|all` 和原卡面板展示应用、回流及阻断。证据变化更新候选修订时间，旧浏览器快照需刷新。人的终审另外绑定本次应用/验收摘要，撤回后再接受不能复活旧终审。`decision=withdraw` 配合真实用户“撤回验收”记录撤回，成品返工或丢失也可留撤回记录。内容、初审、成品变化不得自动清空两轮历史或覆盖人工拒绝。
+既有技术门禁通过且当前应用、成品、交付记录、用户验收及隔离任务绑定一致，才具备人工终审资格。`review-list --stage final|all` 和原卡面板展示应用、回流及阻断。证据变化更新候选修订时间，旧浏览器快照需刷新。人的终审另外绑定本次应用/验收摘要，撤回后再接受不能复活旧终审。`decision=withdraw` 配合真实用户“撤回验收”及 `--user-decision` 记录撤回，成品返工或丢失也可留撤回记录。内容、初审、成品变化不得自动清空两轮历史或覆盖人工拒绝。
 
 ## 兼容和待用户决定
 

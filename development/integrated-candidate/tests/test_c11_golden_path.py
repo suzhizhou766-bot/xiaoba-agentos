@@ -59,8 +59,9 @@ class GoldenPathTest(unittest.TestCase):
         )
         for script in ("submit_release_acceptance.py", "release_preflight.py", "create_manifest.py"):
             shutil.copyfile(CANDIDATE / "scripts" / script, src / "scripts" / script)
-        shutil.copyfile(CANDIDATE / "src/xiaoba_agentos/review_ui_install.py",
-                        src / "src/xiaoba_agentos/review_ui_install.py")
+        for mod in ("config.py", "release.py", "review_ui_install.py"):
+            shutil.copyfile(CANDIDATE / "src/xiaoba_agentos" / mod,
+                            src / "src/xiaoba_agentos" / mod)
         (src / "src/xiaoba_agentos/__init__.py").write_text("", encoding="utf-8")
         # Generate a fresh manifest using the same tool the real build uses.
         env = dict(CLI_ENV, PYTHONPATH=str(CANDIDATE / "src") + ":" + str(CANDIDATE / "scripts"))

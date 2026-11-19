@@ -27,6 +27,11 @@ SOURCE_ROOT_FILES = ("README.md", "pyproject.toml", ".gitignore", "CAPABILITY.js
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
+def is_prose_doc_path(rel_path: str) -> bool:
+    """Pure prose Markdown documentation (does not affect runtime code, JSON specs, UI assets, or skills)."""
+    return rel_path == "README.md" or (rel_path.startswith("docs/") and rel_path.endswith(".md"))
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

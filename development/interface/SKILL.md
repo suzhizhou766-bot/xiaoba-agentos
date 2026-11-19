@@ -35,7 +35,7 @@ XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 
 ## 审核、恢复与边界
 
-`review-list --stage all` 是动态审核入口；用户在浏览器里裁决的入口是小八监看中心的「裁决中心」标签 `http://127.0.0.1:8799/#review`（未开启时双击 `/Users/suzhizhou/Documents/私人助理/工具/小八监看/启动监看中心.command`），原 `127.0.0.1:8797` 独立页面已停用。监看中心没开时不能在浏览器里裁决，待审队列也不会同步到第二大脑，重新开启后补同步；CLI 的 `review-list`/`review` 不受影响。`review TASK_ID --stage delivery|final --decision approve|reject|revise|retire` 仅用于用户针对该候选明确作出的决定。两次批准只接受用户本人的决定。已完成任务既可在对话说“交付”，也可在裁决中心「任务交付确认」显式点击接受或撤回（共用幂等结算键，不自动批准经验初审或终审）。两次批准绑定相同候选哈希；重建索引或正式发布软件版本都不批准待审经验。终审发布还必须完成敏感检查及 KnowLP 复验。
+`review-list --stage all` 是动态审核入口；用户在浏览器里裁决的入口是小八监看中心的「裁决中心」标签 `http://127.0.0.1:8799/#review`（未开启时双击 `/Users/suzhizhou/Documents/私人助理/工具/小八监看/启动监看中心.command`），原 `127.0.0.1:8797` 独立页面已停用。监看中心没开时不能在浏览器里裁决，待审队列也不会同步到第二大脑，重新开启后补同步；CLI 的 `review-list`/`review` 不受影响。`review TASK_ID --stage delivery|final --decision approve|reject|revise|retire` 仅用于用户针对该候选明确作出的决定。两次批准只接受用户本人的决定。已完成任务既可在对话说“交付”（或“撤回验收”），由宿主通过 CLI 传入必填无值布尔声明 `--user-decision`（`intake '交付'|'撤回验收' --user-decision --message-id ... --delivery-receipt ...`、`memory-delivery-record --user-decision --receipt ...` 或 `task-delivery --user-decision --receipt ...`；缺该声明 fail-closed 拒绝，严禁代用户伪造），也可在裁决中心「任务交付确认」显式点击接受或撤回（共用幂等结算键，不自动批准经验初审或终审）。两次批准绑定相同候选哈希；重建索引或正式发布软件版本都不批准待审经验。终审发布还必须完成敏感检查及 KnowLP 复验。
 
 失败不静默换账号，也不静默启用其他后台。没有固定备用后台。审查员不够时按 Agent 池规则改派或停下问用户，不回退到任何写死的名字。历史任务里的 `standby.substituted` 事件仍能读出。账户额度、限流、503、超时、网络属外部故障，报告并写入该节点的健康，在有限次数内退避重试，不反复热改代码。认证失败不在原节点重试、不切账号，报告并等用户处理。单轮输出预算耗尽属任务级失败，不自动原样重发，手动恢复时提示拆分任务。同伴自动诊断与修复、Headroom 自动重启已退役。冻结任务只在用户显式 `task-resume TASK_ID --freeze-hash HASH` 后解冻。上班不发真实探针。
 

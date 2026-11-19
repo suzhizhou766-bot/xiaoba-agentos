@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -172,8 +173,12 @@ def collect_entries(root: Path = ROOT) -> dict:
 
 
 def is_prose_doc_path(rel_path: str) -> bool:
-    """Pure prose Markdown documentation (does not affect runtime code, JSON specs, UI assets, or skills)."""
-    return rel_path == "README.md" or (rel_path.startswith("docs/") and rel_path.endswith(".md"))
+    """Delegate to the single runtime rule in xiaoba_agentos.release."""
+    src_dir = str(ROOT / "src")
+    if (ROOT / "src" / "xiaoba_agentos" / "release.py").is_file() and src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    from xiaoba_agentos.release import is_prose_doc_path as _is_prose_doc_path
+    return _is_prose_doc_path(rel_path)
 
 
 def split_manifest_entries(entries: dict) -> tuple[dict, dict]:

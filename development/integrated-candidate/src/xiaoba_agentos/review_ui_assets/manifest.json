@@ -27,7 +27,7 @@
       "base": "assistant",
       "relative": "工具/小八监看/monitor_core/modules/review.py",
       "before_sha256": "f97d5647989a0965f4ee98574f070fa8c0aa53d438c8815c4726d2d1c8b5c80b",
-      "after_sha256": "2937ea75d8c4f91691443d29176e82d86c40c966ca7190d8b663000ac347b8d0"
+      "after_sha256": "07d4e48f33d22b584d46eeb74d63b29574e1fedeb70291ec71201399b820f622"
     },
     {
       "asset": "workflow_query.py",
@@ -48,7 +48,7 @@
       "base": "project",
       "relative": "integrations/review-center/server.py",
       "before_sha256": "9a62b2bbfc774c9ae689634f561d8e7b516c1c81b00812c84e81bcc4b6829375",
-      "after_sha256": "a28aabb9c16d7bb7adec82b3590604330711f03be13e8d05f1d6fa1ee0fd5d5b"
+      "after_sha256": "17fdb01fdbcf87f6c88026345ae7f2a2898013cf92d230fadd900fdb9eddd529"
     },
     {
       "asset": "xiaoba-monitor.html",

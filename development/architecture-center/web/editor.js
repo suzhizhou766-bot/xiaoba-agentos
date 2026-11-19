@@ -28,6 +28,7 @@
   button('取消',()=>releaseDialog.close(),releaseActions);const releaseConfirm=button('确认正式发版',()=>publish(),releaseActions,'primary');
   const drafts=new Map();let currentSpec=null;
   function connected(){return metadata&&token;}
+  function isWritable(){return metadata&&metadata.writable!==false;}
   async function api(path,payload){
     const response=await fetch('/api/release-center/'+path,payload===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json','X-Xiaoba-Token':token||''},body:JSON.stringify(payload)});
     let result;try{result=await response.json();}catch{throw Error('此页面未连接本机监看中心的升级服务。');}
@@ -36,7 +37,7 @@
   function readonly(){return '此为旧站点保留功能，是否保留由用户定。当前页面只展示架构；'+releaseLabel+'此页未连接本机发布服务。';}
   async function refresh(){
     if(!token){metadata=null;mode.textContent='架构查看';renderList();return false;}
-    try{metadata=await api('meta');mode.textContent=token?'更新迭代入口已接入':'架构查看';mode.classList.toggle('connected',!!token);renderList();return true;}
+    try{metadata=await api('meta');mode.textContent=token?(metadata.writable===false?'包内只读浏览':'更新迭代入口已接入'):'架构查看';mode.classList.toggle('connected',!!token);renderList();return true;}
     catch{metadata=null;mode.textContent='架构查看';return false;}
   }
   async function openEditor(id){
@@ -44,22 +45,25 @@
     if(!token){openCenter();return;}
     moduleSelect.replaceChildren();for(const module of metadata.modules){const option=element('option',module.title,moduleSelect);option.value=module.id;}
     if(metadata.modules.some(m=>m.id===id))moduleSelect.value=id;
-    goal.value='';target.value='';version.value='开发候选（生产未连接）';source.value='当前模块文件哈希';formMessage.textContent='';
+    const ro=!isWritable();
+    goal.value='';target.value='';version.value='开发候选（生产未连接）';source.value='当前模块文件哈希';formMessage.textContent=ro?(metadata.notice||'当前为只读模式，不支持创建修改提案。'):'';
+    goal.readOnly=ro;version.readOnly=ro;source.readOnly=ro;target.readOnly=ro;spec.readOnly=ro;save.disabled=ro;
     await loadModule();editor.showModal();
   }
   async function loadModule(){
-    try{const result=await api('module?id='+encodeURIComponent(moduleSelect.value));currentSpec=result.result;spec.value=drafts.get(currentSpec.id)||currentSpec.body;source.value=currentSpec.sha256;}
+    try{const result=await api('module?id='+encodeURIComponent(moduleSelect.value));currentSpec=result.result;spec.value=(isWritable()?drafts.get(currentSpec.id):undefined)||currentSpec.body;source.value=currentSpec.sha256;}
     catch(error){formMessage.textContent=error.message;}
   }
-  moduleSelect.addEventListener('change',()=>{if(currentSpec)drafts.set(currentSpec.id,spec.value);loadModule();});
+  moduleSelect.addEventListener('change',()=>{if(currentSpec&&isWritable())drafts.set(currentSpec.id,spec.value);loadModule();});
   form.addEventListener('submit',async event=>{
-    event.preventDefault();if(!currentSpec)return;save.disabled=true;formMessage.textContent='';
+    event.preventDefault();if(!currentSpec||!isWritable())return;save.disabled=true;formMessage.textContent='';
     try{const result=await api('create',{module_id:moduleSelect.value,body:spec.value,expected_sha256:currentSpec.sha256,goal:goal.value,base_version:version.value,base_source:source.value,target_version:target.value});drafts.delete(moduleSelect.value);editor.close();selectedChange=result.result.id;await openCenter();}
-    catch(error){formMessage.textContent=error.message;}finally{save.disabled=false;}
+    catch(error){formMessage.textContent=error.message;}finally{save.disabled=!isWritable();}
   });
   function renderList(){
     list.replaceChildren();if(!connected()){element('p','本机更新工作区尚未连接',list);return;}
-    button('新建模块提案',()=>openEditor(selectedModule),list,'iteration-button');
+    if(isWritable())button('新建模块提案',()=>openEditor(selectedModule),list,'iteration-button');
+    else element('p',metadata.notice||'当前以包内只读投影运行，仅支持查看模块规范；如需创建修改提案，请通过 --repo-root 指定开发工作树。',list);
     const changes=metadata.changes||[];
     for(const section of [{title:'待发布任务',rows:changes.filter(c=>c.state!=='published')},{title:'版本与历史记录',rows:changes.filter(c=>c.state==='published')}]){
       element('h3',section.title,list);for(const change of section.rows){const b=button(change.goal,()=>showChange(change.id),list);element('small',change.module_id+' · '+(stateLabels[change.state]||change.state),b);element('small',change.id.slice(0,8)+' · '+(change.target_version||'目标版本待构包'),b);}if(!section.rows.length)element('p','暂无记录',list);
@@ -124,7 +128,7 @@
   window.addEventListener('xiaoba:node-selected',event=>{
     if(!metadata)return;const module=metadata.modules.find(m=>m.nodes.includes(event.detail.id));selectedModule=module?.id;
     document.getElementById('module-edit-action')?.remove();if(!module)return;
-    const b=button('编辑所属模块规范 · '+module.title,()=>openEditor(module.id),document.getElementById('detailLinks'),'upgrade-button-in-detail');b.id='module-edit-action';
+    const b=button((isWritable()?'编辑所属模块规范 · ':'查看所属模块规范 · ')+module.title,()=>openEditor(module.id),document.getElementById('detailLinks'),'upgrade-button-in-detail');b.id='module-edit-action';
   });
   document.addEventListener('keydown',event=>{if(event.key==='Escape')panel.hidden=true;});
   setInterval(()=>{if(!panel.hidden&&!editor.open&&!releaseDialog.open&&!publishing){refresh().then(()=>{if(selectedChange)showChange(selectedChange);});}},5000);

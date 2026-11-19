@@ -39,6 +39,7 @@ from .review_flow import (
 )
 from .routing import AGENTOS_MULTI, DIRECT, REVIEW, ASK_USER, decide_route, adjudicated_label
 from .recovery import start_session_health
+from .release import is_prose_doc_path
 from .skills import SkillRegistry, SkillRegistryError
 from .task_context import freeze_context, freeze_materials, read_context_file
 from .store import EventStore, MEMORY_TERMINAL_STATES, terminal_reregistration_error
@@ -591,7 +592,7 @@ def _runtime_manifest_fingerprint(project_dir: Path) -> Optional[str]:
             return None
         runtime_files = {
             k: v for k, v in sorted(files.items())
-            if not (k == "README.md" or (k.startswith("docs/") and k.endswith(".md")))
+            if not is_prose_doc_path(k)
         }
         if not runtime_files:
             return None

@@ -50,7 +50,7 @@ class Center:
         self.lock=threading.RLock(); self.csrf=secrets.token_urlsafe(32)
         self.sync_status={'ok':False,'state':'starting'}; self.last_fingerprint=None; self.binding={}
         self.journal_path=self.runtime/'submissions.sqlite3'
-        with sqlite3.connect(self.journal_path) as conn:
+        with contextlib.closing(sqlite3.connect(self.journal_path)) as conn, conn:
             conn.execute('CREATE TABLE IF NOT EXISTS submissions (id TEXT PRIMARY KEY, digest TEXT NOT NULL, request TEXT NOT NULL, result TEXT, created REAL NOT NULL)')
         os.chmod(self.journal_path,0o600)
 
@@ -224,7 +224,7 @@ class Center:
             if set(x.get('expected',{}))!={'status','updated_at','evidence_sha256'}: raise ValueError('缺少完整候选版本')
         with self.lock:
             binding=self.verify(); request_hash=digest(request)
-            with sqlite3.connect(self.journal_path) as conn:
+            with contextlib.closing(sqlite3.connect(self.journal_path)) as conn, conn:
                 previous=conn.execute('SELECT * FROM submissions WHERE id=?',(batch,)).fetchone()
                 if previous:
                     if previous[1]!=request_hash: raise ValueError('同一提交编号不能改变裁决内容')
@@ -259,7 +259,7 @@ class Center:
                     results.append({'task_id':x['task_id'],'ok':False,'recorded':bool(receipt),'review_id':receipt['id'] if receipt else None,'error':str(exc)})
             self.sync(force=True)
             response={'id':batch,'ok':all(x['ok'] for x in results),'items':results,'sync':self.sync_status}
-            with sqlite3.connect(self.journal_path) as conn:
+            with contextlib.closing(sqlite3.connect(self.journal_path)) as conn, conn:
                 conn.execute('UPDATE submissions SET result=? WHERE id=?',(json.dumps(response,ensure_ascii=False),batch))
             return response
 

@@ -205,6 +205,221 @@ class Finding1ManifestProjectionTests(unittest.TestCase):
                 finally:
                     target_file.write_text(original, encoding="utf-8")
 
+    def test_copy_review_materializes_and_packaged_create_manifest_verify_roundtrips(self):
+        import shutil
+        import build_release
+        import create_manifest as cm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp).resolve() / "repo"
+            ic = repo / "development/integrated-candidate"
+            ri = repo / "development/review-ingress"
+            ac = repo / "development/architecture-center"
+            iface = repo / "development/interface"
+            mon = repo / "architecture-package-20261027/shared/工具/小八监看"
+            for d in (ic / "src/xiaoba_agentos", ic / "docs", ic / "scripts",
+                      ri / "xiaoba_review", ri / "tests",
+                      ac / "modules/task-planning", ac / "tests", ac / "web",
+                      iface,
+                      mon / "monitor_core/modules", mon / "tests"):
+                d.mkdir(parents=True, exist_ok=True)
+            for rf in ("README.md", "pyproject.toml", ".gitignore", "CAPABILITY.json"):
+                (ic / rf).write_text(rf + "\n", encoding="utf-8")
+            for mod_name in ("__init__.py", "config.py", "release.py"):
+                shutil.copy2(ROOT / "src/xiaoba_agentos" / mod_name, ic / "src/xiaoba_agentos" / mod_name)
+            shutil.copy2(ROOT / "scripts/create_manifest.py", ic / "scripts/create_manifest.py")
+            (ic / "docs/RELEASE_V1.6.16.md").write_text("# v1.6.16\n", encoding="utf-8")
+            (ri / "run.py").write_text("RUN = 1\n", encoding="utf-8")
+            (ri / "workday_session.py").write_text("WS = 1\n", encoding="utf-8")
+            (ri / "xiaoba_review/store.py").write_text("X = 1\n", encoding="utf-8")
+            (ri / "tests/test_ing.py").write_text("T = 1\n", encoding="utf-8")
+            (ac / "__init__.py").write_text("\n", encoding="utf-8")
+            (ac / "core.py").write_text("C = 1\n", encoding="utf-8")
+            (ac / "MODULES.json").write_text('{"schema_version": 1, "modules": []}\n', encoding="utf-8")
+            (ac / "modules/task-planning/SPEC.md").write_text("# Spec\n", encoding="utf-8")
+            (ac / "tests/test_arch.py").write_text("A = 1\n", encoding="utf-8")
+            (iface / "SKILL.md").write_text("# Interface Skill\n", encoding="utf-8")
+            (mon / "monitor_core/modules/review.py").write_text("R = 1\n", encoding="utf-8")
+            (mon / "tests/test_mon.py").write_text("M = 1\n", encoding="utf-8")
+
+            entries = cm.collect_entries(ic)
+            (ic / "SOURCE_MANIFEST.json").write_text(
+                json.dumps({"algorithm": "sha256", "files": entries}, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            rt_entries, _ = cm.split_manifest_entries(entries)
+            expected_source_sha = hashlib.sha256((ic / "SOURCE_MANIFEST.json").read_bytes()).hexdigest()
+            expected_runtime_sha = cm.manifest_digest(rt_entries)
+
+            packaged = repo / "packaged_agentos"
+            build_release.copy_tree(ic, packaged)
+            build_release.copy_review(ic, packaged)
+            shutil.copy2(ic / "SOURCE_MANIFEST.json", packaged / "SOURCE_MANIFEST.json")
+
+            for materialized in (
+                "src/xiaoba_architecture_center/modules/task-planning/SPEC.md",
+                "src/xiaoba_monitor_shared/monitor_core/modules/review.py",
+                "src/xiaoba_review_entrypoints/run.py",
+                "src/xiaoba_review/store.py",
+                "src/xiaoba_interface_card/SKILL.md",
+                "tests/_external_suites/review_ingress/test_ing.py",
+            ):
+                self.assertTrue((packaged / materialized).is_file(), materialized)
+
+            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+            env.pop("PYTHONPATH", None)
+            verified = subprocess.run(
+                [sys.executable, "-B", "scripts/create_manifest.py", "--verify", "--summary"],
+                cwd=str(packaged), capture_output=True, text=True, env=env, check=False,
+            )
+            self.assertEqual(0, verified.returncode, verified.stdout + verified.stderr)
+            summary = json.loads(verified.stdout)
+            self.assertTrue(summary["ok"])
+            self.assertEqual(expected_source_sha, summary["source_manifest_sha256"])
+            self.assertEqual(expected_runtime_sha, summary["runtime_manifest_sha256"])
+
+    def test_cli_and_create_manifest_share_single_is_prose_doc_path_predicate(self):
+        import create_manifest as cm
+        from xiaoba_agentos import cli as core_cli
+        from xiaoba_agentos import release as core_release
+
+        self.assertIs(core_cli.is_prose_doc_path, core_release.is_prose_doc_path)
+        for sample, expected in (
+            ("README.md", True),
+            ("docs/EXPERIENCE_LOOP.md", True),
+            ("docs/DEPLOYMENT.json", False),
+            ("src/xiaoba_architecture_center/README.md", False),
+            ("src/xiaoba_architecture_center/modules/task-planning/SPEC.md", False),
+            (".agents/skills/xiaoba-agentos/SKILL.md", False),
+        ):
+            self.assertEqual(expected, core_release.is_prose_doc_path(sample), sample)
+            self.assertEqual(expected, cm.is_prose_doc_path(sample), sample)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp).resolve()
+            manifest = {
+                "algorithm": "sha256",
+                "files": {
+                    "README.md": "1" * 64,
+                    "docs/GUIDE.md": "2" * 64,
+                    "docs/DEPLOYMENT.json": "3" * 64,
+                    "src/xiaoba_architecture_center/README.md": "4" * 64,
+                    "src/xiaoba_agentos/cli.py": "5" * 64,
+                },
+            }
+            (proj / "SOURCE_MANIFEST.json").write_text(json.dumps(manifest), encoding="utf-8")
+            self.assertEqual(
+                cm.runtime_manifest_sha256_from_file(proj / "SOURCE_MANIFEST.json"),
+                core_cli._runtime_manifest_fingerprint(proj),
+            )
+
+    def test_run_py_packaged_and_repo_root_architecture_center_behavior(self):
+        import importlib.util
+        import shutil
+        from types import SimpleNamespace
+
+        run_spec = importlib.util.spec_from_file_location("review_ingress_run_test", REPO_ROOT / "development/review-ingress/run.py")
+        run_mod = importlib.util.module_from_spec(run_spec)
+        assert run_spec and run_spec.loader
+        run_spec.loader.exec_module(run_mod)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            pkg = root / "packaged_agentos"
+            pkg_src = pkg / "src"
+            pkg_entry = pkg_src / "xiaoba_review_entrypoints"
+            pkg_center = pkg_src / "xiaoba_architecture_center"
+            for d in (pkg_src / "xiaoba_agentos", pkg_src / "xiaoba_monitor_shared", pkg_entry, pkg_center / "modules/task-planning"):
+                d.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPO_ROOT / "development/review-ingress/run.py", pkg_entry / "run.py")
+            for name in ("__init__.py", "core.py", "monitor.py", "MODULES.json"):
+                shutil.copy2(REPO_ROOT / "development/architecture-center" / name, pkg_center / name)
+            (pkg_center / "modules/task-planning/SPEC.md").write_text("# Packaged Task Planning Spec\n", encoding="utf-8")
+
+            worktree = root / "worktree"
+            wt_spec = worktree / "development/architecture-center/modules/task-planning/SPEC.md"
+            wt_spec.parent.mkdir(parents=True, exist_ok=True)
+            wt_spec.write_text("# Worktree Task Planning Spec\n", encoding="utf-8")
+
+            packaged_paths = run_mod.resolve_runtime_paths(pkg_entry)
+            self.assertEqual(pkg_src, packaged_paths["core_source"])
+            self.assertEqual(pkg_src / "xiaoba_monitor_shared", packaged_paths["monitor_source"])
+            self.assertEqual(pkg_center, packaged_paths["center_root"])
+            self.assertEqual(pkg_center, packaged_paths["spec_root"])
+            self.assertIsNotNone(packaged_paths["readonly_reason"])
+
+            monitor_root = str(REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看")
+            arch_spec = importlib.util.spec_from_file_location(
+                "xiaoba_arch_pkg_test", pkg_center / "__init__.py", submodule_search_locations=[str(pkg_center)],
+            )
+            arch_mod = importlib.util.module_from_spec(arch_spec)
+            assert arch_spec and arch_spec.loader
+            added_sys = monitor_root not in sys.path
+            if added_sys:
+                sys.path.insert(0, monitor_root)
+            saved_mod = sys.modules.get("xiaoba_arch_pkg_test")
+            sys.modules["xiaoba_arch_pkg_test"] = arch_mod
+            try:
+                arch_spec.loader.exec_module(arch_mod)
+                from xiaoba_arch_pkg_test.core import Center
+                from xiaoba_arch_pkg_test.monitor import ArchitectureCenterModule
+
+                ro_center = Center(
+                    packaged_paths["repo_root"], root / "ws-ro", pkg_center / "MODULES.json",
+                    spec_root=packaged_paths["spec_root"], readonly_reason=packaged_paths["readonly_reason"],
+                )
+                ro_http = ArchitectureCenterModule(SimpleNamespace(), ro_center)
+                status_meta, body_meta = ro_http.meta(SimpleNamespace())
+                self.assertEqual(200, status_meta)
+                self.assertFalse(body_meta["writable"])
+                self.assertEqual("readonly_specs", body_meta["mode"])
+
+                status_mod, body_mod = ro_http.module(SimpleNamespace(param=lambda key: {"id": "task-planning"}[key]))
+                self.assertEqual(200, status_mod, body_mod)
+                self.assertEqual("# Packaged Task Planning Spec\n", body_mod["result"]["body"])
+
+                status_create, body_create = ro_http.create(SimpleNamespace(json=lambda: {
+                    "module_id": "task-planning",
+                    "body": "# Edited\n",
+                    "expected_sha256": body_mod["result"]["sha256"],
+                    "goal": "test readonly rejection",
+                    "base_version": "v1.6.16",
+                    "base_source": "test",
+                }))
+                self.assertEqual(400, status_create)
+                self.assertFalse(body_create["ok"])
+                self.assertIn("--repo-root", body_create["error"])
+
+                wt_paths = run_mod.resolve_runtime_paths(pkg_entry, repo_root_arg=worktree)
+                self.assertEqual(worktree, wt_paths["repo_root"])
+                self.assertIsNone(wt_paths["spec_root"])
+                self.assertIsNone(wt_paths["readonly_reason"])
+
+                rw_center = Center(
+                    wt_paths["repo_root"], root / "ws-rw", pkg_center / "MODULES.json",
+                    spec_root=wt_paths["spec_root"], readonly_reason=wt_paths["readonly_reason"],
+                )
+                rw_spec = rw_center.module("task-planning")
+                self.assertEqual("# Worktree Task Planning Spec\n", rw_spec["body"])
+                created = rw_center.create(
+                    "task-planning", "# Proposal\n", rw_spec["sha256"], "update spec", "v1.6.16", "test",
+                )
+                self.assertEqual("awaiting_agent", created["state"])
+                self.assertTrue(rw_center.state()["writable"])
+            finally:
+                if saved_mod is None:
+                    sys.modules.pop("xiaoba_arch_pkg_test", None)
+                else:
+                    sys.modules["xiaoba_arch_pkg_test"] = saved_mod
+                if added_sys and monitor_root in sys.path:
+                    sys.path.remove(monitor_root)
+
+            bad_link = root / "link_worktree"
+            bad_link.symlink_to(worktree)
+            for invalid in (root / "missing", bad_link):
+                with self.assertRaises(ValueError):
+                    run_mod.resolve_runtime_paths(pkg_entry, repo_root_arg=invalid)
+
 
 class Finding2ValueEvidenceBypassTests(unittest.TestCase):
     """P1-2: Value receipt cannot bypass frozen evidence check with invented non-task strings."""

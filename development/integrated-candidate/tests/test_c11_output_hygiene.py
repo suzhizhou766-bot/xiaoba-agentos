@@ -86,6 +86,18 @@ class PoolPersistenceJudgeTest(unittest.TestCase):
         persisted = pool_receipt_output({"body": raw})
         self.assertFalse(BUILD_RELEASE_MODULE._passed_verdict(persisted))
 
+    def test_fail_inside_think_and_pass_outside_locks_cleaned_semantics(self):
+        # Reasoning markup is stripped before verdict judgement: FAIL inside
+        # <think> is removed with its block while the visible PASS survives cleanly.
+        raw = "<think>draft thought: FINAL_ACCEPTANCE: FAIL</think>\n" + GOOD_VERDICT
+        cleaned = strip_reasoning_markup(raw)
+        self.assertEqual(GOOD_VERDICT, cleaned)
+        self.assertEqual([], detect_reasoning_leak(cleaned))
+        persisted = pool_receipt_output({"body": raw})
+        self.assertEqual(GOOD_VERDICT, persisted)
+        self.assertTrue(BUILD_RELEASE_MODULE._passed_verdict(persisted))
+        self.assertEqual("", review_vote_problem(persisted))
+
 
 if __name__ == "__main__":
     unittest.main()

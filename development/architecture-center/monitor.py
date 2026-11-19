@@ -54,4 +54,6 @@ class ArchitectureCenterModule(Module):
         return self.action(record)
 
     def health(self):
+        if self.center.readonly_reason:
+            return {'status':'ok','detail':'当前为包内只读模块规范浏览（需 --repo-root 才可创建提案）'}
         return {'status':'ok','detail':'模块编辑与待发布工作区可用；原生发版执行器'+('已接入' if self.center.driver else '未配置')}
