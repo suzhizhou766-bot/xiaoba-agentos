@@ -283,6 +283,23 @@ class ExperienceWorkflowTest(unittest.TestCase):
         self.assertTrue(self.summary(c)["ready"])
 
     @unittest.skipUnless(Path("/usr/bin/sandbox-exec").exists(), "macOS trial harness")
+    def test_private_tmp_outside_workspace_is_not_readable(self):
+        workspace = self.cfg.runtime_dir / "trial-workspaces" / "private-tmp-read"
+        workspace.mkdir(parents=True)
+        with tempfile.TemporaryDirectory(prefix="xiaoba-trial-private-tmp-", dir="/private/tmp") as outside_dir:
+            private_file = Path(outside_dir) / "fixture.txt"
+            private_file.write_text("TEST isolated file")
+            script = ("from pathlib import Path\n"
+                      "try:\n Path(" + repr(str(private_file)) + ").read_text()\n"
+                      "except PermissionError: print('PRIVATE_TMP_READ_DENIED')\n"
+                      "else: raise AssertionError('private tmp read allowed')\n")
+            card = dict(self.card, workspace=str(workspace), cases=[{
+                "argv": [os.path.realpath(sys.executable), "-I", "-B", "-c", script],
+                "expect_stdout": "PRIVATE_TMP_READ_DENIED"}])
+            execution = execute_trial(self.cfg, card)
+            self.assertTrue(execution["passed"], execution)
+
+    @unittest.skipUnless(Path("/usr/bin/sandbox-exec").exists(), "macOS trial harness")
     def test_core_interpreter_runs_but_only_its_binary_and_stdlib_are_readable(self):
         from xiaoba_agentos.interpreter import PINNED_PYTHON
         if not PINNED_PYTHON.is_file():

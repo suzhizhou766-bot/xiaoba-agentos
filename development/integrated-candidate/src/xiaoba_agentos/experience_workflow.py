@@ -707,11 +707,14 @@ def _verify_trial_qualification(conn, candidate) -> dict:
 def verify_final_qualification(conn, candidate) -> dict:
     verdict = _verify_trial_qualification(conn, candidate)
     if verdict.get("qualified"):
-        if verdict.get("validation_basis") is not None:
-            return verdict
         if isinstance(candidate, (str, bytes)):
             candidate = dict(conn.execute("SELECT * FROM memory_candidates WHERE task_id=?", (str(candidate),)).fetchone())
-        from .experience_loop import require_application_delivery
+        from .experience_loop import application_payload_problem, require_application_delivery
+        if verdict.get("validation_basis") is not None:
+            state, problem = application_payload_problem(conn, candidate["task_id"])
+            if state:
+                return dict(verdict, qualified=False, ready=False, state=state, reasons=[problem])
+            return verdict
         return require_application_delivery(conn, candidate, verdict)
     return verdict
 

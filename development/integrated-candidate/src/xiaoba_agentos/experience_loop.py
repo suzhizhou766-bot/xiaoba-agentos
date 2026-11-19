@@ -305,12 +305,34 @@ def application_packet(conn, candidate):
     # This packet belongs to new-candidate validation, never formal reuse.
     applications = [a for a in _events(conn, "memory.application_recorded", candidate["task_id"])
                     if not a.get("formal_reuse")]
-    deliveries = _events(conn, "task.delivery_recorded") if applications else []
+    from .delivery_events import rows
+    deliveries, delivery_problems = rows(conn, ("task.delivery_recorded",), _event_payload) if applications else ([], [])
+    deliveries = [dict(e["value"], event_id=e["event_id"], sequence=e["sequence"])
+                  for e in deliveries]
     attached = _events(conn, "memory.delivery_attached", candidate["task_id"]) if applications else []
     return {"applications": applications, "deliveries": [d for d in deliveries if any(
                 a["real_task"]["id"] == d["real_task_id"] for a in applications)], "attachments": attached,
             "external_reviews": external_reviews(conn, candidate["task_id"]) if applications else [],
+            "delivery_payload_problems": delivery_problems,
             "approval": "human_final_review_required", "causal_effect": "not_inferred_from_product_acceptance"}
+
+
+def application_payload_problem(conn, candidate_id):
+    malformed = _application_payload_problems(conn, candidate_id)
+    if malformed:
+        details = "; ".join(
+            f"application event {item['event_id']} is malformed: {item['reason']}"
+            for item in malformed
+        )
+        return "application_payload_invalid", details
+    packet = application_packet(conn, {"task_id": candidate_id})
+    if packet["applications"] and packet["delivery_payload_problems"]:
+        details = "; ".join(
+            f"delivery event {item['event_id']} is malformed: {item['reason']}"
+            for item in packet["delivery_payload_problems"]
+        )
+        return "application_delivery_payload_invalid", details
+    return "", ""
 
 
 def external_reviews(conn, candidate_id):
@@ -406,13 +428,9 @@ def _application_for_trial(conn, applications, task_id):
 
 def require_application_delivery(conn, candidate, verdict):
     """Extra conditions only for candidates opting into actual-task use."""
-    malformed = _application_payload_problems(conn, candidate["task_id"])
-    if malformed:
-        details = "; ".join(
-            f"application event {item['event_id']} is malformed: {item['reason']}"
-            for item in malformed
-        )
-        return dict(verdict, qualified=False, ready=False, state="application_payload_invalid", reasons=[details])
+    problem_state, problem = application_payload_problem(conn, candidate["task_id"])
+    if problem_state:
+        return dict(verdict, qualified=False, ready=False, state=problem_state, reasons=[problem])
     packet = application_packet(conn, candidate)
     applications = packet["applications"]
     if not applications:
@@ -446,6 +464,9 @@ def final_binding(conn, candidate):
     packet = application_packet(conn, candidate)
     if not packet["applications"]:
         return None
+    if packet["delivery_payload_problems"]:
+        event_ids = ", ".join(item["event_id"] for item in packet["delivery_payload_problems"])
+        raise ValueError("application delivery history contains malformed events: " + event_ids)
     links = _events(conn, "memory.trial_linked", candidate["task_id"])
     task_id = links[-1]["task_id"] if links else None
     # 与终审同一口径：优先用本轮绑定的那次应用；解析不到时退回最新一条，不阻断发布。

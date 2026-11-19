@@ -19,7 +19,7 @@ class DeliverySubmissionClassificationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        root = Path(self.tmp.name)
+        root = Path(self.tmp.name).resolve()
         self.workspace = root / "workspace"
         self.workspace.mkdir()
         self.artifact_path = self.workspace / "result.md"

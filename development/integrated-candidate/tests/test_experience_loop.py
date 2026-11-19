@@ -129,6 +129,13 @@ class ExperienceLoopTests(unittest.TestCase):
         with self.store.read_only() as conn:
             return conn.execute("SELECT count(*) FROM events WHERE event_type=?", (kind,)).fetchone()[0]
 
+    def malformed_withdrawal(self):
+        value = {"decision": "withdraw", "real_task_id": "",
+                 "message_id": "TEST-malformed-withdrawal", "artifact": {}, "application_ids": []}
+        with self.store.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            return self.store._append_event_tx(conn, None, "task.delivery_recorded", value)
+
     def test_index_is_verifiable_read_only_and_separate_from_published_retrieval(self):
         c = self.candidate()
         before = self.count("events")
@@ -507,7 +514,7 @@ class ExperienceLoopTests(unittest.TestCase):
         self.assertTrue(self.store.verify_event_chain()["ok"])
         self.assertTrue(verdict["qualified"], verdict)
 
-    def test_malformed_delivery_is_not_reported_as_this_candidate_application(self):
+    def test_unattributed_malformed_delivery_blocks_application_qualification(self):
         c = self.candidate()
         app = self.legacy_application(c)
         self.trial(c, app)
@@ -523,9 +530,52 @@ class ExperienceLoopTests(unittest.TestCase):
 
         self.assertTrue(self.store.verify_event_chain()["ok"])
         self.assertFalse(verdict["qualified"])
-        self.assertNotIn(event_id, reasons)
+        self.assertEqual("application_delivery_payload_invalid", verdict["state"])
+        self.assertIn(event_id, reasons)
         self.assertNotIn(c["task_id"], reasons)
-        self.assertIn("explicit user delivery acceptance", reasons)
+
+    def test_malformed_withdrawal_after_acceptance_blocks_final_review(self):
+        c = self.candidate()
+        app = record_application(self.store, self.application(c))
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        event_id = self.malformed_withdrawal()
+
+        verdict = self.gate(c)
+        code, result = _run_cli([
+            "--config", str(self.cfg.path), "review", c["task_id"],
+            "--stage", "final", "--decision", "approve",
+        ])
+
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertFalse(verdict["qualified"])
+        self.assertEqual("application_delivery_payload_invalid", verdict["state"])
+        self.assertIn(event_id, json.dumps(verdict["reasons"], ensure_ascii=False))
+        self.assertNotEqual(0, code, result)
+        self.assertEqual(0, self.event_count("memory.published"))
+        with self.store.read_only() as conn:
+            self.assertEqual(0, conn.execute(
+                "SELECT count(*) FROM memory_reviews WHERE task_id=? AND stage='final' AND decision='approve'",
+                (c["task_id"],),
+            ).fetchone()[0])
+
+    def test_malformed_withdrawal_after_final_approval_blocks_publication(self):
+        c = self.candidate()
+        app = record_application(self.store, self.application(c))
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final", c["evidence_sha256"])
+        event_id = self.malformed_withdrawal()
+
+        code, result = _run_cli([
+            "--config", str(self.cfg.path), "publish-memory", "--task-id", c["task_id"],
+        ])
+
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertNotEqual(0, code, result)
+        self.assertIn(event_id, json.dumps(result, ensure_ascii=False))
+        self.assertEqual(0, self.event_count("memory.published"))
+        self.assertIsNone(self.store.get_memory_candidate(c["task_id"])["published_path"])
 
     def test_reacceptance_requires_new_human_final_approval(self):
         c = self.candidate()
