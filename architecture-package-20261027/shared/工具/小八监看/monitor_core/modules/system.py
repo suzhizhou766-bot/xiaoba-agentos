@@ -16,17 +16,20 @@ class SystemModule(Module):
         self.page = cfg.resolve(ctx.config, ctx.config["page_file"])
         self.revision = self._revision()
         self.warnings = []   # 最近一次读到的模块警告，正文提示条用它（不是只在标签悬浮提示里）
-        # 主页含内联脚本/样式，并 fetch 同源接口、嵌导演台与 3D 台；策略写法对齐 stage/director。
+        # Keep the page policy strict while allowing the release-owned pool assets it injects.
         own = "http://127.0.0.1:%d/" % ctx.port
         stage = "http://127.0.0.1:%d/stage/" % ctx.port
         director = "http://127.0.0.1:%d/director/" % ctx.port
+        pool_scripts = " ".join(own + path for path in (
+            "agent-pool.js", "agent-pool-native.js", "open-review-native.js"))
+        pool_style = own + "agent-pool.css"
         self.csp = (
-            "default-src 'none'; script-src 'unsafe-inline' %s; "
-            "style-src 'unsafe-inline' https://fonts.googleapis.com; "
+            "default-src 'none'; script-src 'unsafe-inline' %s %s; "
+            "style-src 'unsafe-inline' https://fonts.googleapis.com %s; "
             "img-src %s %s data: blob:; font-src %s https://fonts.gstatic.com data:; "
             "connect-src %s ws://127.0.0.1:%d/ https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; "
             "frame-src %s %s; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
-            % (stage, own, stage, own, own, ctx.port, director, stage)
+            % (stage, pool_scripts, pool_style, own, stage, own, own, ctx.port, director, stage)
         )
 
     def _revision(self):
