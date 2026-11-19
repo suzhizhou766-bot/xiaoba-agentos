@@ -646,10 +646,14 @@ def confirm_basis_tx(store, conn, candidate: Dict[str, Any], confirmation: Optio
 
 
 def basis_binding(basis: Dict[str, Any]) -> Dict[str, Any]:
-    return {key: basis[key] for key in (
+    keys = (
         "policy_version", "basis_id", "basis_sha256", "candidate_sha256", "initial_review_id",
         "route", "required_checks",
-    )}
+    )
+    missing = [key for key in keys if key not in basis]
+    if missing:
+        raise ValueError("validation basis is incomplete; missing binding fields: " + ", ".join(missing))
+    return {key: basis[key] for key in keys}
 
 
 def revoke_basis_tx(store, conn, candidate_id: str, basis_id: str, reason: str, *,

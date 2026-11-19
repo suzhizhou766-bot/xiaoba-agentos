@@ -3262,29 +3262,50 @@ const ReviewCenter = (() => {
     };
     taskDeliveryBusy=true;$("taskDeliveryConfirm").disabled=true;
     $("taskDeliveryFeedback").textContent="正在提交这一个明确选择…";
+    const keepPending=(message)=>{
+      taskDeliveryPendingPacket=packet;
+      $("taskDeliveryFeedback").textContent=message+"。重试会沿用同一提交编号；不会自动重发。";
+      renderTaskDeliveryDetail();
+    };
+    const rejectKnown=(message)=>{
+      taskDeliveryPendingPacket=null;
+      $("taskDeliveryFeedback").textContent="本次未记录："+message;
+      renderTaskDeliveryDetail();
+    };
     try{
-      const response=await fetch("/api/review/delivery",{method:"POST",cache:"no-store",
-        headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN},body:JSON.stringify(packet)});
-      let result;try{result=await response.json();}catch(e){throw new Error("返回内容无法解析（HTTP "+response.status+"）");}
-      if(!response.ok){
-        if(response.status>=500)taskDeliveryPendingPacket=packet;
-        else taskDeliveryPendingPacket=null;
-        throw new Error(result.error||"提交失败（HTTP "+response.status+"）");
+      let response;
+      try{
+        response=await fetch("/api/review/delivery",{method:"POST",cache:"no-store",
+          headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN},body:JSON.stringify(packet)});
+      }catch(error){keepPending("提交结果暂不确定："+String(error.message||error));return;}
+      let result;
+      try{result=await response.json();}
+      catch(error){
+        if(!response.ok&&response.status<500)rejectKnown("提交被拒绝（HTTP "+response.status+"）");
+        else keepPending("提交结果暂不确定：返回内容无法解析（HTTP "+response.status+"）");
+        return;
       }
-      if(result.ok){
+      if(!response.ok){
+        const errorMessage=result&&typeof result==="object"?result.error:"";
+        if(response.status>=500)keepPending("提交结果暂不确定："+(errorMessage||"HTTP "+response.status));
+        else rejectKnown(errorMessage||"提交被拒绝（HTTP "+response.status+"）");
+        return;
+      }
+      if(!result||typeof result!=="object"){
+        keepPending("提交结果暂不确定：服务器没有返回有效状态");
+      }else if(result.ok){
         taskDeliveryPendingPacket=null;$("taskDeliveryDialog").close();
         $("taskDeliveryMessage").textContent=(result.receipt&&result.receipt.decision==="withdraw"?"撤回已记录。":"交付已记录。")+
           " 经验批准与发布仍需单独裁决。";
-        await refreshTaskDeliveries();await openTaskDelivery(detail.task_id);
-      }else if(result.pending){
-        taskDeliveryPendingPacket=packet;
-        $("taskDeliveryFeedback").textContent="本次尚未完成："+(result.error||"可重试")+"。重试会沿用同一提交编号。";
-        renderTaskDeliveryDetail();
-      }else throw new Error(result.error||"交付决定未完成");
-    }catch(error){
-      if(!taskDeliveryPendingPacket)taskDeliveryPendingPacket=packet;
-      $("taskDeliveryFeedback").textContent="提交结果暂不确定："+String(error.message||error)+"。不会自动重发。";
-      renderTaskDeliveryDetail();
+        try{await refreshTaskDeliveries();await openTaskDelivery(detail.task_id);}
+        catch(error){$("taskDeliveryMessage").textContent+=" 状态刷新失败："+String(error.message||error);}
+      }else if(result.pending===true){
+        keepPending("本次尚未完成："+(result.error||"可重试"));
+      }else if(result.pending===false){
+        rejectKnown(result.error||"交付决定被拒绝");
+      }else{
+        keepPending("提交结果暂不确定：服务器没有明确返回是否已记录");
+      }
     }finally{taskDeliveryBusy=false;$("taskDeliveryConfirm").disabled=false;}
   }
   $("taskDeliveryList").addEventListener("click",ev=>{

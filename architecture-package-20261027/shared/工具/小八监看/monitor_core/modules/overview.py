@@ -694,109 +694,24 @@ def weekly_agent_model_scores(con, day=None):
 
 
 def permanent_total_ranking(con):
-    """正式经验永久总分排名：支持撤回冲正（memory.reuse_reversed）及重新接受，校验真实交付/撤回绑定。只读。"""
-    problems, scores = [], {}
+    """正式经验永久总分排名，复用发布账本的事件链与逐条绑定校验。只读。"""
     try:
         if not exists_table(con, "events"):
             return _op_available([], ["events 表不可读"], available=False)
-        deliveries = {}
-        for drow in con.execute(
-            "SELECT sequence,event_id,payload_json FROM events WHERE event_type='task.delivery_recorded' ORDER BY sequence"
-        ).fetchall():
-            try:
-                dval = json.loads(drow["payload_json"])
-                d_apps = dval.get("application_ids") if isinstance(dval, dict) else None
-                if (not isinstance(dval, dict)
-                        or not isinstance(drow["event_id"], str) or not drow["event_id"]
-                        or dval.get("decision") not in ("accept", "withdraw")
-                        or not all(isinstance(dval.get(k), str) and dval[k] for k in ("real_task_id", "message_id", "input_sha256"))
-                        or not isinstance(dval.get("artifact"), dict)
-                        or not isinstance(d_apps, list)
-                        or not all(isinstance(aid, str) and aid for aid in d_apps)):
-                    raise ValueError("交付事件字段无效")
-                deliveries[drow["event_id"]] = dval
-            except (ValueError, TypeError, KeyError, OverflowError):
-                problems.append("事件 %s 交付记录无效，已隔离" % drow["sequence"])
-        active = {}
-        reversed_ids = set()
-        rows = con.execute(
-            "SELECT sequence,event_id,event_type,payload_json FROM events "
-            "WHERE event_type IN ('memory.reuse_scored','memory.reuse_reversed') ORDER BY sequence"
-        ).fetchall()
-        for row in rows:
-            try:
-                value = json.loads(row["payload_json"])
-                if not isinstance(value, dict):
-                    raise ValueError("事件不是对象")
-                kind = row["event_type"]
-                source = value.get("source_task_id")
-                task = value.get("real_task_id")
-                if not isinstance(source, str) or not source.strip() or not isinstance(task, str) or not task.strip():
-                    problems.append("复用分事件字段无效，已跳过")
-                    continue
-                key = (task, source)
-                if kind == "memory.reuse_scored":
-                    score = value.get("score")
-                    if (type(score) is not int or score not in (0, 1)
-                            or not _finite_number(value.get("used_at"))):
-                        problems.append("复用分事件字段无效，已跳过")
-                        continue
-                    deliv_eid = value.get("delivery_event_id")
-                    if "delivery_event_id" in value or "application_ids" in value:
-                        app_ids = value.get("application_ids")
-                        delivery = deliveries.get(deliv_eid) if isinstance(deliv_eid, str) else None
-                        if (not isinstance(deliv_eid, str) or not deliv_eid
-                                or not isinstance(app_ids, list) or not app_ids
-                                or not all(isinstance(aid, str) and aid for aid in app_ids)
-                                or len(set(app_ids)) != len(app_ids)
-                                or not isinstance(value.get("source_sha256"), str) or len(value["source_sha256"]) != 64
-                                or not delivery or delivery.get("decision") != "accept"
-                                or delivery.get("real_task_id") != task
-                                or not set(app_ids) <= set(delivery.get("application_ids", []))):
-                            problems.append("复用分缺少有效交付绑定，已隔离")
-                            continue
-                    if key in active:
-                        problems.append("重复复用分事件，已跳过")
-                        continue
-                    active[key] = {
-                        "event_id": row["event_id"],
-                        "score": score,
-                        "delivery_event_id": deliv_eid if isinstance(deliv_eid, str) else None,
-                    }
-                    item = scores.setdefault(source, {"source_task_id": source, "score": 0, "used": 0})
-                    item["score"] += score
-                    item["used"] += 1
-                else:
-                    prior = active.get(key)
-                    contrib = value.get("contribution")
-                    score_eid = value.get("score_event_id")
-                    deliv_eid = value.get("delivery_event_id")
-                    withdrawal = deliveries.get(deliv_eid) if isinstance(deliv_eid, str) else None
-                    withdraws_id = value.get("withdraws_delivery_event_id")
-                    if (not prior or not isinstance(score_eid, str) or score_eid != prior["event_id"]
-                            or score_eid in reversed_ids
-                            or type(contrib) is not int or contrib not in (0, 1)
-                            or contrib != prior["score"]
-                            or not isinstance(deliv_eid, str) or not deliv_eid
-                            or not withdrawal or withdrawal.get("decision") != "withdraw"
-                            or withdrawal.get("real_task_id") != task
-                            or not isinstance(withdraws_id, str) or not withdraws_id
-                            or withdrawal.get("withdraws_delivery_event_id") != withdraws_id
-                            or (prior.get("delivery_event_id") is not None and prior.get("delivery_event_id") != withdraws_id)):
-                        problems.append("复用冲正事件字段或撤回绑定无效，已隔离")
-                        continue
-                    reversed_ids.add(score_eid)
-                    active.pop(key, None)
-                    item = scores.setdefault(source, {"source_task_id": source, "score": 0, "used": 0})
-                    item["score"] = max(0, item["score"] - contrib)
-                    item["used"] = max(0, item["used"] - 1)
-            except (ValueError, TypeError, KeyError, OverflowError):
-                problems.append("事件 %s 结构无效，已隔离" % row["sequence"])
-                continue
-        ranking = list(scores.values())
+        from xiaoba_agentos.reuse_scores import snapshot_tx
+
+        snapshot = snapshot_tx(con)
+        problems = snapshot["problems"]
+        if not snapshot["available"]:
+            return _op_available([], [p.get("reason", "复用分账本不可用") if isinstance(p, dict) else str(p)
+                                      for p in problems], available=False)
+        ranking = [{"source_task_id": item["source_task_id"], "score": item["score"], "used": item["used"]}
+                   for item in snapshot["items"]]
         ranking.sort(key=lambda x: (-x["score"], -x["used"], x["source_task_id"]))
-        return _op_available(ranking, problems)
+        return _op_available(ranking, [str(p) for p in problems])
     except sqlite3.Error as exc:
+        return _op_available([], ["永久总分读取失败：" + type(exc).__name__], available=False)
+    except (ImportError, KeyError, TypeError, ValueError) as exc:
         return _op_available([], ["永久总分读取失败：" + type(exc).__name__], available=False)
 
 

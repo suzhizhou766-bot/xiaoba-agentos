@@ -337,6 +337,45 @@ class ValidationBasisTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "awaiting_evidence"):
             normalize_method_claims(None, "TEST steps do not determine route")
 
+    def test_publication_cli_cleanly_rejects_stale_incomplete_basis(self):
+        import uuid
+
+        candidate = self.candidate()
+        task_id = self.real_task()
+        _, artifact = self.application(candidate, task_id)
+        self.delivery(task_id, artifact)
+        review_id = str(uuid.uuid4())
+        with self.store.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("UPDATE memory_candidates SET status='pending_final_review' WHERE task_id=?",
+                         (candidate["task_id"],))
+            conn.execute(
+                "INSERT INTO memory_reviews(id,task_id,stage,decision,note,candidate_sha256,created_at) "
+                "VALUES(?,?,'final','approve','TEST stale imported decision',?,?)",
+                (review_id, candidate["task_id"], candidate["evidence_sha256"], 1.0),
+            )
+            EventStore._append_event_tx(conn, candidate["task_id"], "memory.reviewed", {
+                "review_id": review_id, "stage": "final", "decision": "approve",
+                "candidate_sha256": candidate["evidence_sha256"], "validation_basis": None,
+                "trial_task_id": None,
+            })
+            conn.commit()
+
+        with self.store.read_only() as conn:
+            incomplete = validate_basis(conn, self.store.get_memory_candidate(candidate["task_id"]))
+        self.assertEqual("awaiting_evidence", incomplete["status"])
+        code, result = _run_cli(["--config", str(self.config.path), "publish-memory",
+                                 "--task-id", candidate["task_id"]])
+        self.assertEqual(1, code, result)
+        self.assertNotEqual("published", self.store.get_memory_candidate(candidate["task_id"])["status"])
+        self.assertIsNone(self.store.get_memory_candidate(candidate["task_id"])["published_path"])
+        self.assertEqual(0, self.event_count(candidate["task_id"], "memory.published"))
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+
+    def test_basis_binding_rejects_missing_required_fields_without_keyerror(self):
+        with self.assertRaisesRegex(ValueError, "missing binding fields: policy_version"):
+            basis_binding({"status": "awaiting_evidence", "reason": "TEST incomplete"})
+
     def test_legacy_application_without_claims_keeps_the_old_sandbox_gate(self):
         self.store.apply_validation_extension()
         candidate = self.candidate()

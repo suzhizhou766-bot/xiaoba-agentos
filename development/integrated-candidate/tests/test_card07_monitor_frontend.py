@@ -140,6 +140,57 @@ process.stdout.write(JSON.stringify(out));
         self.assertIn("S1", r["ranking"])
         self.assertIn("连续 4 次不合格", r["b19"])
 
+    def test_delivery_rejection_clears_retry_while_unknown_outcome_keeps_same_packet(self):
+        submit = extract_function(self.source, "submitTaskDelivery")
+        script = r"""
+let taskDeliverySelection={decision:"accept",packet:null};
+let taskDeliveryDetail={task_id:"task-1",real_task:{workspace:"/tmp"},artifact:{version:"v1"},expected:{version:1}};
+let taskDeliveryBusy=false,taskDeliveryPendingPacket=null,calls=0,ids=0,submittedPackets=[];
+const TOKEN="test-token";
+const crypto={randomUUID:()=>"id-"+(++ids)};
+const elements={
+  taskDeliveryConfirm:{disabled:false},taskDeliveryFeedback:{textContent:""},
+  taskDeliveryMessage:{textContent:""},taskDeliveryDialog:{close(){},showModal(){}}
+};
+const $=id=>elements[id];
+function renderTaskDeliveryDetail(){}
+async function refreshTaskDeliveries(){}
+async function openTaskDelivery(){}
+let nextFetch;
+const fetch=async(_url,options)=>{calls++;submittedPackets.push(JSON.parse(options.body));if(nextFetch instanceof Error)throw nextFetch;return nextFetch;};
+""" + submit + r"""
+async function run(fetchResult){
+  taskDeliverySelection={decision:"accept",packet:null};taskDeliveryBusy=false;
+  taskDeliveryPendingPacket=null;calls=0;submittedPackets=[];nextFetch=fetchResult;
+  await submitTaskDelivery();
+  return {pending:taskDeliveryPendingPacket,feedback:elements.taskDeliveryFeedback.textContent,calls,
+    sent:submittedPackets[0]};
+}
+(async()=>{
+ const http4xx=await run({ok:false,status:409,json:async()=>({ok:false,pending:false,error:"stale version"})});
+ const http200=await run({ok:true,status:200,json:async()=>({ok:false,pending:false,error:"B1 rejected"})});
+ const http503=await run({ok:false,status:503,json:async()=>({ok:false,error:"gateway timeout"})});
+ const unknown=await run(new Error("connection reset"));
+ taskDeliverySelection={decision:"accept",packet:unknown.pending};taskDeliveryBusy=false;
+ nextFetch={ok:true,status:200,json:async()=>({ok:false,pending:true,error:"still unresolved"})};
+ await submitTaskDelivery();
+ const retry={calls,packet:submittedPackets[1],pending:taskDeliveryPendingPacket};
+ process.stdout.write(JSON.stringify({http4xx,http200,http503,unknown,retry}));
+})().catch(e=>{process.stderr.write(String(e.stack||e));process.exit(1)});
+"""
+        result = self.run_node(script)
+        self.assertIsNone(result["http4xx"]["pending"])
+        self.assertNotIn("暂不确定", result["http4xx"]["feedback"])
+        self.assertIsNone(result["http200"]["pending"])
+        self.assertNotIn("暂不确定", result["http200"]["feedback"])
+        self.assertIsNotNone(result["http503"]["pending"])
+        self.assertEqual(1, result["unknown"]["calls"], "不确定响应不能自动重发")
+        self.assertEqual("id-7", result["unknown"]["pending"]["message_id"])
+        self.assertIn("暂不确定", result["unknown"]["feedback"])
+        self.assertEqual(2, result["retry"]["calls"], "只在测试显式调用重试后才发出第二次请求")
+        self.assertEqual(result["unknown"]["pending"], result["retry"]["packet"])
+        self.assertEqual(result["unknown"]["pending"]["message_id"], result["retry"]["pending"]["message_id"])
+
     def test_topo_anchor_is_single_and_unchanged(self):
         # C07-01：锚点必须在权威页面里唯一且不被删改；agent-pool-native.js 由 mount_pool
         # 以该锚点为字节注入点带入，静态页面本身不应包含第二段脚本引用（否则重复注入）。

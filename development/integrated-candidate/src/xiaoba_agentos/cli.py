@@ -2022,6 +2022,7 @@ def main(argv: Optional[list] = None) -> int:
             "reason_code": route["reason_code"],
             "confidence": route["confidence"],
             "session_id": session["id"],
+            "value_queue_status": session.get("value_queue_status") or store.session_value_queue_status(),
             "answer_provenance": _answer_provenance(str(route["route"])),
             "response_label": (
                 "本回答：会话模型直接回答"

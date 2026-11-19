@@ -835,14 +835,15 @@ class EventStore:
         local_date = datetime.fromtimestamp(now, zone).date().isoformat()
         with self.connect() as conn:
             self._close_resolved_sessions_tx(conn)
+            value_queue_status = self._session_value_queue_status_tx(conn)
             existing = conn.execute(
                 "SELECT * FROM work_sessions WHERE status='active' ORDER BY created_at DESC LIMIT 1"
             ).fetchone()
             if existing and existing["local_date"] == local_date:
-                return dict(existing)
+                return {**dict(existing), "value_queue_status": value_queue_status}
             if existing:
                 unresolved = self._unresolved_session_count_tx(conn, existing["id"])
-                rollover_status = "closing" if unresolved else "closed"
+                rollover_status = "closing" if unresolved is None or unresolved else "closed"
                 conn.execute(
                     "UPDATE work_sessions SET status=?,closing_at=?,closed_at=? WHERE id=?",
                     (rollover_status, now, now if rollover_status == "closed" else None, existing["id"]),
@@ -856,7 +857,8 @@ class EventStore:
                         "from_local_date": existing["local_date"],
                         "to_local_date": local_date,
                         "status": rollover_status,
-                        "unresolved": int(unresolved),
+                        "unresolved": unresolved,
+                        "value_queue_status": value_queue_status,
                     },
                 )
             session_id = str(uuid.uuid4())
@@ -865,7 +867,8 @@ class EventStore:
                 (session_id, local_date, timezone, "active", now),
             )
             self._append_event_tx(conn, None, "session.started", {"session_id": session_id, "local_date": local_date})
-            return dict(conn.execute("SELECT * FROM work_sessions WHERE id=?", (session_id,)).fetchone())
+            return {**dict(conn.execute("SELECT * FROM work_sessions WHERE id=?", (session_id,)).fetchone()),
+                    "value_queue_status": value_queue_status}
 
     _UNRESOLVED_SESSION_SQL = """SELECT COUNT(*) FROM tasks t LEFT JOIN memory_candidates mc ON mc.task_id=t.id
                WHERE t.session_id=? AND (
@@ -878,8 +881,23 @@ class EventStore:
                    )
                )"""
 
-    def _unresolved_session_count_tx(self, conn: sqlite3.Connection, session_id: str) -> int:
+    @staticmethod
+    def _session_value_queue_status_tx(conn: sqlite3.Connection) -> Dict[str, Any]:
+        # Session bookkeeping must remain available when the event-derived
+        # queue cannot be trusted. This does not relax dispatch or approval.
+        if not EventStore.verify_event_chain_tx(conn)["ok"]:
+            return {"ok": False, "status": "unverifiable",
+                    "warning": "价值队列无法验证：审计事件链损坏，待评分状态未知；会话保留为待处理"}
+        return {"ok": True, "status": "available"}
+
+    def session_value_queue_status(self) -> Dict[str, Any]:
+        with self.read_only() as conn:
+            return self._session_value_queue_status_tx(conn)
+
+    def _unresolved_session_count_tx(self, conn: sqlite3.Connection, session_id: str) -> Optional[int]:
         count = conn.execute(self._UNRESOLVED_SESSION_SQL, (session_id,)).fetchone()[0]
+        if not self._session_value_queue_status_tx(conn)["ok"]:
+            return None  # Unknown is not an empty queue; never auto-close it.
         from .value_queue import pending_items
         session_tasks = {row["id"] for row in conn.execute(
             "SELECT id FROM tasks WHERE session_id=?", (session_id,))}
@@ -891,7 +909,8 @@ class EventStore:
         closed: List[str] = []
         now = time.time()
         for row in conn.execute("SELECT id FROM work_sessions WHERE status='closing'").fetchall():
-            if self._unresolved_session_count_tx(conn, row["id"]):
+            unresolved = self._unresolved_session_count_tx(conn, row["id"])
+            if unresolved is None or unresolved:
                 continue
             if conn.execute(
                 "UPDATE work_sessions SET status='closed',closed_at=? WHERE id=? AND status='closing'",
@@ -2224,13 +2243,16 @@ class EventStore:
             pending_final = sum(
                 1 for row in rows if row["memory_status"] in {"delivery_approved", "publication_failed"}
             )
+            value_queue_status = self._session_value_queue_status_tx(conn)
             from .value_queue import pending_items
-            value_items = pending_items(conn)
+            value_items = pending_items(conn) if value_queue_status["ok"] else None
             value_by_task = {
-                item["task_id"]: item for item in value_items
+                item["task_id"]: item for item in value_items or []
                 if item["task_id"] and item.get("queue_status") == "awaiting_value_review"
             }
-            pending_value_reviews = sum(1 for row in rows if row["id"] in value_by_task)
+            pending_value_reviews = (sum(1 for row in rows if row["id"] in value_by_task)
+                                     if value_items is not None else None)
+            known_unresolved_tasks = conn.execute(self._UNRESOLVED_SESSION_SQL, (session_id,)).fetchone()[0]
             now = time.time()
             conn.execute(
                 "UPDATE work_sessions SET status='closing',closing_at=? WHERE id=? AND status='active'",
@@ -2245,13 +2267,16 @@ class EventStore:
                     "pending_final_reviews": pending_final,
                     "pending_constraint_holds": pending_holds,
                     "pending_value_reviews": pending_value_reviews,
+                    "value_queue_status": value_queue_status,
                 },
             )
             tasks = [dict(row) for row in rows]
             for item in tasks:
                 value_item = value_by_task.get(item["id"])
-                item["memory_value_status"] = "awaiting_value_review" if value_item else None
-                item["memory_value_reason"] = value_item["reason"] if value_item else None
+                item["memory_value_status"] = ("unverifiable" if value_items is None
+                                               else "awaiting_value_review" if value_item else None)
+                item["memory_value_reason"] = (value_queue_status["warning"] if value_items is None
+                                               else value_item["reason"] if value_item else None)
                 item["agent_runs"] = [
                     dict(row) for row in conn.execute(
                         "SELECT agent_name,status,output,error,latency_ms FROM agent_runs WHERE task_id=? ORDER BY created_at",
@@ -2277,6 +2302,8 @@ class EventStore:
                 "tasks": tasks,
                 "pending_final_reviews": pending_final,
                 "pending_value_reviews": pending_value_reviews,
+                "value_queue_status": value_queue_status,
+                "known_unresolved_tasks": int(known_unresolved_tasks),
                 "closed_sessions": closed_sessions,
             }
 
@@ -3295,6 +3322,20 @@ class EventStore:
             if task["freeze_hash"] != expected_freeze_hash:
                 raise ValueError("freeze hash mismatch")
             frozen = self._verify_frozen_record_integrity(task)
+            try:
+                execution_snapshot = json.loads(str(task["execution_snapshot_json"] or "{}"))
+            except json.JSONDecodeError as exc:
+                raise ValueError("invalid frozen execution snapshot") from exc
+            if not isinstance(execution_snapshot, dict):
+                raise ValueError("invalid frozen execution snapshot")
+            frozen_review_agents = None
+            workflow = execution_snapshot.get("workflow")
+            if isinstance(workflow, dict) and workflow.get("phase") == "review":
+                workflow_agents = workflow.get("agents")
+                if isinstance(workflow_agents, list) and workflow_agents:
+                    frozen_review_agents = {
+                        name for name in workflow_agents if isinstance(name, str) and name
+                    }
             completed = {str(item.get("run_id")): item for item in frozen.get("completed_runs", [])}
             for run_id, item in completed.items():
                 run = conn.execute(
@@ -3365,10 +3406,16 @@ class EventStore:
                 name for name, status in current.items()
                 if status == "healthy" and name not in failed_agents
             } | (retested - failed_agents)) - completed_agents
+            if frozen_review_agents is not None:
+                healthy_substitutes &= frozen_review_agents
             if uncovered and len(healthy_substitutes) < len(uncovered):
+                guidance = (
+                    "或启用健康的第3审查节点替补" if frozen_review_agents is None
+                    else "；替补必须属于冻结审查名单且该席位尚未完成"
+                )
                 raise ValueError(
                     "failed Agent has no current healthy probe; 请先在 Agent 池重新测试失败的节点"
-                    "或启用健康的第3审查节点替补"
+                    + guidance
                 )
             generation = int(task["resume_generation"] or 0) + 1
             max_attempts = max(int(task["max_attempts"]), int(task["attempts"]) + 1)

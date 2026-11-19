@@ -12,6 +12,7 @@ from fixtures_review import _admit_authored_candidate, _config, _run_cli
 from fixtures_validation import native_trial
 from xiaoba_agentos.experience_loop import (
     pending_index, read_pending, record_application, record_delivery as _record_delivery, application_packet,
+    trial_binding,
 )
 from xiaoba_agentos.experience_workflow import digest, verify_final_qualification, match_trials, trial_summary
 from xiaoba_agentos.memory import MemoryBridge
@@ -21,6 +22,32 @@ from xiaoba_agentos.store import EventStore
 def record_delivery(store, value):
     from xiaoba_agentos.delivery import user_decision
     return _record_delivery(store, value, authority=user_decision(value, channel="cli_user_declaration", explicit=True))
+
+
+def _rewrite_event_with_valid_chain(store, event_id, *, payload=..., raw_payload=..., task_id=...):
+    with store.connect() as conn:
+        rows = conn.execute("SELECT * FROM events ORDER BY sequence").fetchall()
+        target = next((row for row in rows if row["event_id"] == event_id), None)
+        if target is None:
+            raise AssertionError("TEST event not found")
+        conn.execute("UPDATE events SET event_hash='TEMP-' || sequence")
+        previous = "0" * 64
+        for row in rows:
+            payload_json = row["payload_json"]
+            if row["event_id"] == event_id and raw_payload is not ...:
+                payload_json = raw_payload
+            elif row["event_id"] == event_id and payload is not ...:
+                payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            row_task_id = (task_id if row["event_id"] == event_id and task_id is not ... else row["task_id"])
+            material = f"{previous}|{row['event_id']}|{row_task_id or ''}|{row['event_type']}|{payload_json}|{row['created_at']:.6f}"
+            event_hash = hashlib.sha256(material.encode("utf-8")).hexdigest()
+            conn.execute(
+                "UPDATE events SET task_id=?,payload_json=?,prev_hash=?,event_hash=? WHERE sequence=?",
+                (row_task_id, payload_json, previous, event_hash, row["sequence"]),
+            )
+            previous = event_hash
+    if not store.verify_event_chain()["ok"]:
+        raise AssertionError("TEST rewritten event chain must remain valid")
 
 
 
@@ -69,6 +96,14 @@ class ExperienceLoopTests(unittest.TestCase):
             "steps_applied": "TEST applied the candidate normalization steps", "deviations": "TEST no deviations",
             "execution_evidence": [self.evidence],
             "method_claims": [{"claim": "TEST run the normalization steps", "class": "code"}]}
+
+    def legacy_application(self, c):
+        value = self.application(c)
+        value.pop("method_claims")
+        application = dict(value, application_id=digest(value))
+        with self.store.connect() as conn:
+            self.store._append_event_tx(conn, c["task_id"], "memory.application_recorded", application)
+        return dict(application, trial_binding=trial_binding(application), normal_retrieval=False)
 
     def delivery(self, **changes):
         return dict({"origin": "user", "user_message": "交付", "message_id": "TEST-message-1",
@@ -340,6 +375,157 @@ class ExperienceLoopTests(unittest.TestCase):
             pending_index(self.store)
         with self.assertRaisesRegex(ValueError, "event chain"):
             record_application(self.store, value)
+
+    def test_current_application_payload_damage_is_rejected_with_a_valid_event_chain(self):
+        c = self.candidate()
+        app = record_application(self.store, self.application(c))
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE task_id=? AND event_type='memory.application_recorded'",
+                (c["task_id"],),
+            ).fetchone()[0]
+
+        _rewrite_event_with_valid_chain(self.store, event_id, payload={})
+
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertFalse(self.gate(c)["qualified"])
+
+    def test_legacy_application_payload_damage_blocks_public_final_review(self):
+        c = self.candidate()
+        app = self.legacy_application(c)
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        self.assertTrue(self.gate(c)["qualified"], "valid legacy applications keep their existing path")
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE task_id=? AND event_type='memory.application_recorded'",
+                (c["task_id"],),
+            ).fetchone()[0]
+
+        _rewrite_event_with_valid_chain(self.store, event_id, payload={})
+        verdict = self.gate(c)
+        code, result = _run_cli([
+            "--config", str(self.cfg.path), "review", c["task_id"],
+            "--stage", "final", "--decision", "approve",
+        ])
+
+        self.assertNotEqual(0, code)
+        self.assertEqual("application_payload_invalid", verdict["state"])
+        self.assertIn("is malformed", json.dumps(result, ensure_ascii=False))
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertEqual(0, self.event_count("memory.published"))
+        self.assertIsNone(self.store.get_memory_candidate(c["task_id"])["published_path"])
+        with self.store.read_only() as conn:
+            self.assertEqual(0, conn.execute(
+                "SELECT count(*) FROM memory_reviews WHERE task_id=? AND stage='final' AND decision='approve'",
+                (c["task_id"],),
+            ).fetchone()[0])
+
+    def test_legacy_invalid_json_application_event_uses_its_event_task_binding(self):
+        c = self.candidate()
+        app = self.legacy_application(c)
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE task_id=? AND event_type='memory.application_recorded'",
+                (c["task_id"],),
+            ).fetchone()[0]
+
+        _rewrite_event_with_valid_chain(self.store, event_id, raw_payload="{malformed")
+        verdict = self.gate(c)
+
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertEqual("application_payload_invalid", verdict["state"])
+        self.assertIn(event_id, verdict["reasons"][0])
+
+    def test_legacy_application_payload_damage_blocks_public_publish_after_approval(self):
+        c = self.candidate()
+        app = self.legacy_application(c)
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final", c["evidence_sha256"])
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE task_id=? AND event_type='memory.application_recorded'",
+                (c["task_id"],),
+            ).fetchone()[0]
+
+        _rewrite_event_with_valid_chain(self.store, event_id, payload={})
+        verdict = self.gate(c)
+        code, result = _run_cli([
+            "--config", str(self.cfg.path), "publish-memory", "--task-id", c["task_id"],
+        ])
+
+        self.assertNotEqual(0, code)
+        self.assertEqual("application_payload_invalid", verdict["state"])
+        self.assertIn("is malformed", json.dumps(result, ensure_ascii=False))
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertEqual(0, self.event_count("memory.published"))
+        self.assertIsNone(self.store.get_memory_candidate(c["task_id"])["published_path"])
+
+    def test_legacy_application_payload_candidate_id_must_match_event_task_id(self):
+        c = self.candidate()
+        app = self.legacy_application(c)
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        self.store.review_memory(c["task_id"], "final", "approve", "TEST human final", c["evidence_sha256"])
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE task_id=? AND event_type='memory.application_recorded'",
+                (c["task_id"],),
+            ).fetchone()[0]
+
+        _rewrite_event_with_valid_chain(self.store, event_id, task_id=None)
+        code, result = _run_cli([
+            "--config", str(self.cfg.path), "publish-memory", "--task-id", c["task_id"],
+        ])
+
+        self.assertNotEqual(0, code)
+        self.assertIn("candidate_id does not match event task_id", json.dumps(result, ensure_ascii=False))
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertEqual(0, self.event_count("memory.published"))
+
+    def test_malformed_application_event_for_another_candidate_does_not_block_legacy_candidate(self):
+        source = self.candidate()
+        app = self.legacy_application(source)
+        self.trial(source, app)
+        record_delivery(self.store, self.delivery())
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE task_id=? AND event_type='memory.application_recorded'",
+                (source["task_id"],),
+            ).fetchone()[0]
+        _rewrite_event_with_valid_chain(self.store, event_id, payload={})
+
+        other = self.candidate()
+        native_trial(self.store, other, card={"problem_key": "parse-fixture"})
+        verdict = self.gate(other)
+
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertTrue(verdict["qualified"], verdict)
+
+    def test_malformed_delivery_is_not_reported_as_this_candidate_application(self):
+        c = self.candidate()
+        app = self.legacy_application(c)
+        self.trial(c, app)
+        record_delivery(self.store, self.delivery())
+        with self.store.read_only() as conn:
+            event_id = conn.execute(
+                "SELECT event_id FROM events WHERE event_type='task.delivery_recorded' ORDER BY sequence DESC LIMIT 1",
+            ).fetchone()[0]
+
+        _rewrite_event_with_valid_chain(self.store, event_id, payload={})
+        verdict = self.gate(c)
+        reasons = json.dumps(verdict.get("reasons", []), ensure_ascii=False)
+
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+        self.assertFalse(verdict["qualified"])
+        self.assertNotIn(event_id, reasons)
+        self.assertNotIn(c["task_id"], reasons)
+        self.assertIn("explicit user delivery acceptance", reasons)
 
     def test_reacceptance_requires_new_human_final_approval(self):
         c = self.candidate()

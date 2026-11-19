@@ -355,6 +355,8 @@ def submit(config, store, request, *, authority):
         if not old:
             journal.execute('INSERT INTO submissions VALUES(?,?,?,?,?)',
                             (journal_id, request_hash, json.dumps(request, ensure_ascii=False), None, time.time()))
+    delivery_attempted = False
+    delivery_recorded = False
     try:
         from .experience_loop import _events, _chain
         with store.read_only() as conn:
@@ -370,13 +372,18 @@ def submit(config, store, request, *, authority):
                  'real_task_id': request['task_id'], 'artifact': request['artifact'],
                  'real_task': request['real_task'], 'delivery_record': delivery_ref,
                  'decision': request['decision'], 'expected': request['expected']}
+        delivery_attempted = True
         receipt = record_delivery(store, value, authority=user_decision(value, channel=authority.channel, explicit=True))
+        delivery_recorded = True
         # Replaying an accepted message never re-applies its score after withdrawal.
         archive = archive_delivery(config, store, receipt)
         response = {'ok': True, 'receipt': receipt, 'archive': archive,
                     'experience_approval': 'separate_user_review_required'}
     except (ValueError, OSError, KeyError, TypeError, sqlite3.Error) as exc:
-        response = {'ok': False, 'pending': True, 'message_id': request['message_id'], 'error': str(exc)}
+        pending = delivery_recorded or (
+            delivery_attempted and not isinstance(exc, (ValueError, KeyError, TypeError))
+        )
+        response = {'ok': False, 'pending': pending, 'message_id': request['message_id'], 'error': str(exc)}
     with _journal(config) as journal:
         journal.execute('UPDATE submissions SET result=? WHERE id=?', (json.dumps(response, ensure_ascii=False), journal_id))
     return response

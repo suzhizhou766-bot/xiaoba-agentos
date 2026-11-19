@@ -257,6 +257,7 @@ is a test harness, not a hostile-software detonation service.
                '(deny file-read-data (subpath ' + q(stdlib / "site-packages") + '))'
                '(deny file-read-data (require-all (subpath "/Volumes") (require-not (subpath ' + quoted + '))))'
                '(deny file-read-data (require-all (subpath "/private/var/folders") (require-not (subpath ' + quoted + '))))'
+               '(deny file-read-data (require-all (subpath "/private/tmp") (require-not (subpath ' + quoted + '))))'
                '(allow file-write* (subpath ' + quoted + ') (literal "/dev/null"))')
     for case in cases:
         argv = case.get("argv")

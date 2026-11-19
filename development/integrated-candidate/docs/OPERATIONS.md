@@ -84,10 +84,11 @@ v1.6.9（卡 51）已移除 `recovery.probe_on_session_start` 及 doctor 的
 交付本身有效后，每个来源用保存点包住记分及改动事件：记分前提缺失、源正式笔记版本
 漂移、记分阶段复验发现漂移等记 `memory.reuse_scoring_skipped`，回滚该来源部分记分，
 交付继续，其它有效来源照常计分。该容忍仅属于记分环节，不豁免交付门禁。
-例外：历史 `memory.reuse_scored` 有畸形事件（字段缺失、类型异常或重复键）时，投影
-采用全局熔断，本轮所有正式来源均跳过记分；有效交付照常记录。doctor 的
-`reuse_scores` 返回 ok=false 和 problems，warnings 明示“复用分”“全局熔断”；
-该报告不代替原有事件链检查，也不另行改变 doctor 的就绪判定。
+历史 `memory.reuse_scored` 的业务 payload 畸形或绑定不匹配时，投影按条隔离该事件，
+其它有效正式来源仍照常计分；有效交付照常记录。doctor 的 `reuse_scores` 返回
+ok=false 和 problems，warnings 明示“复用分历史事件异常，单条坏payload已隔离”。
+这项逐条隔离不豁免事件链检查：事件链本身损坏仍按 B20 停止双 Agent 派活。doctor
+报告不代替事件链检查，也不另行改变 doctor 的就绪判定。
 
 0分同时追加一次 `memory.reuse_revision_requested`，保留源ID／版本、任务、应用ID与
 改动／补充／摒弃。**本卡不送终审队列，不改正式经验状态**；卡52b再实现独立复用

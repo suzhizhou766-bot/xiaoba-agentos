@@ -20,7 +20,7 @@
       "base": "assistant",
       "relative": "工具/小八监看/monitor_core/modules/overview.py",
       "before_sha256": "cf56708ae0c7613877c3717f4958312d9b6ad1b2bd43b5ef18915f858741795f",
-      "after_sha256": "d6bb1b9a43f83198e0fb44d78ed7cc27d9ebee6d17f8a7417709fc4445246b95"
+      "after_sha256": "8d8b2a0deaff6eef1a75a296930a184421f0f18059402ee589e00db3786fb5bf"
     },
     {
       "asset": "monitor_review.py",
@@ -55,7 +55,7 @@
       "base": "assistant",
       "relative": "工具/小八监看/xiaoba-monitor.html",
       "before_sha256": "506f113864a9e90f3a4e45f16cdf56b0db525cb389518735a83e01ffa9538b24",
-      "after_sha256": "d5966c31e24e298c254d376b9ad16ef53766a0840c478ac8bcbce9ccd6aeef88"
+      "after_sha256": "def6cb71b33fcfebe3c5deeb6d2cd3bf3833e0e317771e2cf64fd39b38ebe5b4"
     }
   ]
 }

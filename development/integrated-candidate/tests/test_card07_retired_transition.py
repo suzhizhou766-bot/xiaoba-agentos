@@ -9,11 +9,13 @@
 import hashlib
 import importlib.util
 import json
+import sqlite3
 import socket
 import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -131,6 +133,14 @@ class GetNoWriteHttpTest(unittest.TestCase):
         cfg = AppConfig.load(cfg_path)
         store = EventStore(cfg.database_path)
         store.initialize()
+        task = store.submit("TEST candidate used by GET read-only probe", 1)
+        store.complete_manually(task, "TEST completed result")
+        outbox = root / ".runtime/memory-outbox"
+        outbox.mkdir(parents=True, exist_ok=True)
+        candidate_path = outbox / "get-no-write.md"
+        candidate_path.write_text("TEST candidate body", encoding="utf-8")
+        candidate_sha = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+        store.stage_memory_candidate(task, str(candidate_path), candidate_sha)
 
         server_mod = server
         with socket.socket() as s:
@@ -149,18 +159,54 @@ class GetNoWriteHttpTest(unittest.TestCase):
         self.addCleanup(http.shutdown)
         self.addCleanup(http.server_close)
 
-        def changes():
-            with store.connect() as db:
-                return db.total_changes
+        def database_snapshot():
+            with sqlite3.connect("file:%s?mode=ro" % cfg.database_path, uri=True) as db:
+                schema = db.execute(
+                    "SELECT type,name,tbl_name,sql FROM sqlite_master "
+                    "WHERE name!='sqlite_sequence' ORDER BY type,name"
+                ).fetchall()
+                tables = db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name!='sqlite_sequence' ORDER BY name"
+                ).fetchall()
+                rows = {}
+                for (name,) in tables:
+                    quoted_name = '"' + name.replace('"', '""') + '"'
+                    table_rows = db.execute("SELECT * FROM " + quoted_name).fetchall()
+                    rows[name] = sorted((tuple(row) for row in table_rows), key=repr)
+                return {
+                    "schema": schema,
+                    # sqlite_sequence contains SQLite-only AUTOINCREMENT bookkeeping.
+                    "rows": rows,
+                }
 
-        before = changes()
-        for path in ("/api/state", "/api/candidate?id=11111111-2222-3333-4444-555555555555"):
+        before = database_snapshot()
+
+        def get(path):
             try:
                 with urllib.request.urlopen("http://127.0.0.1:%d%s" % (port, path), timeout=5) as r:
-                    r.read()
-            except Exception:
-                pass  # 候选可能不存在 -> 503；关键是不得写库
-        self.assertEqual(before, changes(), "GET 接口不得写库")
+                    return r.status, json.loads(r.read())
+            except urllib.error.HTTPError as exc:
+                try:
+                    return exc.code, json.loads(exc.read())
+                finally:
+                    exc.close()
+
+        status_code, state = get("/api/state")
+        self.assertEqual(200, status_code)
+        self.assertTrue(state["ok"])
+        self.assertIn(task, [item["task_id"] for item in state["items"]])
+
+        status_code, item = get("/api/candidate?id=" + task)
+        self.assertEqual(200, status_code)
+        self.assertEqual(task, item["task_id"])
+        self.assertEqual("TEST candidate body", item["body"])
+
+        missing = "11111111-2222-3333-4444-555555555555"
+        status_code, absent = get("/api/candidate?id=" + missing)
+        self.assertEqual(503, status_code, absent)
+        self.assertEqual({"ok": False, "error": "找不到候选"}, absent)
+        self.assertEqual(before, database_snapshot(), "GET 接口不得改变临时库的真实数据")
 
 
 if __name__ == "__main__":

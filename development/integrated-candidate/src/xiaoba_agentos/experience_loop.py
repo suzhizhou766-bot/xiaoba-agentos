@@ -42,6 +42,38 @@ def payload_problems(conn):
     return rows(conn, ('memory.application_recorded','task.delivery_recorded'), _event_payload)[1]
 
 
+def _application_payload_problems(conn, candidate_id):
+    problems = []
+    for row in conn.execute(
+        "SELECT event_id,task_id,payload_json,sequence FROM events "
+        "WHERE event_type='memory.application_recorded' ORDER BY sequence"
+    ):
+        try:
+            value = json.loads(row['payload_json'])
+            if not isinstance(value, dict):
+                raise ValueError('payload must be an object')
+        except (ValueError, TypeError, KeyError, OverflowError) as exc:
+            if row['task_id'] == candidate_id:
+                problems.append({'event_id': row['event_id'], 'sequence': row['sequence'],
+                                 'reason': str(exc)[:240]})
+            continue
+        row_candidate_id = row['task_id']
+        payload_candidate_id = value.get('candidate_id')
+        if row_candidate_id != candidate_id and payload_candidate_id != candidate_id:
+            continue
+        if row_candidate_id != candidate_id or payload_candidate_id != candidate_id:
+            reason = 'application candidate_id does not match event task_id'
+        else:
+            try:
+                _event_payload('memory.application_recorded', value)
+            except (ValueError, TypeError, KeyError, OverflowError) as exc:
+                reason = str(exc)[:240]
+            else:
+                continue
+        problems.append({'event_id': row['event_id'], 'sequence': row['sequence'], 'reason': reason})
+    return problems
+
+
 def _chain(conn):
     from .store import EventStore
     result = EventStore.verify_event_chain_tx(conn)
@@ -374,6 +406,13 @@ def _application_for_trial(conn, applications, task_id):
 
 def require_application_delivery(conn, candidate, verdict):
     """Extra conditions only for candidates opting into actual-task use."""
+    malformed = _application_payload_problems(conn, candidate["task_id"])
+    if malformed:
+        details = "; ".join(
+            f"application event {item['event_id']} is malformed: {item['reason']}"
+            for item in malformed
+        )
+        return dict(verdict, qualified=False, ready=False, state="application_payload_invalid", reasons=[details])
     packet = application_packet(conn, candidate)
     applications = packet["applications"]
     if not applications:

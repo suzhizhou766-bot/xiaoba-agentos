@@ -20,6 +20,7 @@ from xiaoba_agentos.experience_workflow import (
 )
 from xiaoba_agentos.orchestrator import Orchestrator
 from xiaoba_agentos.store import EventStore
+from xiaoba_agentos.task_context import freeze_context
 from xiaoba_agentos.validation_evidence import task_evidence
 
 
@@ -213,6 +214,76 @@ class Card04HostAndRecoveryTests(unittest.TestCase):
         self.assertEqual(1, len([run for run in runs if run["agent_name"] == "TEST good"]))
         self.assertEqual(1, len([run for run in runs if run["agent_name"] == "TEST replacement"]))
         self.assertEqual([], [run for run in runs if run["agent_name"] == "TEST bad"])
+        self.assertTrue(self.store.verify_event_chain()["ok"])
+
+    def test_public_resume_rejects_substitute_outside_frozen_reviewers(self):
+        agent_a = _source("A", "cli:A", "modelA")
+        agent_b = _source("B", "cli:B", "modelB")
+        _seed(self.store, [agent_a, agent_b])
+        task_id = self.store.submit(
+            "TEST frozen review",
+            2,
+            snapshot={
+                "prompt": "TEST frozen review",
+                "needs_review": True,
+                "task_context": freeze_context("TEST frozen review evidence"),
+                "workflow": {"version": 1, "phase": "review", "agents": ["A", "B"]},
+            },
+        )
+        self.store.lease_next(60)
+        retained_output = "TEST retained reviewer A\n审查结论：PASS\n"
+        run_id = self.store.start_agent_run(task_id, "A", {"purpose": "review"})
+        self.store.finish_agent_run(run_id, "completed", retained_output, None, 1)
+        frozen = self.store.freeze_task(
+            task_id,
+            failure_class="external_upstream",
+            failures=[{"agent": "B", "error": "TEST unavailable"}],
+        )
+
+        agent_b["node"]["test"]["status"] = "failed"
+        agent_b["node"]["test"]["finished_at"] = time.time() + 1
+        agent_c = _source("C", "cli:C", "modelC")
+        agent_c["node"]["test"]["finished_at"] = time.time() + 1
+        _seed(self.store, [agent_a, agent_b, agent_c])
+        arguments = ["task-resume", task_id, "--freeze-hash", frozen["freeze_hash"]]
+        before = self.store.get_task(task_id)
+        with self.store.read_only() as db:
+            event_count = db.execute(
+                "SELECT COUNT(*) FROM events WHERE task_id=?", (task_id,)
+            ).fetchone()[0]
+
+        code, value = self.cli(*arguments)
+
+        self.assertEqual(1, code, value)
+        self.assertEqual("blocked", value["status"])
+        self.assertIn("冻结审查名单", value["error"])
+        after = self.store.get_task(task_id)
+        self.assertEqual("frozen_paused", after["status"])
+        self.assertEqual(before["attempts"], after["attempts"])
+        self.assertEqual(before["resume_generation"], after["resume_generation"])
+        self.assertEqual(before["freeze_hash"], after["freeze_hash"])
+        with self.store.read_only() as db:
+            self.assertEqual(
+                event_count,
+                db.execute("SELECT COUNT(*) FROM events WHERE task_id=?", (task_id,)).fetchone()[0],
+            )
+
+        agent_b["node"]["test"]["status"] = "passed"
+        agent_b["node"]["test"]["finished_at"] = time.time() + 1
+        _seed(self.store, [agent_a, agent_b])
+        code, value = self.cli(*arguments)
+        self.assertEqual(0, code, value)
+        self.assertEqual("retry", value["status"])
+        with patch("xiaoba_agentos.orchestrator.validate_plan") as validate_plan:
+            worker_result = Orchestrator(self.config, self.store).run_once()
+        self.assertEqual(2, validate_plan.call_count)
+        self.assertEqual("completed", worker_result["status"], worker_result)
+
+        runs = self.store.task_runs(task_id)
+        self.assertEqual(1, len([run for run in runs if run["agent_name"] == "A"]))
+        self.assertEqual(1, len([run for run in runs if run["agent_name"] == "B"]))
+        self.assertEqual([], [run for run in runs if run["agent_name"] == "C"])
+        self.assertEqual(retained_output, next(run["output"] for run in runs if run["agent_name"] == "A"))
         self.assertTrue(self.store.verify_event_chain()["ok"])
 
 

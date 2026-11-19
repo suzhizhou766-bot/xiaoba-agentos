@@ -73,7 +73,7 @@ class OverviewProjectionTests(unittest.TestCase):
         self.settle()
         with self.store.connect() as db:
             db.execute("UPDATE events SET payload_json='{}' WHERE sequence=1")
-        for function in (ov.weekly_agent_model_scores, ov.b19_consecutive_failures):
+        for function in (ov.weekly_agent_model_scores, ov.permanent_total_ranking, ov.b19_consecutive_failures):
             result = self.view(function)
             self.assertFalse(result['available']); self.assertEqual([], result['items'])
             self.assertTrue(result['problems'])
