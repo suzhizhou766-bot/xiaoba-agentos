@@ -12,13 +12,18 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 PACKAGE = REPO / 'architecture-package-20261027'
-CORE = REPO / 'development/integrated-candidate/src'
+CORE = HERE.parent if (HERE.parent / 'xiaoba_agentos').is_dir() else REPO / 'development/integrated-candidate/src'
+MONITOR = (
+    HERE.parent / 'xiaoba_monitor_shared'
+    if (HERE.parent / 'xiaoba_monitor_shared').is_dir()
+    else PACKAGE / 'shared/工具/小八监看'
+)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--core-source', type=Path, default=CORE)
-    parser.add_argument('--monitor-source', type=Path, default=PACKAGE / 'shared/工具/小八监看')
+    parser.add_argument('--monitor-source', type=Path, default=MONITOR)
     parser.add_argument('--config', type=Path, help='现有 AgentOS 配置；本工具不修改它')
     parser.add_argument('--runtime', type=Path, default=HERE / '.runtime', help='无配置时的新建独立运行目录')
     parser.add_argument('--port', type=int, default=8800)
@@ -77,7 +82,11 @@ def main():
     settings['root'] = str(runtime)
     ctx = Context(settings, logs.setup(None), args.port)
     app = App(ctx)
-    center_root = HERE.parent / 'architecture-center'
+    center_root = (
+        HERE.parent / 'xiaoba_architecture_center'
+        if (HERE.parent / 'xiaoba_architecture_center').is_dir()
+        else HERE.parent / 'architecture-center'
+    )
     module_spec = importlib.util.spec_from_file_location('xiaoba_architecture_center', center_root / '__init__.py', submodule_search_locations=[str(center_root)])
     module = importlib.util.module_from_spec(module_spec)
     sys.modules[module_spec.name] = module

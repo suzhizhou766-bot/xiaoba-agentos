@@ -110,8 +110,12 @@ class RetiredTransitionTest(unittest.TestCase):
         task = self._stage()
         with self.store.read_only() as db:
             before = db.total_changes
-            db.execute("SELECT COUNT(*) FROM memory_candidates").fetchone()
+            count = db.execute("SELECT COUNT(*) FROM memory_candidates").fetchone()[0]
+            self.assertEqual(1, count)
+            with self.assertRaises(sqlite3.OperationalError):
+                db.execute("UPDATE memory_candidates SET status='retired' WHERE task_id=?", (task,))
             self.assertEqual(before, db.total_changes)
+        self.assertEqual("pending_delivery_review", self.store.get_memory_candidate(task)["status"])
 
 
 class GetNoWriteHttpTest(unittest.TestCase):
@@ -160,7 +164,8 @@ class GetNoWriteHttpTest(unittest.TestCase):
         self.addCleanup(http.server_close)
 
         def database_snapshot():
-            with sqlite3.connect("file:%s?mode=ro" % cfg.database_path, uri=True) as db:
+            import contextlib
+            with contextlib.closing(sqlite3.connect("file:%s?mode=ro" % cfg.database_path, uri=True)) as db:
                 schema = db.execute(
                     "SELECT type,name,tbl_name,sql FROM sqlite_master "
                     "WHERE name!='sqlite_sequence' ORDER BY type,name"

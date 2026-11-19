@@ -21,6 +21,44 @@ def verified_snapshot(task):
     return snapshot
 
 
+def is_ordinary_user_task(task, snapshot=None, conn=None) -> bool:
+    """Whether a native task row is an ordinary user task, including pre-v1.6.16 snapshots without task_purpose."""
+    if not isinstance(task, dict) or task.get("execution_mode") == "host_authored":
+        return False
+    if snapshot is None:
+        snapshot = verified_snapshot(task)
+    if "task_purpose" in snapshot:
+        if snapshot.get("task_purpose") != "user_task":
+            return False
+    policy = snapshot.get("experience_policy")
+    if policy is not None:
+        if not isinstance(policy, dict) or policy.get("kind") not in {"method", "rule"}:
+            return False
+    review_context = snapshot.get("review_context")
+    if snapshot.get("release_acceptance") or (isinstance(review_context, dict) and review_context.get("release_acceptance")):
+        return False
+    if snapshot.get("experience_trial") is not None:
+        return False
+    workflow = snapshot.get("workflow")
+    if isinstance(workflow, dict) and workflow.get("phase") == "review":
+        return False
+    try:
+        provenance = json.loads(task.get("provenance_json") or "{}")
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(provenance, dict) or provenance.get("memory_disposition") == "audit_only":
+        return False
+    if str(task.get("prompt") or "").startswith("你是小八 AgentOS 的独立审查者之一，只读审查技能 "):
+        return False
+    if conn is not None and task.get("id"):
+        if conn.execute(
+            "SELECT 1 FROM events WHERE task_id=? AND event_type='audit.settled' LIMIT 1",
+            (task["id"],),
+        ).fetchone() is not None:
+            return False
+    return True
+
+
 def _roster(config, store=None, purpose="collab"):
     from .pool_dispatch import active_names
     return active_names(config, store, purpose=purpose)

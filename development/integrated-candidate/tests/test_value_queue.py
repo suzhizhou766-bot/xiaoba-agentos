@@ -359,6 +359,74 @@ class ValueQueueTests(unittest.TestCase):
             status = conn.execute("SELECT status FROM work_sessions WHERE id=?", (session["id"],)).fetchone()[0]
         self.assertEqual("closed", status)
 
+    def test_discard_assessment_cannot_be_reversed_by_reregistration_and_cleanup_respects_live_candidate(self):
+        from xiaoba_agentos.value_queue import validated_assessment_tx
+        from xiaoba_agentos.value_scoring import decide
+
+        task = self.store.submit(
+            "TEST discard non-reversal", 2,
+            snapshot={"experience_policy": {"version": 1, "kind": "method", "problem_key": "TEST-discard"}},
+        )
+        outbox = self.store.path.parent / "memory-outbox"
+        outbox.mkdir(parents=True, exist_ok=True)
+        path = outbox / f"{task}.md"
+        path.write_text("TEST low score candidate body", encoding="utf-8")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.store.complete_with_memory_candidate(task, "TEST result", str(path), digest, [], expected_attempt=0)
+
+        discard_assessment = {
+            "version": 2,
+            "review_request_id": "TEST-discard-request",
+            "candidate_sha256": digest,
+            **decide([{"reviewer_id": "TEST-a", "score": 2}, {"reviewer_id": "TEST-b", "score": 3}]),
+        }
+        self.assertEqual("discard", discard_assessment["decision"])
+        with patch("xiaoba_agentos.value_queue.assessment_from_review_request_tx", return_value=discard_assessment):
+            result = self.store.assess_value_candidate(task, "TEST-discard-request")
+        self.assertEqual("value_discarded", result["status"])
+        self.assertIsNone(self.store.get_memory_candidate(task))
+
+        # Re-writing the discarded file and attempting stage_memory_candidate must be rejected
+        path.write_text("TEST low score candidate body", encoding="utf-8")
+        with patch("xiaoba_agentos.value_queue.assessment_from_review_request_tx", return_value=discard_assessment):
+            with self.store.read_only() as conn:
+                self.assertFalse(validated_assessment_tx(conn, task, digest))
+            with self.assertRaisesRegex(ValueError, "value-discarded|independent value assessment"):
+                self.store.stage_memory_candidate(task, str(path), digest, [])
+        self.assertIsNone(self.store.get_memory_candidate(task))
+
+        # Also test when a v2 discard event exists even before provenance memory_disposition is checked
+        task2 = self.store.submit(
+            "TEST discard event only", 2,
+            snapshot={"experience_policy": {"version": 1, "kind": "method", "problem_key": "TEST-discard-2"}},
+        )
+        path2 = outbox / f"{task2}.md"
+        path2.write_text("TEST low score candidate body 2", encoding="utf-8")
+        digest2 = hashlib.sha256(path2.read_bytes()).hexdigest()
+        discard_assessment2 = dict(discard_assessment, candidate_sha256=digest2, review_request_id="TEST-discard-req-2")
+        with self.store.connect() as conn:
+            assessment_tx(conn, task2, discard_assessment2)
+        with patch("xiaoba_agentos.value_queue.assessment_from_review_request_tx", return_value=discard_assessment2):
+            with self.store.read_only() as conn:
+                self.assertFalse(validated_assessment_tx(conn, task2, digest2))
+            with self.assertRaisesRegex(ValueError, "independent value assessment"):
+                self.store.stage_memory_candidate(task2, str(path2), digest2, [])
+
+        # If a live candidate row references the task/path/hash, cleanup_discarded_candidate and
+        # recover_discarded_candidate_cleanup must retain the file and never delete live evidence.
+        with self.store.connect() as conn:
+            conn.execute(
+                "INSERT INTO memory_candidates(task_id,status,staged_path,evidence_sha256,source_task_ids_json,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (task, "pending_delivery_review", str(path), digest, "[]", 1.0, 1.0),
+            )
+        self.assertFalse(self.store.cleanup_discarded_candidate(task, str(path), digest))
+        recovery = self.store.recover_discarded_candidate_cleanup()
+        self.assertTrue(recovery["ok"])
+        self.assertEqual(0, recovery["cleaned"])
+        self.assertGreaterEqual(recovery["retained"], 1)
+        self.assertTrue(path.is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

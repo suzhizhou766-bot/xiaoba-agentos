@@ -1070,13 +1070,15 @@ class EventStore:
             if task is None:
                 raise KeyError(task_id)
             from .experience_workflow import policy
+            from .value_queue import _discarded, validated_assessment_tx
+            if _discarded(conn, task_id, evidence_sha256):
+                raise ValueError("value-discarded candidate cannot enter initial review")
             if policy(dict(task))["kind"] in {"method", "rule"}:
                 existing = conn.execute(
                     "SELECT staged_path,evidence_sha256 FROM memory_candidates WHERE task_id=?", (task_id,)
                 ).fetchone()
                 same_existing = bool(existing and existing["staged_path"] == staged_path
                                      and existing["evidence_sha256"] == evidence_sha256)
-                from .value_queue import validated_assessment_tx
                 if not same_existing and not validated_assessment_tx(conn, task_id, evidence_sha256):
                     raise ValueError("method/rule candidates require a matching independent value assessment before initial review")
             self._require_staged_evidence(staged_path, evidence_sha256)
@@ -1158,12 +1160,20 @@ class EventStore:
         """Remove only the exact, hash-bound body of a committed discarded candidate."""
         if not isinstance(staged_path, str) or not isinstance(candidate_sha256, str):
             return False
+        path = Path(staged_path)
+        resolved_target = str(path.resolve(strict=False))
         with self.read_only() as conn:
             from .value_queue import _discarded
             if not self.verify_event_chain_tx(conn)["ok"] or not _discarded(conn, task_id, candidate_sha256):
                 return False
+            referenced = conn.execute(
+                "SELECT 1 FROM memory_candidates WHERE "
+                "(task_id=? AND status!='retired') OR staged_path IN (?,?) OR evidence_sha256=? LIMIT 1",
+                (task_id, staged_path, resolved_target, candidate_sha256),
+            ).fetchone()
+            if referenced is not None:
+                return False
         outbox = Path(self.path).parent / "memory-outbox"
-        path = Path(staged_path)
         try:
             if (outbox.is_symlink() or path.is_symlink() or path.name != f"{task_id}.md"
                     or path.resolve(strict=False).parent != outbox.resolve(strict=True)):

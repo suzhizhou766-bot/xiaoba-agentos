@@ -829,6 +829,116 @@ class ValidationBasisTests(unittest.TestCase):
         self.assertEqual(second_task, selected['real_task']['id'])
         self.assertEqual('proposed', selected['status'])
 
+    def test_pre_v1616_completed_user_task_without_task_purpose_supports_delivery_withdrawal_basis_and_reuse(self):
+        """Pre-v1.6.16 completed ordinary user tasks without task_purpose work across delivery, withdrawal, basis and reuse scoring."""
+        from xiaoba_agentos.delivery import completed_task_tx, detail_tx, legacy_request, pending_tasks
+        from xiaoba_agentos.reuse_scores import projection_tx
+
+        formal_cand = self.candidate()
+        vault = self.root / "vault-formal"
+        vault.mkdir(exist_ok=True)
+        formal_path = vault / f"formal-{formal_cand['task_id']}.md"
+        formal_path.write_text(
+            f"---\nstatus: active\nsource_task_id: {formal_cand['task_id']}\n---\nTEST formal method",
+            encoding="utf-8",
+        )
+        formal_sha = hashlib.sha256(formal_path.read_bytes()).hexdigest()
+        with self.store.connect() as conn:
+            conn.execute(
+                "UPDATE memory_candidates SET status='published',published_path=?,published_at=1 WHERE task_id=?",
+                (str(formal_path), formal_cand["task_id"]),
+            )
+
+        # 1. Pre-v1.6.16 snapshot without task_purpose (both with method policy and legacy pre-v1.6.5 without policy)
+        for index, snap in enumerate((
+            {"experience_policy": {"version": 1, "kind": "method", "problem_key": "parse-fixture"}},
+            {"prompt": "TEST legacy v1.5 user task"},
+        )):
+            candidate = self.candidate()
+            legacy_task = self.store.submit(f"TEST pre-v1.6.16 task {index}", 2, snapshot=snap)
+            self.store.complete(
+                legacy_task,
+                f"TEST pre-v1.6.16 completed result citing {formal_cand['task_id']}",
+                expected_attempt=0,
+            )
+            _, artifact = self.application(
+                candidate, legacy_task, [{"claim": "TEST inspect delivered output", "class": "artifact"}]
+            )
+            formal_app, _ = self.application(formal_cand, legacy_task, record=False)
+            formal_app["candidate_sha256"] = formal_sha
+            formal_app[" artifact"] = artifact
+            formal_app.pop(" artifact", None)
+            formal_app["artifact"] = artifact
+            formal_app["reuse_assessment"] = {"outcome": "unchanged", "changed": "", "added": "", "discarded": ""}
+            record_application(self.store, formal_app)
+
+            with self.store.read_only() as conn:
+                comp = completed_task_tx(conn, legacy_task)
+                self.assertEqual("native", comp["completion_kind"])
+                det = detail_tx(conn, legacy_task, artifact)
+                self.assertIn("accept", det["allowed_decisions"])
+            pending = pending_tasks(self.store)
+            self.assertEqual([], pending["problems"])
+            self.assertIn(legacy_task, [item["task_id"] for item in pending["items"]])
+            req = legacy_request(self.store, {
+                "user_message": "交付", "real_task_id": legacy_task, "artifact": artifact,
+                "message_id": f"TEST-legacy-req-{index}", "source_ref": "TEST chat",
+            })
+            self.assertEqual("accept", req["decision"])
+
+            self.delivery(legacy_task, artifact, f"TEST-legacy-accept-{index}")
+            with self.store.read_only() as conn:
+                basis = validate_basis(conn, self.store.get_memory_candidate(candidate["task_id"]))
+                score = projection_tx(conn).get(formal_cand["task_id"], {}).get("score", 0)
+            self.assertEqual("proposed", basis["status"])
+            self.assertEqual(legacy_task, basis["real_task"]["id"])
+            self.assertEqual(index + 1, score)
+
+            # Withdrawal also works and reverses the reuse score
+            record_delivery(self.store, {
+                "origin": "user", "user_message": "撤回验收", "decision": "withdraw",
+                "message_id": f"TEST-legacy-withdraw-{index}", "source_ref": "TEST chat",
+                "real_task_id": legacy_task, "artifact": artifact,
+                "delivery_record": self.file_ref(f"withdraw-{index}.md", "TEST user withdrawal"),
+            })
+            with self.store.read_only() as conn:
+                score_after = projection_tx(conn).get(formal_cand["task_id"], {}).get("score", 0)
+            self.assertEqual(index, score_after)
+            # Re-accept so next iteration increments from index+1
+            self.delivery(legacy_task, artifact, f"TEST-legacy-reaccept-{index}")
+
+        # 2. Pre-v1.6.16 non-user tasks without task_purpose remain strictly rejected
+        non_user_snapshots = (
+            ("audit_policy", "TEST audit prompt", {"experience_policy": {"version": 1, "kind": "audit", "problem_key": ""}}),
+            ("release_acceptance", "TEST release acceptance", {"release_acceptance": True}),
+            ("review_ctx_acceptance", "TEST review_context acceptance", {"review_context": {"release_acceptance": True}}),
+            ("experience_trial", "TEST trial review", {"experience_trial": {"source_task_id": "src-1"}}),
+            ("collab_review", "TEST collab review", {"workflow": {"version": 1, "phase": "review", "agents": ["a"]}}),
+            ("skill_audit_prompt", "你是小八 AgentOS 的独立审查者之一，只读审查技能 demo 的改动", {}),
+        )
+        for label, prompt_text, bad_snap in non_user_snapshots:
+            with self.subTest(label=label):
+                bad_task = self.store.submit(prompt_text, 2, snapshot={})
+                raw_snap = json.dumps(bad_snap, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                snap_hash = hashlib.sha256(raw_snap.encode("utf-8")).hexdigest()
+                with self.store.connect() as conn:
+                    conn.execute(
+                        "UPDATE tasks SET execution_snapshot_json=?,execution_snapshot_hash=? WHERE id=?",
+                        (raw_snap, snap_hash, bad_task),
+                    )
+                self.store.complete(bad_task, "TEST non-user result", expected_attempt=0)
+                with self.store.read_only() as conn:
+                    with self.assertRaisesRegex(ValueError, "completed ordinary user task"):
+                        completed_task_tx(conn, bad_task)
+                bad_cand = self.candidate()
+                _, bad_art = self.application(
+                    bad_cand, bad_task, [{"claim": "TEST inspect result", "class": "artifact"}]
+                )
+                self.delivery(bad_task, bad_art, f"TEST-bad-delivery-{label}")
+                with self.store.read_only() as conn:
+                    basis = validate_basis(conn, self.store.get_memory_candidate(bad_cand["task_id"]))
+                self.assertEqual("missing", basis["status"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -161,15 +161,51 @@ class Card04ReviewFixes(unittest.TestCase):
         ingress = Path(__file__).resolve().parents[2] / "review-ingress"
         if str(ingress) not in sys.path:
             sys.path.insert(0, str(ingress))
+        from fixtures_review import _admit_authored_candidate
+        from xiaoba_agentos.task_participants import record_participant
         from xiaoba_review.store import ReviewStore
 
-        outbox = self.root / "outbox"
-        outbox.mkdir()
+        outbox = (self.store.path.parent / "memory-outbox").resolve()
+        outbox.mkdir(parents=True, exist_ok=True)
         rs = ReviewStore(self.store, outbox)
         self.assertTrue(callable(rs.replace_dsh))
         self.assertTrue(callable(rs.replace_reviewer))
         # Public surface: either seat can be named; peer wrapper still present.
         self.assertTrue(callable(rs.replace_peer))
+
+        for reviewer_id, kind, ref in (
+            ("dsh-1", "dsh", "cli:dsh"),
+            ("dsh-dup", "dsh", "cli:dsh"),
+            ("peer-1", "peer", "cli:qoder"),
+            ("peer-dup", "peer", "cli:qoder"),
+            ("peer-alt", "peer", "cli:claude"),
+            ("author-node", "peer", "cli:codex"),
+        ):
+            rs.register_source({
+                "reviewer_id": reviewer_id,
+                "kind": kind,
+                "source_ref": ref,
+                "provenance": "TEST",
+            })
+        cand = self.store.create_authored_candidate(
+            "TEST replace independence", "TEST body", outbox, author="author-node"
+        )
+        cand = _admit_authored_candidate(self.store, cand)
+        record_participant(self.store, cand["task_id"], "author-node", "author")
+        req = rs.create(
+            cand["task_id"], "dsh-1", "peer-1", "TEST scope",
+            [{"ref": "cand", "sha256": cand["evidence_sha256"]}],
+            review_type="new_experience",
+        )
+        with self.assertRaisesRegex(ValueError, "替换前后实际来源相同"):
+            rs.replace_dsh(req["id"], "dsh-dup", "same independence as old dsh")
+        with self.assertRaisesRegex(ValueError, "实际来源不独立"):
+            rs.replace_dsh(req["id"], "peer-dup", "collides with active peer seat")
+        with self.assertRaisesRegex(ValueError, "作者|干过活"):
+            rs.replace_peer(req["id"], "author-node", "author cannot review")
+        updated = rs.replace_dsh(req["id"], "peer-alt", "independent replacement")
+        active_ids = {item["source_id"] for item in updated["assignments"] if item["active"]}
+        self.assertEqual({"peer-1", "peer-alt"}, active_ids)
 
     # ---------- C04-04 Worker 节流 ----------
     def test_dispatch_wait_is_idempotent_and_cli_sleeps_on_wait_statuses(self):

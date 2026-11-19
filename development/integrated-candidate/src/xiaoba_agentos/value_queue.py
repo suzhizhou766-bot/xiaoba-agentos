@@ -467,13 +467,15 @@ def _discarded(conn: sqlite3.Connection, task_id: str, candidate_sha256: str) ->
 
 
 def validated_assessment_tx(conn: sqlite3.Connection, task_id: str, candidate_sha256: str) -> bool:
-    """Whether a matching assessment is reproducible from its actual review source."""
+    """Whether a matching initial_review assessment is reproducible from its actual review source."""
     candidate_sha256 = _sha256(candidate_sha256)
     task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
     if task is None:
         return False
     from .experience_workflow import policy
     if policy(dict(task))["kind"] not in {"method", "rule"}:
+        return False
+    if _discarded(conn, task_id, candidate_sha256):
         return False
     for row in conn.execute(
         "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed' ORDER BY sequence",
@@ -486,6 +488,8 @@ def validated_assessment_tx(conn: sqlite3.Connection, task_id: str, candidate_sh
             continue
         if normalized["candidate_sha256"] != candidate_sha256:
             continue
+        if normalized["decision"] != "initial_review":
+            return False
         if normalized["version"] == 2:
             try:
                 derived = assessment_from_review_request_tx(
@@ -493,7 +497,7 @@ def validated_assessment_tx(conn: sqlite3.Connection, task_id: str, candidate_sh
                 )
             except (ValueError, KeyError, TypeError, IndexError):
                 continue
-            if _canonical(derived) == _canonical(normalized):
+            if derived.get("decision") == "initial_review" and _canonical(derived) == _canonical(normalized):
                 return True
             continue
         from .value_scoring import native_value
@@ -506,6 +510,7 @@ def validated_assessment_tx(conn: sqlite3.Connection, task_id: str, candidate_sh
         if derived is not None and derived_version == 1:
             derived = {key: value for key, value in derived.items() if key != "review_mode"}
         if (derived is not None
+                and derived.get("decision") == "initial_review"
                 and (derived_version == 3 or derived.get("samples") == 2)
                 and _canonical({"version": derived_version, "candidate_sha256": candidate_sha256, **derived})
                 == _canonical(normalized)):

@@ -249,9 +249,9 @@ def _task_origin(conn, application: Dict[str, Any], workspace: Path):
         task = dict(row)
         if task["execution_mode"] == "host_authored":
             raise ValueError("candidate registration shell is not a real task")
-        from .workflow import verified_snapshot
+        from .workflow import is_ordinary_user_task, verified_snapshot
         snapshot = verified_snapshot(task)
-        if snapshot.get("task_purpose") != "user_task" or snapshot.get("experience_policy", {}).get("kind") == "audit":
+        if not is_ordinary_user_task(task, snapshot, conn):
             raise ValueError("only a completed ordinary user task can support real-task evidence")
         if task["status"] != "completed" or not task.get("result"):
             raise ValueError("real task is not completed")
@@ -263,7 +263,7 @@ def _task_origin(conn, application: Dict[str, Any], workspace: Path):
         provenance = json.loads(task.get("provenance_json") or "{}")
         if (not completed or json.loads(completed[0]).get("result_sha256") != result_sha
                 or provenance.get("result_sha256") != result_sha
-                or snapshot.get("task_purpose") != "user_task"):
+                or not is_ordinary_user_task(task, snapshot, conn)):
             raise ValueError("real task completion evidence does not match its frozen task")
         prompt = _text(task.get("prompt"), "real task prompt")
         return "native_task", {
@@ -421,11 +421,10 @@ def propose_from_delivery_tx(store, conn, candidate_id: str, application: Dict[s
             return {"status": "awaiting_evidence", "reason": "缺少结构化方法主张及核验类别"}
         return None
     if recorded_task:
-        from .workflow import verified_snapshot
-        snapshot = verified_snapshot(dict(recorded_task))
-        if (snapshot.get("task_purpose") != "user_task"
-                or snapshot.get("experience_policy", {}).get("kind") == "audit"
-                or recorded_task["status"] != "completed"):
+        from .workflow import is_ordinary_user_task, verified_snapshot
+        task_dict = dict(recorded_task)
+        snapshot = verified_snapshot(task_dict)
+        if not is_ordinary_user_task(task_dict, snapshot, conn) or task_dict["status"] != "completed":
             return None
     basis = _proposal_payload(conn, candidate, application, delivery, delivery_event_id, accepted_at)
     for event in _events(conn, candidate_id):

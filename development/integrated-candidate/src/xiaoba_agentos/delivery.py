@@ -135,9 +135,9 @@ def completed_task_tx(conn, task_id, real_task=None, artifact=None, verify_artif
     """Return verified completion, never infer it from a client status field."""
     row = conn.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
     if row:
-        from .workflow import verified_snapshot
+        from .workflow import is_ordinary_user_task, verified_snapshot
         task = dict(row); snapshot = verified_snapshot(task)
-        if task['status'] != 'completed' or snapshot.get('task_purpose') != 'user_task' or task['execution_mode'] == 'host_authored':
+        if task['status'] != 'completed' or not is_ordinary_user_task(task, snapshot, conn):
             raise ValueError('delivery requires a completed ordinary user task')
         result = _answer(task.get('result'))
         sha = hashlib.sha256(result.encode()).hexdigest()
