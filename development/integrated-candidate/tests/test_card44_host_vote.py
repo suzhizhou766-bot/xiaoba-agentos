@@ -441,3 +441,138 @@ class PoolVoteReuseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "审查回执"):
             complete_host(self.config, self.store, task, self.receipt(task))
         self.assertNotEqual("completed", self.store.get_task(task)["status"])
+
+
+class ReleaseAcceptanceHostAuditEndToEndTests(unittest.TestCase):
+    """端到端回归：无 trial 的 --release-acceptance 审计任务走宿主补票后可过 validate_acceptance_database。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.source_root = self.root / "candidate_source"
+        (self.source_root / "config").mkdir(parents=True)
+        (self.source_root / "config" / "agentos.json").write_text(
+            json.dumps({"worker": {"minimum_successful_agents": 2}, "agents": []}),
+            encoding="utf-8",
+        )
+        (self.source_root / "SOURCE_MANIFEST.json").write_text(
+            json.dumps({"algorithm": "sha256", "files": {"src/app.py": "0" * 64}}) + "\n",
+            encoding="utf-8",
+        )
+        from xiaoba_agentos.config import AppConfig
+
+        cfg = _isolated_config(self.root, [])
+        raw = json.loads(cfg.path.read_text(encoding="utf-8"))
+        raw["project_dir"] = str(self.source_root)
+        cfg.path.write_text(json.dumps(raw), encoding="utf-8")
+        self.config = AppConfig.load(cfg.path)
+        self.store = EventStore(self.config.database_path)
+        self.store.initialize()
+        self.build_release = _load_build_release()
+        self.enterContext(patch("xiaoba_agentos.orchestrator.release_binding_status", return_value={"ok": True}))
+        self.enterContext(_patch_pool_cli())
+
+    def _host(self):
+        return {"id": "host", "entry": "cli:host", "model": "test"}
+
+    def _receipt(self, task_id, verdict="PASS"):
+        task = self.store.get_task(task_id)
+        return {
+            "receipt_id": "host-" + task_id,
+            "task_id": task_id,
+            "snapshot_sha256": task["execution_snapshot_hash"],
+            "reviewer_id": "host",
+            "verdict": verdict,
+            "findings": "TEST 宿主实际审查结论",
+            "evidence_refs": ["task:" + task_id],
+            "review_type": "new_experience",
+            "score": 8,
+            "applicability": "TEST fixtures only",
+            "duplicate_of": None,
+            "started_at": time.time() - 1,
+            "finished_at": time.time(),
+        }
+
+    def _events(self, task_id, event_type):
+        with self.store.read_only() as db:
+            return [
+                json.loads(row["payload_json"])
+                for row in db.execute(
+                    "SELECT payload_json FROM events WHERE task_id=? AND event_type=? ORDER BY sequence",
+                    (task_id, event_type),
+                ).fetchall()
+            ]
+
+    def test_release_acceptance_pool_pass_plus_host_complete_passes_validate_acceptance_database(self):
+        _seed(self.store, [_page_source("0", "cli:fake0", "0", agent_type="other")])
+        task = _submit_task(
+            self.config, self.store, "TEST 发布验收宿主补票",
+            experience_kind="audit", release_acceptance=True, no_work_task=True, host=self._host(),
+        )
+        self.assertEqual("awaiting_host", Orchestrator(self.config, self.store).run_once()["status"])
+        settled_out = complete_host(self.config, self.store, task, self._receipt(task, "PASS"))
+        self.assertEqual("completed", settled_out["status"])
+
+        settled = self.store.get_task(task)
+        self.assertEqual("completed", settled["status"])
+        provenance = json.loads(settled["provenance_json"])
+        self.assertEqual("audit_only", provenance.get("memory_disposition"))
+        self.assertIsNone(self.store.get_memory_candidate(task))
+
+        completed_events = self._events(task, "task.completed")
+        self.assertEqual(1, len(completed_events))
+        self.assertEqual("audit_only", completed_events[0].get("memory_disposition"))
+        audit_events = self._events(task, "audit.settled")
+        self.assertEqual(1, len(audit_events))
+        self.assertEqual(provenance["result_sha256"], audit_events[0]["result_sha256"])
+        self.assertTrue(audit_events[0]["host_vote"])
+
+        validated = self.build_release.validate_acceptance_database(
+            self.config.database_path, task, self.source_root
+        )
+        self.assertEqual("audit_only", validated["candidate_status"])
+        self.assertEqual(["pool", "host"], [item["source"] for item in validated["conclusions"]])
+
+    def test_release_acceptance_pure_host_fallback_and_pool_fail_remain_rejected(self):
+        # 1) 纯宿主补票（user_chose_host=True 无池票）：仍记 audit_only 与 audit.settled，但构包校验严格拒收。
+        fallback_task = _submit_task(
+            self.config, self.store, "TEST 纯宿主兜底",
+            experience_kind="audit", release_acceptance=True, no_work_task=True, host=self._host(),
+        )
+        complete_host(
+            self.config, self.store, fallback_task, self._receipt(fallback_task, "PASS"),
+            user_chose_host=True,
+        )
+        fallback_prov = json.loads(self.store.get_task(fallback_task)["provenance_json"])
+        self.assertEqual("audit_only", fallback_prov.get("memory_disposition"))
+        self.assertEqual(1, len(self._events(fallback_task, "audit.settled")))
+        with self.assertRaisesRegex(RuntimeError, "至少要有一份池节点结论"):
+            self.build_release.validate_acceptance_database(
+                self.config.database_path, fallback_task, self.source_root
+            )
+
+        # 2) 池票 FAIL + 宿主 PASS：仍记 audit_only 与 audit.settled，但构包校验严格拒收。
+        _seed(self.store, [_page_source("0", "cli:fake0", "0", agent_type="other")])
+        fail_task = _submit_task(
+            self.config, self.store, "TEST 池票FAIL加宿主PASS",
+            experience_kind="audit", release_acceptance=True, no_work_task=True, host=self._host(),
+        )
+        with patch("test_pool_dispatch._FakePoolResource.run_task", return_value={
+            "status": "completed",
+            "body": (
+                "证据引用：task:" + fail_task + "\n审查结论：FAIL\n"
+                "审查类型：new_experience\n适用条件：TEST fixtures only\n"
+                "评分：4\n重复经验：无\nFINAL_ACCEPTANCE: FAIL\nTEST 池节点发现问题"
+            ),
+            "execution_evidence": {"provider": "fake", "route_source": "test"},
+        }):
+            self.assertEqual("awaiting_host", Orchestrator(self.config, self.store).run_once()["status"])
+        complete_host(self.config, self.store, fail_task, self._receipt(fail_task, "PASS"))
+        fail_prov = json.loads(self.store.get_task(fail_task)["provenance_json"])
+        self.assertEqual("audit_only", fail_prov.get("memory_disposition"))
+        self.assertEqual(1, len(self._events(fail_task, "audit.settled")))
+        with self.assertRaisesRegex(RuntimeError, "不是 FINAL_ACCEPTANCE: PASS"):
+            self.build_release.validate_acceptance_database(
+                self.config.database_path, fail_task, self.source_root
+            )

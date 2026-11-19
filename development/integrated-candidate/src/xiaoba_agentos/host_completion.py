@@ -167,6 +167,8 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                       'verdict': verdict,
                       'result_sha256': hashlib.sha256(final.encode()).hexdigest(), 'receipt_sha256': checksum,
                       'host_id': host['id'], 'pool_run_ids': [r['id'] for r in pool_runs], 'label': label}
+        if not produces_candidate:
+            provenance['memory_disposition'] = 'audit_only'
         evidence_sha256 = None
         stage_candidate = produces_candidate and (not needs_review(task) or receipt.get('verdict') == 'PASS')
         # Bind the host vote before evaluating admission, in this same locked
@@ -199,7 +201,10 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
             store._require_staged_evidence(str(staged), evidence_sha256)
         db.execute("UPDATE tasks SET status='completed',result=?,provenance_json=?,last_error=NULL,lease_until=NULL,updated_at=? WHERE id=?",
                    (final,json.dumps(provenance,ensure_ascii=False,sort_keys=True),time.time(),task_id))
-        store._append_event_tx(db, task_id, 'task.completed', {'result_sha256': provenance['result_sha256'], 'manual': True})
+        completed_payload = {'result_sha256': provenance['result_sha256'], 'manual': True}
+        if not produces_candidate:
+            completed_payload['memory_disposition'] = 'audit_only'
+        store._append_event_tx(db, task_id, 'task.completed', completed_payload)
         candidate_status = 'none'
         if stage_candidate:
             source_task_ids = [str(hit.get('source_task_id')) for hit in snapshot.get('memory_hits', []) if hit.get('source_task_id')]
@@ -213,24 +218,25 @@ def _settle_host(config, store, task_id, receipt, checksum, *, user_chose_host=F
                               and item.get('queue_status') == 'awaiting_value_review'
                               for item in pending_items(db))
                 candidate_status = 'awaiting_value_review' if pending else 'value_discarded'
-        if trial and not produces_candidate:
-            # The host vote joins the audit and round advancement in the same
-            # transaction; the round reads the bound receipts itself.
+        if not produces_candidate:
             store._append_event_tx(db, task_id, 'audit.settled', {'result_sha256': provenance['result_sha256'], 'host_vote': True})
-            from .experience_workflow import advance_validation_round, _table_exists
-            round_data = {
-                'task_id': task_id,
-                'candidate_sha256': trial.get('candidate_sha256'),
-                'delivery_review_id': trial.get('delivery_review_id'),
-                'plan_digest': trial.get('card_sha256'),
-                'execution': trial.get('execution'),
-                'execution_digest': trial.get('execution_sha256'),
-                'diff_explanation': (trial.get('card') or {}).get('diff_explanation'),
-            }
-            if _table_exists(db, 'experience_validation_lineages'):
-                advance_validation_round(store, db, trial['source_task_id'], round_data)
-            store._append_event_tx(db, trial['source_task_id'], 'memory.trial_review_settled',
-                                  {'task_id': task_id, 'host_vote': True})
+            if trial:
+                # The host vote joins the audit and round advancement in the same
+                # transaction; the round reads the bound receipts itself.
+                from .experience_workflow import advance_validation_round, _table_exists
+                round_data = {
+                    'task_id': task_id,
+                    'candidate_sha256': trial.get('candidate_sha256'),
+                    'delivery_review_id': trial.get('delivery_review_id'),
+                    'plan_digest': trial.get('card_sha256'),
+                    'execution': trial.get('execution'),
+                    'execution_digest': trial.get('execution_sha256'),
+                    'diff_explanation': (trial.get('card') or {}).get('diff_explanation'),
+                }
+                if _table_exists(db, 'experience_validation_lineages'):
+                    advance_validation_round(store, db, trial['source_task_id'], round_data)
+                store._append_event_tx(db, trial['source_task_id'], 'memory.trial_review_settled',
+                                      {'task_id': task_id, 'host_vote': True})
         return {'status': 'completed', 'task_id': task_id, 'label': label,
                 'value_assessment': assessment, 'candidate_status': candidate_status,
                 'candidate_sha256': evidence_sha256}
