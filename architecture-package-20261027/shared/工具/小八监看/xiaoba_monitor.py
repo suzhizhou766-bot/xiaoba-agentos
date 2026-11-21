@@ -19,6 +19,7 @@ import os
 import signal
 import socket
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -82,6 +83,103 @@ def port_in_use(port):
     with socket.socket() as sock:
         sock.settimeout(0.5)
         return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+# 监管进程身份。只凭“PID 还活着”不够：PID 会复用，pid 文件也会指向别的端口的看护。
+# match    就是当前目录、当前端口的 --supervise 进程
+# other    是监管进程，但端口不是这次要启动的端口
+# unknown  读不到命令，或像监看程序却对不上监管标志；调用方不得发信号、不得再启动一个
+# stale    已经确认不是监管进程（已退出，或命令行里没有本目录的监看入口）
+SUPERVISOR_MATCH = "match"
+SUPERVISOR_OTHER = "other"
+SUPERVISOR_UNKNOWN = "unknown"
+SUPERVISOR_STALE = "stale"
+
+
+def classify_supervisor_argv(argv, port, root=None):
+    """根据已经拆开的参数判断监管身份。不向任何进程发信号。"""
+    script = str(Path(root or ROOT) / "xiaoba_monitor.py")
+    if script not in argv:
+        return SUPERVISOR_STALE, ""
+    if "--supervise" not in argv:
+        return SUPERVISOR_UNKNOWN, "进程是监看程序但没有 --supervise，不能确认它是监管进程"
+    if "--port" not in argv:
+        return SUPERVISOR_UNKNOWN, "监管进程命令里没有 --port"
+    index = argv.index("--port")
+    if index + 1 >= len(argv):
+        return SUPERVISOR_UNKNOWN, "监管进程命令里的 --port 没有值"
+    try:
+        seen = int(argv[index + 1])
+        expected = int(port)
+    except (TypeError, ValueError):
+        return SUPERVISOR_UNKNOWN, "端口无法比较"
+    if seen == expected:
+        return SUPERVISOR_MATCH, ""
+    return SUPERVISOR_OTHER, ""
+
+
+def classify_supervisor_command(text, port, root=None):
+    """解析 ps 的一行命令。参数里若含空格，拆开会把本目录入口拆碎，这时返回 unknown。"""
+    script = str(Path(root or ROOT) / "xiaoba_monitor.py")
+    raw = " ".join(str(text or "").split())
+    if not raw:
+        return SUPERVISOR_UNKNOWN, "ps 没有返回命令行"
+    argv = raw.split(" ")
+    if script in raw and script not in argv:
+        return SUPERVISOR_UNKNOWN, "进程命令行无法安全拆开，未把它当成无关进程"
+    return classify_supervisor_argv(argv, port, root)
+
+
+def read_process_argv(pid, root=None):
+    """返回 (argv 或 None, 错误说明)。None 表示读失败，空列表表示命令行为空。"""
+    script = str(Path(root or ROOT) / "xiaoba_monitor.py")
+    if Path("/proc").is_dir():
+        cmdline = Path("/proc") / str(pid) / "cmdline"
+        try:
+            raw = cmdline.read_bytes()
+        except OSError as exc:
+            return None, "读不到进程命令行（%s）" % exc
+        if not raw:
+            return [], ""
+        return [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part], ""
+    try:
+        done = subprocess.run(
+            ["/bin/ps", "-ww", "-p", str(pid), "-o", "command="],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, "ps 无法确认进程命令（%s）" % exc
+    text = (done.stdout or "").strip()
+    if done.returncode != 0 and not text:
+        return None, "ps 无法确认进程命令（退出码 %d）" % done.returncode
+    if not text:
+        return [], ""
+    collapsed = " ".join(text.split())
+    argv = collapsed.split(" ")
+    if script in collapsed and script not in argv:
+        return None, "进程命令行无法安全拆开，未把它当成无关进程"
+    return argv, ""
+
+
+def classify_supervisor_process(pid, port, root=None):
+    """判断 pid 是否为 root 目录下、指定端口的监管进程。不向该进程发信号。"""
+    try:
+        pid = int(pid)
+        port = int(port)
+    except (TypeError, ValueError):
+        return SUPERVISOR_UNKNOWN, "pid 或端口无效"
+    if pid <= 1:
+        return SUPERVISOR_STALE, "pid 不是监管进程"
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return SUPERVISOR_STALE, "进程不存在"
+    argv, error = read_process_argv(pid, root)
+    if argv is None:
+        return SUPERVISOR_UNKNOWN, error or "读不到进程命令行"
+    if not argv:
+        return SUPERVISOR_STALE, ""
+    return classify_supervisor_argv(argv, port, root)
 
 
 def healthy(port, timeout=3):
@@ -166,11 +264,22 @@ def supervise(config):
     pid_file = RUN_DIR / "supervisor.pid"
     try:
         other = int(pid_file.read_text().strip())
-        os.kill(other, 0)
-        print("看护进程已在运行（pid %d）。" % other, file=sys.stderr)
-        return 2
     except (OSError, ValueError):
-        pass
+        other = None
+    if other is not None:
+        kind, detail = classify_supervisor_process(other, port)
+        if kind == SUPERVISOR_MATCH:
+            print("看护进程已在运行（pid %d）。" % other, file=sys.stderr)
+            return 2
+        if kind == SUPERVISOR_OTHER:
+            print("监管进程仍在运行，但不是端口 %d 的看护（pid %d）。请先关闭监看中心，未再启动第二个。"
+                  % (port, other), file=sys.stderr)
+            return 2
+        if kind == SUPERVISOR_UNKNOWN:
+            print("无法确认 pid %d 是否为端口 %d 的监管进程（%s），未再启动第二个。"
+                  % (other, port, detail or "身份不明"), file=sys.stderr)
+            return 2
+        # stale：pid 已退出，或活着的是无关进程。不向它发信号，继续启动。
     if port_in_use(port):
         print("端口 %d 已被占用：请先关闭正在运行的监看中心。" % port, file=sys.stderr)
         return 2
@@ -252,9 +361,20 @@ def main():
                         help="带看护运行时先脱离调用方的会话和进程组（启动脚本用）")
     parser.add_argument("--resolve-port", action="store_true",
                         help="只解析并打印对外监听端口后退出（启动脚本健康探测与打开页面用）")
+    parser.add_argument("--classify-supervisor-pid", type=int, default=None,
+                        help="判断该 pid 是否为本目录、--port 所指端口的监管进程，向标准输出打印 match、other、unknown 或 stale")
     parser.add_argument("--selftest", action="store_true", help="自检后退出")
     parser.add_argument("--once", action="store_true", help="打印一次运行总览快照后退出")
     args = parser.parse_args()
+    if args.classify_supervisor_pid is not None:
+        if args.port is None:
+            print("无法判断监管进程：缺少 --port", file=sys.stderr)
+            return 2
+        kind, detail = classify_supervisor_process(args.classify_supervisor_pid, args.port)
+        if detail and kind != SUPERVISOR_MATCH:
+            print(detail, file=sys.stderr)
+        print(kind)
+        return 0
     if args.resolve_port:
         try:
             # args.port 用 is not None：--port 0 必须进校验并拒绝，不能因真假回落到默认 8799。

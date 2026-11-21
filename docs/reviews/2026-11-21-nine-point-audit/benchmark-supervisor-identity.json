@@ -1,0 +1,15 @@
+{
+  "what": "classify_supervisor_process 相对 os.kill(pid,0) 的单次进程内开销",
+  "not": "不是生产监看延迟，不是 PR 耗时，不是 Mac 验收",
+  "environment": {
+    "os": "linux",
+    "python": "3.12.3",
+    "reader": "/proc/<pid>/cmdline",
+    "iterations": 2000,
+    "pid": "current interpreter process"
+  },
+  "before_kill0_microseconds": 0.35,
+  "after_classify_microseconds": 31.35,
+  "difference_microseconds": 31.0,
+  "command": "循环 2000 次 time.perf_counter，分别调用 os.kill 与 classify_supervisor_process"
+}

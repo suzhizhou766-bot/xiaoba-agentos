@@ -1,0 +1,63 @@
+{
+  "window_half_open_utc": ["2026-10-22T12:10:53.476Z", "2026-11-21T12:10:53.476Z"],
+  "interpretation": "用户原文“最近30时间”按 30 天解释。",
+  "coverage": {
+    "git_commits_in_window": 171,
+    "git_revert_or_fixup_commits": 0,
+    "github_issues_total": 0,
+    "github_actions_runs": 14,
+    "github_actions_failures": 0,
+    "production_logs": "未访问用户 Mac 与 .runtime",
+    "claim_limit": "提交说明里的“缺陷/热修/验收 FAIL”是作者当时的定性。除本轮重新复现的监管身份问题外，没有把历史失败再跑一遍。"
+  },
+  "events": [
+    {
+      "id": "supervisor-identity",
+      "when": "2026-11-21",
+      "status": "reproduced_this_round",
+      "confidence": "high",
+      "summary": "看护入口把任意存活 PID 当成监管进程；关闭脚本向该 PID 发 SIGTERM。启动脚本自 a16037d 已做命令行核对，两边判定不一致。",
+      "evidence": ["c846381 xiaoba_monitor.py:167-171", "关闭监看中心.command:18", "a16037d 启动脚本 supervisor_running"]
+    },
+    {
+      "id": "lsof-three-state",
+      "when": "2026-10-27 记录，其后在活动监看树修复",
+      "status": "fixed_before_this_round",
+      "confidence": "high_for_active_tree",
+      "summary": "监听探测失败被当成没有监听。活动树 portprobe 已分成 clear/listening/unavailable，本轮 17 项探测测试通过。冻结目录 monitor/ 仍写死 /usr/sbin/lsof。",
+      "evidence": ["docs/PHASE-A-CLOUD-AUDIT-20261027.md", "monitor_core/modules/portprobe.py"]
+    },
+    {
+      "id": "v1610-score-hotfix",
+      "when": "2026-11-09",
+      "status": "author_labeled_hotfix",
+      "confidence": "medium",
+      "summary": "PR #57/#58：普通任务因缺少价值评分失败，随后按验收意见再修一轮。本轮没有重放修复前的失败。",
+      "evidence": ["d4bbec3", "ed2803d", "https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/57", "https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/58"]
+    },
+    {
+      "id": "v1612-acceptance-rounds",
+      "when": "2026-11-09 至 2026-11-10",
+      "status": "author_labeled_defect",
+      "confidence": "medium",
+      "summary": "卡 64 把工作日台账改成纯旁路；卡 65 处理第三轮 8 条；第四轮再修两条，其中写锁竞争不再计入死信。",
+      "evidence": ["e21a623", "b6e8b59", "f55b409"]
+    },
+    {
+      "id": "v1613-doc-code-mismatch",
+      "when": "2026-11-10",
+      "status": "author_labeled_blocker",
+      "confidence": "medium",
+      "summary": "v1.6.13 第一轮验收两条阻断是说明与代码不一致，不是新的运行时算法。",
+      "evidence": ["e03b148"]
+    },
+    {
+      "id": "v1615-predecessor-and-monitor",
+      "when": "2026-11-11 至 2026-11-17",
+      "status": "landed_on_baseline",
+      "confidence": "medium",
+      "summary": "v1.6.15 候选修正部署前绑定、统一监看端口、恢复回执登记，并补 J10 启动身份。J10 没有改到真正拥有 pid 文件的 Python 入口和关闭脚本。",
+      "evidence": ["4c6faf4", "69e9797", "a16037d", "https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/59"]
+    }
+  ]
+}

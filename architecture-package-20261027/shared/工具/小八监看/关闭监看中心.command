@@ -14,9 +14,23 @@ if ! PORT="$("$PY" -B "$DIR/xiaoba_monitor.py" --resolve-port "${RESOLVE_ARGS[@]
   echo "关闭失败：读不到可用的监听端口（检查同目录 monitor.json 或 XIAOBA_MONITOR_PORT）。" >&2
   exit 1
 fi
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  kill "$(cat "$PID_FILE")"
-  for _ in $(seq 1 30); do kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null || break; sleep 0.5; done
+if [ -f "$PID_FILE" ]; then
+  SUPERVISOR_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+  case "$SUPERVISOR_PID" in
+    ''|*[!0-9]*) ;;
+    *)
+      if [ "$SUPERVISOR_PID" -gt 1 ] && kill -0 "$SUPERVISOR_PID" 2>/dev/null; then
+        # 只停止被判定为当前端口监管进程的 pid。PID 复用或身份不明时不发信号。
+        KIND="$("$PY" -B "$DIR/xiaoba_monitor.py" --classify-supervisor-pid "$SUPERVISOR_PID" --port "$PORT" || true)"
+        if [ "$KIND" = "match" ]; then
+          kill "$SUPERVISOR_PID"
+          for _ in $(seq 1 30); do kill -0 "$SUPERVISOR_PID" 2>/dev/null || break; sleep 0.5; done
+        else
+          echo "不向 pid ${SUPERVISOR_PID} 发送停止信号（监管身份判定：${KIND:-unknown}）。" >&2
+        fi
+      fi
+      ;;
+  esac
 fi
 # 没有经看护启动的监看进程（直接运行的）也一并结束——只动解析出的端口，不写死 8799。
 PIDS="$("$LSOF" -nP -tiTCP:${PORT} -sTCP:LISTEN 2>/dev/null)"
