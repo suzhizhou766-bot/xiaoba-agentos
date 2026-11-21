@@ -1,5 +1,20 @@
 # 小八 AgentOS
 
+## 现行入口（先读这里）
+
+权威顺序（高→低）：**用户最新确认** → **本机运行根** `…/小八AgentOS/.runtime/releases/index.json` 的 `current_release` → **架构拓扑** → **`development/` 候选源码** → 历史快照（默认只读）。
+
+| 要找什么 | 去哪里 | 不要当成现行 |
+|---|---|---|
+| 用户意图与裁决 | [docs/architecture-topology](docs/architecture-topology/README.md) | 过期的 README 时点句 |
+| 候选实现 | `development/integrated-candidate/`、`development/review-ingress/` | `release/agentos`（v1.6.1 定版） |
+| 活动监看源码 | `architecture-package-20261027/shared/工具/小八监看/` | `monitor/`（2026-10-14 快照） |
+| 工作入口技能（候选侧） | `development/interface/SKILL.md` | `release/interface/SKILL.md`（仍写 AGY+DSH） |
+| 线上是否已切换某版 | 只信本机运行根指针 | 本仓库目录名或 `pyproject.toml` 版本号 |
+| 系统复盘与防复发草稿 | [docs/reviews/2026-11-21-nine-lens-system-audit](docs/reviews/2026-11-21-nine-lens-system-audit/README.md) | 写入 `release/second-brain/` |
+
+下面「当前云端开发」「历史 v1.6.1」各节是时点或定版留存，**不覆盖**上表。
+
 ## 架构拓扑（Agent 先读）
 
 用户维护的架构设计底座快照见 [docs/architecture-topology](docs/architecture-topology/README.md)：从 [AGENT_READER.md](docs/architecture-topology/AGENT_READER.md) 读每个模块的状态、用户意图、问题与待办和按日期的变更历史；待裁决项和旧规则覆盖见 [DECISIONS.md](docs/architecture-topology/DECISIONS.md)，图上画不出来的规则见 [CONTRACTS.md](docs/architecture-topology/CONTRACTS.md)。
