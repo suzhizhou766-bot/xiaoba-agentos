@@ -1,0 +1,47 @@
+{
+  "baseline_commit": "c846381115792926ee50259358c391304cb7b9f2",
+  "reviewed_at_asia_shanghai": "2026-11-21",
+  "related_pr": 60,
+  "git": {
+    "commits_last_30d": 171,
+    "reverts_last_30d": 0,
+    "issues_open_or_closed": 0
+  },
+  "code": {
+    "development_py_files": 230,
+    "development_py_loc": 77952,
+    "god_files": [
+      {"path": "development/integrated-candidate/src/xiaoba_agentos/store.py", "lines": 3069},
+      {"path": "development/integrated-candidate/src/xiaoba_agentos/retained.py", "lines": 2854},
+      {"path": "development/integrated-candidate/src/xiaoba_agentos/cli.py", "lines": 2616},
+      {"path": "development/integrated-candidate/src/xiaoba_agentos/memory.py", "lines": 1858},
+      {"path": "development/integrated-candidate/src/xiaoba_agentos/orchestrator.py", "lines": 1556}
+    ]
+  },
+  "prs_last_14d": [
+    {"number": 51, "wait_seconds": 20, "title": "Architecture repair / 干活分与价值分"},
+    {"number": 52, "wait_seconds": 13, "title": "卡 52、53 复用分"},
+    {"number": 53, "wait_seconds": 22, "title": "卡 52b 裁决中心"},
+    {"number": 54, "wait_seconds": 11, "title": "v1.6.9 发布说明"},
+    {"number": 55, "wait_seconds": 21, "title": "卡 55 回执被接收"},
+    {"number": 56, "wait_seconds": 12, "title": "卡 56 回执页眉"},
+    {"number": 57, "wait_seconds": 12, "title": "v1.6.10 价值分热修"},
+    {"number": 58, "wait_seconds": 12, "title": "v1.6.10 热修第二轮"},
+    {"number": 59, "wait_seconds": 123, "title": "同步本机 v1.6.15"}
+  ],
+  "version_spans_hours": {
+    "v1.6.12": 14.5,
+    "v1.6.15": 138.5,
+    "v1.6.10": 2.1,
+    "v1.6.13": 1.4
+  },
+  "acceptance_rounds_peak": {
+    "version": "v1.6.12",
+    "rounds": 4,
+    "note": "卡62 → 卡64 → 卡65 → DSH缺陷"
+  },
+  "ci": {
+    "product_test_workflows": 0,
+    "dependabot_runs_observed": "only dynamic dependency graph"
+  }
+}
