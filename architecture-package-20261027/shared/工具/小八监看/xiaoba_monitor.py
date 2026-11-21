@@ -96,10 +96,25 @@ SUPERVISOR_UNKNOWN = "unknown"
 SUPERVISOR_STALE = "stale"
 
 
+def _entry_path(root=None):
+    return Path(root or ROOT) / "xiaoba_monitor.py"
+
+
+def _same_entry(token, root=None):
+    """启动脚本保存的是逻辑路径，入口自己用 resolve()。两条路径指向同一文件才算本目录。"""
+    expected = _entry_path(root)
+    candidate = Path(token)
+    if candidate == expected:
+        return True
+    try:
+        return candidate.resolve() == expected.resolve()
+    except OSError:
+        return False
+
+
 def classify_supervisor_argv(argv, port, root=None):
     """根据已经拆开的参数判断监管身份。不向任何进程发信号。"""
-    script = str(Path(root or ROOT) / "xiaoba_monitor.py")
-    if script not in argv:
+    if not any(_same_entry(token, root) for token in argv):
         return SUPERVISOR_STALE, ""
     if "--supervise" not in argv:
         return SUPERVISOR_UNKNOWN, "进程是监看程序但没有 --supervise，不能确认它是监管进程"

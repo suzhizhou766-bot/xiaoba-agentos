@@ -4,6 +4,7 @@
 """
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,22 @@ class ArgvClassificationTests(unittest.TestCase):
     def test_unrelated_command_is_stale(self):
         kind, _detail = xiaoba_monitor.classify_supervisor_argv([sys.executable, "-c", "pass"], PORT)
         self.assertEqual(kind, xiaoba_monitor.SUPERVISOR_STALE)
+
+    def test_symlink_to_the_same_script_still_matches(self):
+        real = Path(tempfile.mkdtemp(prefix="xiaoba-real-"))
+        link_parent = Path(tempfile.mkdtemp(prefix="xiaoba-link-"))
+        self.addCleanup(shutil.rmtree, real, True)
+        self.addCleanup(shutil.rmtree, link_parent, True)
+        link = link_parent / "monitor"
+        link.symlink_to(real, target_is_directory=True)
+        argv = [
+            sys.executable, "-B", str(link / "xiaoba_monitor.py"),
+            "--supervise", "--port", str(PORT),
+        ]
+        kind, detail = xiaoba_monitor.classify_supervisor_argv(argv, PORT, root=real.resolve())
+        self.assertEqual((kind, detail), (xiaoba_monitor.SUPERVISOR_MATCH, ""))
+        other, _detail = xiaoba_monitor.classify_supervisor_argv(argv, PORT + 1, root=real.resolve())
+        self.assertEqual(other, xiaoba_monitor.SUPERVISOR_OTHER)
 
     def test_ps_line_with_split_script_path_is_unknown(self):
         spaced = str(MONITOR.parent / "路径 含空格" / "xiaoba_monitor.py")
