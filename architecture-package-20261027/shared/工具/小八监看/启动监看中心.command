@@ -18,17 +18,13 @@ fi
 URL="http://127.0.0.1:${PORT}/"
 ready() { /usr/bin/curl -fsS --max-time 2 "${URL}healthz" >/dev/null 2>&1; }
 supervisor_running() {
-  local pid command
+  local pid kind
   pid="$(cat "$DIR/run/supervisor.pid" 2>/dev/null)" || return 1
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   [ "$pid" -gt 1 ] && kill -0 "$pid" 2>/dev/null || return 1
-  command="$(/bin/ps -p "$pid" -o command= 2>/dev/null)" || return 1
-  # PID 文件可能陈旧；不能把另一个仍存活的进程当成当前目录的监管进程。
-  case "$command" in *"$DIR/xiaoba_monitor.py "*) ;; *) return 1 ;; esac
-  case " $command " in *" --supervise "*) ;; *) return 1 ;; esac
-  # 目录相同但端口已改时，旧端口的看护不能证明当前端口受到监管。
-  case " $command " in *" --port $PORT "*) ;; *) return 1 ;; esac
-  kill -0 "$pid" 2>/dev/null
+  # 与监管进程入口使用同一判定。ps 截断或 PID 复用时，不再用另一套 shell 规则。
+  kind="$("$PY" -B "$DIR/xiaoba_monitor.py" --classify-supervisor-pid "$pid" --port "$PORT" 2>/dev/null)" || return 1
+  [ "$kind" = "match" ]
 }
 supervised_ready() { ready && supervisor_running; }
 if ! ready; then

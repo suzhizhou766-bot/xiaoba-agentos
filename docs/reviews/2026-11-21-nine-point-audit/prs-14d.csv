@@ -1,0 +1,10 @@
+number,title,state,created_at,first_response_at,first_response_kind,merged_at,delivery_wait_seconds,issue_comments,changed_files,additions,deletions,top_module,html_url
+51,Architecture repair 20261031,closed,2026-11-08T05:45:53Z,2026-11-08T05:46:02Z,codex_review_comment_no_findings,2026-11-08T05:46:13Z,20,1,33,4798,371,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/51
+52,卡 52、53：正式经验复用分（晋升机制）与按分检索；干活分账本两处小修,closed,2026-11-08T08:58:01Z,2026-11-08T08:58:09Z,codex_review_comment_no_findings,2026-11-08T08:58:14Z,13,1,18,812,98,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/52
+53,卡 52b：正式经验进裁决中心——复用改动终审、长期未用确认,closed,2026-11-08T10:16:56Z,2026-11-08T10:17:09Z,codex_review_comment_no_findings,2026-11-08T10:17:18Z,22,1,20,1009,47,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/53
+54,v1.6.9 候选：版本号与发布说明（v1.6.8 并入本版）,closed,2026-11-08T10:35:41Z,,none_before_merge,2026-11-08T10:35:52Z,11,0,17,182,44,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/54
+55,卡 55：干活分“回执被接收”按系统实际接收判定（v1.6.9 演练发现）,closed,2026-11-08T15:34:37Z,,none_before_merge,2026-11-08T15:34:58Z,21,0,3,80,6,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/55
+56,卡 56：池节点审查票读得到回执页眉里的审查结论（v1.6.9 演练发现，卡 44 起存在）,closed,2026-11-08T17:04:19Z,,none_before_merge,2026-11-08T17:04:31Z,12,0,12,249,22,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/56
+57,v1.6.10 热修：普通任务不再因缺价值评分失败（卡 57）,closed,2026-11-08T19:54:26Z,,none_before_merge,2026-11-08T19:54:38Z,12,0,18,122,40,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/57
+58,v1.6.10 热修第二轮：按卡 58 第一轮验收意见修正,closed,2026-11-08T20:31:12Z,,none_before_merge,2026-11-08T20:31:24Z,12,0,6,22,13,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/58
+59,同步本机 v1.6.15 五个未推送提交,closed,2026-11-17T03:17:25Z,2026-11-17T03:17:35Z,codex_review_failed_then_usage_limit,2026-11-17T03:19:28Z,123,2,44,3228,145,development,https://github.com/suzhizhou766-bot/xiaoba-agentos/pull/59
