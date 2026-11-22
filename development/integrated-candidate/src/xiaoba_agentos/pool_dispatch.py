@@ -275,6 +275,13 @@ def _distinct(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return chosen
 
 
+def _review_role_nodes(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        node for node in nodes
+        if node.get("role") in {ROLE_REVIEW, ROLE_BOTH} and node.get("interface") != "tmux"
+    ]
+
+
 def select_reviewers(
     nodes: Sequence[Dict[str, Any]],
     *,
@@ -291,24 +298,32 @@ def select_reviewers(
     无独立审查 and is never a silent return to a fixed backend name.
     """
     excluded = {str(item) for item in exclude_ids}
-    review_nodes = [node for node in nodes if node.get("role") in {ROLE_REVIEW, ROLE_BOTH} and node.get("interface") != "tmux"]
+    review_nodes = _review_role_nodes(nodes)
     eligible = [
         node for node in review_nodes
         if node.get("ready_review") and str(node.get("node_id")) not in excluded
     ]
     from .task_scores import choose_pair
     distinct = choose_pair(eligible)
-    # Two registered nodes that share an entry and a model are not a pair.
+    host_ok = bool(host) and not host.get("worked") and not host.get("author") and str(host.get("id") or "") not in excluded
+    host_key = host.get("independence") if host else None
+    distinct_keys = {tuple(node["independence"]) for node in distinct}
+    # One distinct pool reviewer + an independent host that neither worked nor
+    # authored is a valid pair. Same-source duplicates collapse into that one
+    # distinct reviewer, so they must not consume the host's second seat.
+    host_can_fill = len(distinct) == 1 and host_ok and host_key not in distinct_keys
+    # Two registered nodes that share an entry and a model are not a pair. Only
+    # block on that when no independent host can take the second vote; otherwise
+    # the SAME_ENTRY guard would turn a working backfill into a premature block.
     ready_ids = [node for node in review_nodes if node.get("ready_review")]
-    if len(ready_ids) >= 2 and len(_distinct(ready_ids)) < 2 and len(distinct) < 2:
+    if (not host_can_fill and len(ready_ids) >= 2
+            and len(_distinct(ready_ids)) < 2 and len(distinct) < 2):
         return {"route": "blocked", "reviewers": distinct[:1], "host": False,
                 "label": None, "message": SAME_ENTRY}
     if len(distinct) >= 2:
         return {"route": "run", "reviewers": distinct[:2], "host": False,
                 "label": None, "message": ""}
-    host_ok = bool(host) and not host.get("worked") and not host.get("author") and str(host.get("id") or "") not in excluded
-    host_key = host.get("independence") if host else None
-    if len(distinct) == 1 and host_ok and host_key not in {tuple(node["independence"]) for node in distinct}:
+    if host_can_fill:
         return {"route": "run", "reviewers": distinct, "host": True, "label": None, "message": ""}
     if host and (host.get("worked") or host.get("author")) and len(distinct) < 2:
         return {"route": "ask_user", "reviewers": distinct, "host": False,
@@ -366,13 +381,25 @@ def active_names(config: Any, store: Any = None, purpose: str = "review") -> Lis
 
 def review_report(nodes: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     decision = select_reviewers(nodes)
-    enough = decision["route"] == "run" and len(decision["reviewers"]) + int(bool(decision["host"])) >= 2
+    selected_pool_vote_count = len(decision["reviewers"])
+    pool_ready_nodes = sorted(
+        (
+            {"node_id": str(node["node_id"]), "name": node.get("name") or str(node["node_id"])}
+            for node in _review_role_nodes(nodes)
+            if node.get("ready_review")
+        ),
+        key=lambda node: node["node_id"],
+    )
+    enough = decision["route"] == "run" and selected_pool_vote_count + int(bool(decision["host"])) >= 2
     return {
         "ok": enough,
         "enough": enough,
         "shortage": not enough,
         "message": "" if enough else (decision["message"] or SHORTAGE),
-        "count": len(decision["reviewers"]),
+        "count": selected_pool_vote_count,  # Historical alias used by existing clients.
+        "selected_pool_vote_count": selected_pool_vote_count,
+        "pool_ready_node_count": len(pool_ready_nodes),
+        "pool_ready_nodes": pool_ready_nodes,
         "route": decision["route"],
     }
 

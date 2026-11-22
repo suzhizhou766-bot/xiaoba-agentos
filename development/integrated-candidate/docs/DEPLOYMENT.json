@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "from_source_manifest_sha256": "72e81d9d0d47f0c6c424544a07d6b747127ec83ace49cf6dec481e24c1a567fe",
+  "from_source_manifest_sha256": "4ad41515bf772287fe7517f83c33ec00c0123bfcaf79cfeccbe63b95db5d2461",
   "steps": [
     {
       "id": "0002-skills-root",

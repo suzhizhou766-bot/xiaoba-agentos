@@ -223,7 +223,9 @@ class PortLaunchTests(unittest.TestCase):
         self.assertIn("--resolve-port", start)
         self.assertIn('--port "$PORT"', start)
         self.assertIn("--resolve-port", close)
-        self.assertIn('tiTCP:${PORT}', close)
+        # 公开关闭入口走 --close-report，并把同一解析端口显式传入（lifecycle 内做所有权停止与诊断）。
+        self.assertIn('--close-report --port "$PORT"', close)
+        self.assertNotIn("tiTCP:${PORT}", close)  # shell 不按监听表取杀进程目标
         self.assertNotIn("tiTCP:8799", close)
 
     def test_resolve_port_reads_monitor_json(self):

@@ -14,7 +14,11 @@
     <div id="apTmuxFields" hidden><label>tmux 会话名<input name="tmux_session" maxlength="64" disabled></label><label>节点工作目录<input name="working_directory" placeholder="已存在的绝对目录" maxlength="2048" disabled></label><p class="ap-note">上下文不隔离，仅限协作。请你先在该会话打开 Agent；权限由你在终端批准。不会自动重发。</p></div>
     <label>模型<input name="model" placeholder="可留空，使用 CLI 当前配置" maxlength="200"></label>
     <p id="apModelNote" class="ap-note"></p>
-    <label id="apTimeoutField">掉线时限（秒）<input name="no_progress_seconds" type="number" min="1" max="86400" step="1" placeholder="留空用默认 300 秒"></label>
+    <label id="apTimeoutField">
+      <span>任务无进展掉线时限（秒）</span>
+      <input name="no_progress_seconds" type="number" min="1" max="86400" step="1" placeholder="留空时任务掉线时限为 300 秒" aria-describedby="apTimeoutHelp">
+      <span id="apTimeoutHelp">节点测活留空时限 90 秒。填写后，测活使用填入的时限，最多 300 秒。</span>
+    </label>
     <label id="apEffortField">思考强度<input name="reasoning_effort" list="apEffortOptions" maxlength="32" placeholder="留空不传；Qoder Extra High 填 xhigh"></label>
     <datalist id="apEffortOptions"><option value="xhigh"><option value="high"><option value="medium"><option value="low"><option value="max"><option value="minimal"></datalist>
     <p id="apEffortNote" class="ap-note" hidden>Qoder 传 --reasoning-effort（Extra High 写作 xhigh）；CodeBuddy 传 --effort（high / xhigh 等）。改了要重测。</p>

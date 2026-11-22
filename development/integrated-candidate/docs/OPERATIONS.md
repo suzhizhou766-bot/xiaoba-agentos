@@ -1,4 +1,4 @@
-# v1.6.16 运维
+# v1.6.17 运维
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
@@ -250,7 +250,8 @@ xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
 
 ## 节点测试期限与失败诊断（v1.6.9 卡 43）
 
-- **测试期限怎么算**：节点测试（健康检查、上班初始化）的运行期限取该节点已设的掉线时限（`no_progress_seconds`），上限 300 秒；节点没设掉线时限时仍是 90 秒。所有 CLI 类型（含 AGY 交互与 AGY CLI 两种）走同一个函数取值，不再各自写死常量；工作调用不受影响（AGY 工作调用不向 CLI 传期限，仍为 0 秒）。掉线时限只在 Agent 池编辑节点处修改，不新增节点配置字段。
+- **两种时限**：任务连续无进展掉线时限留空时为 300 秒。实际节点测活留空时为 90 秒，填写后使用该值（`no_progress_seconds`），测活上限为 300 秒。上班打卡读取已有测活资格。所有 CLI 类型（含 AGY 交互与 AGY CLI 两种）使用同一测活时限计算函数。掉线时限在 Agent 池节点设置里修改。
+- **审查节点统计**：`doctor` 与上班报告的 `review_nodes.pool_ready_node_count` 和 `pool_ready_nodes` 描述已具备审查资格的池内节点，包含可能共享入口和模型的节点。`selected_pool_vote_count` 是本次体检选择的池内席位数，最多为 2，旧字段 `count` 同义。独立双审是否可用看 `enough`。
 - **错误尾部在哪看**：节点测试失败时，测试记录新增 `error_tail`：stderr 最后 2 KB 经 `_redact_error` 脱敏后的文字；stderr 为空时取 stdout 最后 2 KB 中不是结构化事件（不能解析成 JSON 的行）的文字，同样脱敏。Agent 池节点卡片显示“错误尾部（已脱敏 · 仅末段）”；`doctor` 结果的 `review_node_error_tails` 列出同样的内容。原始 stdout 不保存、不落盘。
 - **失败分类只看诊断文字**：分类匹配只读 stderr 全文，加上 stdout 最后 4 KB 里不是结构化事件的文字；读过的源码、工具结果都在结构化事件里，不参与匹配。`call_terminated`、`permission_denied` 的判定顺序不变，既有分类测试全部照旧。
 
