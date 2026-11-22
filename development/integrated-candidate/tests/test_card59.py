@@ -260,8 +260,15 @@ class Card59PolicyTests(unittest.TestCase):
         self.assertEqual('cc41e0e5749d06be7c7020b5733e7fd04103ee38398288b245b8ec0eef76a00b',hashlib.sha256(PREVIOUS.read_bytes()).hexdigest())
         previous=json.loads(PREVIOUS.read_text())
         current=json.loads((REPO/'development/integrated-candidate/src/xiaoba_agentos/review_ui_assets/manifest.json').read_text())
-        self.assertEqual({(v['base'],v['relative']):v['after_sha256'] for v in previous['files']},
-                         {(v['base'],v['relative']):v['before_sha256'] for v in current['files']})
+        before={(v['base'],v['relative']):v['after_sha256'] for v in previous['files']}
+        current_before={(v['base'],v['relative']):v['before_sha256'] for v in current['files']}
+        self.assertEqual(before,{key:current_before[key] for key in before})
+        self.assertEqual({
+            ('assistant', '工具/小八监看/monitor_core/agentos_config.py'): None,
+            ('assistant', '工具/小八监看/monitor_core/config.py'): '543d1d0210acf2bf151cfa693b04436cee19afb5c30c78293adef34be2a86bad',
+            ('assistant', '工具/小八监看/monitor_core/modules/overview.py'): 'cf56708ae0c7613877c3717f4958312d9b6ad1b2bd43b5ef18915f858741795f',
+            ('assistant', '工具/小八监看/monitor_core/modules/review.py'): 'f97d5647989a0965f4ee98574f070fa8c0aa53d438c8815c4726d2d1c8b5c80b',
+        }, {key: value for key, value in current_before.items() if key not in before})
 
     def test_B3_release_tool_declares_marker(self):
         import importlib.util

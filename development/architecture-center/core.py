@@ -59,8 +59,10 @@ class Center:
     UNKNOWN='release_unknown'
     RECOVERY={'applied','not_applied'}
 
-    def __init__(self, repository, workspace, catalog, driver=None):
+    def __init__(self, repository, workspace, catalog, driver=None, spec_root=None, readonly_reason=None):
         self.repository=Path(repository).resolve();self.workspace=Path(workspace).resolve()
+        self.spec_root=Path(spec_root).resolve() if spec_root is not None else None
+        self.readonly_reason=str(readonly_reason).strip() if readonly_reason else None
         self.pending=self.workspace/'待发布';self.pending.mkdir(parents=True,exist_ok=True,mode=0o700)
         self.catalog=json.loads(Path(catalog).read_text())
         if self.catalog.get('schema_version')!=1:raise ValueError('模块登记版本不支持')
@@ -176,9 +178,24 @@ class Center:
         history=[dict(row) for row in db.execute('SELECT * FROM events WHERE change_id=? ORDER BY sequence',(change['id'],))]
         atomic(safe(folder,'events.jsonl'),b''.join(encoded(r)+b'\n' for r in history))
 
+    def _require_writable(self):
+        if self.readonly_reason:
+            raise ValueError(self.readonly_reason)
+
+    def _spec_file(self, spec_path):
+        primary=safe(self.repository,spec_path)
+        if primary.is_file():
+            return primary
+        prefix='development/architecture-center/'
+        if self.spec_root is not None and spec_path.startswith(prefix):
+            fallback=safe(self.spec_root,spec_path[len(prefix):])
+            if fallback.is_file():
+                return fallback
+        return primary
+
     def module(self,mid):
         if mid not in self.modules:raise ValueError('未知模块')
-        m=self.modules[mid];path=safe(self.repository,m['spec_path'])
+        m=self.modules[mid];path=self._spec_file(m['spec_path'])
         data=path.read_bytes()
         return {**m,'body':data.decode(),'sha256':sha(data)}
 
@@ -208,6 +225,7 @@ class Center:
         change.pop('validation',None);change.pop('package',None);change.pop('preflight',None);change.pop('confirmation',None)
 
     def create(self,module_id,body,expected_sha256,goal,base_version,base_source,target_version=''):
+        self._require_writable()
         module=self.module(module_id)
         if module['sha256']!=expected_sha256:raise Conflict('模块规范已变化，请先重新读取')
         if not all(isinstance(x,str) and x.strip() for x in (goal,base_version,base_source)):raise ValueError('需要改动目标、基线版本及源码记录')
@@ -231,6 +249,7 @@ class Center:
             raise Conflict('任务执行权不存在或已过期')
 
     def claim(self,cid,actor,expected_revision):
+        self._require_writable()
         if not isinstance(actor,str) or not actor.strip():raise ValueError('需要接续者标识')
         with self.tx() as db:
             change=self._load(db,cid);self._revision(change,expected_revision)
@@ -241,6 +260,7 @@ class Center:
         return self.get(cid)
 
     def agent_update(self,cid,actor,lease_id,expected_revision,operation,**data):
+        self._require_writable()
         with self.tx() as db:
             change=self._load(db,cid);self._revision(change,expected_revision);self._lease(change,actor,lease_id)
             if operation=='write':
@@ -270,6 +290,7 @@ class Center:
                             'base_version':change['base_version'],'base_source':change['base_source']}))
 
     def validate(self,cid,expected_revision):
+        self._require_writable()
         with self.tx() as db:
             change=self._load(db,cid);self._revision(change,expected_revision)
             if change.get('lease'):raise Conflict('Agent 尚未交接完成，不能冻结验证')
@@ -306,6 +327,7 @@ class Center:
         return root
 
     def register_package(self,cid,actor,lease_id,expected_revision,mapping):
+        self._require_writable()
         with self.tx() as db:
             change=self._load(db,cid);self._revision(change,expected_revision);self._lease(change,actor,lease_id)
             self._integrity(change)
@@ -326,6 +348,7 @@ class Center:
         return self.get(cid)
 
     def prepare_release(self,cid,expected_revision):
+        self._require_writable()
         with self.tx() as db:
             change=self._load(db,cid);self._guard_unknown(db);self._revision(change,expected_revision)
             if change.get('lease'):raise Conflict('尚有 Agent 执行权，不能预检发布')
@@ -351,6 +374,7 @@ class Center:
         return {'change':self.get(cid),'revision':revision,'confirmation':confirmation,'preflight':report}
 
     def publish(self,cid,expected_revision,confirmation,request_id):
+        self._require_writable()
         with self._publisher_lock() as acquired:
             if not acquired:raise Conflict('已有正式发布正在执行')
             return self._publish_locked(cid,expected_revision,confirmation,request_id)
@@ -404,6 +428,7 @@ class Center:
 
     def acknowledge_release_unknown(self,cid,expected_revision,conclusion,evidence,actor='monitor-user'):
         """Record the human read-back only.  Never calls the release driver."""
+        self._require_writable()
         if conclusion not in self.RECOVERY:raise ValueError('核对结论只能是 applied（已生效）或 not_applied（已证实没有改动或已退回）')
         if not isinstance(evidence,str) or not evidence.strip():raise ValueError('需要写明核对依据')
         if not isinstance(actor,str) or not actor.strip():raise ValueError('需要核对人标识')
@@ -444,4 +469,6 @@ class Center:
         with self.tx() as db:ids=[r['id'] for r in db.execute('SELECT id FROM changes ORDER BY rowid DESC')]
         return {'modules':list(self.modules.values()),'changes':[self.get(cid) for cid in ids],
                 'driver_available':self.driver is not None,'pending_root':str(self.pending),
-                'mode':'iteration_workspace','notice':'网页编辑只写待发布区；正式切换保留原生发布门禁。'}
+                'writable':self.readonly_reason is None,'readonly_reason':self.readonly_reason,
+                'mode':'readonly_specs' if self.readonly_reason else 'iteration_workspace',
+                'notice':self.readonly_reason or '网页编辑只写待发布区；正式切换保留原生发布门禁。'}

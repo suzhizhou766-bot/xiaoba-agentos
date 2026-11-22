@@ -78,6 +78,66 @@ class BackendRegistry:
             resources=list(self.resource_adapters.values());self.resource_adapters.clear()
         for _,adapter in resources:adapter.close()
 
+    def _media_adapter(self, db, source, card):
+        """Validate current basis and require the controlled media staging path."""
+        media = card.get('media_review')
+        from pathlib import Path
+        from xiaoba_agentos.media_review_materials import VIDEO_SUFFIXES
+        raw_video_refs = []
+        evidence_refs = card.get('evidence_refs', [])
+        material_files = card.get('material_files', [])
+        if not isinstance(evidence_refs, list) or not isinstance(material_files, list):
+            raise ValueError('missing_materials: media evidence references are malformed; manual_review')
+        references = evidence_refs + material_files
+        for item in references:
+            if not isinstance(item, dict):
+                continue
+            ref = item.get('path') or item.get('ref')
+            if isinstance(ref, str) and Path(ref).suffix.casefold() in VIDEO_SUFFIXES:
+                raw_video_refs.append(ref)
+        if media is None:
+            if raw_video_refs:
+                raise ValueError('missing_materials: raw video requires a frozen media review and controlled staging; manual_review')
+            return None
+        required = {'version', 'route', 'source_video', 'workspace', 'basis_id',
+                    'basis_sha256', 'model_read_verified'}
+        if (not isinstance(media, dict) or set(media) != required or media.get('version') != 1
+                or media.get('route') != 'combined' or media.get('model_read_verified') is not False):
+            raise ValueError('missing_materials: frozen media review binding is incomplete; manual_review')
+        source_video = media.get('source_video')
+        if (not isinstance(source_video, dict) or set(source_video) != {'path', 'sha256'}
+                or not isinstance(source_video.get('path'), str)):
+            raise ValueError('missing_materials: frozen source video reference is malformed; manual_review')
+        if raw_video_refs and any(ref != source_video.get('path') for ref in raw_video_refs):
+            raise ValueError('missing_materials: unrelated raw video is not allowed in a frozen media review; manual_review')
+        candidate_id = card.get('candidate_id')
+        row = db.execute('SELECT * FROM memory_candidates WHERE task_id=?', (candidate_id,)).fetchone()
+        if not row:
+            raise ValueError('missing_materials: frozen media review has no current candidate; manual_review')
+        from xiaoba_agentos.validation_basis import validate_basis
+        try:
+            basis = validate_basis(db, dict(row), basis_id=media.get('basis_id'))
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            raise ValueError('missing_materials: current validation basis is unavailable; manual_review (' + str(exc)[:160] + ')') from None
+        artifact = basis.get('artifact')
+        artifact_binding = ({key: artifact.get(key) for key in ('path', 'sha256')}
+                            if isinstance(artifact, dict) else None)
+        if (basis.get('status') == 'revoked' or basis.get('basis_sha256') != media.get('basis_sha256')
+                or basis.get('route') != 'combined' or artifact_binding != source_video
+                or basis.get('real_task', {}).get('workspace') != media.get('workspace')):
+            raise ValueError('missing_materials: media review basis is stale or no longer current; manual_review')
+        from xiaoba_agentos.media_review_materials import require_media_review_node
+        try:
+            require_media_review_node(source)
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            raise ValueError('missing_materials: review entry lacks controlled media support; manual_review (' + str(exc)[:160] + ')') from None
+        from .resource_cli import CliWorklogResource
+        adapter = self.adapter_for(source)
+        if (not isinstance(adapter, CliWorklogResource)
+                or type(adapter).run is not CliWorklogResource.run):
+            raise ValueError('missing_materials: only the controlled CLI worklog entry stages media; manual_review')
+        return adapter
+
     def register(self, reviewer_id, adapter):
         with self.store.transaction() as db:
             source = self.store.source(db, reviewer_id)
@@ -89,6 +149,7 @@ class BackendRegistry:
 
     def execute(self, assignment_id, require_test=False):
         token = identifier()
+        adapter = None
         with self.store.transaction() as db:
             row = db.execute('SELECT * FROM ri_assignments WHERE id=?', (assignment_id,)).fetchone()
             if row is None or not row['active'] or row['running']:
@@ -100,6 +161,7 @@ class BackendRegistry:
             from .agent_pool import require_enabled
             source=self.store.source(db,row['source_id'])
             require_enabled(source)
+            adapter = self._media_adapter(db, source, card)
             # 带节点调用计划的任务卡一律先过测试资格，调用方传什么都不能跳过；
             # 旧四字段来源没有 resource_plan，保持原有行为。
             gated = require_test or bool(card.get('resource_plan'))
@@ -118,7 +180,8 @@ class BackendRegistry:
                     raise ValueError('冻结任务卡与当前节点配置不符，不能改用当前入口执行旧任务')
             if card['channel'] != 'backend_adapter':
                 raise ValueError('本卡使用外部交接通道')
-            adapter = self.adapter_for(source)
+            if adapter is None:
+                adapter = self.adapter_for(source)
             if adapter is None:
                 raise ValueError('未登记后台适配器；不会回落到其它后台')
             if card.get('resource_plan') and not getattr(adapter,'supports_resource_plan',False):
@@ -145,7 +208,10 @@ class BackendRegistry:
                 if not current['active'] or current['running'] != token:
                     raise Conflict('失去本次执行权，不结算旧执行')
             receipt = self.store.receive(payload)
-            attested = self.store.attest(token, receipt['digest'], '后台适配器实际执行；attempt=' + token)
+            attested = self.store.attest(
+                token, receipt['digest'], '后台适配器实际执行；attempt=' + token,
+                backend_attempt=token,
+            )
             current = next(r for r in attested['receipts'] if r['id'] == token)
             return {k:current[k] for k in ('id','digest','status','reason')}
         except Exception as exc:

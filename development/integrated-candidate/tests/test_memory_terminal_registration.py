@@ -26,7 +26,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fixtures_review import _config, _run_cli
+from fixtures_review import _admit_authored_candidate, _config, _run_cli
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.store import MEMORY_TERMINAL_STATES, EventStore
 
@@ -88,7 +88,7 @@ class _SnapshotMixin:
 class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.store = EventStore(self.root / "agentos.sqlite3")
         self.store.initialize()
 
@@ -99,12 +99,14 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
     def _terminal_candidate(self, status: str) -> dict:
         """把一条候选推到 published 或 retired，返回登记所需的全部坐标。"""
         assert status in MEMORY_TERMINAL_STATES
-        task_id = self.store.submit("source", 1)
-        self.store.complete_manually(task_id, "result")
-        staged = self.root / f"{status}.md"
-        staged.write_text("# terminal evidence\n", encoding="utf-8")
-        evidence = _sha(staged)
-        self.store.stage_memory_candidate(task_id, str(staged), evidence, ["source-a"])
+        created = self.store.create_authored_candidate(
+            "TEST terminal candidate", "# terminal evidence", self.root / "memory-outbox",
+            author="test", experience_kind="rule",
+        )
+        created = _admit_authored_candidate(self.store, created)
+        task_id, staged, evidence = (
+            created["task_id"], Path(created["staged_path"]), created["evidence_sha256"]
+        )
         self.store.review_memory(task_id, "delivery", "approve", "ok", evidence)
         self.store.review_memory(task_id, "final", "approve", "ok", evidence)
         self.store.mark_memory_published(task_id, str(self.root / f"vault/{status}.md"))
@@ -186,10 +188,11 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
 
     def test_idempotent_replay_returns_the_same_record_and_writes_nothing(self):
         """幂等重放不是重新登记：原样返回既有记录，不动任何一行。"""
-        outbox = self.root / "outbox"
+        outbox = self.root / "memory-outbox"
         created = self.store.create_authored_candidate(
-            "标题", "正文", outbox, author="test", idempotency_key="k-1"
+            "标题", "正文", outbox, author="test", idempotency_key="k-1", experience_kind="rule"
         )
+        created = _admit_authored_candidate(self.store, created)
         task_id = created["task_id"]
         staged = Path(created["staged_path"])
         evidence = created["evidence_sha256"]
@@ -199,7 +202,7 @@ class TerminalCandidateRegistrationTest(_SnapshotMixin, unittest.TestCase):
         before = self._snapshot(task_id, staged)
 
         replay = self.store.create_authored_candidate(
-            "标题", "正文", outbox, author="test", idempotency_key="k-1"
+            "标题", "正文", outbox, author="test", idempotency_key="k-1", experience_kind="rule"
         )
         self.assertTrue(replay["idempotent"])
         self.assertEqual(task_id, replay["task_id"])

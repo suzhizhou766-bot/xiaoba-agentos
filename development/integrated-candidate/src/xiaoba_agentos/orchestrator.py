@@ -314,7 +314,7 @@ def _substitution_payload(
     }
 
 
-def _reusable_run(run: Optional[Dict[str, Any]]) -> bool:
+def _reusable_run(run: Optional[Dict[str, Any]], task=None, is_pool: bool = True, *, host_review=False) -> bool:
     """A finished run whose answer may stand as this side's conclusion as-is.
 
     Reusing an answer that still carries model reasoning only gets it
@@ -322,11 +322,13 @@ def _reusable_run(run: Optional[Dict[str, Any]]) -> bool:
     still bounds this). A side that already answered this way is a real
     conclusion, so it is also a side the standby must never be swapped in for.
     """
+    from .value_scoring import settlement_value_receipt_problem
     return bool(
         run
         and run["status"] == "completed"
         and run.get("output")
         and not detect_reasoning_leak(run["output"])
+        and not (task and is_pool and settlement_value_receipt_problem(task, run["output"], host_review=host_review))
     )
 
 
@@ -538,13 +540,19 @@ class Orchestrator:
     def _completion_committed(self, task_id: str) -> bool:
         current = self.store.get_task(task_id)
         from .experience_workflow import audit_committed
-        return bool(
-            current
-            and current["status"] == "completed"
-            and (self.store.get_memory_candidate(task_id) or
-                 json.loads(current.get('provenance_json') or '{}').get('memory_disposition') == 'value_discarded' or
-                 audit_committed(self.store, current))
-        )
+        if not current or current["status"] != "completed":
+            return False
+        if (self.store.get_memory_candidate(task_id)
+                or json.loads(current.get('provenance_json') or '{}').get('memory_disposition') == 'value_discarded'
+                or audit_committed(self.store, current)):
+            return True
+        # A committed preparation event owns the staged file even when the
+        # candidate has not yet entered memory_candidates.
+        with self.store.read_only() as conn:
+            return bool(conn.execute(
+                "SELECT 1 FROM events WHERE task_id=? AND event_type='memory.value_unscored' LIMIT 1",
+                (task_id,),
+            ).fetchone())
 
     def _prior_substitution(self, task_id: str) -> Optional[Dict[str, Any]]:
         """The substitution this task already made, read back from the chain.
@@ -748,7 +756,8 @@ class Orchestrator:
                     # vote is looked up by this task's review run, so a test run of
                     # the same node (or any other purpose) cannot void it.
                     if candidate_roster.get("host") and all(
-                        _reusable_run(self._review_votes(candidate["id"]).get(a.name))
+                        _reusable_run(self._review_votes(candidate["id"]).get(a.name), candidate,
+                                      bool(a.raw.get("pool_node")), host_review=True)
                         for a in candidate_roster["agents"]
                     ):
                         hold = {"status": "awaiting_host", "task_id": candidate["id"], "host": True,
@@ -850,6 +859,7 @@ class Orchestrator:
             self._fail_task(task, "invalid collaboration evidence: " + str(exc))
             return task_result({"status": "failed", "task_id": task["id"], "errors": [str(exc)]})
         workflow = _snap.get("workflow", {})
+        host_review = bool(roster.get("host"))
         _req_caps = list(_snap.get("required_capabilities") or [])
         _needs_web = bool(_snap.get("needs_web")) or "native_web_search" in _req_caps
         _gate_agents = list(enabled)
@@ -914,7 +924,8 @@ class Orchestrator:
                         AgentResult(agent.name, latest[agent.name]["output"],
                                     int(latest[agent.name].get("latency_ms") or 0))
                         for agent in enabled
-                        if _reusable_run(latest.get(agent.name))
+                        if _reusable_run(latest.get(agent.name), task, bool(agent.raw.get("pool_node")),
+                                         host_review=host_review)
                     ],
                     [{
                         "agent": replaced_name,
@@ -929,7 +940,7 @@ class Orchestrator:
                     }],
                     prior_substitution,
                 )
-            if not _reusable_run(latest.get(replaced_name)):
+            if not _reusable_run(latest.get(replaced_name), task, host_review=host_review):
                 position = next(
                     index for index, agent in enumerate(enabled) if agent.name == replaced_name
                 )
@@ -959,7 +970,7 @@ class Orchestrator:
         candidates = []
         for agent in enabled:
             previous = latest.get(agent.name)
-            if _reusable_run(previous):
+            if _reusable_run(previous, task, bool(agent.raw.get("pool_node")), host_review=host_review):
                 reused = AgentResult(agent.name, previous["output"], int(previous.get("latency_ms") or 0))
                 reused.run_id = previous["id"]
                 reused.is_new_run = False
@@ -1056,6 +1067,11 @@ class Orchestrator:
                 effective = replace(agent, raw={**agent.raw, "task_required_capabilities": list(set(_req_caps + (["native_web_search"] if _needs_web else [])))})
                 is_work = bool(workflow and workflow.get("phase") == "work")
                 prompt = agent_prompt(task["prompt"], workflow, agent.name)
+                from .value_scoring import value_receipt_instruction
+                contract_instruction = (value_receipt_instruction(task, host_review=host_review)
+                                        if agent.raw.get("pool_node") and not is_work else "")
+                if contract_instruction:
+                    prompt += "\n\n" + contract_instruction
                 futures[pool.submit(self._run_agent, task["id"], effective, prompt, context,
                                     task["attempts"], is_work)] = agent.name
             for future in as_completed(futures):
@@ -1217,6 +1233,27 @@ class Orchestrator:
                                 expected_attempt=int(task["attempts"]))
             return task_result({**bundle, "status": "completed", "task_id": task["id"], "next_stage": "integration"})
 
+        from .value_scoring import settlement_value_receipt_problem
+        pool_agents = {agent.name for agent in enabled if agent.raw.get("pool_node")}
+        incomplete = [{"node_id": result.agent, "run_id": getattr(result, "run_id", None),
+                       "error": problem, "verdict": "NEEDS_INFO"}
+                      for result in results
+                      if result.agent in pool_agents and (problem := settlement_value_receipt_problem(
+                          task, result.output, host_review=host_review))]
+        if incomplete:
+            # A semantic receipt problem is repairable input, not a backend
+            # outage. Freeze without changing node health or settling scores.
+            frozen = self.store.freeze_task(task["id"], failure_class="needs_info",
+                failures=incomplete, receipts=self._completed_receipt_hashes(task["id"], results))
+            self.store.append_event(task["id"], "review.needs_info", {
+                "verdict": "NEEDS_INFO", "receipts": incomplete,
+                "freeze_hash": frozen["freeze_hash"],
+            })
+            return task_result({"status": "needs_info", "verdict": "NEEDS_INFO",
+                "task_id": task["id"], "task_status": "frozen_paused",
+                "freeze_hash": frozen["freeze_hash"], "requires_explicit_resume": True,
+                "receipts": incomplete})
+
         receipt_gate_error = self._verify_settlement_receipts(task, results)
         if receipt_gate_error:
             self._fail_task(task, receipt_gate_error)
@@ -1333,10 +1370,18 @@ class Orchestrator:
             if audit_only:
                 complete_audit(self.store, task["id"], final)
             else:
-                staged = self.memory.stage_experience(task["id"], task["prompt"], final, runs)
-                evidence_sha256 = hashlib.sha256(staged.read_bytes()).hexdigest()
-                self.store.complete_with_memory_candidate(
-                    task["id"], final, str(staged), evidence_sha256, memory_source_task_ids,
+                staged = self.memory.staged_path(task["id"])
+
+                def stage_candidate():
+                    nonlocal evidence_sha256
+                    path = self.memory.stage_experience(
+                        task["id"], task["prompt"], final, runs, skip_value_scoring=True,
+                    )
+                    evidence_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+                    return path
+
+                self.store.complete_worker_with_memory_candidate(
+                    task["id"], final, str(staged), stage_candidate, memory_source_task_ids,
                     expected_attempt=int(task["attempts"]),
                 )
         except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
@@ -1346,14 +1391,8 @@ class Orchestrator:
             # its candidate queued must not be sent back to retry. If the state
             # cannot be read, this raises and the task stays leased.
             if not self._completion_committed(task["id"]):
-                # Nothing was queued: do not leave the staged file or its
-                # status sidecar behind for a task that may end up failed.
-                orphan = self.memory.outbox / f"{task['id']}.md"
-                for leftover in (orphan, orphan.with_suffix(orphan.suffix + ".status.json")):
-                    try:
-                        leftover.unlink()
-                    except OSError:
-                        pass
+                # The atomic Worker store call restores staged files under
+                # its write lock when settlement fails.
                 worker = self.config.worker
                 delay = min(
                     int(worker["retry_max_seconds"]),
@@ -1371,6 +1410,12 @@ class Orchestrator:
                 })
         settled = self.store.get_task(task['id'])
         discarded = json.loads(settled.get('provenance_json') or '{}').get('memory_disposition') == 'value_discarded'
+        candidate = self.store.get_memory_candidate(task['id'])
+        value_status = self.store.value_candidate_status(task['id'], evidence_sha256) if evidence_sha256 else None
+        review_status = ('discarded' if discarded else 'audit_only' if audit_only else
+                         value_status or (candidate['status'] if candidate else 'awaiting_value_review'))
+        if discarded and evidence_sha256:
+            self.store.cleanup_discarded_candidate(task['id'], str(self.memory.outbox / f"{task['id']}.md"), evidence_sha256)
         return task_result({
             "status": "completed",
             "task_id": task["id"],
@@ -1381,9 +1426,9 @@ class Orchestrator:
             "label": roster.get("label") or (NO_INDEPENDENT if roster.get("host") else None),
             "standby_substitution": substitution or prior_substitution,
             "delivery_review": {
-                "status": "discarded" if discarded else "audit_only" if audit_only else "pending_delivery_review",
+                "status": review_status,
                 "candidate_sha256": evidence_sha256 if evidence_sha256 is not None else (
-                    None if audit_only or discarded else self.store.get_memory_candidate(task["id"])["evidence_sha256"]),
+                    candidate['evidence_sha256'] if candidate else None),
                 "requires_explicit_user_decision": not audit_only,
             },
         })

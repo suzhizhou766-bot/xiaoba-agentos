@@ -38,7 +38,8 @@ class MonitorTests(unittest.TestCase):
         req=urllib.request.Request(self.base+path,data=data,headers=headers)
         try:
             with urllib.request.urlopen(req) as response:return response.status,response.read()
-        except urllib.error.HTTPError as error:return error.code,error.read()
+        except urllib.error.HTTPError as error:
+            with error:return error.code,error.read()
     def test_page_and_meta_do_not_leak_publish_challenge(self):
         a=self.fixture.ready();status,body=self.request('/architecture/');self.assertEqual(status,200);self.assertIn(self.ctx.page_token.encode(),body)
         status,body=self.request('/api/release-center/meta');self.assertEqual(status,200);self.assertNotIn(a['confirmation'].encode(),body)

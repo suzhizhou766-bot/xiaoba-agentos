@@ -122,6 +122,8 @@ class ConfigConsistencyTest(unittest.TestCase):
         for entry in status["installed_entrypoints"].values():
             seen += [Path(entry["installed"]), Path(entry["reference"])]
         for path in seen:
+            if path == CANDIDATE_CONFIG:
+                continue  # The candidate's own config is the input fixture, even in a .codex worktree.
             self.assertFalse(any(self._under(path, root) for root in forbidden), (path, seen))
         self.assertEqual(str(reference), status["installed_entrypoints"][".agents/xiaoba"]["reference"])
         self.assertEqual(str(CANDIDATE_CONFIG), status["consumers"]["review_backend"]["path"])
@@ -237,7 +239,8 @@ class ConfigConsistencyTest(unittest.TestCase):
         self._install(CANDIDATE_CONFIG)
         self._service("com.xiaoba.agentos", CANDIDATE_CONFIG)
         self._backend_state(CANDIDATE_CONFIG)
-        status = config_consistency(isolated, {"release_dir": str(self.root / "release")}, home=self.home)
+        status = config_consistency(isolated, {"release_dir": str(self.root / "release")}, home=self.home,
+                                    monitor_json=self.root / "uninstalled-monitor.json")
         self.assertTrue(status["ok"], status)
         self.assertEqual([], status["warnings"])
         self.assertEqual(
@@ -256,7 +259,8 @@ class ConfigConsistencyTest(unittest.TestCase):
         self._install(CANDIDATE_CONFIG)
         self._service("com.xiaoba.agentos", CANDIDATE_CONFIG)
         self._backend_state(CANDIDATE_CONFIG)
-        status = config_consistency(isolated, {"release_dir": str(self.root / "release")}, home=self.home)
+        status = config_consistency(isolated, {"release_dir": str(self.root / "release")}, home=self.home,
+                                    monitor_json=self.root / "uninstalled-monitor.json")
         self.assertFalse(status["ok"])
         self.assertTrue(any("已安装入口与发布入口不一致" in p for p in status["problems"]), status["problems"])
         self._assert_reads_only_fixtures(status, shipped, reference)

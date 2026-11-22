@@ -1,4 +1,4 @@
-# v1.6.15 运维
+# v1.6.17 运维
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
@@ -68,7 +68,7 @@ v1.6.9（卡 51）已移除 `recovery.probe_on_session_start` 及 doctor 的
 `outcome` 取 `unchanged`（原样好用）、`modified`（改过）、`inapplicable`
 （不适用）。后两种必须在 changed／added／discarded 至少一项说明改动、补充或
 摒弃，其余可空；unchanged 三项须空。缺项或相互矛盾时不猜分，记跳过事件。
-`memory-delivery-record --receipt FILE` 仍绑定该应用的任务、成品版本和用户交付记录。
+`memory-delivery-record --user-decision --receipt FILE`（以及新版 `task-delivery --user-decision --receipt FILE`、`intake '交付'|'撤回验收' --user-decision --message-id ... --delivery-receipt FILE`）均须显式传入必填无值布尔声明 `--user-decision`（缺少时 CLI fail-closed 拒绝，`accept`/`withdraw` 由消息或回执 `decision` 区分），并绑定该应用的任务、成品版本和用户交付记录。
 
 同任务同经验永久只结算一次，重新发送消息、交付新成品版本、撤回再交付均不重复加分。
 原样好用记1；改过或不适用记0；同任务同成品对同一来源有多份应用记录时，必须全部
@@ -84,10 +84,11 @@ v1.6.9（卡 51）已移除 `recovery.probe_on_session_start` 及 doctor 的
 交付本身有效后，每个来源用保存点包住记分及改动事件：记分前提缺失、源正式笔记版本
 漂移、记分阶段复验发现漂移等记 `memory.reuse_scoring_skipped`，回滚该来源部分记分，
 交付继续，其它有效来源照常计分。该容忍仅属于记分环节，不豁免交付门禁。
-例外：历史 `memory.reuse_scored` 有畸形事件（字段缺失、类型异常或重复键）时，投影
-采用全局熔断，本轮所有正式来源均跳过记分；有效交付照常记录。doctor 的
-`reuse_scores` 返回 ok=false 和 problems，warnings 明示“复用分”“全局熔断”；
-该报告不代替原有事件链检查，也不另行改变 doctor 的就绪判定。
+历史 `memory.reuse_scored` 的业务 payload 畸形或绑定不匹配时，投影按条隔离该事件，
+其它有效正式来源仍照常计分；有效交付照常记录。doctor 的 `reuse_scores` 返回
+ok=false 和 problems，warnings 明示“复用分历史事件异常，单条坏payload已隔离”。
+这项逐条隔离不豁免事件链检查：事件链本身损坏仍按 B20 停止双 Agent 派活。doctor
+报告不代替事件链检查，也不另行改变 doctor 的就绪判定。
 
 0分同时追加一次 `memory.reuse_revision_requested`，保留源ID／版本、任务、应用ID与
 改动／补充／摒弃。**本卡不送终审队列，不改正式经验状态**；卡52b再实现独立复用
@@ -249,7 +250,8 @@ xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
 
 ## 节点测试期限与失败诊断（v1.6.9 卡 43）
 
-- **测试期限怎么算**：节点测试（健康检查、上班初始化）的运行期限取该节点已设的掉线时限（`no_progress_seconds`），上限 300 秒；节点没设掉线时限时仍是 90 秒。所有 CLI 类型（含 AGY 交互与 AGY CLI 两种）走同一个函数取值，不再各自写死常量；工作调用不受影响（AGY 工作调用不向 CLI 传期限，仍为 0 秒）。掉线时限只在 Agent 池编辑节点处修改，不新增节点配置字段。
+- **两种时限**：任务连续无进展掉线时限留空时为 300 秒。实际节点测活留空时为 90 秒，填写后使用该值（`no_progress_seconds`），测活上限为 300 秒。上班打卡读取已有测活资格。所有 CLI 类型（含 AGY 交互与 AGY CLI 两种）使用同一测活时限计算函数。掉线时限在 Agent 池节点设置里修改。
+- **审查节点统计**：`doctor` 与上班报告的 `review_nodes.pool_ready_node_count` 和 `pool_ready_nodes` 描述已具备审查资格的池内节点，包含可能共享入口和模型的节点。`selected_pool_vote_count` 是本次体检选择的池内席位数，最多为 2，旧字段 `count` 同义。独立双审是否可用看 `enough`。
 - **错误尾部在哪看**：节点测试失败时，测试记录新增 `error_tail`：stderr 最后 2 KB 经 `_redact_error` 脱敏后的文字；stderr 为空时取 stdout 最后 2 KB 中不是结构化事件（不能解析成 JSON 的行）的文字，同样脱敏。Agent 池节点卡片显示“错误尾部（已脱敏 · 仅末段）”；`doctor` 结果的 `review_node_error_tails` 列出同样的内容。原始 stdout 不保存、不落盘。
 - **失败分类只看诊断文字**：分类匹配只读 stderr 全文，加上 stdout 最后 4 KB 里不是结构化事件的文字；读过的源码、工具结果都在结构化事件里，不参与匹配。`call_terminated`、`permission_denied` 的判定顺序不变，既有分类测试全部照旧。
 

@@ -21,7 +21,7 @@ class ReviewUIInstallTest(unittest.TestCase):
         self.config = SimpleNamespace(project_dir=self.project, runtime_dir=self.runtime,
                                       memory={"obsidian_vault": str(self.assistant / "vault")})
         self.before, entries = {}, []
-        for name in ("workflow_query.py", "review_action.py", "xiaoba-monitor.html", "server.py"):
+        for name in ui.TARGETS:
             base, relative = ui.TARGETS[name]
             target = (self.project if base == "project" else self.assistant) / relative
             target.parent.mkdir(parents=True, exist_ok=True)

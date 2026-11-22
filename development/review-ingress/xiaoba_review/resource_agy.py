@@ -384,6 +384,8 @@ class AgyInteractiveResource:
         return evidence
 
     def run(self, card):
+        if isinstance(card, dict) and card.get('media_review') is not None:
+            raise ValueError('missing_materials: interactive entry lacks controlled media staging; manual_review')
         value, evidence = self._turn(REVIEW_RUN_INSTRUCTION,
             json.dumps(card, ensure_ascii=False), record_id=card.get('assignment_id'),
             task_id=card.get('task_id') or card.get('review_request_id'), step_code=card.get('step_code'))

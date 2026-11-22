@@ -183,19 +183,30 @@ class SmallFixTests(unittest.TestCase):
             self.assertEqual(0,self.store.summary()['pending_notifications'])
             self.assertEqual(2,common.call_count)
 
-    def test_B11_reason_changes_append_but_identical_reason_does_not(self):
-        task=self.store.submit('TEST reasons',2);p=self.root/'candidate';p.write_text('TEST body')
+    def test_B11_identical_deferred_reason_is_idempotent_and_conflict_fails_closed(self):
+        task=self.store.submit(
+            'TEST reasons', 2,
+            snapshot={'experience_policy': {'version': 1, 'kind': 'method', 'problem_key': 'TEST'}},
+        );p=self.root/'candidate';p.write_text('TEST body')
+        digest=hashlib.sha256(p.read_bytes()).hexdigest()
         def reason(db,tid,reason_out):
             reason_out.append(current[0]);return None
         current=['host_draft']
         with patch('xiaoba_agentos.value_scoring.native_value',side_effect=reason):
-            for value in ('host_draft','host_draft','no_review_receipts','no_review_receipts','host_draft'):
+            for value in ('host_draft','host_draft'):
                 current[0]=value
-                with self.store.connect() as db:self.store._insert_candidate_tx(db,task,str(p),'a'*64,[],1)
+                with self.store.connect() as db:self.store._insert_candidate_tx(db,task,str(p),digest,[],1)
+            current[0]='no_review_receipts'
+            with self.assertRaisesRegex(ValueError, '不同待评分材料'):
+                with self.store.connect() as db:self.store._insert_candidate_tx(db,task,str(p),digest,[],1)
         with self.store.read_only() as db:
             events=[json.loads(v[0]) for v in db.execute("SELECT payload_json FROM events WHERE event_type='memory.value_unscored' ORDER BY sequence")]
-        self.assertEqual(['host_draft','no_review_receipts','host_draft'],[v['reason'] for v in events])
-        self.assertEqual('host_draft',events[1]['previous_reason'])
+            from xiaoba_agentos.value_queue import pending_items
+            pending=pending_items(db)
+        self.assertEqual(1,len(events))
+        self.assertEqual('host_draft',events[0]['reason'])
+        self.assertEqual(1,len(pending))
+        self.assertEqual(digest,pending[0]['candidate_sha256'])
 
 
 class DispatchTests(unittest.TestCase):

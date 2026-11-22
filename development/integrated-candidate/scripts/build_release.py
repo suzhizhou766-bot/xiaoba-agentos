@@ -45,9 +45,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from xiaoba_agentos.standby_health import EXTERNAL_FAILURES, coverable_health
 
-from create_manifest import review_source
+from create_manifest import projected_files, projected_sources, review_source
 from agentos_version import software_version
 from release_tier import TierError, compute_tier
+# C11-01: one shared cleaner for pool-receipt persistence and vote judgement.
+from xiaoba_agentos.output_hygiene import strip_reasoning_markup
 
 
 SOURCE_DIRECTORIES = (
@@ -83,6 +85,20 @@ def contains_non_answer_markers(text: str) -> bool:
         return False
     lowered = text.lower()
     return any(marker in lowered for marker in NON_ANSWER_MARKERS)
+
+
+_ENTRYPOINT_DEFAULT_CONFIG = re.compile(r'^DEFAULT_CONFIG = Path\("[^"\n]+"\)$', re.MULTILINE)
+
+
+def _normalized_entrypoint_script(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"entrypoint script cannot be decoded as UTF-8: {path}: {exc}") from exc
+    matches = _ENTRYPOINT_DEFAULT_CONFIG.findall(text)
+    if len(matches) != 1:
+        raise RuntimeError(f"entrypoint script must declare a single DEFAULT_CONFIG Path line: {path}")
+    return _ENTRYPOINT_DEFAULT_CONFIG.sub('DEFAULT_CONFIG = Path("<bound>")', text)
 
 
 def sha256(path: Path) -> str:
@@ -142,9 +158,14 @@ def present_source_directories(source_root: Path) -> list[str]:
 
 
 def copy_review(source_root: Path, target: Path) -> None:
-    source = review_source(source_root)
-    if source is not None:
-        copy_tree(source, target / 'src/xiaoba_review')
+    for source, dst_rel in projected_sources(source_root):
+        dst = target / dst_rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        copy_tree(source, dst)
+    for src_file, dst_rel in projected_files(source_root):
+        dst = target / dst_rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_file, dst)
 
 
 def code_fingerprint(source_root: Path) -> str:
@@ -203,7 +224,8 @@ def _canonical(value: Any) -> str:
 
 
 def host_vote_conclusion(
-    settlement: dict[str, Any], task: dict[str, Any], snapshot: dict[str, Any], frozen_prompt: str
+    settlement: dict[str, Any], task: dict[str, Any], snapshot: dict[str, Any], frozen_prompt: str,
+    effective_manifest_sha256: Optional[str] = None,
 ) -> dict[str, Any]:
     """宿主补的这一票只认 `complete_host` 留下的结算记录，手写结论进不来。
 
@@ -233,6 +255,7 @@ def host_vote_conclusion(
     if str(receipt.get("verdict") or "") != verdict:
         raise RuntimeError("宿主回执的结论和结算记录不一致")
     findings = receipt.get("findings")
+    findings = strip_reasoning_markup(findings) if isinstance(findings, str) else findings
     if not isinstance(findings, str) or not findings.strip() or contains_non_answer_markers(findings):
         raise RuntimeError("宿主回执没有合格的审查正文")
     refs = receipt.get("evidence_refs")
@@ -264,9 +287,10 @@ def host_vote_conclusion(
     model = str(identity.get("model") or "")
     if not model:
         raise RuntimeError("宿主身份没有记录模型，不能算一票")
+    snap_manifest = str(snapshot.get("source_manifest_sha256") or "")
     return {"source": "host", "host_id": host_id, "model": model, "passed": True,
             "receipt_sha256": event_sha, "prompt_sha256": frozen_prompt,
-            "manifest_sha256": str(snapshot.get("source_manifest_sha256") or "")}
+            "manifest_sha256": effective_manifest_sha256 if (effective_manifest_sha256 and snap_manifest) else snap_manifest}
 
 
 def pool_vote_conclusions(
@@ -286,7 +310,14 @@ def pool_vote_conclusions(
 
 
 def _passed_verdict(text: str) -> bool:
-    """这一票必须是恰好一处 FINAL_ACCEPTANCE: PASS，别处不能出现 FAIL 或 NEEDS_INFO。"""
+    """这一票必须是恰好一处 FINAL_ACCEPTANCE: PASS，别处不能出现 FAIL 或 NEEDS_INFO。
+
+    C11-01: judge only the hygiene-cleaned body.  ``<think>`` and unexecuted
+    tool markup are stripped by the same function used at pool-receipt
+    persistence; a normal technical body (including a legitimate
+    ``FINAL_ACCEPTANCE: FAIL`` or prose that mentions tools/FAIL) is untouched.
+    """
+    text = strip_reasoning_markup(text)
     from xiaoba_agentos.pool_dispatch import review_vote_problem
     verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", text, re.MULTILINE)
     return (not review_vote_problem(text) and verdicts == ["PASS"] and not re.search(r"FINAL_ACCEPTANCE:\s*(?:FAIL|NEEDS_INFO)", text)
@@ -320,6 +351,7 @@ def _acceptance_candidate_binding(
 def _validate_host_acceptance(
     payload: dict[str, Any], source_root: Path, task: dict[str, Any], snapshot: dict[str, Any],
     runs: list[dict[str, Any]], settlement: dict[str, Any], source_manifest_sha256: str,
+    runtime_match: bool = False,
 ) -> dict[str, Any]:
     """1 个池节点 PASS ＋ 1 个宿主 PASS（用户 2026-11-02 裁决）。
 
@@ -338,7 +370,11 @@ def _validate_host_acceptance(
             parsed = {}
         provenance = parsed if isinstance(parsed, dict) else {}
     frozen_prompt = hashlib.sha256(str(task.get("prompt") or task.get("id") or "").encode()).hexdigest()
-    host_conclusion = host_vote_conclusion(settlement, task, snapshot, frozen_prompt)
+    snap_manifest_valid = bool(re.fullmatch(r"[0-9a-f]{64}", str(snapshot.get("source_manifest_sha256") or "")))
+    host_conclusion = host_vote_conclusion(
+        settlement, task, snapshot, frozen_prompt,
+        effective_manifest_sha256=source_manifest_sha256 if (runtime_match and snap_manifest_valid) else None,
+    )
     pool_run_ids = [str(value) for value in
                     (settlement.get("pool_run_ids") or provenance.get("pool_run_ids") or [])]
     if not pool_run_ids:
@@ -417,8 +453,18 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
         snapshot = json.loads(str(task.get("execution_snapshot_json") or "{}"))
     except json.JSONDecodeError as exc:
         raise RuntimeError("acceptance execution snapshot is invalid") from exc
+    from create_manifest import runtime_manifest_sha256_from_file
     source_manifest_sha256 = sha256(source_root / "SOURCE_MANIFEST.json")
-    if snapshot.get("source_manifest_sha256") != source_manifest_sha256:
+    current_runtime_sha256 = runtime_manifest_sha256_from_file(source_root / "SOURCE_MANIFEST.json")
+    snap_source_sha = snapshot.get("source_manifest_sha256")
+    snap_runtime_sha = snapshot.get("runtime_manifest_sha256")
+    runtime_match = (
+        isinstance(snap_runtime_sha, str)
+        and bool(re.fullmatch(r"[0-9a-f]{64}", snap_runtime_sha))
+        and bool(current_runtime_sha256)
+        and snap_runtime_sha == current_runtime_sha256
+    )
+    if snap_source_sha != source_manifest_sha256 and not runtime_match:
         raise RuntimeError("acceptance task is not bound to the current source manifest")
     # 发布验收要从来源工作任务读出作者和执行者，所以任务必须声明来源（或明确写明没有）。
     from xiaoba_agentos.pool_dispatch import declared_work_tasks
@@ -435,11 +481,12 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
             "提交时用 scripts/submit_release_acceptance.py 或 submit --release-acceptance")
     if isinstance(payload.get("host_settlement"), dict):
         return _validate_host_acceptance(payload, source_root, task, snapshot, list(runs or []),
-                                         payload["host_settlement"], source_manifest_sha256)
+                                         payload["host_settlement"], source_manifest_sha256,
+                                         runtime_match=runtime_match)
     result = str(task.get("result") or "")
     if not re.match(r"^本回答：小八 AgentOS (?:双|三|多) Agent 裁判(?:\n|$)", result):
         raise RuntimeError("acceptance result has no adjudicated provenance label")
-    if contains_non_answer_markers(result):
+    if contains_non_answer_markers(strip_reasoning_markup(result)):
         raise RuntimeError("acceptance result contains unexecuted tool-call markup")
     config = json.loads((source_root / "config" / "agentos.json").read_text(encoding="utf-8"))
     enabled_agents = {
@@ -550,12 +597,13 @@ def _validate_acceptance_payload(payload: dict[str, Any], source_root: Path) -> 
         if not isinstance(item, dict) or item.get("status") != "completed":
             continue
         output = str(item.get("output") or "")
+        cleaned_output = strip_reasoning_markup(output)
         from xiaoba_agentos.pool_dispatch import review_vote_problem
-        problem = review_vote_problem(output)
-        verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", output, re.MULTILINE)
-        if verdicts != ["PASS"] or re.search(r"FINAL_ACCEPTANCE:\s*FAIL", output):
+        problem = review_vote_problem(cleaned_output)
+        verdicts = re.findall(r"^\s*FINAL_ACCEPTANCE: (PASS|FAIL)\s*$", cleaned_output, re.MULTILINE)
+        if verdicts != ["PASS"] or re.search(r"FINAL_ACCEPTANCE:\s*FAIL", cleaned_output):
             raise RuntimeError("every successful acceptance Agent must explicitly return one FINAL_ACCEPTANCE: PASS")
-        if contains_non_answer_markers(output):
+        if contains_non_answer_markers(cleaned_output):
             raise RuntimeError("acceptance Agent output contains unexecuted tool-call markup")
         if problem:
             raise RuntimeError("池节点这一票不能当审查回执：" + problem)
@@ -803,7 +851,7 @@ def release_tier_record(previous_release: Optional[Path], source_root: Path) -> 
 
 def run_full_tests(source_root: Path) -> int:
     """Patch tier has no reviewers: the build itself runs the whole suite on the manifest-verified source."""
-    run_verify([CORE_PYTHON, "scripts/create_manifest.py", "--verify"], source_root)
+    run_verify([CORE_PYTHON, "-B", "scripts/create_manifest.py", "--verify"], source_root)
     env = dict(os.environ, PYTHONPATH="src:tests", PYTHONDONTWRITEBYTECODE="1")
     completed = subprocess.run(
         [CORE_PYTHON, "-m", "unittest", "discover", "-s", "tests", "-t", "tests", "-p", "test_*.py"],
@@ -858,6 +906,10 @@ def _assemble_package(
         )
     interface_target = staging / "interface"
     (interface_target / "scripts").mkdir(parents=True)
+    frozen_interface = agentos_target / "src" / "xiaoba_interface_card" / "SKILL.md"
+    if args.acceptance_complete and frozen_interface.is_file():
+        if sha256(interface_card.resolve()) != sha256(frozen_interface):
+            raise RuntimeError("release interface card differs from the frozen interface card in SOURCE_MANIFEST.json")
     shutil.copy2(interface_card.resolve(), interface_target / "SKILL.md")
     shutil.copy2(interface_card.resolve(), staging / "SKILL.md")
     stable_scripts = args.stable_scripts.resolve()
@@ -865,6 +917,14 @@ def _assemble_package(
         source = stable_scripts / name
         if source.is_symlink() or not source.is_file():
             raise RuntimeError(f"stable interface script unavailable: {source}")
+        if args.acceptance_complete:
+            frozen_script = agentos_target / ".agents" / "skills" / "xiaoba-agentos" / "scripts" / name
+            if frozen_script.is_symlink() or not frozen_script.is_file():
+                raise RuntimeError(f"frozen reference script unavailable: {frozen_script}")
+            if _normalized_entrypoint_script(source) != _normalized_entrypoint_script(frozen_script):
+                raise RuntimeError(
+                    f"stable interface script {name} differs from the frozen script in SOURCE_MANIFEST.json"
+                )
         destination = interface_target / "scripts" / name
         shutil.copy2(source, destination)
         os.chmod(destination, 0o755)
@@ -872,7 +932,7 @@ def _assemble_package(
     brain_target = staging / "second-brain"
     copy_tree(args.second_brain.resolve(), brain_target)
 
-    run_verify([CORE_PYTHON, "scripts/create_manifest.py", "--verify"], agentos_target)
+    run_verify([CORE_PYTHON, "-B", "scripts/create_manifest.py", "--verify"], agentos_target)
     run_verify(
         [
             CORE_PYTHON,

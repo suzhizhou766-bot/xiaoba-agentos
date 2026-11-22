@@ -26,6 +26,7 @@ import urllib.request
 from pathlib import Path
 
 from monitor_core import VERSION, config as cfg, logs
+from monitor_core import lifecycle
 from monitor_core.modules.backends import BackendsModule
 from monitor_core.modules.director import DirectorModule
 from monitor_core.modules.frozen import FrozenModule
@@ -38,6 +39,12 @@ from monitor_core.modules.system import SystemModule
 from monitor_core.modules.taskcards import TaskCardsModule
 from monitor_core.supervise import Backoff, Breaker, ManagedProcess
 from monitor_core.web import App, Context
+
+# 监管 / 直启身份输出词（启停脚本共用）
+SUPERVISOR_MATCH = lifecycle.KIND_MATCH
+SUPERVISOR_OTHER = lifecycle.KIND_OTHER
+SUPERVISOR_UNKNOWN = lifecycle.KIND_UNKNOWN
+SUPERVISOR_STALE = lifecycle.KIND_STALE
 
 # 模块注册表：顺序即启动顺序。
 MODULES = [SystemModule, ReviewModule, FrozenModule, OverviewModule, DirectorModule, LocalToolsModule, StageModule, KeyPoolModule, BackendsModule, TaskCardsModule]
@@ -79,9 +86,18 @@ def resolve_listen_port(config_file=None, port_override=None):
 
 
 def port_in_use(port):
+    """端口探测只作诊断：有人监听 ≠ 本目录受管进程。"""
     with socket.socket() as sock:
         sock.settimeout(0.5)
         return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def classify_supervisor_argv(argv, port, root=None):
+    return lifecycle.classify_argv(argv, port, Path(root or ROOT), role=lifecycle.ROLE_SUPERVISE)
+
+
+def classify_supervisor_process(pid, port, root=None):
+    return lifecycle.classify_process(pid, port, Path(root or ROOT), role=lifecycle.ROLE_SUPERVISE)
 
 
 def healthy(port, timeout=3):
@@ -100,11 +116,20 @@ def make_logger(config, filename="monitor.log"):
 
 
 # ---------------------------------------------------------------- 直接运行
-def serve(config):
+def serve(config, supervised_child=False):
     port = int(config["port"])
+    # 端口探测只诊断冲突；真正归属靠 claim。无法证明端口空闲时仍可能 bind 失败。
     if port_in_use(port):
-        print("端口 %d 已被占用：监看中心可能已在运行。" % port, file=sys.stderr)
+        print("端口 %d 已被占用：请先关闭占用方或本目录已登记的监看中心（端口探测不能证明归属）。" % port, file=sys.stderr)
         return 2
+    token = None
+    if not supervised_child:
+        # 直接启动：自己登记 serve claim，供关闭脚本按归属停止。
+        token, err = lifecycle.acquire_claim(RUN_DIR, ROOT, port, lifecycle.ROLE_SERVE)
+        if err is not None:
+            code, message = err
+            print(message, file=sys.stderr)
+            return code
     logger = make_logger(config)
     app = build_app(config, logger)
     httpd = app.server()
@@ -127,6 +152,9 @@ def serve(config):
         app.stop()          # 先停掉自己拉起的子服务，再退出
         httpd.server_close()
         app.ctx.log("core", "monitor stopped")
+        # 仅当 token 仍属本实例时解除；旧实例不得拆掉新所有权。
+        if token is not None:
+            lifecycle.release_claim(RUN_DIR, token)
     return 0
 
 
@@ -163,22 +191,23 @@ def detach_from_caller():
 def supervise(config):
     port = int(config["port"])
     RUN_DIR.mkdir(exist_ok=True)
-    pid_file = RUN_DIR / "supervisor.pid"
-    try:
-        other = int(pid_file.read_text().strip())
-        os.kill(other, 0)
-        print("看护进程已在运行（pid %d）。" % other, file=sys.stderr)
-        return 2
-    except (OSError, ValueError):
-        pass
+    # 先按 claim / 原生身份认领；不再仅凭“PID 文件里的数字还活着”。
+    token, err = lifecycle.acquire_claim(RUN_DIR, ROOT, port, lifecycle.ROLE_SUPERVISE)
+    if err is not None:
+        code, message = err
+        print(message, file=sys.stderr)
+        return code
+    # 认领成功后仍用端口探测做冲突诊断；不能证明监听方归属，只拒绝再绑。
     if port_in_use(port):
-        print("端口 %d 已被占用：请先关闭正在运行的监看中心。" % port, file=sys.stderr)
+        lifecycle.release_claim(RUN_DIR, token)
+        print("端口 %d 已被占用：请先关闭占用方（端口探测不能证明归属）。" % port, file=sys.stderr)
         return 2
-    pid_file.write_text(str(os.getpid()))
     logger = make_logger(config, "supervisor.log")
     watchdog = config["watchdog"]
+    # 子进程是受管 serve；不单独再写 serve claim，归属挂在 supervisor claim 上。
     child = ManagedProcess(
-        "monitor", [sys.executable, str(ROOT / "xiaoba_monitor.py"), "--port", str(port)], logger, cwd=str(ROOT),
+        "monitor", [sys.executable, str(ROOT / "xiaoba_monitor.py"), "--port", str(port), "--supervised-child"],
+        logger, cwd=str(ROOT),
         ready=lambda: healthy(port), ready_timeout=30,
         backoff=Backoff(watchdog["backoff_seconds"]),
         breaker=Breaker(watchdog["max_fast_failures"], watchdog["fast_failure_seconds"]),
@@ -206,10 +235,8 @@ def supervise(config):
                 child.kill_child()
     finally:
         child.stop()
-        try:
-            pid_file.unlink()
-        except OSError:
-            pass
+        # 旧实例 finally 若晚于新实例认领，token 不匹配则不得 unlink。
+        lifecycle.release_claim(RUN_DIR, token)
         logs.event(logger, "supervisor", "stopped")
     return 0
 
@@ -250,11 +277,82 @@ def main():
     parser.add_argument("--supervise", action="store_true", help="带看护运行")
     parser.add_argument("--detach", action="store_true",
                         help="带看护运行时先脱离调用方的会话和进程组（启动脚本用）")
+    parser.add_argument("--supervised-child", action="store_true",
+                        help=argparse.SUPPRESS)  # 仅监管器拉起子进程时使用；不单独写 serve claim
     parser.add_argument("--resolve-port", action="store_true",
                         help="只解析并打印对外监听端口后退出（启动脚本健康探测与打开页面用）")
+    parser.add_argument("--classify-supervisor-pid", type=int, default=None,
+                        help="判断该 pid 是否为本目录、--port 所指端口的监管进程；输出 match/other/unknown/stale")
+    parser.add_argument("--stop-owned", action="store_true",
+                        help="按 lifecycle claim 停止已证明归属的进程；不向无归属监听者发信号")
+    parser.add_argument("--preflight-legacy", action="store_true",
+                        help="B09：旧裸 supervisor.pid 归属预检，写出 migration.binding.json（不发信号）")
+    parser.add_argument("--migration-stop", action="store_true",
+                        help="B10：仅按 B09 binding 受控迁移停止（不扩大普通关闭权限）")
+    parser.add_argument("--binding-file", default=None,
+                        help="B10：migration binding JSON 路径（默认 run/migration.binding.json）")
+    parser.add_argument("--close-report", action="store_true",
+                        help="B11：公开关闭报告（停止结果与端口状态分离，机器可读 JSON）")
     parser.add_argument("--selftest", action="store_true", help="自检后退出")
     parser.add_argument("--once", action="store_true", help="打印一次运行总览快照后退出")
     args = parser.parse_args()
+    if args.classify_supervisor_pid is not None:
+        if args.port is None:
+            print("无法判断监管进程：缺少 --port", file=sys.stderr)
+            return 2
+        kind, detail = classify_supervisor_process(args.classify_supervisor_pid, args.port)
+        if detail and kind != SUPERVISOR_MATCH:
+            print(detail, file=sys.stderr)
+        print(kind)
+        return 0
+    if args.preflight_legacy:
+        if args.port is None:
+            print("无法预检：缺少 --port", file=sys.stderr)
+            return 2
+        result = lifecycle.preflight_legacy_migration(RUN_DIR, ROOT, args.port)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result.get("status") == lifecycle.STATUS_BOUND else 3
+    if args.migration_stop:
+        if args.port is None:
+            print("无法迁移停止：缺少 --port", file=sys.stderr)
+            return 2
+        bpath = args.binding_file or str(lifecycle.binding_path(RUN_DIR))
+        try:
+            result = lifecycle.migration_stop(RUN_DIR, ROOT, args.port, bpath)
+        except Exception as exc:  # 公开 CLI：任何异常 → 可判定 JSON，不 traceback
+            result = {
+                "status": "rejected",
+                "signals": 0,
+                "detail": "migration_stop 失败：%s" % exc,
+                "trace": [],
+            }
+        print(json.dumps(result, ensure_ascii=False))
+        if result.get("status") in ("stopped", "already_stopped"):
+            return 0
+        if result.get("status") in ("rejected", "unknown"):
+            return 3
+        return 1
+    if args.close_report:
+        if args.port is None:
+            print("无法关闭报告：缺少 --port", file=sys.stderr)
+            return 2
+        report = lifecycle.close_report(RUN_DIR, ROOT, args.port)
+        print(json.dumps(report, ensure_ascii=False))
+        if report.get("user_message"):
+            stream = sys.stdout if report.get("closed_ok") else sys.stderr
+            print(report["user_message"], file=stream)
+        return int(report.get("exit_code", 1))
+    if args.stop_owned:
+        if args.port is None:
+            print("无法停止：缺少 --port", file=sys.stderr)
+            return 2
+        result = lifecycle.stop_owned(RUN_DIR, ROOT, args.port)
+        print(json.dumps(result, ensure_ascii=False))
+        if result["status"] in ("stopped", "already_stopped"):
+            return 0
+        if result["status"] in ("conflict", "unknown", lifecycle.STATUS_LEGACY_UNCLAIMED):
+            return 3
+        return 1
     if args.resolve_port:
         try:
             # args.port 用 is not None：--port 0 必须进校验并拒绝，不能因真假回落到默认 8799。
@@ -282,7 +380,7 @@ def main():
         if args.detach:
             detach_from_caller()
         return supervise(config)
-    return serve(config)
+    return serve(config, supervised_child=args.supervised_child)
 
 
 if __name__ == "__main__":

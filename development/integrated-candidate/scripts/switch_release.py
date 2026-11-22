@@ -146,6 +146,33 @@ def verify_package(root: Path) -> dict:
     require(re.fullmatch(r'v\d+\.\d+\.\d+', str(release.get('version', ''))), 'invalid release version')
     require(release.get('agentos_source_manifest_sha256') == state(root / 'agentos/SOURCE_MANIFEST.json')['sha256'], 'package source binding mismatch')
     verify_source(root / 'agentos')
+    projected_skill = root / 'agentos/src/xiaoba_interface_card/SKILL.md'
+    if projected_skill.exists():
+        require(state(root / 'interface/SKILL.md')['sha256'] == state(projected_skill)['sha256'],
+                'interface card differs from reviewed source')
+    for entry_name in ('xiaoba', 'verify-release'):
+        frozen_entry = root / 'agentos/.agents/skills/xiaoba-agentos/scripts' / entry_name
+        if frozen_entry.exists():
+            packaged_text = (root / 'interface/scripts' / entry_name).read_text(encoding='utf-8')
+            frozen_text = frozen_entry.read_text(encoding='utf-8')
+            require(len(DEFAULT_LINE.findall(packaged_text)) == 1 and len(DEFAULT_LINE.findall(frozen_text)) == 1,
+                    f'interface script DEFAULT_CONFIG declaration invalid: {entry_name}')
+            require(DEFAULT_LINE.sub('DEFAULT_CONFIG = Path("<bound>")', packaged_text)
+                    == DEFAULT_LINE.sub('DEFAULT_CONFIG = Path("<bound>")', frozen_text),
+                    f'interface script differs from reviewed source: {entry_name}')
+    ev = (release.get('acceptance') or {}).get('end_to_end_evidence')
+    if isinstance(ev, dict) and ('source_manifest_sha256' in ev or 'conclusions' in ev):
+        pkg_manifest = release['agentos_source_manifest_sha256']
+        require(ev.get('source_manifest_sha256') == pkg_manifest,
+                'acceptance evidence is not bound to package source manifest')
+        if 'conclusions' in ev:
+            conclusions = ev.get('conclusions')
+            require(isinstance(conclusions, list), 'acceptance conclusions must be a list')
+            for item in conclusions:
+                require(isinstance(item, dict) and item.get('manifest_sha256') == pkg_manifest,
+                        'acceptance conclusion is not bound to package source manifest')
+            require(independent_acceptance(ev, expected_manifest_sha256=pkg_manifest),
+                    'acceptance conclusions failed independent acceptance verification')
     return release
 
 
@@ -452,8 +479,12 @@ def worker(layout: Layout, system: System, expected_old: Optional[int] = None) -
 STANDBY_COVER_REASONS = ('external_failure', 'health_probe_failed')
 
 
-def independent_acceptance(evidence: dict) -> bool:
-    """Same rule as build_release: two qualified conclusions, not fixed names."""
+def independent_acceptance(evidence: dict, expected_manifest_sha256: Optional[str] = None) -> bool:
+    """Same rule as build_release: two qualified conclusions bound to the package manifest."""
+    if not isinstance(evidence, dict):
+        return False
+    if expected_manifest_sha256 is not None and evidence.get("source_manifest_sha256") != expected_manifest_sha256:
+        return False
     import sys
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "src"
@@ -852,7 +883,26 @@ def inspect(layout: Layout, system: System) -> dict:
         require(interface_scripts(layout.package) == interface_scripts(previous), 'patch-tier package changes interface scripts')
         require(state(layout.package / 'interface/SKILL.md')['sha256'] == state(layout.package / 'agentos/.agents/skills/xiaoba-agentos/SKILL.md')['sha256'], 'patch-tier interface card differs from reviewed source')
     else:
-        require(independent_acceptance(new['acceptance'].get('end_to_end_evidence') or {}), 'target lacks required independent acceptance')
+        evidence = new['acceptance'].get('end_to_end_evidence') or {}
+        require(
+            independent_acceptance(evidence, expected_manifest_sha256=new['agentos_source_manifest_sha256']),
+            'target lacks required independent acceptance bound to target package source manifest',
+        )
+    # 对所有档位：一旦包内存在受 SOURCE_MANIFEST 冻结的技能卡或入口脚本，包外 interface/ 副本必须与其一致。
+    frozen_skill = layout.package / 'agentos/.agents/skills/xiaoba-agentos/SKILL.md'
+    if frozen_skill.exists():
+        require(state(layout.package / 'interface/SKILL.md')['sha256'] == state(frozen_skill)['sha256'],
+                'interface card differs from reviewed source')
+    for entry_name in ('xiaoba', 'verify-release'):
+        frozen_entry = layout.package / 'agentos/.agents/skills/xiaoba-agentos/scripts' / entry_name
+        if frozen_entry.exists():
+            packaged_text = (layout.package / 'interface/scripts' / entry_name).read_text(encoding='utf-8')
+            frozen_text = frozen_entry.read_text(encoding='utf-8')
+            require(len(DEFAULT_LINE.findall(packaged_text)) == 1 and len(DEFAULT_LINE.findall(frozen_text)) == 1,
+                    f'interface script DEFAULT_CONFIG declaration invalid: {entry_name}')
+            require(DEFAULT_LINE.sub('DEFAULT_CONFIG = Path("<bound>")', packaged_text)
+                    == DEFAULT_LINE.sub('DEFAULT_CONFIG = Path("<bound>")', frozen_text),
+                    f'interface script differs from reviewed source: {entry_name}')
     require(new['version'] != old['version'], 'target is already active')
     require(not any(r['version'] == new['version'] for r in index['releases']), 'target version is already indexed')
     target = layout.index.parent / relative(new['version'])

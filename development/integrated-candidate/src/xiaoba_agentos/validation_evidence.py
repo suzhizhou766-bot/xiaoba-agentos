@@ -35,12 +35,20 @@ def role_verdicts(verdicts):
     沿用既有命名约定：名字含 dsh 的算 DSH 侧，其余算 AGY(peer) 侧。
     同一侧有多名审查员时取最不利结论——合并只会更严，不会把未通过的洗成通过。
     计划里没有按两侧命名的审查员时退回单一结论，保持“两列都 PASS 当且仅当全部通过”。
+    宿主兜底仅有 peer_host_review 时不把 dsh 列回填成 PASS，避免伪装双票。
     """
-    items = (verdicts or {}).items()
+    items = list((verdicts or {}).items())
     dsh = [v for n, v in items if "dsh" in str(n).lower()]
     peer = [v for n, v in items if "dsh" not in str(n).lower()]
     combined = _worst_verdict(list((verdicts or {}).values()))
-    return {"dsh": _worst_verdict(dsh, combined), "peer": _worst_verdict(peer, combined)}
+    if dsh:
+        return {
+            "dsh": _worst_verdict(dsh),
+            "peer": _worst_verdict(peer, combined if not peer else None),
+        }
+    if peer and all("host" in str(n).lower() for n, _ in items):
+        return {"dsh": None, "peer": _worst_verdict(peer)}
+    return {"dsh": combined, "peer": _worst_verdict(peer, combined)}
 
 
 def decide_round(number, execution_passed, verdicts, external=None):
@@ -101,6 +109,132 @@ def independence_key(source_ref, model=None):
     return source_ref.strip() + "|model:" + normalized_model
 
 
+def _is_dsh_identity(identity, kind=None):
+    """cli:dsh / path/.../dsh / bare dsh — any DSH-homologous entry ignores model."""
+    if kind == "dsh":
+        return True
+    if not isinstance(identity, str) or not identity.strip():
+        return False
+    token = identity.strip()
+    lowered = token.casefold()
+    if lowered in {"dsh", "cli:dsh"} or lowered.startswith("cli:dsh"):
+        return True
+    try:
+        return Path(token).name.casefold() == "dsh"
+    except (TypeError, ValueError, OSError):
+        return False
+
+
+def review_independence(identity, model=None, *, kind=None):
+    """Pool/external independence using normalized entry_program semantics.
+
+    WorkBuddy/CodeBuddy already collapse to the same cli:codebuddy family at
+    registration/entry_program. DSH ignores the model field by policy.
+    """
+    if _is_dsh_identity(identity, kind):
+        model = None
+    return independence_key(identity, model)
+
+
+def _pool_item_independence(pool):
+    identity = pool.get("entry_program") or pool.get("source_ref")
+    kind = pool.get("agent_type") or pool.get("kind")
+    if not kind and isinstance(identity, str) and identity.startswith("cli:"):
+        kind = identity.split(":", 1)[1]
+    return review_independence(identity, pool.get("model"), kind=kind)
+
+
+def _run_failed(run, extract_trial_verdict):
+    if not run or run.get("status") != "completed":
+        return True
+    return extract_trial_verdict(run.get("output") or "") == "FAIL"
+
+
+def current_pool_review_participants(conn, task_id, *, allow_partial=False):
+    """Current bound pool review seats after substitution.
+
+    Returns:
+      None  – no pool context (legacy local-agent task)
+      []    – pool context but cannot form two independent current votes
+      [a,b] – exactly two current seats; replaced failures stay in history
+    allow_partial is only for checking a bound host-complemented review.
+    """
+    from .experience_workflow import extract_trial_verdict
+
+    runs = {str(row["id"]): dict(row) for row in conn.execute(
+        "SELECT * FROM agent_runs WHERE task_id=?", (task_id,))}
+    current = []
+    pool_context = False
+    for event in conn.execute(
+        "SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.started' ORDER BY sequence",
+        (task_id,),
+    ):
+        try:
+            payload = json.loads(event["payload_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        execution = payload.get("execution")
+        if not isinstance(execution, dict):
+            continue
+        pool = execution.get("pool_score")
+        if pool is not None or execution.get("pool_source_ref"):
+            pool_context = True
+        # purpose=review binds the vote; node config may be review or both.
+        if execution.get("purpose") != "review" or not isinstance(pool, dict):
+            continue
+        if pool.get("role") not in {None, "review", "both"}:
+            continue
+        run_id = payload.get("run_id")
+        node_id = pool.get("node_id")
+        source_ref = pool.get("source_ref")
+        run = runs.get(run_id) if isinstance(run_id, str) else None
+        if (run is None or not isinstance(node_id, str) or not node_id
+                or run.get("agent_name") != node_id or payload.get("agent") != node_id
+                or not isinstance(source_ref, str) or not source_ref.strip()
+                or (pool.get("model") is not None and not isinstance(pool.get("model"), str))):
+            continue
+        try:
+            independence = _pool_item_independence(pool)
+        except ValueError:
+            continue
+        item = {
+            "node_id": node_id,
+            "run": run,
+            "source_identity": (pool.get("entry_program") or source_ref, pool.get("model")),
+            "independence": independence,
+            "pool": pool,
+        }
+        replaced = False
+        for index, seat in enumerate(current):
+            if seat["node_id"] == node_id or seat["independence"] == independence:
+                current[index] = item
+                replaced = True
+                break
+        if replaced:
+            continue
+        if len(current) < 2:
+            current.append(item)
+            continue
+        # Third (or later) independent node: replace one failed current seat.
+        failed_index = next(
+            (index for index, seat in enumerate(current)
+             if _run_failed(seat["run"], extract_trial_verdict)),
+            None,
+        )
+        if failed_index is not None:
+            current[failed_index] = item
+
+    if not pool_context:
+        return None
+    if allow_partial:
+        return current
+    if len(current) != 2 or len({item["independence"] for item in current}) != 2:
+        return []
+    return current
+
+
 def protect_final_decision(conn, candidate):
     final = conn.execute(
         "SELECT decision FROM memory_reviews WHERE task_id=? AND stage='final' ORDER BY created_at DESC,rowid DESC LIMIT 1",
@@ -155,6 +289,83 @@ def execution_receipt(candidate, trial):
     return execution, bool(passed)
 
 
+def pool_review_verdicts(conn, task_id):
+    """Return the two bound pool votes, FAIL closed, or None for legacy local tasks."""
+    from .experience_workflow import extract_trial_verdict
+
+    participants = current_pool_review_participants(conn, task_id)
+    if participants is None:
+        return None
+    if len(participants) != 2:
+        return {"dsh:pool_invalid": "FAIL", "peer:pool_invalid": "FAIL"}
+
+    participants = sorted(participants, key=lambda item: (
+        item["source_identity"][0], item["source_identity"][1] or "", item["run"]["id"],
+    ))
+    verdicts = {}
+    for lane, item in zip(("dsh_pool_review", "peer_pool_review"), participants):
+        run = item["run"]
+        verdicts[lane] = (
+            extract_trial_verdict(run.get("output") or "") if run.get("status") == "completed" else "FAIL"
+        )
+    return verdicts
+
+
+def _host_trial_verdicts(conn, task):
+    """Read a settled host vote and its exact pool run; never invent a second vote."""
+    from .experience_workflow import extract_trial_verdict
+    from .pool_dispatch import NO_INDEPENDENT, review_vote_runs
+    from .task_participants import execution_context
+
+    event = conn.execute(
+        "SELECT payload_json FROM events WHERE task_id=? AND event_type='host.receipt_accepted' ORDER BY sequence DESC LIMIT 1",
+        (task["id"],),
+    ).fetchone()
+    if not event:
+        return None
+    accepted = json.loads(event[0])
+    receipt = accepted.get("receipt") or {}
+    provenance = json.loads(task.get("provenance_json") or "{}")
+    context = execution_context(None, task, conn)
+    host = context.get("host")
+    run_ids = accepted.get("pool_run_ids")
+    if (not host or host["id"] in context["excluded_ids"]
+            or receipt.get("reviewer_id") != host["id"]
+            or receipt.get("task_id") != task["id"]
+            or receipt.get("snapshot_sha256") != task["execution_snapshot_hash"]
+            or receipt.get("verdict") not in {"PASS", "FAIL", "NEEDS_INFO"}
+            or checksum(receipt) != accepted.get("receipt_sha256")
+            or provenance.get("kind") != "host_review"
+            or provenance.get("host_id") != host["id"]
+            or provenance.get("receipt_sha256") != accepted.get("receipt_sha256")
+            or not isinstance(run_ids, list) or provenance.get("pool_run_ids") != run_ids):
+        raise ValueError("宿主回执与冻结任务或结算来源不一致")
+    if not run_ids:
+        if accepted.get("user_chose_host") is not True or accepted.get("label") != NO_INDEPENDENT:
+            raise ValueError("宿主回执缺少独立池票且未经用户选择兜底")
+        return {"peer_host_review": receipt["verdict"]}, False
+    participants = current_pool_review_participants(conn, task["id"], allow_partial=True) or []
+    if len(run_ids) != 1 or len(participants) != 1:
+        raise ValueError("宿主回执必须绑定恰好一份独立池票")
+    participant = participants[0]
+    run = participant["run"]
+    output = run.get("output") or ""
+    actual_digest = hashlib.sha256(output.encode()).hexdigest()
+    digests = accepted.get("pool_run_digests") or {}
+    expected = digests.get(run_ids[0]) if isinstance(digests, dict) else None
+    votes = review_vote_runs(conn, task["id"])
+    vote = votes.get(participant["node_id"]) if isinstance(votes, dict) else None
+    vote_digest = hashlib.sha256((vote.get("output") or "").encode()).hexdigest() if vote else None
+    if (run["id"] != run_ids[0] or run.get("status") != "completed"
+            or participant["node_id"] in context["excluded_ids"]
+            or participant["independence"] == independence_key(*host["independence"])
+            or (expected is not None and expected != actual_digest)
+            or not vote or vote.get("id") != run_ids[0] or vote_digest != actual_digest):
+        raise ValueError("宿主回执绑定的池票不合格或来源不独立")
+    return {"dsh_pool_review": extract_trial_verdict(output),
+            "peer_host_review": receipt["verdict"]}, True
+
+
 def task_evidence(conn, candidate, approved, record):
     """Validate identity first; return actual outcomes, never caller-supplied PASS."""
     from .experience_workflow import extract_trial_verdict
@@ -184,16 +395,25 @@ def task_evidence(conn, candidate, approved, record):
     result_hash = hashlib.sha256((task.get("result") or "").encode()).hexdigest()
     if not settled or json.loads(settled[0]).get("result_sha256") != result_hash:
         raise ValueError("任务缺少可核对的原生审计结算")
-    judge = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='judge.decided' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
-    if not judge or json.loads(judge[0]).get("successful_agents", 0) < 2:
-        raise ValueError("缺少原生双审裁判记录")
-    names = {a["name"] for a in snapshot.get("agents", []) if a.get("enabled")}
-    if len(names) < 2:
-        raise ValueError("冻结计划缺少两个独立审查者")
-    runs = {r["agent_name"]: dict(r) for r in conn.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at,rowid", (task_id,))}
-    verdicts = {name: extract_trial_verdict(runs[name].get("output") or "")
-                if name in runs and runs[name]["status"] == "completed" else "FAIL" for name in names}
+    host_review = _host_trial_verdicts(conn, task)
+    independent_review = True
+    verdicts = pool_review_verdicts(conn, task_id) if host_review is None else host_review[0]
+    if host_review is not None:
+        independent_review = host_review[1]
+    if verdicts is None:
+        # Only legacy local-agent tasks require the historical judge record.
+        # Dynamic pool and host-complemented reviews prove their actual bound votes.
+        judge = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='judge.decided' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
+        if not judge or json.loads(judge[0]).get("successful_agents", 0) < 2:
+            raise ValueError("缺少原生双审裁判记录")
+        names = {a["name"] for a in snapshot.get("agents", []) if a.get("enabled")}
+        if len(names) < 2:
+            raise ValueError("冻结计划缺少两个独立审查者")
+        runs = {r["agent_name"]: dict(r) for r in conn.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at,rowid", (task_id,))}
+        verdicts = {name: extract_trial_verdict(runs[name].get("output") or "")
+                    if name in runs and runs[name]["status"] == "completed" else "FAIL" for name in names}
     return {"execution": execution, "execution_passed": passed, "verdicts": verdicts,
+            "independent_review": independent_review,
             "reviews_passed": all(v == "PASS" for v in verdicts.values()), "trial": trial}
 
 
@@ -208,8 +428,8 @@ def ingress_evidence(conn, candidate, approved, record, execution):
     返回本轮外部回执的核对结果：
     {bound, receipts, verdicts(role->结论), all_pass, disagreement}。
     未绑定回执时 bound=False，其余字段为空。
-    回执与材料包仍然必须自证一致；全数 PASS 才算通过，第二轮一 PASS 一 FAIL
-    属于“有分歧”，交用户终审，其余未全数通过的情况一律拒绝。
+    材料包必须自证一致。业务 FAIL / NEEDS_INFO 返回给 decide_round，
+    不把第一轮 FAIL 伪装成基础设施暂停；仅绑定/完整性错误抛出。
     """
     unbound = {"bound": False, "receipts": {}, "verdicts": {}, "all_pass": None,
                "disagreement": False}
@@ -242,11 +462,15 @@ def ingress_evidence(conn, candidate, approved, record, execution):
     payload = json.loads(packet["data"])
     published = [_normalize_verdict((r.get("receipt") or {}).get("verdict"))
                  for r in payload.get("reviews") or [] if isinstance(r, dict)]
-    packet_all_pass = bool(published) and _worst_verdict(published) == "PASS" and not payload.get("prior_failures")
-    # 材料包自称的 all_pass 必须与内容一致；不一致说明包被改动或版本变了。
-    if (checksum(payload) != packet["digest"] or bool(payload.get("all_pass")) != packet_all_pass
+    # Current seats decide all_pass; historical prior_failures stay audit-only.
+    current_all_pass = bool(published) and _worst_verdict(published) == "PASS"
+    legacy_all_pass = current_all_pass and not payload.get("prior_failures")
+    claimed = bool(payload.get("all_pass"))
+    if (checksum(payload) != packet["digest"]
+            or claimed not in {current_all_pass, legacy_all_pass}
             or payload.get("plan_revision") != request["revision"]):
         raise ValueError("当前材料包未全数通过或版本不一致")
+    packet_all_pass = current_all_pass
     assignments = [dict(a) for a in conn.execute("SELECT * FROM ri_assignments WHERE request_id=? AND active=1", (request["id"],))]
     if len(assignments) != 2 or {a["role"] for a in assignments} != {"dsh", "peer"}:
         raise ValueError("缺少当前独立双审任务卡")
@@ -261,22 +485,29 @@ def ingress_evidence(conn, candidate, approved, record, execution):
         if checksum(frozen_card) != frozen_digest or card.get("input_digest") != checksum(common):
             raise ValueError("审查任务卡或证据输入已变动")
         receipt_verdict = data.get("verdict")
-        if checksum(data) != receipt["digest"] or receipt_verdict not in ("PASS", "FAIL"):
+        if checksum(data) != receipt["digest"] or receipt_verdict not in ("PASS", "FAIL", "NEEDS_INFO"):
             raise ValueError("当前回执未通过或摘要不一致")
         source = conn.execute("SELECT data FROM ri_sources WHERE id=?", (assignment["source_id"],)).fetchone()
         if not source:
             raise ValueError("审查来源未登记")
         source = json.loads(source[0])
         keys = ("review_request_id", "assignment_id", "reviewer_role", "plan_revision", "reviewer_id", "source_ref", "candidate_sha256", "input_digest", "card_digest")
-        if any(data.get(k) != card.get(k) for k in keys) or data.get("plan_revision") != request["revision"]:
+        if (any(data.get(k) != card.get(k) for k in keys)
+                or type(card.get("plan_revision")) is not int
+                or not (1 <= card["plan_revision"] <= request["revision"])):
             raise ValueError("回执与当前任务卡/角色/版本不一致")
         if data.get("source_ref") != source["source_ref"] or data.get("reviewer_id") != assignment["source_id"]:
             raise ValueError("回执来源不一致")
         if data.get("started_at", 0) < execution["finished_at"]:
             raise ValueError("审查时间早于执行证据完成")
-        # 独立性按“入口程序＋模型”；旧四字段来源的任务卡没有 resource_plan，仍只看 source_ref。
-        plan = card.get("resource_plan")
-        sources.add(independence_key(source["source_ref"], plan.get("model") if isinstance(plan, dict) else None))
+        plan = card.get("resource_plan") if isinstance(card.get("resource_plan"), dict) else {}
+        identity = source["source_ref"]
+        kind = plan.get("agent_type")
+        if plan.get("interface") or plan.get("entry") or plan.get("entry_program"):
+            from .pool_dispatch import entry_program, infer_agent_type
+            identity = entry_program(plan) or identity
+            kind = infer_agent_type(plan)
+        sources.add(review_independence(identity, plan.get("model"), kind=kind))
         ids[assignment["role"]] = receipt["id"]
         verdicts[assignment["role"]] = receipt_verdict
     if len(sources) != 2 or len(set(ids.values())) != 2:
@@ -291,8 +522,9 @@ def ingress_evidence(conn, candidate, approved, record, execution):
     if packet_all_pass:
         return result
     if int(record.get("round") or 0) == 2 and set(verdicts.values()) == {"PASS", "FAIL"}:
-        # 第二轮两份回执一 PASS 一 FAIL 属于“有分歧”，不按拒绝处理，交用户终审。
-        # 第一轮、以及 FAIL 之外还夹着待补材料的情况仍然拒绝。
         result["disagreement"] = True
+        return result
+    # Business FAIL / NEEDS_INFO: hand to decide_round (consume FAIL rounds / pause NEEDS_INFO).
+    if verdicts and set(verdicts.values()) <= {"PASS", "FAIL", "NEEDS_INFO"}:
         return result
     raise ValueError("当前回执未通过或摘要不一致")

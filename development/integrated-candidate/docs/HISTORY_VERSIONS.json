@@ -383,6 +383,30 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.14；不创建备份，切换由主力在本机终端按授权执行。"
+    },
+    {
+      "version": "v1.6.16",
+      "release_date": "2026-11-18",
+      "status": "candidate",
+      "summary": "方法经验证据分流与九项审查缺口收口（方案A）：主动召回与待验证只读建议、三路线证据与受控多模态材料、动态池无固定席位替补与三态回执、价值评分准入不毁原任务结果、双保险交付确认与撤回冲正、总览四大运营投影与 B09 同库核验、确定性发版预检与运行代码/纯文档清单解耦及四套并行测试。核心数据库结构版本保持 7，不新增切换步骤；前置源码清单哈希绑定已上线 v1.6.15。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.15；不创建备份，切换由用户在终端按授权执行。"
+    },
+    {
+      "version": "v1.6.17",
+      "release_date": "2026-11-22",
+      "status": "candidate",
+      "summary": "候选版本（隔离夹具示例，尚未发布）：诊断口径字段与宿主补票选择规则——报告新增池内就绪节点与入选席位字段、区分任务掉线与节点测活期限；同源重复节点不再阻断独立未参与宿主补第二票，两份独立意见标准不放宽。日期仅为隔离夹具示例，不是实际发布日；本条措辞明确为候选，正式发布日与源码清单哈希须在冻结后按发版流程重写。",
+      "tests": {
+        "source": "以本候选RELEASE.json同源验收记录为准（候选，尚未产生）"
+      },
+      "files_manifest_sha256": "以本候选FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本候选SOURCE_MANIFEST.json为准",
+      "file_disposition": "候选记录（夹具示例）：基于本机v1.6.16 r9；日期作隔离示例，尚未发布；不创建备份，切换由用户在终端按授权执行。"
     }
   ]
 }

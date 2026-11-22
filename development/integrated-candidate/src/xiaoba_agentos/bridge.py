@@ -41,42 +41,28 @@ def _submit(
     route_decision_id: str,
     idempotency_key: Optional[str] = None,
     task_context: str = "",
+    problem_key: str = "",
 ) -> str:
-    frozen_context = freeze_context(task_context)
-    enabled_names = [agent.name for agent in config.agents if agent.enabled]
-    memory = MemoryBridge(config, store)
-    assignment = memory.agent_contexts(prompt, enabled_names)
-    context = memory.render_hits(assignment["hits"])
-    skills = SkillRegistry(config).select_context(prompt)
-    snapshot = {
-        "prompt": prompt,
-        "task_context": frozen_context,
-        "knowlp_context": context,
-        "knowlp_context_hash": hashlib.sha256(context.encode("utf-8")).hexdigest(),
-        "memory_hits": assignment["hits"],
-        "retrieval_receipt": assignment.get("receipt"),
-        "agent_memory_contexts": assignment["contexts"],
-        "skills": skills["selected"],
-        "skill_context": skills["context"],
-        "skill_context_hash": skills["context_sha256"],
-        "agents": [dict(agent.raw) for agent in config.agents],
-        "worker": dict(config.worker),
-    }
-    task_id = store.submit(
-        prompt,
-        int(config.worker["max_attempts"]),
-        priority,
-        snapshot=snapshot,
-        idempotency_key=idempotency_key,
-        session_id=session_id,
-        route_decision_id=route_decision_id,
-        provenance={"kind": "agentos_multi_adjudicated", "status": "pending"},
-    )
-    for hit in assignment["hits"]:
-        source_task_id = hit.get("source_task_id")
-        if source_task_id and source_task_id != task_id:
-            store.record_memory_reuse(task_id, str(source_task_id), str(hit.get("path") or ""))
-    return task_id
+    # One submission implementation; retrieval never records adoption/reuse.
+    from .cli import _submit_task
+    return _submit_task(config, store, prompt, priority, session_id=session_id,
+                        route_decision_id=route_decision_id,
+                        idempotency_key=idempotency_key, task_context=task_context,
+                        problem_key=problem_key,
+                        memory_bridge_cls=MemoryBridge,
+                        skill_registry_cls=SkillRegistry)
+
+
+def _submission_result(store: EventStore, task_id: str) -> Dict[str, Any]:
+    task = store.get_task(task_id)
+    if task is None:
+        return {"task_id": task_id, "status": "pending"}
+    snapshot = json.loads(task["execution_snapshot_json"])
+    return {"task_id": task_id, "status": task["status"],
+            **{key: snapshot[key] for key in (
+                "trial_suggestions", "trial_suggestion_status", "trial_suggestion_error"
+            ) if key in snapshot}}
+
 
 
 def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[str, Any]:
@@ -119,6 +105,7 @@ def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[st
                 store,
                 config,
                 task_context=request.get("task_context", ""),
+                problem_key=str(request.get("problem_key") or ""),
                 priority=int(request.get("priority", 0)),
                 session_id=str(session["id"]),
                 route_decision_id=str(route["id"]),
@@ -126,7 +113,7 @@ def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[st
             )
         except (SkillRegistryError, ValueError) as exc:
             return _envelope(False, error=str(exc))
-        return _envelope(True, {"task_id": task_id, "status": "pending", "route_id": route["id"]})
+        return _envelope(True, {**_submission_result(store, task_id), "route_id": route["id"]})
     if command == "intake":
         prompt = request.get("prompt")
         if not isinstance(prompt, str) or not prompt or len(prompt) > 100000:
@@ -169,6 +156,8 @@ def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[st
             "reason_code": route["reason_code"], "confidence": route["confidence"],
             "answer_provenance": _answer_provenance(str(route["route"])),
         }
+        from .experience_workflow import suggest_trials
+        response.update(suggest_trials(store, request.get("problem_key"), prompt))
         if bool(request.get("submit")) and route["route"] == AGENTOS_MULTI:
             blockers = execution_blockers(config, store)
             if blockers and not bool(request.get("queue_when_blocked")):
@@ -181,6 +170,7 @@ def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[st
                     store,
                     config,
                     task_context=request.get("task_context", ""),
+                    problem_key=str(request.get("problem_key") or ""),
                     priority=int(request.get("priority", 0)),
                     session_id=str(session["id"]),
                     route_decision_id=str(route["id"]),
@@ -188,7 +178,7 @@ def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[st
                 )
             except (SkillRegistryError, ValueError) as exc:
                 return _envelope(False, error=str(exc))
-            response["status"] = "pending"
+            response.update(_submission_result(store, response["task_id"]))
         return _envelope(True, response)
     if command == "review_queue":
         try:

@@ -5,10 +5,11 @@
 `agentos_source_manifest_sha256`（第 580 行）；每个已执行步骤的哈希必须等于
 `.runtime/release-steps.json` 里记录的哈希（第 616 行）。
 
-下面的常量是只读抄自线上的真实值：v1.6.14 的清单哈希 2026-11-12 抄自线上
-（`.runtime/releases/v1.6.14/RELEASE.json` 的 `agentos_source_manifest_sha256`，与线上根目录
-`SOURCE_MANIFEST.json` 的 SHA-256 一致）；v1.6.13 的值保留作“仍绑上一版会被拒”的反例；步骤哈希 2026-11-02 抄自
-`.runtime/release-steps.json`。测试现场全部建在临时目录里，不读写线上。
+下面的常量是只读抄自已验证绑定：活动前驱为 v1.6.16 r9，清单哈希取本机活动发布
+`4ad41515bf772287fe7517f83c33ec00c0123bfcaf79cfeccbe63b95db5d2461`；旧版 v1.6.15 的清单哈希
+`72e81d9d0d47f0c6c424544a07d6b747127ec83ace49cf6dec481e24c1a567fe` 保留作“仍绑上一版会被拒”的错误前驱反例；
+步骤哈希 2026-11-02 抄自 `.runtime/release-steps.json`。RECORDED_STEPS 四步逐字节不变，篡改拒绝断言不变。
+测试现场全部建在临时目录里，不读写线上。
 """
 import json
 import tempfile
@@ -19,8 +20,8 @@ from test_switch_release import Fixture, seal, switch, write
 
 ROOT = Path(__file__).resolve().parents[1]
 
-LIVE_V1614_SOURCE_MANIFEST_SHA256 = '1d72d5f976a884935b93839928571817e13690ffd8a81096abf7e353469903fc'
-V1613_SOURCE_MANIFEST_SHA256 = '830f9ea2cbc4cc0f975aafd2ccc961efd495e236c4ca2e895c1ca6fdd1dfaba4'
+LIVE_V1616_R9_SOURCE_MANIFEST_SHA256 = '4ad41515bf772287fe7517f83c33ec00c0123bfcaf79cfeccbe63b95db5d2461'
+STALE_V1615_SOURCE_MANIFEST_SHA256 = '72e81d9d0d47f0c6c424544a07d6b747127ec83ace49cf6dec481e24c1a567fe'
 RECORDED_STEPS = {
     '0002-skills-root': ('v1.6.1', '71ca23fde7feb9d89db4345f264b728332901c38caaed9d6a4f7101b6b78ed48'),
     '0003-skills-index': ('v1.6.1', '05eecdb2dc836a7e1ab0e95343002b598d209bb5c6cc5cdf2ffa8a20498ded61'),
@@ -78,25 +79,25 @@ class DeploymentPredecessorBindingTest(unittest.TestCase):
         config['skills'] = {'root_dir': str(assistant / 'skills'), 'index_path': str(assistant / 'skills/index.json')}
         config['knowledge'] = {'index_path': str(assistant / '系统/价值文件索引/index.json')}
         write(self.layout.config, switch.encoded(config))
-        return ({'version': 'v1.6.14', 'database_schema_version': 7,
-                 'agentos_source_manifest_sha256': LIVE_V1614_SOURCE_MANIFEST_SHA256},
-                {'version': 'v1.6.15', 'database_schema_version': 7})
+        return ({'version': 'v1.6.16', 'database_schema_version': 7,
+                 'agentos_source_manifest_sha256': LIVE_V1616_R9_SOURCE_MANIFEST_SHA256},
+                {'version': 'v1.6.17', 'database_schema_version': 7})
 
     def test_repository_declaration_binds_the_live_release_and_keeps_executed_steps(self):
         declaration = self.declaration()
         # 抄录的常量必须仍然等于仓库声明本身，否则这个测试测的是别的东西。
-        self.assertEqual(LIVE_V1614_SOURCE_MANIFEST_SHA256, declaration['from_source_manifest_sha256'])
+        self.assertEqual(LIVE_V1616_R9_SOURCE_MANIFEST_SHA256, declaration['from_source_manifest_sha256'])
         self.assertEqual(sorted(RECORDED_STEPS), sorted(step['id'] for step in declaration['steps']))
         for step in declaration['steps']:
             self.assertEqual(RECORDED_STEPS[step['id']][1], switch.digest(switch.encoded(step)),
                              f"{step['id']} 与线上已执行记录不同，预检会报 executed step has been modified")
         old, new = self.scene(declaration)
         spec = switch.checked_spec(self.layout, old, new)
-        self.assertEqual(LIVE_V1614_SOURCE_MANIFEST_SHA256, spec['from_source_manifest_sha256'])
+        self.assertEqual(LIVE_V1616_R9_SOURCE_MANIFEST_SHA256, spec['from_source_manifest_sha256'])
 
     def test_declaration_still_bound_to_the_previous_release_is_rejected(self):
         declaration = self.declaration()
-        declaration['from_source_manifest_sha256'] = V1613_SOURCE_MANIFEST_SHA256
+        declaration['from_source_manifest_sha256'] = STALE_V1615_SOURCE_MANIFEST_SHA256
         old, new = self.scene(declaration)
         with self.assertRaisesRegex(switch.SwitchError, 'deployment predecessor binding mismatch'):
             switch.checked_spec(self.layout, old, new)
@@ -112,7 +113,7 @@ class DeploymentPredecessorBindingTest(unittest.TestCase):
 
     def test_this_release_adds_no_step(self):
         self.assertEqual(sorted(RECORDED_STEPS), sorted(step['id'] for step in self.declaration()['steps']),
-                         'v1.6.15 不新增编号步骤：声明里的步骤必须正好是线上已执行的那四个')
+                         'v1.6.16 不新增编号步骤：声明里的步骤必须正好是线上已执行的那四个')
 
 
 if __name__ == '__main__':

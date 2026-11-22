@@ -166,6 +166,8 @@ pre{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;pad
 .rc-search{padding:10px 12px;border-bottom:1px solid var(--line)}
 .rc-search input{width:100%;border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:6px 10px;font-size:13px}
 .rc-list{list-style:none;margin:0;padding:6px;display:grid;gap:4px;max-height:62vh;overflow:auto}
+.rc-returned-group>details>summary{padding:8px 10px;color:var(--muted);font-size:12px;cursor:pointer}
+.rc-returned-items{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:4px}
 .rc-item{width:100%;text-align:left;border:1px solid transparent;background:none;border-radius:6px;padding:9px 10px;cursor:pointer;display:grid;gap:5px}
 .rc-item:hover{background:var(--panel-2)}
 .rc-item[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent)}
@@ -211,6 +213,14 @@ dialog.rc-dialog::backdrop{background:rgba(10,16,26,.55)}
 .rc-dialog form{display:grid;gap:12px;padding:20px}
 .rc-dialog h3{margin:0;font-size:18px;font-weight:700}
 .rc-dialog textarea{font-family:var(--font-data);font-size:12px;line-height:1.6;color:var(--ink);border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:10px 12px;min-height:240px;width:100%;resize:vertical}
+.rc-basis-confirmations{border:1px solid var(--line);border-radius:6px;padding:12px;max-height:32vh;overflow:auto}
+.rc-basis-confirmations h4{margin:0 0 10px;font-size:14px}
+.rc-basis-card{border-top:1px solid var(--line);padding:10px 0;display:grid;gap:8px}
+.rc-basis-card:first-child{border-top:0;padding-top:0}
+.rc-basis-card pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 0;font-size:12px}
+.rc-basis-evidence{margin:4px 0 0;padding-left:20px;display:grid;gap:6px}
+.rc-basis-confirm-row{display:flex;gap:8px;align-items:flex-start;padding-top:8px}
+.rc-basis-trust{margin:4px 0 0;color:var(--muted);font-size:12px}
 .rc-feedback{white-space:pre-wrap;font-size:13px;margin:0;min-height:1.5em}
 .rc-dialog .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .rc-frozen-head .lede{margin:0;font-size:12.5px;color:var(--muted)}
@@ -242,6 +252,30 @@ dialog.rc-dialog::backdrop{background:rgba(10,16,26,.55)}
 .flow b{color:var(--ink);font-weight:500}
 .src-badge{font-size:11.5px;padding:1px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-weight:500}
 .src-badge.demo{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+/* 卡07 C07-03：运行台账与评分的只读投影面板 */
+.ops-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;padding:14px}
+.ops-cell{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.ops-cell h3{font-size:12.5px;margin:0 0 8px;color:var(--ink);font-weight:600}
+.ops-body{font-size:12px;color:var(--muted);line-height:1.6;max-height:230px;overflow:auto}
+.ops-body .op-row{display:flex;gap:8px;justify-content:space-between;border-top:1px solid var(--line);padding:4px 0}
+.ops-body .op-row:first-child{border-top:0}
+.ops-body .op-num{font-variant-numeric:tabular-nums;color:var(--ink)}
+.ops-body .op-crit{color:var(--crit)}
+/* 卡07/C06：单条任务交付确认 */
+.delivery-list{list-style:none;margin:0;padding:0}
+.delivery-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:start;padding:12px 14px;border-top:1px solid var(--line)}
+.delivery-list li:first-child{border-top:0}
+.delivery-name{font-weight:600;overflow-wrap:anywhere}
+.delivery-meta{margin:4px 0 0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.delivery-detail{display:grid;gap:10px;padding:14px;border-top:1px solid var(--line);min-width:0}
+.delivery-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px;margin:0;font-size:12.5px}
+.delivery-facts dt{color:var(--muted)} .delivery-facts dd{margin:0;overflow-wrap:anywhere}
+.delivery-pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;margin:6px 0 0;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);font-size:11.5px}
+.delivery-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.delivery-actions .btn.withdraw{border-color:var(--warn);color:var(--warn)}
+.delivery-alert{margin:0;color:var(--crit);font-size:12.5px;white-space:pre-wrap}
+@media (max-width:720px){.delivery-list li{grid-template-columns:minmax(0,1fr)}.delivery-facts{grid-template-columns:minmax(0,1fr)}.delivery-facts dd{margin-bottom:6px}}
+.ops-body .op-none{color:var(--muted);font-style:italic}
 </style>
 <style>
 /* =========================================================
@@ -1136,6 +1170,18 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
     </div>
     <p class="flow" id="reviewRecent"></p>
   </section>
+
+  <!-- 卡07 C07-03：今日台账 / 评分 / 排名 / B19。数据来自 /api/status 的只读 ops 投影 -->
+  <section class="panel" style="margin-top:14px" aria-labelledby="opsTitle">
+    <div class="panel-head"><h2 id="opsTitle">运行台账与评分 · 只读投影</h2><div class="spacer"></div>
+      <span class="foot" id="opsStatus"></span></div>
+    <div class="ops-grid">
+      <div class="ops-cell"><h3>今日任务 · 执行者 · 进度</h3><div id="opsToday" class="ops-body"></div></div>
+      <div class="ops-cell"><h3>Agent＋模型周评分</h3><div id="opsWeekly" class="ops-body"></div></div>
+      <div class="ops-cell"><h3>正式经验永久总分排名</h3><div id="opsRanking" class="ops-body"></div></div>
+      <div class="ops-cell"><h3>同一 Agent 连续不合格记录（B19）</h3><div id="opsB19" class="ops-body"></div></div>
+    </div>
+  </section>
   <p class="foot" id="footNote"></p>
   </div>
 
@@ -1154,6 +1200,34 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
       </div>
     </section>
     <p class="rc-notice" id="rcNotice" hidden></p>
+    <section class="panel" id="valueReviewPanel" aria-labelledby="valueReviewTitle">
+      <div class="panel-head"><h2 id="valueReviewTitle">待价值评分</h2><span class="foot" id="valueReviewSummary">正在读取</span>
+        <div class="spacer"></div><button class="btn" type="button" id="valueReviewRefresh">刷新</button></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>候选 task_id</th><th>正文 SHA-256</th><th>候选状态</th><th>最近派工</th><th>操作</th></tr></thead>
+          <tbody id="valueReviewRows"><tr><td colspan="5" class="none">正在读取…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="flow" id="valueReviewMessage" role="status" aria-live="polite"></p>
+    </section>
+    <section class="panel" id="taskDeliveryPanel" aria-labelledby="taskDeliveryTitle">
+      <div class="panel-head"><h2 id="taskDeliveryTitle">任务交付确认</h2><span class="foot" id="taskDeliverySummary">正在读取</span>
+        <div class="spacer"></div><button class="btn" type="button" id="taskDeliveryRefresh">刷新</button></div>
+      <p class="flow">逐条核对任务、成品版本与完成依据。这里的交付确认只记录用户决定，不批准或发布经验；撤回仅在已有接受记录时开放。</p>
+      <ul class="delivery-list" id="taskDeliveryList"><li class="none">正在读取…</li></ul>
+      <div class="delivery-detail" id="taskDeliveryDetail" hidden>
+        <div class="delivery-actions"><strong id="taskDeliveryTitleDetail"></strong><span class="spacer"></span>
+          <button class="btn primary" type="button" id="taskDeliveryAccept" hidden>接受此版本</button>
+          <button class="btn withdraw" type="button" id="taskDeliveryWithdraw" hidden>撤回验收</button>
+          <button class="btn primary" type="button" id="taskDeliveryRetry" hidden>重试上次提交</button></div>
+        <dl class="delivery-facts" id="taskDeliveryFacts"></dl>
+        <details><summary>查看任务完成内容</summary><pre class="delivery-pre" id="taskDeliveryResult"></pre></details>
+        <details><summary>查看应用记录</summary><pre class="delivery-pre" id="taskDeliveryApplications"></pre></details>
+        <details id="taskDeliveryHistoryBox"><summary>查看最近交付记录</summary><pre class="delivery-pre" id="taskDeliveryHistory"></pre></details>
+        <p class="delivery-alert" id="taskDeliveryMessage" role="status" aria-live="polite"></p>
+      </div>
+    </section>
     <section class="panel" id="rcKept" aria-labelledby="rcKeptTitle" hidden>
       <div class="panel-head rc-kept-head"><h2 id="rcKeptTitle">有文件等你核对</h2><span class="pill warn num" id="rcKeptCount">0</span>
         <div class="spacer"></div><p class="lede">经验发布失败时，小八把被换下来的原文件留在原处，不自动删除。看过之后逐个处理；移到废纸篓的还能找回。</p></div>
@@ -1185,6 +1259,17 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
         </div>
       </form>
     </dialog>
+    <dialog class="rc-dialog" id="taskDeliveryDialog" aria-labelledby="taskDeliveryDialogTitle">
+      <form method="dialog" onsubmit="return false">
+        <div class="rc-dialog-head"><h3 id="taskDeliveryDialogTitle">确认任务交付</h3>
+          <button class="rc-close" type="button" id="taskDeliveryDialogClose" aria-label="关闭" title="关闭">×</button></div>
+        <dl class="fz-facts" id="taskDeliveryConfirmFacts"></dl>
+        <p class="fz-caution" id="taskDeliveryCaution"></p>
+        <p class="rc-feedback" id="taskDeliveryFeedback" role="status" aria-live="polite"></p>
+        <div class="row"><button class="btn" type="button" id="taskDeliveryCancel">返回</button>
+          <button class="btn primary" type="button" id="taskDeliveryConfirm">确认并记录</button></div>
+      </form>
+    </dialog>
 
     <div class="rc-grid">
       <aside class="panel rc-queue">
@@ -1206,7 +1291,7 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
           <div class="rc-section">
             <h3>完整候选内容</h3>
             <div class="rc-body" id="rcBody">—</div>
-            <section id="rcTrialPanel" hidden><h3>隔离验证与独立审查</h3><pre class="rc-mono" id="rcTrialEvidence" style="white-space:pre-wrap;max-height:24rem;overflow:auto"></pre><button class="btn" type="button" id="rcTrialRequest">复制验证任务请求</button></section>
+            <section id="rcTrialPanel" hidden><h3 id="rcTrialTitle">方法核验状态</h3><pre class="rc-mono" id="rcTrialEvidence" style="white-space:pre-wrap;max-height:24rem;overflow:auto"></pre><button class="btn" type="button" id="rcTrialRequest">复制隔离验证任务请求</button></section>
           </div>
           <div class="rc-section">
             <details><summary>查看原始证据文件与历次裁决</summary>
@@ -1252,6 +1337,11 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
         </div>
         <p class="foot" id="rcSummaryCount"></p>
         <div class="rc-phase" data-for="review">
+          <section class="rc-basis-confirmations" id="rcBasisConfirmations" hidden aria-labelledby="rcBasisTitle">
+            <h4 id="rcBasisTitle">方法主张分类与核验依据</h4>
+            <p class="rc-basis-trust">请逐项核对主张类别与核验路线。如有分类错误，返回候选，选择“需要修改”并写明需要修正的主张。</p>
+            <div id="rcBasisItems"></div>
+          </section>
           <textarea id="rcOutput" readonly aria-label="综合裁决交接文本"></textarea>
         </div>
         <div class="rc-phase" data-for="progress">
@@ -1613,6 +1703,9 @@ function ingest(s){
   if(Array.isArray(s.links)) State.links = s.links;
   if(Array.isArray(s.agents)) State.agents = s.agents;
   State.review = (s.reviewQueue && typeof s.reviewQueue==="object") ? s.reviewQueue : null;
+  // 卡07 C07-03：ops 投影整体替换（与 events 无关），读不到时明确置 unavailable，不缓存成假健康。
+  State.ops = (s.ops && typeof s.ops==="object") ? s.ops : null;
+  State.nodeHealth = (s.nodeHealth && typeof s.nodeHealth==="object") ? s.nodeHealth : null;
   if(Array.isArray(s.events)){ if(s.eventsMode==="replace") State.events = s.events.slice(); else State.events.unshift(...s.events); }
   State.events.length = Math.min(State.events.length, 300);
   KPI_KEYS.forEach(k=>{ const v=State.metrics[k]; if(typeof v==="number"){ State.hist[k].push(v); if(State.hist[k].length>HIST) State.hist[k].shift(); } });
@@ -1810,7 +1903,43 @@ function renderTop(){
     ? "实时数据：运行总览只读读取本机 .runtime 下的数据库、Worker 状态与日志，并读取裁决中心的待审队列；裁决由你在“裁决中心”页确认后，经监看中心看护的裁决后端写入。"+(State.system.note? " "+State.system.note : "")
     : "当前是按真实流程推演的演示数据，数值不是你的实际运行情况。在 Mac 上运行 xiaoba_monitor.py 后打开 http://127.0.0.1:8799/ 即可看到实时状态。";
 }
-function renderAll(){ renderTop(); renderKpis(); renderTopo(); renderDetail(); renderAgents(); renderReview(); renderLog(); }
+// 卡07 C07-03：把 ops 投影渲染成人可读文本；每一块都区分“不可读/无样本/有数据”。
+function opsUnavailableText(block){ return !block || block.available!==true ? "读取不可用："+((block&&block.problems||[])[0]||"尚未取得数据") : null; }
+function opsProblemsHtml(block){
+  return (block&&block.problems||[]).slice(0,3).map(p=>`<div class="op-crit">${esc(p)}</div>`).join("");
+}
+function opsTodayHtml(block){
+  const bad=opsUnavailableText(block); if(bad) return `<div class="op-crit">${esc(bad)}</div>`;
+  const warning=opsProblemsHtml(block), items=(block&&block.items)||[]; if(!items.length) return warning+`<div class="op-none">今天暂无任务记录</div>`;
+  return warning+items.slice(0,30).map(it=>`<div class="op-row"><span>${esc(it.title||it.task_id||"—")}</span><span class="op-num">${esc((it.executor||[]).join("、")||"未占用")} · ${esc(it.progress||it.status||"—")}</span></div>`).join("");
+}
+function opsWeeklyHtml(block){
+  const bad=opsUnavailableText(block); if(bad) return `<div class="op-crit">${esc(bad)}</div>`;
+  const warning=opsProblemsHtml(block), items=(block&&block.items)||[]; if(!items.length) return warning+`<div class="op-none">本周尚无合格评分样本</div>`;
+  return warning+items.slice(0,20).map(g=>`<div class="op-row"><span>${esc(g.reviewer)} · ${esc(g.model||"未登记模型")}${g.role?" · "+esc(g.role):""}</span><span class="op-num">${g.points} 分 / ${g.tasks} 次 · ${Math.round((g.success_rate||0)*100)}%</span></div>`).join("");
+}
+function opsRankingHtml(block){
+  const bad=opsUnavailableText(block); if(bad) return `<div class="op-crit">${esc(bad)}</div>`;
+  const warning=opsProblemsHtml(block), items=(block&&block.items)||[]; if(!items.length) return warning+`<div class="op-none">暂无正式经验复用总分</div>`;
+  return warning+items.slice(0,20).map((g,i)=>`<div class="op-row"><span>#${i+1} ${esc(g.source_task_id)}</span><span class="op-num">${g.score} 分 · ${g.used} 次应用</span></div>`).join("");
+}
+function opsB19Html(block){
+  const bad=opsUnavailableText(block); if(bad) return `<div class="op-crit">${esc(bad)}</div>`;
+  const warning=opsProblemsHtml(block), items=(block&&block.items)||[]; if(!items.length) return warning+`<div class="op-none">尚无连续不合格样本</div>`;
+  return warning+items.slice(0,20).map(it=>`<div class="op-row"><span>${esc(it.reviewer)} · ${esc(it.model||"未登记模型")}</span><span class="op-num op-crit">连续 ${it.consecutive} 次不合格</span></div>`).join("");
+}
+function renderOps(){
+  const ops=State.ops, nh=State.nodeHealth;
+  const status = !ops ? "尚未读取只读投影"
+    : ops.available===false ? "投影读取不可用，未缓存成健康"
+    : (nh ? "节点健康来源："+(nh.source==="agent_pool"?"动态 Agent 池（ready "+nh.ready+"/"+nh.enabled+"）":(nh.source==="unavailable"?"不可用":"未知")) : "只读投影已载入");
+  $("opsStatus").textContent = status;
+  $("opsToday").innerHTML = opsTodayHtml(ops&&ops.todayLedger);
+  $("opsWeekly").innerHTML = opsWeeklyHtml(ops&&ops.weeklyScores);
+  $("opsRanking").innerHTML = opsRankingHtml(ops&&ops.permanentRanking);
+  $("opsB19").innerHTML = opsB19Html(ops&&ops.b19);
+}
+function renderAll(){ renderTop(); renderKpis(); renderTopo(); renderDetail(); renderAgents(); renderReview(); renderOps(); renderLog(); }
 
 /* =========================================================
    7. 启动：由 xiaoba_monitor.py 托管时自动切到实时数据
@@ -2944,8 +3073,9 @@ const ReviewCenter = (() => {
   const when = sec=>{ const d=new Date(sec*1000); return isNaN(d)? "—" : d.toLocaleString("zh-CN",{hour12:false}); };
   const day = sec=>{ const d=new Date(sec*1000); return isNaN(d)? "—" : d.toLocaleDateString("zh-CN"); };
 
-  let state=null, selected=null, detail=null, ticket=0, saved={}, drafts={}, packet=null, submitting=false, wanted=null;
-  let packetReviewBaseline=new Set(), packetTitles={}, progressAttempt=0;
+  let state=null, selected=null, detail=null, ticket=0, saved={}, drafts={}, packet=null, submitting=false, wanted=null, returnedExpanded=false;
+  let refreshSeq=0;   // 卡07 C07-03：轮询请求序号，迟到响应不得覆盖新依据/新详情
+  let packetReviewBaseline=new Set(), packetDetails={}, progressAttempt=0;
   try{ drafts = JSON.parse(localStorage.getItem(DRAFT_KEY)||"{}") || {}; }catch(e){ drafts={}; }
   const stash = ()=>{ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts)); }catch(e){} };
   const forget = id=>{ delete saved[id]; delete drafts[id]; stash(); };
@@ -2958,6 +3088,248 @@ const ReviewCenter = (() => {
     if(!res.ok) throw new Error(data && data.error || "连接失败（HTTP "+res.status+"）");
     return data;
   }
+
+  let valueQueueBusy=false;
+  const VALUE_DISPATCH_LABEL={not_started:"尚未派工",blocked:"等待审查节点",started:"派工中断或待续",failed:"评分失败",waiting_receipts:"等待双审回执"};
+  async function refreshValueQueue(preserveMessage=false){
+    if(valueQueueBusy) return;
+    valueQueueBusy=true;
+    try{
+      const response=await fetch("/api/agent-pool/value-review-queue",{cache:"no-store"});
+      let data; try{data=await response.json();}catch(e){throw new Error("返回内容无法解析（HTTP "+response.status+"）");}
+      if(!response.ok || !data.ok) throw new Error(data.error||"读取失败（HTTP "+response.status+"）");
+      const items=Array.isArray(data.items)?data.items:[];
+      const rows=$("valueReviewRows"); rows.replaceChildren();
+      $("valueReviewSummary").textContent=items.length+" 条待评分";
+      if(!preserveMessage) $("valueReviewMessage").textContent="";
+      if(!items.length){ const row=document.createElement("tr"), cell=document.createElement("td"); cell.colSpan=5; cell.className="none"; cell.textContent="当前没有待价值评分候选"; row.append(cell); rows.append(row); return; }
+      for(const item of items){
+        const row=document.createElement("tr"), idCell=document.createElement("td"), hashCell=document.createElement("td"), statusCell=document.createElement("td"), dispatchCell=document.createElement("td"), actionCell=document.createElement("td");
+        idCell.textContent=item.task_id||"—";
+        const hash=document.createElement("code"); hash.textContent=item.candidate_sha256||"—"; hash.style.overflowWrap="anywhere"; hashCell.append(hash);
+        statusCell.textContent="待价值评分";
+        // 卡07 C07-03：顶层 item.reason 是未评分/回执缺项的原因，必须与派工状态分开显示。
+        if(item.reason){ const why=document.createElement("div"); why.className="foot"; why.textContent=item.reason; statusCell.append(why); }
+        const dispatch=item.dispatch||{status:"not_started",reason:""};
+        dispatchCell.textContent=VALUE_DISPATCH_LABEL[dispatch.status]||dispatch.status||"状态未知";
+        if(dispatch.reason){ const reason=document.createElement("div"); reason.className="foot"; reason.textContent=dispatch.reason; dispatchCell.append(reason); }
+        const button=document.createElement("button"); button.type="button"; button.className="btn primary";
+        button.textContent=dispatch.status==="not_started"?"开始评分":dispatch.status==="waiting_receipts"||dispatch.status==="started"?"继续评分":"重试评分";
+        button.addEventListener("click",()=>dispatchValueReview(item,button)); actionCell.append(button);
+        row.append(idCell,hashCell,statusCell,dispatchCell,actionCell); rows.append(row);
+      }
+    }catch(error){
+      $("valueReviewSummary").textContent="队列读取失败";
+      $("valueReviewMessage").textContent="待评分状态暂不可读："+String(error.message||error)+"。候选处理结果未作推断。";
+    }finally{valueQueueBusy=false;}
+  }
+  async function dispatchValueReview(item,button){
+    if(!item?.task_id || !item?.candidate_sha256 || button.disabled) return;
+    button.disabled=true; const prior=button.textContent; button.textContent="评分中…";
+    $("valueReviewMessage").textContent="正在按 Agent 池审查角色派工。";
+    try{
+      const response=await fetch("/api/agent-pool/value-review-dispatch",{
+        method:"POST",cache:"no-store",headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN},
+        body:JSON.stringify({candidate_id:item.task_id,candidate_sha256:item.candidate_sha256})
+      });
+      let data; try{data=await response.json();}catch(e){throw new Error("返回内容无法解析（HTTP "+response.status+"）");}
+      if(!response.ok || !data.ok) throw new Error(data.error||"派工失败（HTTP "+response.status+"）");
+      const result=data.result||{};
+      if(result.route==="completed"){
+        $("valueReviewMessage").textContent="双审已结算；候选已进入初审，或已按价值规则结束。";
+        refresh(true);
+      }else{
+        $("valueReviewMessage").textContent=(result.reason||"派工未完成")+" 候选仍留在待价值评分队列。";
+      }
+    }catch(error){
+      $("valueReviewMessage").textContent="评分派工失败，候选仍留在待价值评分队列："+String(error.message||error);
+    }finally{
+      button.disabled=false; button.textContent=prior;
+      await refreshValueQueue(true);
+    }
+  }
+
+  /* ---- 单条任务交付确认：读取可轮询，写入只在用户二次确认后发送 ---- */
+  let taskDeliveries=null, taskDeliveryDetail=null, taskDeliveryBusy=false;
+  let taskDeliverySelection=null, taskDeliveryDetailRequest=0;
+  const taskDeliveryPendingPackets=new Map();
+  function deliveryActionLabel(value){ return value==="withdraw"?"撤回验收":"接受此版本"; }
+  function deliveryDigest(value){ return JSON.stringify(value); }
+  function renderTaskDeliveries(){
+    const list=$("taskDeliveryList"), items=(taskDeliveries&&Array.isArray(taskDeliveries.items))?taskDeliveries.items:[];
+    list.replaceChildren();
+    const problems=(taskDeliveries&&taskDeliveries.problems)||[];
+    $("taskDeliverySummary").textContent=taskDeliveries?items.length+" 项待核对"+(problems.length?" · "+problems.length+" 项有问题":""):"暂不可用";
+    for(const problem of problems){
+      const row=document.createElement("li"), body=document.createElement("div"), name=document.createElement("strong"), why=document.createElement("p");
+      name.className="delivery-name";name.textContent=problem.task_id||"无法识别的任务";
+      why.className="delivery-alert";why.textContent=problem.reason||"交付材料不可读";
+      body.append(name,why);row.append(body);list.append(row);
+    }
+    if(!items.length&&!problems.length){const row=document.createElement("li");row.className="none";row.textContent=taskDeliveries?"当前没有待确认的任务交付。":"正在读取…";list.append(row);}
+    for(const item of items){
+      const row=document.createElement("li"), body=document.createElement("div"), name=document.createElement("div"), meta=document.createElement("p"), button=document.createElement("button");
+      name.className="delivery-name";name.textContent=item.task_id||"—";
+      const artifact=item.artifact||{};
+      const accepted=(item.expected&&item.expected.latest_delivery_event_id)||null;
+      meta.className="delivery-meta";
+      meta.textContent=[artifact.version||"版本未标记",artifact.path||"",artifact.sha256?"SHA-256 "+artifact.sha256:"",accepted?"已有验收记录":"尚无验收记录"].filter(Boolean).join(" · ");
+      button.type="button";button.className="btn";button.textContent="核对";button.addEventListener("click",()=>openTaskDelivery(item.task_id,artifact.version));
+      body.append(name,meta);row.append(body,button);list.append(row);
+    }
+  }
+  async function refreshTaskDeliveries(){
+    if(taskDeliveryBusy)return;
+    taskDeliveryBusy=true;
+    try{
+      const value=await api("deliveries");
+      if(!value||!Array.isArray(value.items)||!Array.isArray(value.problems))throw new Error("任务交付清单格式无效");
+      taskDeliveries=value;renderTaskDeliveries();
+    }catch(error){
+      if(!taskDeliveries){taskDeliveries={items:[],problems:[{reason:String(error.message||error)}]};renderTaskDeliveries();}
+      $("taskDeliverySummary").textContent="读取失败";
+    }finally{taskDeliveryBusy=false;}
+  }
+  function renderTaskDeliveryDetail(){
+    const detail=taskDeliveryDetail, panel=$("taskDeliveryDetail");
+    if(!detail){panel.hidden=true;return;}
+    const pending=taskDeliveryPendingPackets.get(detail.task_id);
+    panel.hidden=false;
+    const task=detail.real_task||{}, artifact=detail.artifact||{}, expected=detail.expected||{}, history=detail.latest_delivery;
+    $("taskDeliveryTitleDetail").textContent=task.description||detail.task_id||"任务交付";
+    const facts=[
+      ["任务编号",detail.task_id], ["工作区",task.workspace], ["授权依据",task.authorization_ref],
+      ["成品版本",artifact.version], ["成品位置",artifact.path], ["成品 SHA-256",artifact.sha256],
+      ["完成事件",expected.completion_event_id], ["完成正文 SHA-256",expected.result_sha256],
+      ["应用记录",Array.isArray(detail.applications)?detail.applications.length:0],
+      ["当前交付状态",history?(history.decision==="accept"?"已接受":"已撤回"):"尚无记录"],
+      ["冻结依据 SHA-256",detail.expected_sha256]
+    ];
+    const target=$("taskDeliveryFacts");target.replaceChildren();
+    for(const [label,value] of facts){if(value===undefined||value===null||value==="")continue;const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=typeof value==="object"?JSON.stringify(value):String(value);target.append(dt,dd);}
+    $("taskDeliveryResult").textContent=typeof detail.result==="string"?detail.result:"任务完成内容不可用";
+    $("taskDeliveryApplications").textContent=JSON.stringify((detail.applications||[]).map(app=>({
+      application_id:app.application_id,candidate_id:app.candidate_id,candidate_sha256:app.candidate_sha256,
+      artifact:app.artifact,application_location:app.application_location,steps_applied:app.steps_applied,
+      deviations:app.deviations,reuse_assessment:app.reuse_assessment
+    })),null,2);
+    $("taskDeliveryHistoryBox").hidden=!history;
+    $("taskDeliveryHistory").textContent=history?JSON.stringify({event_id:history.event_id,decision:history.decision,
+      message_id:history.message_id,delivery_record:history.delivery_record,created_at:history.created_at},null,2):"";
+    const allowed=Array.isArray(detail.allowed_decisions)?detail.allowed_decisions:[];
+    $("taskDeliveryAccept").hidden=!allowed.includes("accept");
+    $("taskDeliveryWithdraw").hidden=!allowed.includes("withdraw");
+    $("taskDeliveryRetry").hidden=!pending;
+    $("taskDeliveryAccept").disabled=!!pending;
+    $("taskDeliveryWithdraw").disabled=!!pending;
+    $("taskDeliveryMessage").textContent=pending
+      ?"上次提交结果不确定。可重试同一提交编号；系统不会自动重发。"
+      :"接受或撤回不会替代经验候选的初审、终审或发布。";
+  }
+  async function openTaskDelivery(taskId,version){
+    if(!taskId||(taskDeliveryBusy&&taskDeliverySelection))return;
+    const request=++taskDeliveryDetailRequest;
+    const pending=taskDeliveryPendingPackets.get(taskId);
+    version=pending?.artifact.version||version;
+    taskDeliveryDetail=null;taskDeliverySelection=null;
+    $("taskDeliveryMessage").textContent="正在核对当前版本与验收记录…";renderTaskDeliveryDetail();
+    try{
+      const qs="id="+encodeURIComponent(taskId)+(version?"&version="+encodeURIComponent(version):"");
+      const detail=await api("delivery?"+qs);
+      if(request!==taskDeliveryDetailRequest)return;
+      if(detail.task_id!==taskId||!detail.expected||!detail.artifact||!detail.real_task||
+         (version&&detail.artifact.version!==version))throw new Error("交付详情与任务清单不匹配");
+      taskDeliveryDetail=detail;$("taskDeliveryMessage").textContent="";renderTaskDeliveryDetail();
+    }catch(error){
+      if(request===taskDeliveryDetailRequest)$("taskDeliveryMessage").textContent="任务依据暂不可读："+String(error.message||error);
+    }
+  }
+  function openTaskDeliveryConfirmation(decision,retry=false){
+    if(!taskDeliveryDetail||taskDeliveryBusy)return;
+    const detail=taskDeliveryDetail;
+    const pending=taskDeliveryPendingPackets.get(detail.task_id);
+    if(retry!==Boolean(pending))return;
+    taskDeliverySelection={decision:pending?.decision||decision,packet:pending||null};
+    const action=taskDeliverySelection.decision, artifact=detail.artifact||{};
+    const rows=[["任务编号",detail.task_id],["决定",deliveryActionLabel(action)],["成品版本",artifact.version],
+      ["成品 SHA-256",artifact.sha256],["冻结依据 SHA-256",detail.expected_sha256]];
+    const dl=$("taskDeliveryConfirmFacts");dl.replaceChildren();
+    for(const [label,value] of rows){const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=String(value||"—");dl.append(dt,dd);}
+    $("taskDeliveryCaution").textContent=action==="withdraw"
+      ?"这会记录你撤回此版本的验收，并冲正与该验收绑定的经验复用贡献。此操作只针对当前显示的任务和产品版本。"
+      :"这会记录你接受当前显示的任务和产品版本，并可能结算关联的经验复用分。它不会批准或发布经验。";
+    $("taskDeliveryFeedback").textContent=retry?"将使用同一个提交编号重试。":"尚未发送；只有再次点确认才会提交。";
+    $("taskDeliveryConfirm").textContent=retry?"重试同一提交":"确认并记录";
+    $("taskDeliveryConfirm").disabled=false;
+    $("taskDeliveryDialog").showModal();
+  }
+  async function submitTaskDelivery(){
+    if(!taskDeliverySelection||!taskDeliveryDetail||taskDeliveryBusy)return;
+    const selection=taskDeliverySelection,detail=taskDeliveryDetail;
+    const packet=selection.packet||{
+      version:1,task_id:detail.task_id,real_task:detail.real_task,artifact:detail.artifact,
+      expected:detail.expected,decision:selection.decision,user_selected:true,
+      message_id:crypto.randomUUID(),source_ref:"review-center:"+crypto.randomUUID()
+    };
+    taskDeliveryBusy=true;$("taskDeliveryConfirm").disabled=true;
+    $("taskDeliveryFeedback").textContent="正在提交这一个明确选择…";
+    const keepPending=(message)=>{
+      taskDeliveryPendingPackets.set(packet.task_id,packet);
+      selection.packet=packet;
+      $("taskDeliveryConfirm").textContent="重试同一提交";
+      $("taskDeliveryFeedback").textContent=message+"。重试会沿用同一提交编号；不会自动重发。";
+      renderTaskDeliveryDetail();
+    };
+    const rejectKnown=(message)=>{
+      taskDeliveryPendingPackets.delete(packet.task_id);
+      taskDeliverySelection=null;
+      $("taskDeliveryFeedback").textContent="本次未记录："+message;
+      renderTaskDeliveryDetail();
+    };
+    try{
+      let response;
+      try{
+        response=await fetch("/api/review/delivery",{method:"POST",cache:"no-store",
+          headers:{"Content-Type":"application/json","X-Xiaoba-Token":TOKEN},body:JSON.stringify(packet)});
+      }catch(error){keepPending("提交结果暂不确定："+String(error.message||error));return;}
+      let result;
+      try{result=await response.json();}
+      catch(error){
+        if(!response.ok&&response.status<500)rejectKnown("提交被拒绝（HTTP "+response.status+"）");
+        else keepPending("提交结果暂不确定：返回内容无法解析（HTTP "+response.status+"）");
+        return;
+      }
+      if(!response.ok){
+        const errorMessage=result&&typeof result==="object"?result.error:"";
+        if(response.status>=500)keepPending("提交结果暂不确定："+(errorMessage||"HTTP "+response.status));
+        else rejectKnown(errorMessage||"提交被拒绝（HTTP "+response.status+"）");
+        return;
+      }
+      if(!result||typeof result!=="object"){
+        keepPending("提交结果暂不确定：服务器没有返回有效状态");
+      }else if(result.ok){
+        taskDeliveryPendingPackets.delete(packet.task_id);
+        taskDeliverySelection=null;
+        $("taskDeliveryDialog").close();
+        $("taskDeliveryMessage").textContent=(result.receipt&&result.receipt.decision==="withdraw"?"撤回已记录。":"交付已记录。")+
+          " 经验批准与发布仍需单独裁决。";
+        try{await refreshTaskDeliveries();await openTaskDelivery(detail.task_id,detail.artifact.version);}
+        catch(error){$("taskDeliveryMessage").textContent+=" 状态刷新失败："+String(error.message||error);}
+      }else if(result.pending===true){
+        keepPending("本次尚未完成："+(result.error||"可重试"));
+      }else if(result.pending===false){
+        rejectKnown(result.error||"交付决定被拒绝");
+      }else{
+        keepPending("提交结果暂不确定：服务器没有明确返回是否已记录");
+      }
+    }finally{taskDeliveryBusy=false;$("taskDeliveryConfirm").disabled=!taskDeliverySelection;}
+  }
+  $("taskDeliveryRefresh").addEventListener("click",refreshTaskDeliveries);
+  $("taskDeliveryAccept").addEventListener("click",()=>openTaskDeliveryConfirmation("accept"));
+  $("taskDeliveryWithdraw").addEventListener("click",()=>openTaskDeliveryConfirmation("withdraw"));
+  $("taskDeliveryRetry").addEventListener("click",()=>openTaskDeliveryConfirmation(null,true));
+  $("taskDeliveryConfirm").addEventListener("click",submitTaskDelivery);
+  ["taskDeliveryDialogClose","taskDeliveryCancel"].forEach(id=>$(id).addEventListener("click",()=>$("taskDeliveryDialog").close()));
 
   /* ---- 候选正文：先整体转义，再做有限的 Markdown 排版，不执行任何 HTML ---- */
   function inline(t){
@@ -3135,7 +3507,33 @@ const ReviewCenter = (() => {
 
   /* ---- 渲染 ---- */
   function setConn(level, text){ $("rcDot").className="dot "+level; $("rcConn").textContent=text; }
-  function badge(n){ const b=$("tabBadge"), all=n+((kept&&kept.items)||[]).length+((frozen&&frozen.items)||[]).length; b.hidden=!all; b.textContent=all; }
+  // 卡07 C07-03：角标基于同一全局阶段投影 state.items，忽略各页传入的局部数量 n，
+  // 消除总览/裁决切页时角标跳变。kept、frozen 来自全局接口，是统一待处理队列的一部分。
+  function stageBadgeCount(st, kept, frozen, n){
+    const pending=(st&&Array.isArray(st.items))?st.items.length:(n||0);
+    const keptN=(kept&&Array.isArray(kept.items))?kept.items.length:0;
+    const frozenN=(frozen&&Array.isArray(frozen.items))?frozen.items.length:0;
+    return pending+keptN+frozenN;
+  }
+  let badgeSnapshot=null, badgeReadSeq=0, badgeLoading=false;
+  function badge(){
+    if(!badgeSnapshot) return;
+    const b=$("tabBadge"), all=stageBadgeCount(badgeSnapshot.state, badgeSnapshot.kept, badgeSnapshot.frozen, 0);
+    b.hidden=!all; b.textContent=all;
+  }
+  async function refreshBadge(){
+    if(!TOKEN || document.hidden || badgeLoading) return;
+    badgeLoading=true;
+    const mine=++badgeReadSeq;
+    try{
+      const [nextState,nextKept,nextFrozen]=await Promise.all([api("state"),api("retained"),api("frozen")]);
+      if(mine!==badgeReadSeq) return;
+      if(![nextState,nextKept,nextFrozen].every(x=>x&&Array.isArray(x.items))) return;
+      badgeSnapshot={state:nextState,kept:nextKept,frozen:nextFrozen};
+      badge();
+    }catch(e){ /* Keep the last complete global snapshot if a source is unavailable. */ }
+    finally{ if(mine===badgeReadSeq) badgeLoading=false; }
+  }
   function steps(n){ [1,2,3].forEach(k=>$("rcStep"+k).classList.toggle("on", k===n)); }
 
   function renderState(){
@@ -3153,15 +3551,22 @@ const ReviewCenter = (() => {
     if(!state) return;
     const q=$("rcSearch").value.trim().toLowerCase();
     const items=state.items.filter(x=>(x.title+x.task_id+x.status_label).toLowerCase().includes(q));
+    const returned=items.filter(x=>x.status==="revision_requested"), current=items.filter(x=>x.status!=="revision_requested");
     // 序号是在全部待审队列里的位置（后端按登记时间排序），搜索过滤时不变。
     const seq=new Map(state.items.map((x,i)=>[x.task_id,i+1])), width=String(state.items.length).length;
     // 上次退回时间取本轮队列快照里的审核记录；没有记录时仍显示提示，时间留空由详情补足。
     const revTimes={}; (state.reviews||[]).forEach(r=>{ if(r.decision==="revise") revTimes[r.task_id]=r.created_at; });
-    $("rcList").innerHTML = items.map(x=>{ const n=seq.get(x.task_id), returned=x.status==="revision_requested", rt=returned? revTimes[x.task_id] : null; return `<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}" aria-label="第 ${n} 条：${esc(x.title)}">
+    const row=x=>{ const n=seq.get(x.task_id), isReturned=x.status==="revision_requested", rt=isReturned? revTimes[x.task_id] : null; return `<li><button class="rc-item" type="button" data-id="${esc(x.task_id)}" aria-current="${x.task_id===selected}" aria-label="第 ${n} 条：${esc(x.title)}">
         <span class="rc-seq" aria-hidden="true">#${String(n).padStart(width,"0")}</span>
         <strong>${esc(x.title)}</strong>
-        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${returned? `<span class="pill busy">已退回，等作者修改${rt? " · "+esc(day(rt)) : ""}</span>` : ""}${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(decisionName(saved[x.task_id]))}</span>` : ""}</span>
-      </button></li>`; }).join("") || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
+        <span class="meta"><span class="pill warn">${esc(x.status_label)}</span><span class="num">${esc(day(x.created_at))}</span>${isReturned? `<span class="pill busy">已退回，等作者修改${rt? " · "+esc(day(rt)) : ""}</span>` : ""}${saved[x.task_id]? `<span class="pill ok">已加入 · ${esc(decisionName(saved[x.task_id]))}</span>` : ""}</span>
+      </button></li>`; };
+    const groupOpen=q&&returned.length? " open" : returnedExpanded? " open" : "";
+    const returnedGroup=returned.length? `<li class="rc-returned-group"><details data-returned-list${groupOpen}><summary>已退回，待作者修改（${returned.length}${q?" 条匹配":""}）</summary><ul class="rc-returned-items">${returned.map(row).join("")}</ul></details></li>` : "";
+    const content=current.map(row).join("")+returnedGroup;
+    $("rcList").innerHTML = content || `<li><p class="rc-empty">${state.items.length? "暂无匹配的待审内容" : "所有待审已处理"}</p></li>`;
+    const group=$("rcList").querySelector("details[data-returned-list]");
+    if(group) group.addEventListener("toggle",()=>{ returnedExpanded=group.open; });
   }
   function counts(){
     const n=Object.keys(saved).length;
@@ -3215,13 +3620,17 @@ const ReviewCenter = (() => {
       $("rcReturned").hidden = !returned;
       if(returned) $("rcReturned").textContent = "已退回，等作者修改："+(revWhen? revWhen+"。" : "")+"这份正文和上次退回时相同，不能重复退回；仍然可以驳回。"+(lastRev&&lastRev.note? " 上次意见："+lastRev.note : "");
       const trial=x.experience_validation||{};
-      if(trial.required&&!trial.ready&&x.status==="delivery_approved") $("rcStage").textContent="隔离验证";
-      $("rcTrialPanel").hidden=!trial.kind;
-      const stateLabels={application_delivery_required:"实际应用或当前成品验收证据待补齐",awaiting_delivery:"待用户初审",awaiting_trial:"等待新试验",trial_running:"独立验证进行中",trial_failed:"验证未通过",ready_for_final:"验证通过，等待用户终审",legacy_manual:"旧流程候选，保留原人工裁决；未宣称已做新试验",not_required:"规则或偏好，两次人工裁决，不强制试验"};
-      $("rcTrialEvidence").textContent=({method:"分类：方法／参数／修复经验",rule:"分类：用户偏好／明确规则",legacy:"分类：历史未分类候选"}[trial.kind]||"分类未确认")+"\n"+(trial.disagreement?"第二轮有分歧，等待用户终审":stateLabels[trial.state]||"尚无验证信息")+"\n"+(trial.disagreement?"有分歧：第二轮审查有人通过、有人未通过（DSH 侧 "+trial.dsh_verdict+"，其它审查员 "+trial.peer_verdict+"；同侧有一人未通过即记未通过）。真实执行已通过，发布或拒绝由你决定，各审查员原文见下。\n":"")+((trial.reasons||[]).length?trial.reasons.join("；")+"\n":"")+(trial.trials||[]).map(t=>
+      const validationUi=validationPresentation(trial,x.status,x.stage);
+      if(validationUi.stageLabel) $("rcStage").textContent=validationUi.stageLabel;
+      $("rcTrialPanel").hidden=!trial.kind&&!trial.validation_basis;
+      $("rcTrialTitle").textContent=validationUi.panelTitle;
+      const stateLabels={application_delivery_required:"实际应用或当前成品验收证据待补齐",awaiting_delivery:"待用户初审",awaiting_trial:"等待新试验",awaiting_evidence:"待补结构化方法主张与核验类别",trial_running:"独立验证进行中",trial_failed:"验证未通过",ready_for_final:"验证通过，等待用户终审",legacy_manual:"旧流程候选，保留原人工裁决；未宣称已做新试验",not_required:"规则或偏好，两次人工裁决，不强制试验"};
+      $("rcTrialEvidence").textContent=({method:"分类：方法／参数／修复经验",rule:"分类：用户偏好／明确规则",legacy:"分类：历史未分类候选"}[trial.kind]||"分类未确认")+"\n"+(trial.disagreement?"第二轮有分歧，等待用户终审":validationUi.stateLabel||stateLabels[trial.state]||"尚无验证信息")+"\n"+(trial.disagreement?"有分歧：第二轮审查有人通过、有人未通过（审查方 1 "+trial.dsh_verdict+"，审查方 2 "+trial.peer_verdict+"；同侧有一人未通过即记未通过）。真实执行已通过，发布或拒绝由你决定，各审查员原文见下。\n":"")+((trial.reasons||[]).length?trial.reasons.join("；")+"\n":"")+(trial.trials||[]).map(t=>
         (t.round?"第 "+t.round+" 轮 · ":"")+"验证任务："+t.task_id+" · "+(t.disagreement?"有分歧":t.passed?"通过":t.status==="failed"?"未通过":"尚未完成")+"\n任务卡："+JSON.stringify(t.card,null,2)+"\n真实执行回执："+JSON.stringify(t.execution,null,2)+"\n"+(t.reviews||[]).map(r=>r.agent+" · "+r.status+"\n"+r.output).join("\n\n")).join("\n\n");
-      $("rcTrialRequest").hidden=!trial.required||x.status!=="delivery_approved";
-      if((trial.experience_loop?.applications||[]).length) $("rcTrialEvidence").textContent += "\n\n真实任务应用、用户验收与原卡回流（成品采用不推断每条方法的因果贡献）：\n"+JSON.stringify(trial.experience_loop,null,2);
+      if(trial.validation_basis) $("rcTrialEvidence").textContent += "\n\n"+basisEvidenceText(trial.validation_basis);
+      $("rcTrialRequest").hidden=!validationUi.showTrialRequest;
+      $("rcTrialRequest").textContent=validationUi.trialRequestLabel;
+      if((trial.experience_loop?.applications||[]).length) $("rcTrialEvidence").textContent += "\n\n真实任务应用、用户验收与原卡回流（成品采用不推断每条方法的因果贡献）：\n"+experienceLoopText(trial);
 
       $("rcPrompt").textContent = x.prompt||"";
       $("rcIdentity").textContent = "候选编号：" + id + "\n完整证据哈希：" + x.evidence_sha256;
@@ -3237,7 +3646,7 @@ const ReviewCenter = (() => {
       $("rcBrain").hidden = !safeLink; if(safeLink) $("rcBrain").href = x.obsidian_url;
       const approve = document.querySelector('.choice[data-decision="approve"]');
       approve.querySelector("strong").textContent = x.stage==="delivery"? "初审通过" : "终审通过并发布";
-      approve.querySelector("small").textContent = x.stage==="delivery"? (trial.required?"进入受控验证，尚不发布经验":"进入终审，尚不发布经验") : (trial.required&&!trial.ready?"须先完成真实执行与独立双审":"执行敏感检查、发布与索引验证");
+      approve.querySelector("small").textContent = validationUi.approveHint;
       const unused = x.entry_type==="unused_batch";
       const reject = document.querySelector('.choice[data-decision="reject"]');
       reject.querySelector("strong").textContent = unused? "删除（退役归档）" : x.entry_type? "驳回／关闭请求" : "不予采用";
@@ -3292,10 +3701,223 @@ const ReviewCenter = (() => {
   function stopTimers(){ clearInterval(progressTimer); clearInterval(clockTimer); progressTimer=clockTimer=null; progressAttempt++; }
 
   function submittedItems(){
-    return packet? packet.items.map(x=>({...x, title:packetTitles[x.task_id] || saved[x.task_id]?.title || x.task_id})) : Object.values(saved);
+    return packet? packet.items.map(x=>({...packetDetails[x.task_id],...x})) : Object.values(saved);
   }
 
+  function basisOf(item){
+    const basis=item.experience_validation?.validation_basis;
+    return item.stage==="final"&&item.decision==="approve"&&basis?.status!=="missing"? basis||null : null;
+  }
+  function needsBasisConfirmation(item){
+    const basis=basisOf(item);
+    if(!Array.isArray(basis?.required_checks)) return false;
+    if(basis.status==="not_required") return basis.route==="sandbox";
+    return ["proposed","confirmed"].includes(basis.status)&&basis.required_checks.includes("real_task_acceptance");
+  }
+  function basisRequirementsMatch(basis){
+    const claims=basis?.method_claims;
+    if(!Array.isArray(claims)||!claims.length||claims.some(claim=>!claim||!claim.claim||!["artifact","code"].includes(claim.class))) return false;
+    const hasCode=claims.some(claim=>claim.class==="code"), hasArtifact=claims.some(claim=>claim.class==="artifact");
+    const expected=hasCode&&hasArtifact? ["real_task_acceptance","sandbox"] : hasCode? ["sandbox"] : ["real_task_acceptance"];
+    const actual=basis.required_checks;
+    if(!Array.isArray(actual)||actual.length!==expected.length||new Set(actual).size!==actual.length||actual.some(check=>!expected.includes(check))) return false;
+    const route=hasCode&&hasArtifact? "combined" : hasCode? "sandbox" : "real_task_acceptance";
+    if(basis.route!==route) return false;
+    if(expected.includes("real_task_acceptance")&&(!basis.real_task||!basis.application_scope||!basis.artifact||!basis.acceptance_ref||!basis.acceptance_sha256)) return false;
+    return true;
+  }
+  function basisReady(basis){
+    return !!basis?.basis_id && !!basis?.basis_sha256 && !!basis?.route && !!basis?.method_scope
+      && basisRequirementsMatch(basis) && !!basis.trust_boundary
+      && Array.isArray(basis.evidence_items) && basis.evidence_items.length>0
+      && basis.evidence_items.every(e=>e && e.label && e.ref && e.sha256);
+  }
+  function basisApprovalReady(item){
+    const basis=basisOf(item), validation=item.experience_validation;
+    return needsBasisConfirmation(item)&&basisReady(basis)&&(validation.ready===true
+      || (validation.state==="validation_basis_confirmation_required"&&basis.status==="proposed"));
+  }
+  function basisCheckboxMatches(check,item,basis){
+    return check.checked&&check.dataset.taskId===item.task_id
+      &&check.dataset.basisId===basis.basis_id&&check.dataset.basisSha256===basis.basis_sha256;
+  }
+  function basisConfirmationMatches(confirmation,basis){
+    return confirmation?.confirmed===true&&confirmation.classification_confirmed===true
+      &&confirmation.basis_id===basis.basis_id&&confirmation.basis_sha256===basis.basis_sha256;
+  }
+  function basisValue(value){
+    return typeof value==="string"? value : JSON.stringify(value??"—",null,2);
+  }
+  function basisClaimClass(value){
+    return value==="code"? "代码/命令" : value==="artifact"? "成品/实际工作" : "类别无法识别";
+  }
+  function basisCheckLabel(value){
+    return value==="real_task_acceptance"? "真实任务与用户认可" : value==="sandbox"? "隔离沙箱" : String(value??"未知检查");
+  }
+  function validationPresentation(trial,status,stage){
+    const basis=trial.validation_basis||{}, checks=Array.isArray(basis.required_checks)?basis.required_checks:[];
+    const route=basis.route, hasRealTask=checks.includes("real_task_acceptance");
+    const legacyTrialStates=["awaiting_trial","trial_running","trial_failed","revalidation_required","validation_paused","awaiting_check","review_rejected"];
+    const missingBasis=!basis.status||basis.status==="missing";
+    const needsSandbox=checks.includes("sandbox")||(missingBasis&&trial.required&&legacyTrialStates.includes(trial.state));
+    const basisPending=trial.state==="validation_basis_confirmation_required"&&basis.status==="proposed"&&hasRealTask;
+    const panelTitle=route==="real_task_acceptance"? "真实任务证据与应用记录"
+      : route==="combined"? "真实任务证据与隔离验证"
+      : route==="sandbox"? "隔离验证与独立审查" : "方法核验状态";
+    const stateLabel=trial.disagreement? "第二轮有分歧，等待用户终审"
+      : basisPending? needsSandbox? "隔离验证已满足，真实任务依据待确认" : "真实任务证据待终审确认"
+      : trial.state==="validation_basis_confirmation_required"? "真实任务证据待终审确认" : null;
+    let stageLabel=null;
+    if(status==="delivery_approved"&&trial.required&&!trial.ready){
+      if(basisPending) stageLabel=needsSandbox? "隔离已满足 · 真实依据待确认" : "真实任务证据待确认";
+      else if(basis.status==="awaiting_evidence") stageLabel="待补结构化方法主张与核验类别";
+      else if(trial.state==="trial_running") stageLabel="隔离验证中";
+      else if(trial.state==="trial_failed") stageLabel="验证未通过";
+      else if(needsSandbox&&route==="combined") stageLabel="混合路线 · 隔离验证";
+      else if(needsSandbox) stageLabel="隔离验证";
+      else stageLabel="核验材料待补";
+    }
+    const showTrialRequest=status==="delivery_approved"&&needsSandbox
+      &&["awaiting_trial","revalidation_required"].includes(trial.state);
+    let approveHint;
+    if(stage==="delivery"){
+      approveHint=!trial.required? "进入终审，尚不发布经验"
+        : route==="real_task_acceptance"? "终审时一起确认方法主张分类与真实任务依据"
+        : route==="combined"? "初审通过后进入隔离验证；终审时一起确认分类和真实任务依据"
+        : needsSandbox? "初审通过后进入隔离验证，尚不发布经验"
+        : "补齐核验依据后进入终审，尚不发布经验";
+    }else if(basisPending){
+      approveHint=needsSandbox? "隔离验证已满足；在本次终审确认分类和真实任务证据"
+        : "核对真实任务、应用范围、用户认可材料和方法主张分类，并在本次终审确认";
+    }else if(trial.required&&!trial.ready){
+      approveHint=basis.status==="awaiting_evidence"? "补齐结构化方法主张和证据后才能继续"
+        : needsSandbox? "须先完成隔离执行与独立双审" : "真实任务证据尚未就绪，暂不能终审";
+    }else{
+      approveHint=!missingBasis? "确认方法主张分类后，执行发布与索引验证" : "执行敏感检查、发布与索引验证";
+    }
+    return {stageLabel,panelTitle,stateLabel,showTrialRequest,trialRequestLabel:route==="combined"? "复制混合路线隔离验证请求" : "复制隔离验证任务请求",approveHint};
+  }
+  function experienceLoopText(trial){
+    const loop=trial.experience_loop||{};
+    if(["real_task_acceptance","combined"].includes(trial.validation_basis?.route)){
+      return JSON.stringify({applications:loop.applications||[],deliveries:loop.deliveries||[]},null,2);
+    }
+    return JSON.stringify(loop,null,2);
+  }
+  function basisEvidenceText(basis){
+    const route=basis.route==="real_task_acceptance"? "真实任务证据 · 免隔离试验"
+      : basis.route==="sandbox"? "隔离沙箱验证"
+      : basis.route==="combined"? "真实任务证据 + 隔离沙箱" : String(basis.route||"未知");
+    const evidence=Array.isArray(basis.evidence_items)?basis.evidence_items:[];
+    return ["方法核验依据", "路线："+route, "方法范围："+basisValue(basis.method_scope),
+      "实际任务："+basisValue(basis.real_task),
+      "应用范围与交付："+basisValue({application_id:basis.application_id,application_scope:basis.application_scope,delivery_event_id:basis.delivery_event_id}),
+      "成品、执行及认可："+basisValue({artifact:basis.artifact,execution_evidence:basis.execution_evidence,acceptance_ref:basis.acceptance_ref,acceptance_sha256:basis.acceptance_sha256}),
+      "证据项：", ...(evidence.length? evidence.map((item,index)=>`${index+1}. ${item.label}\n${item.ref}\n${item.sha256}`) : ["无证据项"]),
+      "信任边界："+basisValue(basis.trust_boundary)].join("\n");
+  }
+  function renderBasisConfirmations(items, priorChecks=[]){
+    const root=$("rcBasisConfirmations"), list=$("rcBasisItems");
+    const entries=items.filter(basisOf);
+    root.hidden=!entries.length;
+    list.innerHTML=entries.map(item=>{
+      const basis=basisOf(item), required=needsBasisConfirmation(item);
+      const checked=packet? basisConfirmationMatches(packet.items.find(x=>x.task_id===item.task_id)?.validation_basis_confirmation,basis)
+        : priorChecks.some(check=>basisCheckboxMatches(check,item,basis));
+      const evidence=Array.isArray(basis.evidence_items)?basis.evidence_items:[];
+      const hasRealTask=Array.isArray(basis.required_checks)&&basis.required_checks.includes("real_task_acceptance");
+      const confirmationText=basis.status==="proposed"
+        ? "我确认所列方法主张的分类及核验路线正确，且这些材料对应已采用的方法范围。"
+        : "我确认所列方法主张的分类及核验路线正确。";
+      const controls=basisApprovalReady(item)
+        ? `<label class="rc-basis-confirm-row"><input class="rc-basis-confirm" type="checkbox" data-task-id="${esc(item.task_id)}" data-basis-id="${esc(basis.basis_id)}" data-basis-sha256="${esc(basis.basis_sha256)}"${checked?" checked":""}${packet?" disabled":""}><span>${esc(confirmationText)}</span></label>`
+        : required? `<p class="rc-basis-trust">核验尚未就绪或证据材料不完整，当前无法确认。</p>`
+          : `<p class="rc-basis-trust">依据状态或路线无法识别，当前不能提交终审。</p>`;
+      const route=basis.route==="real_task_acceptance"? "真实任务证据 · 免隔离试验"
+        : basis.route==="sandbox"? "隔离沙箱验证"
+        : basis.route==="combined"? "真实任务证据 + 隔离沙箱"
+        : basis.route;
+      const status=basis.status==="proposed"? "真实任务依据待确认"
+        : basis.status==="confirmed"? "真实任务依据已确认"
+        : basis.status==="awaiting_evidence"? "待补证据主张"
+        : required? "沙箱核验" : "状态无法识别";
+      const claims=Array.isArray(basis.method_claims)?basis.method_claims:[];
+      return `<article class="rc-basis-card">
+        <div class="meta"><strong>${esc(item.title||item.task_id)}</strong><span class="pill ${basis.status==="confirmed"?"ok":"warn"}">${esc(status)}</span><span class="num">${esc(item.task_id)}</span></div>
+        <div><strong>方法范围</strong><pre>${esc(basisValue(basis.method_scope))}</pre></div>
+        <div><strong>方法主张与核验类别</strong>${claims.length? `<ul class="rc-basis-evidence">${claims.map(claim=>`<li><strong>${esc(basisClaimClass(claim?.class))}</strong><br>${esc(claim?.claim)}</li>`).join("")}</ul>` : `<p class="rc-basis-trust">缺少结构化方法主张</p>`}</div>
+        <div><strong>核验路线</strong><pre>${esc(basisValue(route))}</pre></div>
+        <div><strong>所需核验</strong><ul class="rc-basis-evidence">${Array.isArray(basis.required_checks)? basis.required_checks.map(check=>`<li>${esc(basisCheckLabel(check))}</li>`).join("") : `<li>检查路线缺失</li>`}</ul></div>
+        ${hasRealTask? `<div><strong>实际任务</strong><pre>${esc(basisValue(basis.real_task))}</pre></div>
+        <div><strong>应用范围与交付记录</strong><pre>${esc(basisValue({application_id:basis.application_id,application_scope:basis.application_scope,delivery_event_id:basis.delivery_event_id}))}</pre></div>
+        <div><strong>成品、执行及认可材料</strong><pre>${esc(basisValue({artifact:basis.artifact,execution_evidence:basis.execution_evidence,acceptance_ref:basis.acceptance_ref,acceptance_sha256:basis.acceptance_sha256}))}</pre></div>
+        <div><strong>采用时间</strong><pre>${esc(basisValue(basis.accepted_at))}</pre></div>
+        <p class="rc-basis-trust">真实任务证据确认按本机现有业务信任边界记录，不构成独立的人类身份认证。</p>` : ""}
+        <div><strong>依据编号 / 哈希</strong><pre>${esc(basis.basis_id)}\n${esc(basis.basis_sha256)}</pre></div>
+        <div><strong>证据项（${evidence.length}）</strong>${evidence.length? `<ul class="rc-basis-evidence">${evidence.map(e=>`<li><strong>${esc(e?.label)}</strong><br>${esc(e?.ref)}<br><code>${esc(e?.sha256)}</code></li>`).join("")}</ul>` : `<p class="rc-basis-trust">没有证据项</p>`}</div>
+        <div><strong>信任边界</strong><pre>${esc(basisValue(basis.trust_boundary))}</pre></div>
+        ${controls}
+      </article>`;
+    }).join("");
+    syncBasisConfirmationState(items);
+  }
+  function syncBasisConfirmationState(items){
+    const checks=[...$("rcBasisItems").querySelectorAll(".rc-basis-confirm")];
+    const missing=items.some(item=>{
+      const basis=basisOf(item);
+      if(!basis) return false;
+      if(!basisApprovalReady(item)) return true;
+      if(packet){
+        const sent=packet.items.find(x=>x.task_id===item.task_id)?.validation_basis_confirmation;
+        return !basisConfirmationMatches(sent,basis);
+      }
+      return !checks.some(check=>basisCheckboxMatches(check,item,basis));
+    });
+    const feedback=$("rcFeedback"), prompt="依据材料未就绪或尚未确认方法主张分类，无法提交终审。";
+    $("rcSubmit").disabled=!items.length||missing;
+    if(missing) feedback.textContent=prompt;
+    else if(feedback.textContent===prompt) feedback.textContent="";
+    return items.length>0&&!missing;
+  }
+
+  // 卡07 C07-03：迟到轮询/旧缓存不得覆盖最新依据详情。
+  // 只有当前没有“同一版本实时详情”时，才用 state 快照补 validation。
+  function latestValidation(item, current, liveDetail){
+    if(current && same(current.expected,item.expected)){
+      if(liveDetail && liveDetail.task_id===item.task_id && same(liveDetail.expected,item.expected)){
+        return liveDetail.experience_validation;   // 实时详情优先
+      }
+      return current.experience_validation;
+    }
+    return item.experience_validation;
+  }
+  function refreshOpenSummary(previous){
+    const dialog=$("rcDialog");
+    if(packet||!dialog.open||dialog.dataset.phase!=="review") return;
+    Object.values(saved).forEach(item=>{
+      const previousItem=previous?.items.find(x=>x.task_id===item.task_id);
+      const current=state.items.find(x=>x.task_id===item.task_id);
+      // A newly read detail may be newer than an unchanged list projection.
+      if(current&&!same(current.experience_validation,previousItem?.experience_validation)){
+        item.experience_validation=current.experience_validation;
+        if(detail?.task_id===item.task_id&&same(detail.expected,item.expected)) detail.experience_validation=item.experience_validation;
+      }
+    });
+    const items=submittedItems();
+    const checks=[...$("rcBasisItems").querySelectorAll(".rc-basis-confirm")];
+    $("rcSummaryCount").textContent=`本次 ${items.length} 项裁决。未选择的候选保持原状。`;
+    $("rcOutput").value=handoffText(items);
+    $("rcSubmit").textContent=`确认提交 ${items.length} 项裁决`;
+    renderBasisConfirmations(items, checks);
+  }
   function openSummary(){
+    if(!packet){
+      Object.values(saved).forEach(item=>{
+        const current=state?.items.find(x=>x.task_id===item.task_id);
+        const live=(detail && detail.task_id===item.task_id)?detail:null;
+        item.experience_validation=latestValidation(item, current, live);
+      });
+    }
     const items=submittedItems(); if(!items.length) return;
     phase("review");
     $("rcDialogTitle").textContent = "核对你的决定。";
@@ -3303,18 +3925,28 @@ const ReviewCenter = (() => {
     $("rcOutput").value = handoffText(items);
     $("rcFeedback").textContent = "";
     $("rcCopy").textContent = "复制交接文本";
-    $("rcSubmit").disabled = false; $("rcSubmit").textContent = packet? "重试本次提交" : `确认提交 ${items.length} 项裁决`;
+    $("rcSubmit").textContent = packet? "重试本次提交" : `确认提交 ${items.length} 项裁决`;
+    renderBasisConfirmations(items);
     steps(2); $("rcDialog").showModal();
   }
   function closeDialog(){ if(submitting) return; if($("rcDialog").open) $("rcDialog").close(); }
 
   async function submit(){
     if(submitting || (!packet && !Object.keys(saved).length)) return;
+    if(!syncBasisConfirmationState(submittedItems())) return;
     // 重试沿用同一提交编号，裁决中心据此查验，避免重复审核
     if(!packet){
-      packet = {id:crypto.randomUUID(), items:Object.values(saved).map(({task_id,stage,decision,note,expected,entry_type})=>({task_id,stage,decision,note,expected,entry_type}))};
+      const items=Object.values(saved).map(({task_id,stage,decision,note,expected,entry_type})=>{
+        const item={task_id,stage,decision,note,expected,entry_type};
+        const basis=basisOf(saved[task_id]);
+        if(needsBasisConfirmation(saved[task_id])){
+          item.validation_basis_confirmation={basis_id:basis.basis_id,basis_sha256:basis.basis_sha256,confirmed:true,classification_confirmed:true};
+        }
+        return item;
+      });
+      packet = {id:crypto.randomUUID(), items};
       packetReviewBaseline = new Set((state?.reviews||[]).map(r=>r.id));
-      packetTitles = Object.fromEntries(Object.values(saved).map(x=>[x.task_id,x.title]));
+      packetDetails = Object.fromEntries(Object.values(saved).map(({task_id,title,experience_validation})=>[task_id,{title,experience_validation}]));
     }
     const items = submittedItems();
     const status = Object.fromEntries(items.map(x=>[x.task_id,{record:"active"}]));
@@ -3384,7 +4016,7 @@ const ReviewCenter = (() => {
       $("rcCopy").textContent = "复制回执";
       $("rcBarNote").textContent = `刚刚提交 ${r.items.length} 项：${done} 项已记录`+(sync.ok===true? "，第二大脑已同步 "+(sync.at||"").slice(11) : "，第二大脑待同步");
       r.items.forEach(x=>{ if(x.recorded) forget(x.task_id); });
-      packet=null; packetReviewBaseline=new Set(); packetTitles={};
+      packet=null; packetReviewBaseline=new Set(); packetDetails={};
     }catch(e){
       stopTimers();
       phase("error");
@@ -3403,13 +4035,17 @@ const ReviewCenter = (() => {
 
   async function refresh(force=false){
     if(!TOKEN){ unavailable(); return; }
+    const mine = ++refreshSeq;   // 卡07：晚到的轮询响应直接丢弃，不覆盖新 state/详情
     try{
       const next = await api("state");
-      const changed = !state || state.revision!==next.revision;
+      if(mine!==refreshSeq) return;
+      const previous=state, changed=!previous||previous.revision!==next.revision;
       state = next; renderState();
+      refreshBadge();
       loadKept(force);
       // 已不在待审队列里的候选，从本次清单中移除
       Object.keys(saved).forEach(id=>{ const cur=state.items.find(x=>x.task_id===id); if(!cur || !same(cur.expected, saved[id].expected)) forget(id); });
+      if(changed) refreshOpenSummary(previous);
       counts();
       if(!state.items.length && !selected){ blank("所有待审已处理","新候选产生后会自动出现在这里。"); return; }
       if(!selected || wanted){
@@ -3421,6 +4057,7 @@ const ReviewCenter = (() => {
       }
       else if((force||changed) && !submitting && !$("rcDialog").open) await select(selected);
     }catch(e){
+      if(mine!==refreshSeq) return;   // 迟到的失败响应也不改写连接状态
       setConn("down","连接中断："+e.message+"。当前内容可能已过期，恢复后请刷新核对。");
       $("rcSave").disabled=true; $("rcReview").disabled=submitting || !packet; $("rcSubmit").disabled=submitting || !packet;
     }
@@ -3440,7 +4077,9 @@ const ReviewCenter = (() => {
     drafts[selected].decision=b.dataset.decision; document.querySelectorAll(".choice").forEach(v=>v.setAttribute("aria-pressed", String(v===b))); stash(); draftUI(); }));
   $("rcNote").addEventListener("input",()=>{ if(detail&&drafts[selected]){ drafts[selected].note=$("rcNote").value; stash(); draftUI(); } });
   $("rcSave").addEventListener("click",()=>{ if(!detail||!drafts[selected]||packet||submitting) return;
-    saved[selected]={...drafts[selected], task_id:selected, stage:detail.stage, title:detail.title, entry_type:detail.entry_type}; renderList(); counts(); draftUI(); });
+    saved[selected]={...drafts[selected], task_id:selected, stage:detail.stage, title:detail.title, entry_type:detail.entry_type,
+      experience_validation:detail.experience_validation}; renderList(); counts(); draftUI(); });
+  $("rcBasisItems").addEventListener("change",()=>syncBasisConfirmationState(submittedItems()));
   $("rcReview").addEventListener("click",openSummary);
   $("rcBack").addEventListener("click",closeDialog);
   $("rcClose").addEventListener("click",closeDialog);
@@ -3469,9 +4108,15 @@ const ReviewCenter = (() => {
   addEventListener("beforeunload",e=>{ if(submitting || packet || Object.keys(saved).length){ e.preventDefault(); e.returnValue=""; } });
 
   const active = ()=>Tabs.current==="review" && !document.hidden && !submitting;
-  Tabs.onChange(name=>{ if(name==="review") refresh(true); });
-  document.addEventListener("visibilitychange",()=>{ if(active()) refresh(true); });
+  Tabs.onChange(name=>{ if(name==="review"){ refresh(true); refreshValueQueue(); } });
+  $("valueReviewRefresh").addEventListener("click",refreshValueQueue);
+  document.addEventListener("visibilitychange",()=>{ if(active()){ refresh(true); refreshValueQueue(); } });
   setInterval(()=>{ if(active()) refresh(); }, 5000);
+  setInterval(()=>{ if(active()) refreshValueQueue(); }, 15000);
+  // One complete badge projection refreshes on every tab, including overview.
+  refreshBadge();
+  setInterval(refreshBadge, 15000);
+  document.addEventListener("visibilitychange",refreshBadge);
   blank("请选择一条待审内容","—");
   return {open, refresh, badge, markdown};
 })();

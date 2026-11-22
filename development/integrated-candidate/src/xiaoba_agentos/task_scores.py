@@ -48,7 +48,9 @@ def capture_pool(db, node_id, purpose):
     source = json.loads(row[0]); node = source.get('node')
     if not isinstance(node, dict):
         return None  # Historical external identities are not pool participants.
-    return {'node_id': node_id, 'source_ref': source['source_ref'], 'model': node.get('model'), 'role': role}
+    from .pool_dispatch import entry_program
+    return {'node_id': node_id, 'source_ref': source['source_ref'],
+            'entry_program': entry_program(node), 'model': node.get('model'), 'role': role}
 
 
 def requires_review_vote(db, task, snapshot):
@@ -61,6 +63,9 @@ def requires_review_vote(db, task, snapshot):
     task = dict(task)
     provenance = json.loads(task['provenance_json'] or '{}')
     if provenance.get('kind') == 'host_review':
+        return True
+    from .value_scoring import expects_value_receipt
+    if expects_value_receipt(task):
         return True
     if needs_review(task) and (snapshot.get('review_context', {}).get('host') or task_host(task)
             or db.execute("SELECT 1 FROM events WHERE task_id=? AND event_type='task.host_bound'",
@@ -76,7 +81,7 @@ def requires_review_vote(db, task, snapshot):
     return 'FINAL_ACCEPTANCE: PASS' in prompt and 'FINAL_ACCEPTANCE: FAIL' in prompt
 
 
-def accepted(run, role, *, require_review_vote=False):
+def accepted(run, role, *, require_review_vote=False, task=None):
     from .output_hygiene import contains_non_answer_markers, detect_reasoning_leak
     body = run['output']
     if (run['status'] != 'completed' or not isinstance(body, str) or not body.strip()
@@ -84,7 +89,7 @@ def accepted(run, role, *, require_review_vote=False):
         return False
     if role == 'review' and require_review_vote:
         from .pool_dispatch import review_vote_problem
-        return not review_vote_problem(body)
+        return not review_vote_problem(body, task)
     return True
 
 
@@ -153,7 +158,7 @@ def settlement_tx(db, task_id, completed, now):
             })
             continue
 
-        qualified = accepted(run, role, require_review_vote=require_review_vote)
+        qualified = accepted(run, role, require_review_vote=require_review_vote, task=task)
         qualified = qualified and run['id'] in finishes
         good = completed and qualified
         value = dict(pool, task_id=task_id, task_type=snapshot.get('experience_policy', {}).get('task_type') or
@@ -161,7 +166,7 @@ def settlement_tx(db, task_id, completed, now):
                      date=day, completed_date=day, week_start=week_of(day)[0],
                      outcome='good' if good else 'not_good', points=int(good),
                      tasks=1, success_rate=float(good),
-                     receipt_accepted=qualified, task_completed=bool(completed), run_id=run['id'],
+                     receipt_accepted=qualified, task_completed=bool(completed and qualified), run_id=run['id'],
                      receipt_sha256=receipt_sha,
                      evidence_refs=['agent-run:' + run['id']], receipt_digests=[],
                      evaluator='automatic_task_settlement', policy='weekly-reliability-v2')
@@ -179,29 +184,51 @@ def audit_ledger_tx(db, chain_ok=None):
         chain_ok = EventStore.verify_event_chain_tx(db)['ok']
     if not chain_ok:
         return {'ok': False, 'reason': 'chain_invalid', 'valid_rows': [], 'dirty_rows': [], 'problems': ['事件链无效']}
-    if not exists(db, 'ri_task_assessments'):
-        return {'ok': True, 'reason': None, 'valid_rows': [], 'dirty_rows': [], 'problems': []}
-    stored = list(db.execute('SELECT * FROM ri_task_assessments'))
+    stored = list(db.execute('SELECT * FROM ri_task_assessments')) if exists(db, 'ri_task_assessments') else []
     latest = {}
     invalid_transitions = set()
-    for event in db.execute("SELECT payload_json FROM events WHERE event_type='task_scoring.assessed' ORDER BY sequence"):
-        value = json.loads(event[0]); key = value['key']
-        current, previous = value.get('current') or {}, value.get('previous') or {}
-        prior = latest.get(key, {}).get('current') or {}
-        if prior.get('outcome') == 'void':
-            invalid_transitions.add(key)
-        if current.get('outcome') == 'void':
-            if (not previous or previous.get('outcome') == 'void' or not current.get('run_id')
-                    or not isinstance(current.get('void_reason'), str) or not current['void_reason'].strip()
-                    or not current.get('evidence_refs') or current.get('points') != 0 or current.get('tasks') != 0
-                    or current.get('success_rate') != 0 or value.get('delta') != -previous.get('points', 0)
-                    or value.get('void') is not True):
-                invalid_transitions.add(key)
-        latest[key] = value
-
     problems = []
+    for event in db.execute("SELECT sequence,payload_json FROM events WHERE event_type='task_scoring.assessed' ORDER BY sequence"):
+        key = None
+        try:
+            value = json.loads(event['payload_json'])
+            if not isinstance(value, dict):
+                raise ValueError('评分事件不是对象')
+            key = value.get('key')
+            if not isinstance(key, str) or not key:
+                raise ValueError('评分事件缺少有效键')
+            current, previous = value.get('current'), value.get('previous')
+            if (not isinstance(current, dict) or (previous is not None and not isinstance(previous, dict))
+                    or type(value.get('revision')) is not int or value['revision'] < 1
+                    or not isinstance(value.get('assessment_id'), str) or not value['assessment_id']):
+                raise ValueError('评分事件字段无效')
+            prior_event = latest.get(key)
+            prior = prior_event['current'] if prior_event else {}
+            if (prior_event and (value['revision'] != prior_event['revision'] + 1 or previous != prior)
+                    or not prior_event and (value['revision'] != 1 or previous is not None)):
+                invalid_transitions.add(key)
+            if prior.get('outcome') == 'void':
+                invalid_transitions.add(key)
+            outcome, points = current.get('outcome'), current.get('points')
+            if (outcome not in {'good', 'not_good', 'void'} or type(points) is not int
+                    or points != int(outcome == 'good')):
+                invalid_transitions.add(key)
+            if outcome == 'void':
+                previous = previous or {}
+                if (not previous or previous.get('outcome') == 'void' or not current.get('run_id')
+                        or not isinstance(current.get('void_reason'), str) or not current['void_reason'].strip()
+                        or not current.get('evidence_refs') or current.get('tasks') != 0
+                        or current.get('success_rate') != 0 or value.get('delta') != -previous.get('points', 0)
+                        or value.get('void') is not True):
+                    invalid_transitions.add(key)
+            latest[key] = value
+        except (ValueError, TypeError, KeyError) as exc:
+            if isinstance(key, str) and key:
+                invalid_transitions.add(key)
+            problems.append(f"评分事件 {event['sequence']} 无效: {exc}")
+
     stored_ids = {r['id'] for r in stored}
-    latest_ids = set(latest.keys())
+    latest_ids = set(latest)
     if stored_ids != latest_ids:
         problems.append(f'评分表键集合与审计事件不一致: stored={len(stored_ids)}, events={len(latest_ids)}')
 
@@ -211,7 +238,7 @@ def audit_ledger_tx(db, chain_ok=None):
         try:
             value = json.loads(row['data'])
             if row['id'] in invalid_transitions:
-                dirty_rows.append((row, value, '作废评分转换无效'))
+                dirty_rows.append((row, value, '评分修订或分值无效'))
                 continue
             if row['id'] not in latest:
                 dirty_rows.append((row, value, '缺少审计事件'))

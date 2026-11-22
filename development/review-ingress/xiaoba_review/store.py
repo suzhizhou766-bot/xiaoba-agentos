@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 import math
+import os
 import re
 from pathlib import Path
 import sqlite3
@@ -184,10 +185,18 @@ class ReviewStore:
                     id TEXT PRIMARY KEY, data TEXT NOT NULL,
                     created_at REAL NOT NULL, attempts INTEGER NOT NULL,
                     state TEXT NOT NULL DEFAULT 'pending', last_error TEXT);
+                CREATE TABLE IF NOT EXISTS ri_value_discard_cleanup (
+                    task_id TEXT PRIMARY KEY, old_path TEXT NOT NULL, old_sha256 TEXT NOT NULL,
+                    old_sidecar_sha256 TEXT, summary_path TEXT NOT NULL,
+                    summary_sha256 TEXT NOT NULL, created_at REAL NOT NULL);
             ''')
             self._ensure_pending_reference_columns(db)
         # 正常启动入口：提交后回调前崩溃留下的待登记行，在构造后立刻补入队。
         self.recover_pending_references()
+        self.recover_value_discard_cleanup()
+        recover_discarded = getattr(self.native, 'recover_discarded_candidate_cleanup', None)
+        if callable(recover_discarded):
+            recover_discarded()
 
     def _ensure_pending_reference_columns(self, db):
         """Additive columns for r1→r2; old 4-column tables keep their payload rows."""
@@ -413,28 +422,250 @@ class ReviewStore:
     def discard_value(self, db, request, assessment):
         """Retire an unapproved low-value draft, leaving its summary and scores.
 
-        In-memory undo is owned by transaction(); no backup files are created.
-        The immutable request/receipt audit remains evidence, never a candidate.
+        The summary gets a new hash-bound path; the reviewed body remains intact
+        until a durable cleanup row can safely remove it after commit.
         """
         from xiaoba_agentos.value_scoring import summary
         row=db.execute('SELECT * FROM memory_candidates WHERE task_id=?',(request['candidate_id'],)).fetchone()
+        if row is None:
+            raise ValueError('待丢弃候选不存在')
         if row['status'] not in {'pending_delivery_review','revision_requested'}:
             raise ValueError('价值分只能丢弃尚未初审批准的候选')
         path=Path(row['staged_path'])
-        path.resolve().relative_to(self.outbox_root)
-        if path.is_symlink():raise ValueError('候选不能通过符号链接改写')
+        root=self.outbox_root
+        if not path.is_absolute() or root.is_symlink() or not root.is_dir():
+            raise ValueError('候选路径不在有效的受控 outbox 内')
+        try:
+            resolved=path.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError,ValueError) as exc:
+            raise ValueError('候选路径不在受控 outbox 内') from exc
+        if path.is_symlink() or resolved != path or resolved == root or not resolved.is_file():
+            raise ValueError('候选不能通过符号链接或非普通文件改写')
+        staged_body=resolved.read_bytes()
+        if hashlib.sha256(staged_body).hexdigest()!=row['evidence_sha256']:
+            raise ValueError('候选正文与登记 evidence_sha256 不匹配，拒绝丢弃')
         sidecar=path.with_suffix(path.suffix+'.status.json')
         if sidecar.is_symlink():raise ValueError('候选状态文件不能是符号链接')
-        self._file_state.undo.extend((p,p.read_bytes() if p.exists() else None) for p in (path,sidecar))
-        body=summary(assessment)+'\n';checksum=hashlib.sha256(body.encode()).hexdigest();now=time.time()
-        path.write_text(body,encoding='utf-8')
-        db.execute("UPDATE memory_candidates SET status='retired',evidence_sha256=?,updated_at=? WHERE task_id=?",(checksum,now,row['task_id']))
-        self.native._write_candidate_status_sidecar_values(row['task_id'],str(path),'retired',checksum,now)
-        db.execute('UPDATE tasks SET result=? WHERE id=?',(body,row['task_id']))
+        sidecar_body=None
+        if sidecar.exists():
+            try:
+                if sidecar.resolve(strict=True)!=sidecar or not sidecar.is_file():
+                    raise ValueError('候选状态文件不是普通文件')
+                sidecar_body=sidecar.read_bytes()
+                metadata=json.loads(sidecar_body)
+            except (OSError,TypeError,ValueError,UnicodeError) as exc:
+                raise ValueError('候选状态文件无法校验，拒绝丢弃') from exc
+            if (not isinstance(metadata,dict) or metadata.get('task_id')!=row['task_id']
+                    or metadata.get('evidence_sha256')!=row['evidence_sha256']
+                    or metadata.get('status')!=row['status']):
+                raise ValueError('候选状态文件与当前候选版本不匹配，拒绝丢弃')
+        body=summary(assessment)+'\n'
+        summary_bytes=body.encode('utf-8')
+        checksum=hashlib.sha256(summary_bytes).hexdigest()
+        summary_path=root/f"{row['task_id']}.discarded.{checksum}.md"
+        summary_sidecar=summary_path.with_suffix(summary_path.suffix+'.status.json')
+        if (summary_path.parent.resolve(strict=True)!=root.resolve(strict=True)
+                or summary_path.is_symlink() or summary_sidecar.is_symlink()):
+            raise ValueError('摘要路径不在受控 outbox 内')
+        previous_summary=summary_path.read_bytes() if summary_path.exists() else None
+        previous_summary_sidecar=summary_sidecar.read_bytes() if summary_sidecar.exists() else None
+        if previous_summary is not None and previous_summary!=summary_bytes:
+            raise ValueError('同哈希摘要路径已有不同正文，拒绝覆盖')
+        if previous_summary_sidecar is not None:
+            try:
+                metadata=json.loads(previous_summary_sidecar)
+            except (TypeError,ValueError,UnicodeError) as exc:
+                raise ValueError('已有摘要状态文件无法校验') from exc
+            if (not isinstance(metadata,dict) or metadata.get('task_id')!=row['task_id']
+                    or metadata.get('evidence_sha256')!=checksum
+                    or metadata.get('status')!='retired'):
+                raise ValueError('已有摘要状态文件与摘要哈希不匹配')
+        if not summary_path.exists():
+            temporary=summary_path.with_name(f'.{summary_path.name}.{uuid.uuid4().hex}.tmp')
+            try:
+                with temporary.open('xb') as stream:
+                    stream.write(summary_bytes)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.chmod(temporary,0o600)
+                os.replace(temporary,summary_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        self._file_state.undo.extend(((summary_path,previous_summary),
+                                     (summary_sidecar,previous_summary_sidecar)))
+        now=time.time()
+        db.execute(
+            'INSERT INTO ri_value_discard_cleanup(task_id,old_path,old_sha256,old_sidecar_sha256,'
+            'summary_path,summary_sha256,created_at) VALUES(?,?,?,?,?,?,?)',
+            (row['task_id'],str(path),row['evidence_sha256'],
+             hashlib.sha256(sidecar_body).hexdigest() if sidecar_body is not None else None,
+             str(summary_path),checksum,now),
+        )
+        db.execute("UPDATE memory_candidates SET status='retired',staged_path=?,evidence_sha256=?,updated_at=? WHERE task_id=?",
+                   (str(summary_path),checksum,now,row['task_id']))
+        self.native._write_candidate_status_sidecar_values(row['task_id'],str(summary_path),'retired',checksum,now)
+        # Value review only retires reusable experience. The task's answer and
+        # its already committed result hash remain the user's execution record.
         db.execute("UPDATE ri_requests SET state='value_discarded' WHERE id=?",(request['id'],))
         db.execute('UPDATE ri_inbox SET current=0 WHERE request_id=?',(request['id'],))
         db.execute("UPDATE ri_outbox SET status='superseded' WHERE request_id=?",(request['id'],))
-        self.event(db,request['id'],'value_discarded',{'assessment':assessment,'summary_sha256':checksum})
+        self.event(db,request['id'],'value_discarded',{
+            'assessment':assessment,
+            'reviewed_candidate_sha256':row['evidence_sha256'],
+            'summary_sha256':checksum,
+        })
+        self.defer_after_commit(lambda:self.recover_value_discard_cleanup(row['task_id']))
+
+    def recover_value_discard_cleanup(self, task_id=None, *, limit=50):
+        """Finish post-commit removal of reviewed bodies using durable hash bindings."""
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError('cleanup limit must be between 1 and 500')
+        cleaned=0
+        with self.transaction() as db:
+            if task_id is None:
+                rows=db.execute(
+                    'SELECT * FROM ri_value_discard_cleanup ORDER BY created_at,task_id LIMIT ?',
+                    (limit,),
+                ).fetchall()
+            else:
+                rows=db.execute(
+                    'SELECT * FROM ri_value_discard_cleanup WHERE task_id=?',
+                    (task_id,),
+                ).fetchall()
+            for row in rows:
+                if self._cleanup_discarded_value_tx(db,dict(row)):
+                    cleaned+=1
+        return cleaned
+
+    def _cleanup_discarded_value_tx(self, db, item):
+        candidate=db.execute(
+            'SELECT status,staged_path,evidence_sha256 FROM memory_candidates WHERE task_id=?',
+            (item['task_id'],),
+        ).fetchone()
+        if (not candidate or candidate['status']!='retired'
+                or candidate['staged_path']!=item['summary_path']
+                or candidate['evidence_sha256']!=item['summary_sha256']):
+            return False
+        root=self.outbox_root
+        summary_path=Path(item['summary_path'])
+        old_path=Path(item['old_path'])
+        if (root.is_symlink() or summary_path.is_symlink() or old_path.is_symlink()
+                or summary_path.name!=f"{item['task_id']}.discarded.{item['summary_sha256']}.md"
+                or old_path.name!=f"{item['task_id']}.md"):
+            return False
+        try:
+            if (summary_path.resolve(strict=True).parent!=root
+                    or old_path.resolve(strict=False).parent!=root):
+                return False
+            if hashlib.sha256(summary_path.read_bytes()).hexdigest()!=item['summary_sha256']:
+                return False
+            summary_sidecar=summary_path.with_suffix(summary_path.suffix+'.status.json')
+            if summary_sidecar.is_symlink():
+                return False
+            metadata=json.loads(summary_sidecar.read_text(encoding='utf-8'))
+            if (metadata.get('task_id')!=item['task_id'] or metadata.get('status')!='retired'
+                    or metadata.get('evidence_sha256')!=item['summary_sha256']):
+                return False
+            old_sidecar=old_path.with_suffix(old_path.suffix+'.status.json')
+            if old_path.exists() and hashlib.sha256(old_path.read_bytes()).hexdigest()!=item['old_sha256']:
+                return False
+            if old_sidecar.exists():
+                if (old_sidecar.is_symlink() or item['old_sidecar_sha256'] is None
+                        or hashlib.sha256(old_sidecar.read_bytes()).hexdigest()!=item['old_sidecar_sha256']):
+                    return False
+            self._file_state.undo.extend((
+                (old_path,old_path.read_bytes() if old_path.exists() else None),
+                (old_sidecar,old_sidecar.read_bytes() if old_sidecar.exists() else None),
+            ))
+            old_path.unlink(missing_ok=True)
+            old_sidecar.unlink(missing_ok=True)
+            db.execute('DELETE FROM ri_value_discard_cleanup WHERE task_id=?',(item['task_id'],))
+            return True
+        except (OSError,TypeError,ValueError,UnicodeError):
+            return False
+
+    def _pending_value_item(self, db, candidate_id):
+        from xiaoba_agentos.value_queue import pending_items
+        matches = [item for item in pending_items(db)
+                   if item['task_id'] == candidate_id
+                   and item.get('queue_status') == 'awaiting_value_review']
+        if len(matches) > 1:
+            raise ValueError('同一任务存在多个待评分候选，不能选择其中一个送审')
+        if matches:
+            task = db.execute(
+                'SELECT * FROM tasks WHERE id=?', (candidate_id,),
+            ).fetchone()
+            if task is None or task['status'] != 'completed':
+                raise ValueError('待评分候选必须绑定已完成任务')
+            from xiaoba_agentos.experience_workflow import policy
+            if policy(dict(task))['kind'] not in {'method', 'rule'}:
+                raise ValueError('待评分候选来源任务不是 method/rule')
+        return matches[0] if matches else None
+
+    def _prepared_candidate_body(self, item):
+        raw_path = item['staged_path']
+        path = Path(raw_path)
+        if not path.is_absolute():
+            raise ValueError('待评分候选路径必须是绝对路径')
+        if path.is_symlink():
+            raise ValueError('待评分候选不能通过符号链接读取')
+        resolved = path.resolve(strict=True)
+        if str(resolved) != raw_path:
+            raise ValueError('待评分候选路径不是规范路径')
+        try:
+            resolved.relative_to(self.outbox_root)
+        except ValueError as exc:
+            raise ValueError('待评分候选必须位于受控 outbox 内') from exc
+        if not resolved.is_file() or resolved.stat().st_size > 1024 * 1024:
+            raise ValueError('待评分候选不是有效文件或超过大小限制')
+        body = resolved.read_bytes()
+        if len(body) > 1024 * 1024:
+            raise ValueError('待评分候选超过大小限制')
+        if hashlib.sha256(body).hexdigest() != item['candidate_sha256']:
+            raise ValueError('待评分候选内容与事件哈希不一致')
+        return body.decode('utf-8')
+
+    def _snapshot_prepared_candidate_files(self, db, item):
+        if getattr(self._file_state, 'db', None) is not db:
+            raise RuntimeError('待评分候选文件必须绑定当前 ReviewStore 事务')
+        path = Path(item['staged_path'])
+        sidecar = path.with_suffix(path.suffix + '.status.json')
+        for current in (path, sidecar):
+            if current.is_symlink():
+                raise ValueError('候选或状态文件不能通过符号链接改写')
+            self._file_state.undo.append((current, current.read_bytes() if current.exists() else None))
+
+    def _assess_prepared_candidate(self, db, request, item):
+        assessor = getattr(self.native, 'assess_value_candidate', None)
+        if not callable(assessor):
+            raise RuntimeError(
+                '待评分候选需要核心接口 EventStore.assess_value_candidate；当前版本未提供'
+            )
+        self._snapshot_prepared_candidate_files(db, item)
+        result = assessor(request['candidate_id'], request['id'], conn=db)
+        if result.get('decision') == 'discard':
+            self.defer_after_commit(lambda: self.native.cleanup_discarded_candidate(
+                request['candidate_id'], item['staged_path'], item['candidate_sha256']))
+        return result
+
+    @staticmethod
+    def _stored_value_assessment(db, candidate_id, candidate_sha256):
+        from xiaoba_agentos.value_queue import _assessment_payload, _versioned_payload
+        matches = []
+        for row in db.execute(
+            "SELECT payload_json FROM events WHERE task_id=? AND event_type='memory.value_assessed' ORDER BY sequence",
+            (candidate_id,),
+        ):
+            payload = _versioned_payload(row['payload_json'], 'memory.value_assessed')
+            if payload is None:
+                continue
+            normalized = _assessment_payload(payload)
+            if normalized['candidate_sha256'] == candidate_sha256:
+                matches.append(normalized)
+        if len(matches) > 1 and any(value != matches[0] for value in matches[1:]):
+            raise ValueError('同一候选哈希存在冲突的价值评估')
+        return matches[0] if matches else None
 
     def event(self, db, request_id, kind, data):
         row = db.execute('SELECT candidate_id FROM ri_requests WHERE id=?', (request_id,)).fetchone()
@@ -444,8 +675,17 @@ class ReviewStore:
     def subject(self, db, candidate_id):
         row = db.execute('SELECT * FROM memory_candidates WHERE task_id=?', (candidate_id,)).fetchone()
         if row is None:
-            from xiaoba_agentos.formal_review import subject
-            return subject(db, candidate_id)
+            item = self._pending_value_item(db, candidate_id)
+            if item is None:
+                from xiaoba_agentos.formal_review import subject
+                return subject(db, candidate_id)
+            body = self._prepared_candidate_body(item)
+            return {
+                'candidate_id': candidate_id,
+                'candidate_sha256': item['candidate_sha256'],
+                'delivery_review': None,
+                'body': body,
+            }
         if row['status'] not in {'pending_delivery_review', 'revision_requested', 'delivery_approved',
                                   'pending_final_review', 'revalidation_required', 'publication_failed'}:
             raise ValueError('原卡已结束，不能补审')
@@ -496,6 +736,8 @@ class ReviewStore:
         if channel not in {'external_handoff', 'backend_adapter'}:
             raise ValueError('未知接入通道')
         common = json.loads(request['common'])
+        if common.get('media_review') and channel != 'backend_adapter':
+            raise ValueError('missing_materials: 视频审查需要受控 CLI 通道；请人工核查')
         contract_version = common.get('contract_version') or (2 if common.get('review_type') is not None else 1)
         if contract_version >= 2:
             receipt_contract = {
@@ -533,7 +775,8 @@ class ReviewStore:
 
     def create(self, candidate_id, dsh_id, peer_id, scope, evidence, request_id=None,
                dsh_channel='external_handoff', peer_channel='external_handoff',
-               contract_version=None, review_type=None, duplicate_of=None):
+               contract_version=None, review_type=None, duplicate_of=None, value_review=False,
+               media_review=None):
         if not isinstance(scope, str) or not scope.strip() or not isinstance(evidence, list) or not evidence:
             raise ValueError('需要审查范围和证据引用')
         if any(not isinstance(ref, dict) or not isinstance(ref.get('ref'), str) or not ref['ref'].strip()
@@ -553,6 +796,17 @@ class ReviewStore:
         request_id = request_id or identifier()
         with self.transaction() as db:
             subject = self.subject(db, candidate_id)
+            if type(value_review) is not bool:
+                raise ValueError('value_review 必须是专用派工标记')
+            pending_value = self._pending_value_item(db, candidate_id)
+            if pending_value is not None and not value_review:
+                raise ValueError('待价值评分候选必须使用专用价值评分双审入口')
+            if value_review:
+                if (review_type != 'new_experience' or pending_value is None
+                        or pending_value['candidate_sha256'] != subject.get('candidate_sha256')
+                        or subject.get('delivery_review') is not None):
+                    raise ValueError('价值评分请求只能由当前待评分候选创建')
+                subject = {**subject, 'value_review': {'version': 1}}
             if subject.get('source_task_id') and review_type != 'reuse_change':
                 raise ValueError('正式复用改动必须使用 reuse_change 审查类型')
             dsh, peer = self.source(db, dsh_id), self.source(db, peer_id)
@@ -562,6 +816,15 @@ class ReviewStore:
             if subject.get('source_task_id') and subject['candidate_sha256'] not in {r['sha256'] for r in evidence}:
                 raise ValueError('证据未绑定完整修订稿')
             common = {**subject, 'scope': scope, 'evidence_refs': evidence, 'contract_version': contract_version}
+            if media_review is not None:
+                from xiaoba_agentos.media_review_materials import freeze_video_review_request
+                candidate = db.execute('SELECT * FROM memory_candidates WHERE task_id=?', (candidate_id,)).fetchone()
+                if candidate is None:
+                    raise ValueError('视频材料要求当前待验证候选')
+                common['media_review'] = freeze_video_review_request(db, dict(candidate), media_review)
+                source_video = common['media_review']['source_video']
+                common['evidence_refs'] = [dict(item, ref='video-sha256:' + source_video['sha256'])
+                    if item['ref'] == source_video['path'] else dict(item) for item in evidence]
             if review_type is not None:
                 common['review_type'] = review_type
             if duplicate_of is not None and duplicate_of.strip():
@@ -658,7 +921,8 @@ class ReviewStore:
             if old:
                 if old['digest'] != checksum:
                     raise Conflict('同 ID 不同回执内容')
-                return dict(old)
+                return dict(old, verdict='NEEDS_INFO' if old['status'] == 'invalid'
+                            else json.loads(old['data']).get('verdict'))
             assignment = db.execute('SELECT * FROM ri_assignments WHERE id=?', (data.get('assignment_id'),)).fetchone()
             if assignment is None:
                 raise ValueError('找不到任务卡；未关联回执不写入经验')
@@ -729,11 +993,14 @@ class ReviewStore:
             status = 'invalid' if reason else 'identity_pending'
             db.execute('INSERT INTO ri_receipts VALUES (?,?,?,?,?,?,?,NULL)',
                        (data['receipt_id'], request['id'], assignment['id'], canonical(data), checksum, status, reason))
-            self.event(db, request['id'], 'receipt_received', {'receipt_id': data['receipt_id'], 'status': status, 'reason': reason})
+            effective_verdict = 'NEEDS_INFO' if reason else data['verdict']
+            self.event(db, request['id'], 'receipt_received', {'receipt_id': data['receipt_id'], 'status': status,
+                       'reason': reason, 'verdict': effective_verdict})
             self.prepare(db, request)
-        return {'id': data['receipt_id'], 'digest': checksum, 'status': status, 'reason': reason}
+        return {'id': data['receipt_id'], 'digest': checksum, 'status': status, 'reason': reason,
+                'verdict': effective_verdict}
 
-    def attest(self, receipt_id, expected_digest, note):
+    def attest(self, receipt_id, expected_digest, note, *, backend_attempt=None):
         if not isinstance(note, str) or not note.strip():
             raise ValueError('请记录实际来源核对或交接依据')
         with self.transaction() as db:
@@ -744,11 +1011,55 @@ class ReviewStore:
             assignment = db.execute('SELECT * FROM ri_assignments WHERE id=?', (row['assignment_id'],)).fetchone()
             if row['status'] == 'invalid' or not assignment['active'] or not self.refresh(db, request):
                 raise ValueError('失效回执不能确认来源')
+            if backend_attempt is not None:
+                if not isinstance(backend_attempt, str) or not backend_attempt.strip() or len(backend_attempt) > 128:
+                    raise ValueError('后台执行编号无效')
+                card = json.loads(assignment['card'])
+                data = json.loads(row['data'])
+                started = False
+                for event in db.execute(
+                    "SELECT payload_json FROM events WHERE event_type='open_review.backend_started' ORDER BY sequence"
+                ):
+                    payload = json.loads(event['payload_json'])
+                    if (payload.get('request_id') == request['id']
+                            and payload.get('assignment_id') == assignment['id']
+                            and payload.get('attempt') == backend_attempt):
+                        started = True
+                        break
+                if (card.get('channel') != 'backend_adapter' or data.get('receipt_id') != receipt_id
+                        or data.get('assignment_id') != assignment['id'] or not started):
+                    raise ValueError('后台回执没有绑定本次任务卡执行')
             if row['status'] != 'valid':
                 db.execute("UPDATE ri_receipts SET status='valid',attestation=? WHERE id=?", (note, receipt_id))
                 self.event(db, request['id'], 'source_attested', {'receipt_id': receipt_id, 'basis': note})
+            elif row['attestation'] != note:
+                raise Conflict('同一回执已有不同来源核对依据')
+            if backend_attempt is not None:
+                ready = False
+                for event in db.execute(
+                    "SELECT payload_json FROM events WHERE event_type='open_review.backend_receipt_ready' ORDER BY sequence"
+                ):
+                    payload = json.loads(event['payload_json'])
+                    if (payload.get('request_id') == request['id']
+                            and payload.get('assignment_id') == assignment['id']
+                            and payload.get('attempt') == backend_attempt
+                            and payload.get('receipt_id') == receipt_id
+                            and payload.get('receipt_digest') == expected_digest):
+                        ready = True
+                        break
+                if not ready:
+                    self.event(db, request['id'], 'backend_receipt_ready', {
+                        'assignment_id': assignment['id'], 'attempt': backend_attempt,
+                        'receipt_id': receipt_id, 'receipt_digest': expected_digest,
+                    })
             self.prepare(db, request)
         return self.get(row['request_id'])
+
+    def record_value_dispatch(self, task_id, candidate_sha256, request_id, status, reason=''):
+        with self.transaction() as db:
+            return self.native.record_value_review_dispatch(
+                task_id, candidate_sha256, request_id, status, reason, conn=db,
+            )
 
     def prepare(self, db, request):
         if not self.refresh(db, request):
@@ -773,61 +1084,97 @@ class ReviewStore:
         prior_failures = [json.loads(r['data']) for r in db.execute(
             "SELECT data FROM ri_receipts WHERE request_id=? AND status='valid' ORDER BY rowid", (request['id'],))
             if json.loads(r['data']).get('verdict') == 'FAIL']
+        current_verdicts = [r['receipt']['verdict'] for r in receipts]
+        needs_info = 'NEEDS_INFO' in current_verdicts
+        # Historical FAIL stays in prior_failures for audit; it must not lock current all_pass.
         packet = {'review_request_id': request['id'], 'plan_revision': request['revision'],
                   'subject': json.loads(request['common']), 'reviews': receipts,
                   'prior_failures': prior_failures,
-                  'all_pass': all(r['receipt']['verdict'] == 'PASS' for r in receipts) and not prior_failures,
+                  'all_pass': all(v == 'PASS' for v in current_verdicts),
+                  'needs_info': needs_info,
                   'approval': 'human_required', 'native_validation_gate': 'unchanged'}
         scores = {r['receipt']['reviewer_role']: r['receipt']['score']
                   for r in receipts if 'score' in r['receipt'] and r['receipt']['score'] is not None}
         if scores:
             packet['scores'] = scores
-        if packet['subject'].get('review_type')=='new_experience':
-            from xiaoba_agentos.value_scoring import decide,record_tx
-            assessment=decide([{'reviewer_id':r['receipt']['reviewer_id'],
-                'score':r['receipt'].get('score'),'duplicate_of':r['receipt'].get('duplicate_of')} for r in receipts],
-                packet['subject'].get('duplicate_of'))
-            packet['value_assessment']=assessment
-            # A revalidation after initial approval keeps its existing trial
-            # gates. This is the admission line for a new, unapproved draft.
-            initial=packet['subject'].get('delivery_review')
-            if not initial or initial.get('decision')!='approve':
-                record_tx(db,request['candidate_id'],assessment)
-                if assessment['decision']=='discard':
-                    self.discard_value(db,request,assessment)
+        # NEEDS_INFO is a formed business packet (like FAIL): deliver via
+        # pending_center/submitted. Never park in waiting_receipts so get()/prepare
+        # cannot flip the pause class to external_receipt. Skip value discard.
+        if not needs_info and packet['subject'].get('review_type') == 'new_experience':
+            value_review = packet['subject'].get('value_review') == {'version': 1}
+            if value_review:
+                candidate_sha256 = packet['subject']['candidate_sha256']
+                prepared = self._pending_value_item(db, request['candidate_id'])
+                assessment = self._stored_value_assessment(
+                    db, request['candidate_id'], candidate_sha256,
+                )
+                if prepared is not None:
+                    if prepared['candidate_sha256'] != candidate_sha256:
+                        raise ValueError('待评分事件哈希与当前审查材料不一致')
+                    result = self._assess_prepared_candidate(db, request, prepared)
+                    assessment = result['assessment']
+                elif assessment is None or assessment.get('version') != 2:
+                    raise ValueError('价值审查请求没有对应的待评分候选或已结算双审回执')
+                if assessment.get('version') != 2 or assessment.get('review_request_id') != request['id']:
+                    raise ValueError('价值评估未绑定本次 Agent 池双审请求')
+                packet['value_assessment'] = assessment
+                if assessment['decision'] == 'discard':
+                    db.execute("UPDATE ri_requests SET state='value_discarded' WHERE id=?", (request['id'],))
+                    db.execute('UPDATE ri_inbox SET current=0 WHERE request_id=?', (request['id'],))
+                    db.execute("UPDATE ri_outbox SET status='superseded' WHERE request_id=?", (request['id'],))
+                    self.event(db, request['id'], 'value_discarded', {
+                        'candidate_sha256': candidate_sha256,
+                        'assessment': assessment,
+                    })
                     return
+                materialized = db.execute(
+                    'SELECT evidence_sha256,status FROM memory_candidates WHERE task_id=?',
+                    (request['candidate_id'],),
+                ).fetchone()
+                if (not materialized or materialized['evidence_sha256'] != candidate_sha256
+                        or materialized['status'] not in {'pending_delivery_review', 'revision_requested'}):
+                    raise ValueError('核心价值审查接口未将合格候选按当前哈希原子放入初审队列')
+            else:
+                from xiaoba_agentos.value_scoring import decide, record_tx
+                assessment = decide([{'reviewer_id': r['receipt']['reviewer_id'],
+                    'score': r['receipt'].get('score'), 'duplicate_of': r['receipt'].get('duplicate_of')} for r in receipts],
+                    packet['subject'].get('duplicate_of'))
+                packet['value_assessment'] = assessment
+                initial = packet['subject'].get('delivery_review')
+                if not initial or initial.get('decision') != 'approve':
+                    candidate = db.execute(
+                        'SELECT evidence_sha256 FROM memory_candidates WHERE task_id=?',
+                        (request['candidate_id'],),
+                    ).fetchone()
+                    stored_assessment = self._stored_value_assessment(
+                        db, request['candidate_id'], packet['subject']['candidate_sha256']
+                    )
+                    if stored_assessment is not None:
+                        packet['value_assessment'] = stored_assessment
+                    elif candidate is not None:
+                        record_tx(db, request['candidate_id'], assessment)
+                        if assessment['decision'] == 'discard':
+                            self.discard_value(db, request, assessment)
+                            return
         checksum = digest(packet)
         # Receipt-version changes supersede old packets, retaining their full history.
         packet_id = request['id'] + ':' + checksum
+        existed = db.execute('SELECT 1 FROM ri_outbox WHERE id=?', (packet_id,)).fetchone()
         db.execute('UPDATE ri_inbox SET current=0 WHERE request_id=? AND id!=?', (request['id'], packet_id))
         db.execute("UPDATE ri_outbox SET status='superseded' WHERE request_id=? AND id!=?", (request['id'], packet_id))
         db.execute('INSERT OR IGNORE INTO ri_outbox VALUES (?,?,?,?,?,NULL)', (packet_id, request['id'], canonical(packet), checksum, 'pending'))
         status = db.execute('SELECT status FROM ri_outbox WHERE id=?', (packet_id,)).fetchone()['status']
         db.execute('UPDATE ri_requests SET state=? WHERE id=?',
                    ('submitted' if status == 'acknowledged' else 'pending_center', request['id']))
+        if needs_info and not existed:
+            self.event(db, request['id'], 'needs_info_paused', {
+                'verdicts': {r['receipt']['reviewer_role']: r['receipt']['verdict'] for r in receipts},
+            })
+
 
     def replace_peer(self, request_id, source_id, reason, channel='external_handoff'):
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError('需要替换原因')
-        with self.transaction() as db:
-            request = db.execute('SELECT * FROM ri_requests WHERE id=?', (request_id,)).fetchone()
-            if request is None or not self.refresh(db, request):
-                raise ValueError('请求不存在或已失效')
-            old = db.execute("SELECT * FROM ri_assignments WHERE request_id=? AND role='peer' AND active=1", (request_id,)).fetchone()
-            if old['running']:
-                raise Conflict('后台仍执行中，不能无痕换人；先等待执行结束')
-            dsh = db.execute("SELECT source_id FROM ri_assignments WHERE request_id=? AND role='dsh' AND active=1", (request_id,)).fetchone()
-            from .agent_pool import independence
-            if independence(self.source(db, source_id)) == independence(self.source(db, dsh['source_id'])):
-                raise ValueError('实际来源不独立')
-            db.execute('UPDATE ri_assignments SET active=0 WHERE id=?', (old['id'],))
-            db.execute("UPDATE ri_requests SET revision=revision+1,state='waiting_receipts' WHERE id=?", (request_id,))
-            db.execute('UPDATE ri_inbox SET current=0 WHERE request_id=?', (request_id,))
-            db.execute("UPDATE ri_outbox SET status='superseded' WHERE request_id=?", (request_id,))
-            request = db.execute('SELECT * FROM ri_requests WHERE id=?', (request_id,)).fetchone()
-            card = self.assignment(db, request, 'peer', source_id, channel)
-            self.event(db, request_id, 'peer_replaced', {'old_assignment': old['id'], 'new_assignment': card['assignment_id'], 'reason': reason})
-        return self.get(request_id)
+        return self.replace_reviewer(request_id, source_id, reason, role='peer', channel=channel)
+
 
     def deliver(self, inbox):
         """Durable outbox retry: no rerunning reviewers and no premature ACK."""
@@ -869,6 +1216,8 @@ class ReviewStore:
             row['receipts'] = [dict(r) for r in db.execute('SELECT * FROM ri_receipts WHERE request_id=? ORDER BY rowid', (request_id,))]
             for receipt in row['receipts']:
                 receipt['data'] = json.loads(receipt['data'])
+                receipt['verdict'] = ('NEEDS_INFO' if receipt['status'] == 'invalid'
+                                      else receipt['data'].get('verdict'))
             for item in row['assignments']:
                 item['card'] = json.loads(item['card'])
                 has_receipt = any(r['assignment_id'] == item['id'] for r in row['receipts'])
@@ -1123,6 +1472,67 @@ class ReviewStore:
                             applicability=meta.get('适用条件'),
                             duplicate_of=(meta.get('重复经验') or None))
         return semantic
+
+    def replace_reviewer(self, request_id, source_id, reason, role=None, channel='external_handoff',
+                         *, assignment_id=None, old_source_id=None):
+        """Replace an active reviewer by assignment_id, old_source_id, or legacy seat role."""
+        if assignment_id is None and old_source_id is None:
+            role = 'peer' if role is None else role
+            if role not in {'dsh', 'peer'}:
+                raise ValueError('只能更换 dsh 或 peer（或通过 assignment_id / old_source_id 指定有效审查席位）')
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError('需要替换原因')
+        with self.transaction() as db:
+            request = db.execute('SELECT * FROM ri_requests WHERE id=?', (request_id,)).fetchone()
+            if request is None or not self.refresh(db, request):
+                raise ValueError('请求不存在或已失效')
+            if assignment_id is not None:
+                old = db.execute(
+                    "SELECT * FROM ri_assignments WHERE id=? AND request_id=? AND active=1",
+                    (assignment_id, request_id),
+                ).fetchone()
+            elif old_source_id is not None:
+                old = db.execute(
+                    "SELECT * FROM ri_assignments WHERE request_id=? AND source_id=? AND active=1",
+                    (request_id, old_source_id),
+                ).fetchone()
+            else:
+                old = db.execute(
+                    "SELECT * FROM ri_assignments WHERE request_id=? AND role=? AND active=1",
+                    (request_id, role),
+                ).fetchone()
+            if old is None:
+                raise ValueError('当前没有可更换的活动审查席位')
+            if old['running']:
+                raise Conflict('后台仍执行中，不能无痕换人；先等待执行结束')
+            seat_role = old['role']
+            others = db.execute(
+                "SELECT source_id FROM ri_assignments WHERE request_id=? AND id!=? AND active=1",
+                (request_id, old['id']),
+            ).fetchall()
+            from .agent_pool import independence
+            new_ind = independence(self.source(db, source_id))
+            if new_ind == independence(self.source(db, old['source_id'])):
+                raise ValueError('替换前后实际来源相同，不能重开原审查')
+            if any(new_ind == independence(self.source(db, r['source_id'])) for r in others):
+                raise ValueError('实际来源不独立')
+            db.execute('UPDATE ri_assignments SET active=0 WHERE id=?', (old['id'],))
+            db.execute("UPDATE ri_requests SET revision=revision+1,state='waiting_receipts' WHERE id=?", (request_id,))
+            db.execute('UPDATE ri_inbox SET current=0 WHERE request_id=?', (request_id,))
+            db.execute("UPDATE ri_outbox SET status='superseded' WHERE request_id=?", (request_id,))
+            request = db.execute('SELECT * FROM ri_requests WHERE id=?', (request_id,)).fetchone()
+            card = self.assignment(db, request, seat_role, source_id, channel)
+            self.event(db, request_id, seat_role + '_replaced', {
+                'old_assignment': old['id'], 'old_source_id': old['source_id'],
+                'new_assignment': card['assignment_id'], 'new_source_id': source_id,
+                'reason': reason, 'role': seat_role,
+            })
+        return self.get(request_id)
+
+    def replace_dsh(self, request_id, source_id, reason, channel='external_handoff'):
+        return self.replace_reviewer(request_id, source_id, reason, role='dsh', channel=channel)
+
+
 
 
 class DecisionInbox:

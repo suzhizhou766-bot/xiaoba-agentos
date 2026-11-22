@@ -12,13 +12,64 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 PACKAGE = REPO / 'architecture-package-20261027'
-CORE = REPO / 'development/integrated-candidate/src'
+CORE = HERE.parent if (HERE.parent / 'xiaoba_agentos').is_dir() else REPO / 'development/integrated-candidate/src'
+MONITOR = (
+    HERE.parent / 'xiaoba_monitor_shared'
+    if (HERE.parent / 'xiaoba_monitor_shared').is_dir()
+    else PACKAGE / 'shared/工具/小八监看'
+)
+
+
+def resolve_runtime_paths(here: Path = HERE, repo_root_arg: Path | None = None) -> dict[str, Path | str | None]:
+    """Resolve core/monitor/architecture-center roots for both worktree and packaged layouts."""
+    here = Path(here).resolve()
+    core_source = here.parent if (here.parent / 'xiaoba_agentos').is_dir() else here.parents[1] / 'development/integrated-candidate/src'
+    center_root = (
+        here.parent / 'xiaoba_architecture_center'
+        if (here.parent / 'xiaoba_architecture_center').is_dir()
+        else here.parent / 'architecture-center'
+    )
+    if repo_root_arg is not None:
+        raw_repo = Path(repo_root_arg).expanduser()
+        if raw_repo.is_symlink() or not raw_repo.is_dir():
+            raise ValueError('--repo-root 必须是存在的非软链接工作树目录')
+        repo_root = raw_repo.resolve()
+        if not (repo_root / 'development' / 'architecture-center' / 'modules').is_dir():
+            raise ValueError('--repo-root 缺少 development/architecture-center/modules 模块规范目录')
+        spec_root = None
+        readonly_reason = None
+    else:
+        default_repo = here.parents[1]
+        if (default_repo / 'development' / 'architecture-center' / 'modules').is_dir():
+            repo_root = default_repo
+            spec_root = None
+            readonly_reason = None
+        elif (center_root / 'modules').is_dir():
+            repo_root = default_repo
+            spec_root = center_root
+            readonly_reason = '当前以包内只读投影运行，仅支持查看模块规范；如需创建修改提案，请通过 --repo-root 指定开发工作树。'
+        else:
+            raise ValueError('找不到架构中心模块规范目录；请通过 --repo-root 指定开发工作树')
+    monitor_source = (
+        here.parent / 'xiaoba_monitor_shared'
+        if (here.parent / 'xiaoba_monitor_shared').is_dir()
+        else repo_root / 'architecture-package-20261027/shared/工具/小八监看'
+    )
+    return {
+        'repo_root': repo_root,
+        'core_source': core_source,
+        'monitor_source': monitor_source,
+        'center_root': center_root,
+        'spec_root': spec_root,
+        'readonly_reason': readonly_reason,
+    }
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--core-source', type=Path, default=CORE)
-    parser.add_argument('--monitor-source', type=Path, default=PACKAGE / 'shared/工具/小八监看')
+    parser.add_argument('--monitor-source', type=Path, default=MONITOR)
+    parser.add_argument('--repo-root', type=Path, help='开发工作树根目录；打包布局下用于读取工作树模块规范并启用模块提案')
     parser.add_argument('--config', type=Path, help='现有 AgentOS 配置；本工具不修改它')
     parser.add_argument('--runtime', type=Path, default=HERE / '.runtime', help='无配置时的新建独立运行目录')
     parser.add_argument('--port', type=int, default=8800)
@@ -32,6 +83,10 @@ def main():
     parser.add_argument('--switch-sha256', help='上述固定入口的已核对 SHA-256')
     parser.add_argument('--switch-python', type=Path, help='本机原生发版解释器')
     args = parser.parse_args()
+    try:
+        paths = resolve_runtime_paths(HERE, args.repo_root)
+    except ValueError as exc:
+        parser.error(str(exc))
     sys.path[:0] = [str(args.core_source.resolve()), str(args.monitor_source.resolve())]
     from xiaoba_agentos.config import AppConfig
     from xiaoba_agentos.store import EventStore
@@ -77,7 +132,7 @@ def main():
     settings['root'] = str(runtime)
     ctx = Context(settings, logs.setup(None), args.port)
     app = App(ctx)
-    center_root = HERE.parent / 'architecture-center'
+    center_root = paths['center_root']
     module_spec = importlib.util.spec_from_file_location('xiaoba_architecture_center', center_root / '__init__.py', submodule_search_locations=[str(center_root)])
     module = importlib.util.module_from_spec(module_spec)
     sys.modules[module_spec.name] = module
@@ -88,7 +143,11 @@ def main():
     if bool(args.switch_script) != bool(args.switch_sha256):
         parser.error('原生发布入口必须同时提供路径及已核对指纹')
     release_driver = NativeRelease(args.switch_script, args.switch_sha256, args.switch_python) if args.switch_script else None
-    upgrade_center = Center(REPO, args.updates_workspace or runtime / 'upgrade-workspace', center_root / 'MODULES.json', release_driver)
+    upgrade_center = Center(
+        paths['repo_root'], args.updates_workspace or runtime / 'upgrade-workspace',
+        center_root / 'MODULES.json', release_driver,
+        spec_root=paths['spec_root'], readonly_reason=paths['readonly_reason'],
+    )
     app.register(ArchitectureCenterModule(ctx, upgrade_center))
     system = SystemModule(ctx)
     app.register(system)
@@ -123,6 +182,7 @@ def main():
     print(json.dumps({'listening': 'http://127.0.0.1:%d/open-review' % args.port,
                       'database': str(native.path), 'dsh_adapter_registered': bool(args.dsh_reviewer),
                       'architecture': 'http://127.0.0.1:%d/architecture/' % args.port,
+                      'architecture_writable': paths['readonly_reason'] is None,
                       'updates_workspace': str(upgrade_center.workspace), 'release_driver_configured': release_driver is not None,
                       'production_switch': False}), flush=True)
     try:

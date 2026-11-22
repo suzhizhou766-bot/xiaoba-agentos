@@ -83,7 +83,7 @@ class Card37Tests(unittest.TestCase):
         self.seed()
         for verdict in ('PASS', 'FAIL', 'NEEDS_INFO'):
             with self.subTest(verdict=verdict):
-                task = self.submit(host=self.host())
+                task = self.submit('method', host=self.host())
                 self.assertEqual('awaiting_host', Orchestrator(self.config, self.store).run_once()['status'])
                 receipt = self.receipt(task); receipt['verdict'] = verdict
                 path = self.root/('receipt-'+verdict+'.json'); path.write_text(json.dumps(receipt))
@@ -93,10 +93,17 @@ class Card37Tests(unittest.TestCase):
                 self.assertEqual(verdict, json.loads(settled['provenance_json'])['verdict'])
                 self.assertEqual(head[verdict], settled['result'].splitlines()[0])
                 self.assertIn('宿主实际结论', settled['result'])
+                if verdict == 'PASS':
+                    self.assertEqual('pending_delivery_review', self.store.get_memory_candidate(task)['status'])
+                else:
+                    self.assertEqual('none', json.loads(settled['provenance_json']).get('memory_disposition', 'none'))
+                    self.assertIsNone(self.store.get_memory_candidate(task))
+                    self.assertFalse(any(item['task_id'] == task for item in self.store.value_review_queue()))
+                    self.assertEqual([], list((self.config.runtime_dir/'memory-outbox').glob(task+'*')))
                 self.assertEqual(complete_host(self.config, self.store, task, receipt)['replayed'], True)
 
-    def test_host_second_vote_queues_the_same_experience_candidate_as_the_worker(self):
-        # 要进初审的新经验任务走宿主补票时不能丢候选：同一条路径、同一套门禁，宿主不代批。
+    def test_host_second_vote_admits_method_with_independent_pool_score(self):
+        # 一份池回执与合规未参与宿主共同通过价值准入。
         from xiaoba_agentos.host_completion import complete_host
         self.seed()
         task = self.submit(experience_kind='method', host=self.host())
@@ -105,12 +112,8 @@ class Card37Tests(unittest.TestCase):
         path = self.root/'receipt-method.json'; path.write_text(json.dumps(receipt))
         self.assertEqual(0, main(['--config', str(self.config.path), 'task-host-complete', task, '--receipt', str(path)]))
         self.assertEqual('completed', self.store.get_task(task)['status'])
-        with self.store.read_only() as db:
-            row = db.execute('SELECT status,staged_path,evidence_sha256,source_task_ids_json FROM memory_candidates WHERE task_id=?', (task,)).fetchone()
-            staged_events = db.execute("SELECT count(*) FROM events WHERE task_id=? AND event_type='memory.candidate_staged'", (task,)).fetchone()[0]
-        self.assertIsNotNone(row, '宿主补票把要进初审的经验候选丢了')
+        row = self.store.get_memory_candidate(task)
         self.assertEqual('pending_delivery_review', row['status'])
-        self.assertEqual(1, staged_events)
         staged = Path(row['staged_path'])
         self.assertTrue(staged.is_file())
         self.assertEqual(row['evidence_sha256'], __import__('hashlib').sha256(staged.read_bytes()).hexdigest())
@@ -119,19 +122,17 @@ class Card37Tests(unittest.TestCase):
         self.assertIn('authority: false', body)
         self.assertIn('宿主审查结论：PASS', body)
         self.assertEqual('[]', row['source_task_ids_json'])
-        self.assertTrue((staged.parent/(staged.name+'.status.json')).is_file())
         self.assertEqual(complete_host(self.config, self.store, task, receipt)['replayed'], True)
-        with self.store.read_only() as db:
-            self.assertEqual(1, db.execute('SELECT count(*) FROM memory_candidates WHERE task_id=?', (task,)).fetchone()[0])
-            self.assertEqual(1, db.execute("SELECT count(*) FROM events WHERE task_id=? AND event_type='memory.candidate_staged'", (task,)).fetchone()[0])
+        self.assertEqual([], [item for item in self.store.value_review_queue() if item['task_id'] == task])
 
-    def test_host_cannot_settle_a_controlled_trial_task(self):
+    def test_host_cannot_settle_an_execution_only_trial_task(self):
         from unittest.mock import patch
         from xiaoba_agentos.host_completion import complete_host
         self.seed()
         task = self.submit(host=self.host())
         self.assertEqual('awaiting_host', Orchestrator(self.config, self.store).run_once()['status'])
-        with patch('xiaoba_agentos.host_completion.verified_snapshot',return_value={'experience_trial':{'source_task_id':'TEST'}}):
+        with patch('xiaoba_agentos.host_completion.verified_snapshot',return_value={'experience_trial':{'source_task_id':'TEST'}}), \
+                patch('xiaoba_agentos.host_completion.needs_review', return_value=False):
             with self.assertRaisesRegex(ValueError,'受控验证'):
                 complete_host(self.config,self.store,task,self.receipt(task))
         self.assertIsNone(self.store.get_task(task)['result'])

@@ -32,6 +32,17 @@ TEMPLATE_FIXTURE = [
         "source_path": "",
         "last_verified": "2026-09-26",
     },
+    {
+        "path": "70_复利规则/长期复用门禁.md",
+        "id": "reuse-gate",
+        "type": "memory",
+        "parent": "learning",
+        "authority": True,
+        "title": "长期复用门禁",
+        "body": "测试经验分流正文。",
+        "source_path": "",
+        "last_verified": "2026-09-26",
+    },
 ]
 
 
@@ -69,7 +80,13 @@ class SecondBrainTemplateGateTest(unittest.TestCase):
             1, sum(1 for node in nodes if node["id"] == "recovery-policy")
         )
         self.assertEqual(
+            1, sum(1 for node in nodes if node["id"] == "reuse-gate")
+        )
+        self.assertEqual(
             "测试恢复正文。", next(node for node in nodes if node["id"] == "recovery-policy")["body"]
+        )
+        self.assertEqual(
+            "测试经验分流正文。", next(node for node in nodes if node["id"] == "reuse-gate")["body"]
         )
         self.assertEqual(
             [], [node["id"] for node in nodes if node["id"] in ("capabilities", "knowledge", "workflows", "assets")]
@@ -115,6 +132,18 @@ class SecondBrainTemplateGateTest(unittest.TestCase):
         ):
             drifted = json.loads(json.dumps(TEMPLATE_FIXTURE))
             next(item for item in drifted if item["id"] == "recovery-policy")[key] = value
+            with self.assertRaises(SystemExit, msg=f"key={key}"):
+                self._merge(drifted)
+
+    def test_reuse_gate_identity_drift_is_rejected(self):
+        for key, value in (
+            ("path", "70_复利规则/其他.md"),
+            ("type", "branch"),
+            ("parent", "knowledge"),
+            ("authority", False),
+        ):
+            drifted = json.loads(json.dumps(TEMPLATE_FIXTURE))
+            next(item for item in drifted if item["id"] == "reuse-gate")[key] = value
             with self.assertRaises(SystemExit, msg=f"key={key}"):
                 self._merge(drifted)
 
@@ -193,6 +222,16 @@ class SecondBrainIndexTest(unittest.TestCase):
         self.assertIn("运行源码", rendered["60_当前上下文/系统当前态.md"])
         self.assertIn("不可变发布内容", rendered["60_当前上下文/系统当前态.md"])
         self.assertIn("当前 Obsidian Vault", rendered["60_当前上下文/系统当前态.md"])
+
+    def test_reuse_gate_template_contains_j11b_routes_and_value_admission(self):
+        rendered = BRAIN_MODULE.build(BRAIN_SCRIPT.parents[1])
+        body = rendered["70_复利规则/长期复用门禁.md"]
+        self.assertIn("纯代码、命令、协议或状态机方法仍须隔离沙箱", body)
+        self.assertIn("终审弹窗可一次确认依据并作终审", body)
+        self.assertIn("均分≥6", body)
+        self.assertIn("缺少独立评分时任务仍可完成", body)
+        self.assertIn("默认折叠", body)
+        self.assertIn("不抵御同权限本机进程伪装", body)
 
     def test_generated_constitution_uses_the_same_public_user_rule_as_backends(self):
         write_extra_nodes_template(self.vault)

@@ -10,12 +10,30 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from fixtures_review import _config, _event_count, _run_cli
+from fixtures_review import _admit_authored_candidate, _config, _event_count, _run_cli
 from xiaoba_agentos.experience_workflow import (
     complete_audit, digest, execute_trial, policy, prepare_trial, trial_summary, match_trials,
 )
 from xiaoba_agentos.store import EventStore
 from xiaoba_agentos.memory import MemoryBridge
+from test_pool_dispatch import _seed, _source
+
+
+class _TrialPoolResource:
+    def __init__(self, **_kwargs):
+        pass
+
+    def run_task(self, _task_id, _step_code, _instruction, _materials):
+        return {
+            "status": "completed",
+            "body": "审查结论：PASS\n评分：8\n重复经验：无\nFINAL_ACCEPTANCE: PASS\n"
+                    "TRIAL_VALIDATION: PASS\nTEST independent pool review",
+            "execution_evidence": {"provider": "TEST", "route_source": "TEST fixture"},
+        }
+
+
+def _trial_pool_factory(_source, _workspace=None, **kwargs):
+    return _TrialPoolResource(**kwargs)
 
 
 class ExperienceWorkflowTest(unittest.TestCase):
@@ -36,6 +54,7 @@ class ExperienceWorkflowTest(unittest.TestCase):
     def candidate(self, kind="method", approve=True):
         c = self.store.create_authored_candidate("可复用方法", "仅测试用的候选方法", self.outbox,
                                                 author="test", experience_kind=kind, problem_key="parse-fixture")
+        c = _admit_authored_candidate(self.store, c)
         if approve:
             self.store.review_memory(c["task_id"], "delivery", "approve", "测试中的人工初审", c["evidence_sha256"])
         return c
@@ -95,10 +114,11 @@ class ExperienceWorkflowTest(unittest.TestCase):
 
     def test_keyword_match_returns_only_suggestions_for_approved_methods(self):
         c = self.store.create_authored_candidate("DSH局部修复", "候选正文不应返回", self.outbox, author="test", experience_kind="method")
+        c = _admit_authored_candidate(self.store, c)
         self.store.review_memory(c["task_id"], "delivery", "approve", "", c["evidence_sha256"])
         matches = match_trials(self.store, query="dsh")
         self.assertEqual([m["task_id"] for m in matches], [c["task_id"]])
-        self.assertEqual(set(matches[0]), {"task_id", "title", "candidate_sha256"})
+        self.assertTrue({"task_id", "title", "candidate_sha256", "delivery_review_id", "match_reason", "applicability_conditions"}.issubset(matches[0]))
 
     def test_constraint_hold_requires_explicit_human_release_and_stays_audit(self):
         t = self.store.submit("审计", 1, snapshot={"experience_policy": {"version": 1, "kind": "audit"}})
@@ -193,6 +213,10 @@ class ExperienceWorkflowTest(unittest.TestCase):
         self.cfg = AppConfig.load(self.cfg.path)
         self.store.apply_validation_extension()
         c = self.candidate()
+        _seed(self.store, [
+            _source("TEST-workflow-review", "cli:TEST-workflow-review", "TEST model review", kind="review"),
+            _source("TEST-workflow-both", "cli:TEST-workflow-both", "TEST model both", kind="both"),
+        ])
         workspace = self.cfg.runtime_dir / "trial-workspaces" / "cli-case"
         workspace.mkdir(parents=True)
         card = dict(self.card, workspace=str(workspace), cases=[{
@@ -208,7 +232,8 @@ class ExperienceWorkflowTest(unittest.TestCase):
         self.assertEqual(snapshot["memory_hits"], [])
         self.assertEqual(snapshot["agent_memory_contexts"], {})
         self.assertEqual(snapshot["knowlp_context"], "")
-        result = Orchestrator(self.cfg, self.store).run_once()
+        with patch("xiaoba_agentos.adapters._pool_cli_factory", return_value=_trial_pool_factory):
+            result = Orchestrator(self.cfg, self.store).run_once()
         self.assertEqual(result["status"], "completed", result)
         self.assertEqual(len(self.store.review_queue("all")), 1)
         self.assertTrue(self.summary(c)["ready"], self.summary(c))
@@ -256,6 +281,23 @@ class ExperienceWorkflowTest(unittest.TestCase):
         self.assertEqual((workspace / "result").read_text(), "5")
         self.trial(c, execution)
         self.assertTrue(self.summary(c)["ready"])
+
+    @unittest.skipUnless(Path("/usr/bin/sandbox-exec").exists(), "macOS trial harness")
+    def test_private_tmp_outside_workspace_is_not_readable(self):
+        workspace = self.cfg.runtime_dir / "trial-workspaces" / "private-tmp-read"
+        workspace.mkdir(parents=True)
+        with tempfile.TemporaryDirectory(prefix="xiaoba-trial-private-tmp-", dir="/private/tmp") as outside_dir:
+            private_file = Path(outside_dir) / "fixture.txt"
+            private_file.write_text("TEST isolated file")
+            script = ("from pathlib import Path\n"
+                      "try:\n Path(" + repr(str(private_file)) + ").read_text()\n"
+                      "except PermissionError: print('PRIVATE_TMP_READ_DENIED')\n"
+                      "else: raise AssertionError('private tmp read allowed')\n")
+            card = dict(self.card, workspace=str(workspace), cases=[{
+                "argv": [os.path.realpath(sys.executable), "-I", "-B", "-c", script],
+                "expect_stdout": "PRIVATE_TMP_READ_DENIED"}])
+            execution = execute_trial(self.cfg, card)
+            self.assertTrue(execution["passed"], execution)
 
     @unittest.skipUnless(Path("/usr/bin/sandbox-exec").exists(), "macOS trial harness")
     def test_core_interpreter_runs_but_only_its_binary_and_stdlib_are_readable(self):

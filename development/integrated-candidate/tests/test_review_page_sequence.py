@@ -35,9 +35,9 @@ class ReviewPageSequenceTest(unittest.TestCase):
     def test_search_keeps_queue_numbers(self):
         source = render_list_source(self.html)
         script = """
-const els={rcSearch:{value:process.argv[1]||""},rcList:{innerHTML:""}};
+const els={rcSearch:{value:process.argv[1]||""},rcList:{innerHTML:"",querySelector:()=>null}};
 const $=id=>els[id]; const esc=s=>String(s); const day=()=>"d";
-const DECISION={}; const saved={}; let selected=null;
+const DECISION={}; const saved={}; let selected=null, returnedExpanded=false;
 let state={items:Array.from({length:12},(_,i)=>({task_id:"t"+(i+1),title:"标题"+(i+1)+(i===10?"关键":""),status_label:"待初审",created_at:0}))};
 """ + source + """
 renderList();

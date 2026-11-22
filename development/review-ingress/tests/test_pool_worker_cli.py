@@ -51,7 +51,9 @@ meta = "任务ID: " + taskid + "\n步骤码: " + step + "\n状态: completed\n"
 if step == "REVIEW-01":
     options_path = root / "card56-review.json"
     options = json.loads(options_path.read_text()) if options_path.exists() else {}
-    meta += ("审查结论: PASS\n证据引用: TEST fake cli receipt\n审查类型: new_experience\n"
+    ev_items = ctx.get("evidence_refs") if isinstance(ctx, dict) else None
+    ev_ref = (ev_items[0].get("ref") if isinstance(ev_items, list) and ev_items and isinstance(ev_items[0], dict) else None) or ("task:" + taskid)
+    meta += ("审查结论: PASS\n证据引用: " + ev_ref + "\n审查类型: new_experience\n"
              "评分: " + str(options.get("score", 8)) + "\n适用条件: 仅测试夹具\n重复经验: "
              + options.get("duplicate", "") + "\n")
     body += options.get("body_fields", "")
@@ -156,7 +158,7 @@ class PoolWorkerCliTests(unittest.TestCase):
             vote = review_vote_runs(db, task)["north-node"]
             rows = [json.loads(r[0]) for r in db.execute("SELECT data FROM ri_task_assessments")]
             finished = json.loads(db.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='agent.finished'", (task,)).fetchone()[0])
-        for field in ("审查结论: PASS", "证据引用: TEST fake cli receipt", "审查类型: new_experience",
+        for field in ("审查结论: PASS", "证据引用: task:" + task, "审查类型: new_experience",
                       "评分: 8", "适用条件: 仅测试夹具", "重复经验: "):
             self.assertIn(field, vote["output"])
         self.assertIn("---\nRECEIPT_BODY_FROM_codex", vote["output"])
@@ -183,55 +185,95 @@ class PoolWorkerCliTests(unittest.TestCase):
                    "started_at": time.time() - 1, "finished_at": time.time()}
         return task, receipt
 
-    def test_card56_method_rule_empty_duplicate_does_not_promote_low_value(self):
+    def add_card56_second_vote(self, task, options):
+        node = "south-node-" + task[:8]
+        self._add_ready(node, self._fake(node), "beta", "claude")
+        duplicate = options.get("duplicate", "")
+        output = (
+            "审查结论: PASS\n证据引用: task:" + task + "\n审查类型: new_experience\n"
+            "评分: " + str(options.get("score", 8)) + "\n适用条件: 仅测试夹具\n重复经验: " + duplicate +
+            "\n---\nTEST synthetic second reviewer receipt" + options.get("body_fields", "")
+        )
+        run = self.native.start_agent_run(task, node, {"purpose": "review"})
+        self.native.finish_agent_run(run, "completed", output, None, 1)
+        return node
+
+    def test_card56_method_rule_pool_plus_host_settles_and_single_pool_waits(self):
+        from xiaoba_agentos.cli import _submit_task
         from xiaoba_agentos.host_completion import complete_host
         self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
         for kind in ("method", "rule"):
             with self.subTest(kind=kind):
+                # C05-03: 1 pool + 1 eligible idle non-author host forms valid pool_plus_host value assessment.
                 task, receipt = self.card56_next_value_vote(kind, {"score": 5})
                 result = complete_host(self.config, self.native, task, receipt)
-                value = result["value_assessment"]
-                self.assertEqual("below_threshold", value["reason"])
-                self.assertEqual("discard", value["decision"])
-                self.assertEqual([], value["duplicate_of"])
+                self.assertEqual("pool_plus_host", result["value_assessment"]["review_mode"])
+                self.assertEqual("discard", result["value_assessment"]["decision"])
                 self.assertIsNone(self.native.get_memory_candidate(task))
                 self.assertEqual("completed", self.native.get_task(task)["status"])
                 with self.native.read_only() as db:
                     output = db.execute("SELECT output FROM agent_runs WHERE task_id=?", (task,)).fetchone()[0]
                 self.assertIn("重复经验: \n证据引用:", output)
+                # Without a host receipt, 1 real pool vote alone remains queued awaiting a second independent reviewer.
+                solo, _ = self.card56_next_value_vote(kind, {"score": 5})
+                solo_path = self.config.runtime_dir / "memory-outbox" / f"{solo}.md"
+                solo_path.parent.mkdir(parents=True, exist_ok=True)
+                solo_path.write_text("TEST solo candidate", encoding="utf-8")
+                import hashlib
+                solo_sha = hashlib.sha256(solo_path.read_bytes()).hexdigest()
+                self.native.complete_with_memory_candidate(solo, "TEST solo result", str(solo_path), solo_sha, [], expected_attempt=1)
+                pending = {item["task_id"]: item for item in self.native.value_review_queue()}
+                self.assertEqual("no_scoring_source", pending[solo]["reason"])
 
-    def test_card56_method_rule_matching_header_body_fields_settle_normally(self):
-        from xiaoba_agentos.host_completion import complete_host
+    def test_card56_matching_header_body_fields_parse_after_two_pool_receipts(self):
+        from xiaoba_agentos.value_scoring import native_value
         self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
-        for kind in ("method", "rule"):
-            for duplicate, body_duplicate, score in (("", "无", 5), ("", "无", 8),
-                                                       ("TEST-existing", "TEST-existing", 1)):
-                with self.subTest(kind=kind, duplicate=duplicate):
-                    task, receipt = self.card56_next_value_vote(kind, {
-                        "score": score, "duplicate": duplicate,
-                        "body_fields": "\nscore: " + str(float(score)) + "\nduplicate_of: " + body_duplicate}, score)
-                    value = complete_host(self.config, self.native, task, receipt)["value_assessment"]
-                    self.assertEqual("duplicate" if duplicate else "average" if score >= 6 else "below_threshold", value["reason"])
-                    self.assertEqual([duplicate] if duplicate else [], value["duplicate_of"])
-                    candidate = self.native.get_memory_candidate(task)
-                    if duplicate or score >= 6:
-                        self.assertEqual("pending_delivery_review", candidate["status"])
-                    else:
-                        self.assertIsNone(candidate)
+        options = {"score": 8, "duplicate": "",
+                   "body_fields": "\nscore: 8.0\nduplicate_of: 无"}
+        task, _ = self.card56_next_value_vote("method", options, 8)
+        self.add_card56_second_vote(task, options)
+        with self.native.read_only() as db:
+            value = native_value(db, task)
+        self.assertEqual("average", value["reason"])
+        self.assertEqual([], value["duplicate_of"])
+        self.assertEqual(2, value["samples"])
 
-    def test_card56_method_rule_conflicting_score_or_duplicate_rolls_back(self):
-        from xiaoba_agentos.host_completion import complete_host
+    def test_card56_conflicting_score_rejected_after_two_pool_receipts(self):
+        from xiaoba_agentos.cli import _submit_task
+        from xiaoba_agentos.value_scoring import ConflictingValueReceipt, from_body
         self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
-        for kind in ("method", "rule"):
-            for body, field in (("\n评分: 8", "评分"), ("\n重复经验: TEST-other", "重复经验")):
-                with self.subTest(kind=kind, field=field):
-                    task, receipt = self.card56_next_value_vote(kind, {"score": 5, "body_fields": body})
-                    with self.assertRaisesRegex(ValueError, field + ".*自相矛盾"):
-                        complete_host(self.config, self.native, task, receipt)
-                    self.assertEqual("pending", self.native.get_task(task)["status"])
-                    self.assertIsNone(self.native.get_memory_candidate(task))
-                    with self.native.read_only() as db:
-                        self.assertIsNone(db.execute("SELECT 1 FROM events WHERE task_id=? AND event_type IN ('host.receipt_accepted','memory.value_assessed','task_scoring.assessed')", (task,)).fetchone())
+        options = {"score": 5, "body_fields": "\n评分: 8"}
+        (self.root / "card56-review.json").write_text(json.dumps(options))
+        task = _submit_task(self.config, self.native, "TEST card56 value method",
+                            experience_kind="method",
+                            host={"id": "host", "entry": "cli:host", "model": "TEST host"})
+        with patch("xiaoba_agentos.orchestrator.release_binding_status", return_value={"ok": True}):
+            first = Orchestrator(self.config, self.native).run_once()
+        # C05-03: conflicting header/body score is intercepted immediately as NEEDS_INFO.
+        self.assertEqual("needs_info", first["status"])
+        with self.native.read_only() as db:
+            bad_output = db.execute("SELECT output FROM agent_runs WHERE task_id=?", (task,)).fetchone()[0]
+        with self.assertRaisesRegex(ConflictingValueReceipt, "评分.*自相矛盾"):
+            from_body("north-node", bad_output)
+        self.assertIsNone(self.native.get_memory_candidate(task))
+
+    def test_card56_conflicting_duplicate_rejected_after_two_pool_receipts(self):
+        from xiaoba_agentos.cli import _submit_task
+        from xiaoba_agentos.value_scoring import ConflictingValueReceipt, from_body
+        self._add_ready("north-node", self._fake("codex"), "alpha", "codex")
+        options = {"score": 5, "body_fields": "\n重复经验: TEST-other"}
+        (self.root / "card56-review.json").write_text(json.dumps(options))
+        task = _submit_task(self.config, self.native, "TEST card56 value method",
+                            experience_kind="method",
+                            host={"id": "host", "entry": "cli:host", "model": "TEST host"})
+        with patch("xiaoba_agentos.orchestrator.release_binding_status", return_value={"ok": True}):
+            first = Orchestrator(self.config, self.native).run_once()
+        self.assertEqual("needs_info", first["status"])
+        with self.native.read_only() as db:
+            bad_output = db.execute("SELECT output FROM agent_runs WHERE task_id=?", (task,)).fetchone()[0]
+        with self.assertRaisesRegex(ConflictingValueReceipt, "重复经验.*自相矛盾"):
+            from_body("north-node", bad_output)
+        self.assertIsNone(self.native.get_memory_candidate(task))
 
     def test_missing_receipt_does_not_complete(self):
         north = self._fake("codex")

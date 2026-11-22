@@ -26,6 +26,16 @@ def candidate_sha256(candidate: Dict[str, Any]) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _matches_pending_basis_confirmation(verdict: Dict[str, Any], confirmation: Optional[Dict[str, Any]]) -> bool:
+    basis = verdict.get("validation_basis")
+    if (verdict.get("state") != "validation_basis_confirmation_required"
+            or not isinstance(basis, dict) or basis.get("status") != "proposed"
+            or "real_task_acceptance" not in basis.get("required_checks", [])):
+        return False
+    from .validation_basis import matches_basis_confirmation
+    return matches_basis_confirmation(basis, confirmation)
+
+
 class PublicationUncertain(RuntimeError):
     """The database could not be asked whether a publication committed.
 
@@ -315,6 +325,7 @@ def execute_review(
     note: str,
     *,
     expected_sha256: Optional[str] = None,
+    validation_basis_confirmation: Optional[Dict[str, Any]] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     """Run one review decision end to end and return (exit_code, payload).
 
@@ -336,7 +347,8 @@ def execute_review(
         from .experience_workflow import verify_final_qualification
         with store.read_only() as conn:
             verdict = verify_final_qualification(conn, current_candidate)
-            if not verdict.get("qualified"):
+            if not verdict.get("qualified") and not _matches_pending_basis_confirmation(
+                    verdict, validation_basis_confirmation):
                 reasons = "; ".join(verdict.get("reasons", ["经验候选不符合终审发布条件"]))
                 return 1, {"status": "blocked", "error": f"经验终审门禁拒绝: {reasons}"}
     if stage == "final" and decision == "reject":
@@ -386,7 +398,8 @@ def execute_review(
             candidate = current_candidate
         else:
             candidate = store.review_memory(
-                task_id, stage, decision, note, reviewed_sha256
+                task_id, stage, decision, note, reviewed_sha256,
+                validation_basis_confirmation=validation_basis_confirmation,
             )
     except KeyError:
         if retirement:

@@ -15,6 +15,14 @@ def execute(packet, config_path, source):
     sys.path.insert(0, str(source))
     from xiaoba_agentos import cli
     from xiaoba_agentos.store import EventStore
+    if packet.get('operation') == 'task_delivery':
+        from xiaoba_agentos.config import AppConfig
+        from xiaoba_agentos.delivery import submit, user_decision
+        config = AppConfig.load(Path(config_path))
+        request = {k:v for k,v in packet.items() if k != 'operation'}
+        result = submit(config, EventStore(config.database_path), request,
+                        authority=user_decision(request, channel='local_csrf_post', explicit=request.get('user_selected')))
+        return {'exit_code': 0 if result['ok'] else 1, 'result': result}
     expected = packet['expected']
     if packet.get('entry_type'):
         from xiaoba_agentos.config import AppConfig
@@ -29,7 +37,8 @@ def execute(packet, config_path, source):
             if not self.schema_status()['ok']:
                 raise RuntimeError('数据库版本需要维护，请先处理迁移')
 
-        def review_memory(self, task_id, stage, decision, note, candidate_sha256):
+        def review_memory(self, task_id, stage, decision, note, candidate_sha256,
+                          validation_basis_confirmation=None):
             # Hold SQLite's write lock through comparison and the native review.
             with super().connect() as conn:
                 conn.execute('BEGIN IMMEDIATE')
@@ -49,11 +58,21 @@ def execute(packet, config_path, source):
                     yield conn
                 self.connect = guarded_connection
                 try:
-                    return super().review_memory(task_id, stage, decision, note, candidate_sha256)
+                    return super().review_memory(
+                        task_id, stage, decision, note, candidate_sha256,
+                        validation_basis_confirmation=(validation_basis_confirmation
+                            if validation_basis_confirmation is not None
+                            else packet.get('validation_basis_confirmation')),
+                    )
                 finally:
                     self.connect = original_connect
 
     cli.EventStore = GuardedStore
+    original_execute_review = cli.execute_review
+    def execute_review_with_basis_confirmation(*args, **kwargs):
+        kwargs['validation_basis_confirmation'] = packet.get('validation_basis_confirmation')
+        return original_execute_review(*args, **kwargs)
+    cli.execute_review = execute_review_with_basis_confirmation
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
         code = cli.main(['--config', str(config_path), 'review', packet['task_id'],

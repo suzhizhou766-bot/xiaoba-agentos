@@ -1126,8 +1126,16 @@ class PoolCliAdapter(BaseAdapter):
         body = str((result or {}).get("body") or "").strip()
         if not isinstance(result, dict) or result.get("status") != "completed" or not body:
             raise PermanentAdapterError("没有写出合格回执，任务不算完成")
+        # C11-01: strip <think> and unexecuted tool markup before the receipt is
+        # persisted. A body that becomes empty (or was only tool-call markup)
+        # after cleaning is not a deliverable answer and must be rejected (B19);
+        # it must never be washed into "already executed successfully".
+        from .output_hygiene import strip_reasoning_markup, contains_non_answer_markers
+        cleaned = strip_reasoning_markup(body).strip()
+        if not cleaned or contains_non_answer_markers(cleaned):
+            raise PermanentAdapterError("回执清洗后没有可用正文，或仍是未执行工具标记，任务不算完成")
         from .pool_dispatch import pool_receipt_output
-        body = pool_receipt_output(result)
+        body = pool_receipt_output({**result, "body": cleaned})
         evidence = result.get("execution_evidence") if isinstance(result.get("execution_evidence"), dict) else {}
         return AgentResult(
             self.config.name,

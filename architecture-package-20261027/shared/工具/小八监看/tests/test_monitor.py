@@ -226,6 +226,17 @@ class SystemTests(AppCase):
         self.assertIn("https://fonts.googleapis.com", csp)
         self.assertIn("https://fonts.gstatic.com", csp)
         self.assertIn(self.ctx.page_token.encode(), body)
+        directives = {
+            parts[0]: parts[1:]
+            for directive in csp.split(";")
+            if (parts := directive.split())
+        }
+        for asset in ("agent-pool.js", "agent-pool-native.js", "open-review-native.js"):
+            self.assertIn(self.base + "/" + asset, directives["script-src"])
+        self.assertIn(self.base + "/agent-pool.css", directives["style-src"])
+        for directive in ("script-src", "style-src"):
+            self.assertNotIn(self.base + "/", directives[directive])
+            self.assertNotIn("'self'", directives[directive])
 
     def test_health_lists_modules(self):
         code, _, body = fetch("GET", self.base + "/api/health")

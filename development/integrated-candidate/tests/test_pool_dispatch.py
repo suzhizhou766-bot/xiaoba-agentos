@@ -9,7 +9,7 @@ from xiaoba_agentos.adapters import AgentResult
 from xiaoba_agentos.config import AppConfig
 from xiaoba_agentos.orchestrator import Orchestrator
 from xiaoba_agentos.pool_dispatch import (
-    SHORTAGE, release_acceptance, select_reviewers,
+    SHORTAGE, release_acceptance, review_report, select_reviewers,
 )
 from xiaoba_agentos.recovery import classify_failure
 from xiaoba_agentos.store import EventStore
@@ -75,6 +75,7 @@ class _FakePoolResource:
             "status": "completed",
             # 审查票正文要能当回执用：写明结论字段；回执正文本身用固定标记便于断言。
             "body": "证据引用：task:" + str(task_id) + "\n审查结论：PASS\n"
+                    "审查类型：new_experience\n适用条件：TEST fixtures only\n"
                     "评分：8\n重复经验：无\nFINAL_ACCEPTANCE: PASS\nRECEIPT_BODY_FROM_" + name,
             "execution_evidence": {"provider": "fake", "route_source": "test"},
         }
@@ -160,6 +161,36 @@ class PoolDispatchTest(unittest.TestCase):
         decision = select_reviewers(nodes)
         self.assertEqual("blocked", decision["route"])
         self.assertIn("不派", decision["message"])
+        report = review_report(nodes)
+        self.assertEqual(2, report["pool_ready_node_count"])
+        self.assertEqual(1, report["selected_pool_vote_count"])
+        self.assertFalse(report["enough"])
+
+    def test_session_health_reports_all_ready_pool_nodes_and_selected_votes(self):
+        from xiaoba_agentos.recovery import start_session_health
+
+        with tempfile.TemporaryDirectory() as directory:
+            config = _config(Path(directory), [])
+            store = EventStore(config.database_path)
+            store.initialize()
+            _seed(store, [
+                _source("north", "cli:codex", "alpha"),
+                _source("south", "cli:claude", "beta"),
+                _source("east", "cli:qoder", "gamma"),
+                _source("west", "cli:dsh", "delta"),
+                _source("collaborator", "cli:codex", "extra", kind="collaborate"),
+            ])
+            report = start_session_health(config, store)["review_nodes"]
+
+        self.assertTrue(report["enough"])
+        self.assertEqual(2, report["count"])
+        self.assertEqual(2, report["selected_pool_vote_count"])
+        self.assertEqual(4, report["pool_ready_node_count"])
+        self.assertEqual(
+            ["east", "north", "south", "west"],
+            [node["node_id"] for node in report["pool_ready_nodes"]],
+        )
+        self.assertTrue(all(set(node) == {"node_id", "name"} for node in report["pool_ready_nodes"]))
 
     def test_executor_is_not_sent_to_review(self):
         nodes = [
@@ -522,6 +553,97 @@ class Card36Counterexamples(unittest.TestCase):
                 result = Orchestrator(config, store).run_once()
             self.assertIn(result.get("status"), {"ask_user", "blocked_review_nodes"})
             self.assertIn("干过活", str(result.get("error") or result.get("message") or ""))
+
+
+class HostBackfillCounterexamples(unittest.TestCase):
+    """A same-source duplicate must not turn a valid host backfill into a block.
+
+    Coverage: 同源两节点无宿主 / 独立宿主 / 同源宿主 / 参与者 / 被排除宿主 /
+    冻结·补票调用路径.  None of these loosen the two-independent-opinion rule.
+    """
+
+    @staticmethod
+    def _node(nid, ind):
+        return {"node_id": nid, "role": "review", "interface": "cli",
+                "ready_review": True, "independence": ind,
+                "enabled": True, "test_passed": True}
+
+    @staticmethod
+    def _host(ind, hid="host-a", worked=False, author=False):
+        return {"id": hid, "worked": worked, "author": author, "independence": ind}
+
+    def test_one_ready_node_plus_independent_host_backfills(self):
+        decision = select_reviewers(
+            [self._node("one", ("cli:codex", "alpha"))],
+            host=self._host(("cli:grok", "grok")))
+        self.assertEqual("run", decision["route"])
+        self.assertTrue(decision["host"])
+        self.assertEqual(["one"], [node["node_id"] for node in decision["reviewers"]])
+
+    def test_same_source_duplicate_keeps_independent_host_backfill(self):
+        nodes = [self._node("one", ("cli:codex", "alpha")),
+                 self._node("one-dup", ("cli:codex", "alpha"))]
+        decision = select_reviewers(nodes, host=self._host(("cli:grok", "grok")))
+        self.assertEqual("run", decision["route"])
+        self.assertTrue(decision["host"])
+        self.assertEqual(["one"], [node["node_id"] for node in decision["reviewers"]])
+
+    def test_same_source_two_nodes_without_host_still_blocked(self):
+        nodes = [self._node("one", ("cli:codex", "alpha")),
+                 self._node("two", ("cli:codex", "alpha"))]
+        decision = select_reviewers(nodes)
+        self.assertEqual("blocked", decision["route"])
+        self.assertFalse(decision["host"])
+        self.assertIn("同一入口", decision["message"])
+
+    def test_same_source_host_cannot_fill_second_seat(self):
+        nodes = [self._node("one", ("cli:codex", "alpha")),
+                 self._node("one-dup", ("cli:codex", "alpha"))]
+        decision = select_reviewers(nodes, host=self._host(("cli:codex", "alpha")))
+        self.assertNotEqual("run", decision["route"])
+        self.assertFalse(decision["host"])
+
+    def test_participant_host_cannot_backfill(self):
+        nodes = [self._node("one", ("cli:codex", "alpha")),
+                 self._node("one-dup", ("cli:codex", "alpha"))]
+        for kw in ({"worked": True}, {"author": True}):
+            with self.subTest(kw=kw):
+                decision = select_reviewers(nodes, host=self._host(("cli:grok", "grok"), **kw))
+                self.assertNotEqual("run", decision["route"])
+                self.assertFalse(decision["host"])
+
+    def test_excluded_host_cannot_backfill(self):
+        nodes = [self._node("one", ("cli:codex", "alpha")),
+                 self._node("one-dup", ("cli:codex", "alpha"))]
+        decision = select_reviewers(nodes, host=self._host(("cli:grok", "grok")),
+                                    exclude_ids=["host-a"])
+        self.assertNotEqual("run", decision["route"])
+        self.assertFalse(decision["host"])
+
+    def test_frozen_review_plan_keeps_backfill_with_same_source_duplicate(self):
+        from xiaoba_agentos.pool_dispatch import peek_runnable, worker_roster
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = _config(root, [])
+            store = EventStore(config.database_path)
+            store.initialize()
+            _seed(store, [
+                _page_source("one", "cli:codex", "alpha", agent_type="codex"),
+                _page_source("one-dup", "cli:codex", "alpha", agent_type="codex"),
+            ])
+            store.submit(
+                "冻结补票", 2,
+                snapshot={
+                    "prompt": "冻结补票", "needs_review": True,
+                    "review_context": {"host": {"id": "host-a", "entry": "cli:grok", "model": "grok"}},
+                    "workflow": {"version": 1, "phase": "review", "agents": ["one"], "assignments": {}},
+                },
+            )
+            task = peek_runnable(store)
+            roster = worker_roster(config, store, task=task)
+        self.assertEqual("pool", roster.get("mode"), roster)
+        self.assertTrue(roster.get("host"), roster)
+        self.assertEqual({"one"}, {agent.name for agent in roster["agents"]})
 
 
 if __name__ == "__main__":

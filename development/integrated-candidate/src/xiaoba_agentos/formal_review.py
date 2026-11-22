@@ -27,7 +27,34 @@ def _events(db):
         ") ORDER BY sequence"
     )
     rows = db.execute(sql, (REVISION, PREFIX, 'memory.formal`')).fetchall()
-    return [dict(r, value=json.loads(r['payload_json'])) for r in rows]
+    result = []
+    for row in rows:
+        try:
+            v = json.loads(row['payload_json'])
+            if isinstance(v, dict):
+                result.append(dict(row, value=v))
+        except (ValueError, TypeError):
+            continue
+    return result
+
+
+def _clean_events(db):
+    result = []
+    for row in _events(db):
+        v = row['value']
+        kind = row['event_type']
+        required = {REVISION: ('source_task_id','source_sha256','real_task_id'),
+                    PREFIX+'enabled': ('enabled_at',), PREFIX+'called': ('source_task_id','called_at'),
+                    PREFIX+'retrieved': ('sources','called_at'), PREFIX+'batch_created': ('entries',),
+                    PREFIX+'draft_submitted': ('request_id','draft'), PREFIX+'dispatch_status': ('request_id','draft_sha256','dispatch_status'),
+                    PREFIX+'host_review': ('request_id','packet'), PREFIX+'decided': ('request_id','decision'),
+                    PREFIX+'withdrawn': ('request_id',)}.get(kind, ())
+        if any(key not in v for key in required): continue
+        if kind == PREFIX+'retrieved' and (not isinstance(v['sources'], list) or any(not isinstance(h,dict) or not h.get('source_task_id') for h in v['sources'])): continue
+        if kind == PREFIX+'batch_created' and (not isinstance(v['entries'], list) or any(not isinstance(h,dict) or not h.get('source_task_id') for h in v['entries'])): continue
+        if kind in {PREFIX+'called',PREFIX+'retrieved'} and (type(v['called_at']) not in (float,int) or not __import__('math').isfinite(v['called_at'])): continue
+        result.append(row)
+    return result
 
 
 def _chain(db):
@@ -81,7 +108,7 @@ def review_packet(db, item):
 
 def projection(db):
     objects = {}
-    for event in _events(db):
+    for event in _clean_events(db):
         v, kind = event['value'], event['event_type']
         if kind == REVISION:
             objects[event['event_id']] = dict(v, task_id=event['event_id'], entry_type='reuse_change',
@@ -97,6 +124,7 @@ def projection(db):
             elif kind == PREFIX+'dispatch_status':
                 if item.get('draft',{}).get('sha256')==v['draft_sha256']:item['dispatch_status']=v['dispatch_status']
             elif kind == PREFIX+'host_review': item['host_packet']=v['packet']
+            elif kind == PREFIX+'withdrawn': item.update(status='withdrawn', withdrawal=v)
             elif kind == PREFIX+'decided': item.update(status='withdrawn' if item['entry_type']=='unused_batch' and v['decision']=='approve' else 'approved' if v['decision']=='approve' else 'rejected', decision=v)
     for item in objects.values():
         if item['status'] in {'approved','rejected','withdrawn'} or item['entry_type']!='reuse_change': continue
@@ -185,15 +213,16 @@ def submit_draft(store, request_id, ref):
 
 
 def record_call(store, source_id, source_sha256):
+    """Explicit verified call resets inactivity clock without adding reuse score."""
     with store.connect() as db:
         db.execute('BEGIN IMMEDIATE'); _chain(db)
-        source_version(db,{'candidate_id':source_id,'candidate_sha256':source_sha256})
+        source_version(db, {'candidate_id':source_id,'candidate_sha256':source_sha256})
         store._append_event_tx(db,source_id,PREFIX+'called',{'source_task_id':source_id,'called_at':time.time()})
-    return {'source_task_id':source_id,'called':True}
+    return {'source_task_id': source_id, 'called': True}
 
 
 def due(db, now):
-    events=_events(db); enabled=next((e['value']['enabled_at'] for e in events if e['event_type']==PREFIX+'enabled'),None)
+    events=_clean_events(db); enabled=next((e['value']['enabled_at'] for e in events if e['event_type']==PREFIX+'enabled'),None)
     if enabled is None: return []
     pending={e['source_task_id'] for x in projection(db).values() if x['entry_type']=='unused_batch' and x['status']=='pending' for e in x['entries']}
     scores=projection_tx(db); result=[]
@@ -202,10 +231,14 @@ def due(db, now):
         if sid in pending: continue
         resets=[e['value']['decided_at'] for e in events if e['event_type']==PREFIX+'decided' and e['value'].get('entry_type')=='unused_batch' and e['value']['decision']=='approve' and sid in e['value']['source_ids']]
         interval=(14,30,90)[min(len(resets),2)]; start=max(enabled,r['published_at'] or enabled,*resets)
+        from .delivery_events import rows
+        from .experience_loop import _event_payload
         hit=db.execute('SELECT max(created_at) FROM memory_reuse WHERE source_task_id=?',(sid,)).fetchone()[0]
-        calls=[e['value']['called_at'] for e in events if e['event_type']==PREFIX+'called' and e['value']['source_task_id']==sid]
+        app_events, _ = rows(db, ('memory.application_recorded',), _event_payload)
+        calls=[float(e['created_at']) for e in app_events if e['task_id']==sid and e['value'].get('formal_reuse')]
+        calls.extend(e['value']['called_at'] for e in events if e['event_type']==PREFIX+'called' and e['value']['source_task_id']==sid)
         calls.extend(e['value']['called_at'] for e in events if e['event_type']==PREFIX+'retrieved' and any(h['source_task_id']==sid for h in e['value']['sources']))
-        used=max([v for v in [hit,scores.get(sid,{}).get('last_used_at'),*calls] if v is not None],default=None)
+        used=max([v for v in [scores.get(sid,{}).get('last_used_at'),hit,*calls] if v is not None],default=None)
         clock=max(start,used if used is not None else start)
         if now-clock>interval*DAY:
             p=Path(r['published_path'])
@@ -219,7 +252,7 @@ def check_inactivity(store, now=None):
     now=time.time() if now is None else now
     with store.connect() as db:
         db.execute('BEGIN IMMEDIATE'); _chain(db)
-        if not any(e['event_type']==PREFIX+'enabled' for e in _events(db)): store._append_event_tx(db,None,PREFIX+'enabled',{'enabled_at':now})
+        if not any(e['event_type']==PREFIX+'enabled' for e in _clean_events(db)): store._append_event_tx(db,None,PREFIX+'enabled',{'enabled_at':now})
         entries=due(db,now)
         if not entries: return []
         rid=store._append_event_tx(db,None,PREFIX+'batch_created',{'entries':entries,'checked_at':now})
@@ -354,7 +387,7 @@ def submit_host_review(store, request_id, receipt, *, user_chose_host=False):
 
 def record_hits(store, hits):
     """Persist verified index calls separately from delivery scores; no query text."""
-    formal=[h for h in hits if h.get('source_task_id')]
+    formal=[h for h in hits if h.get('source_task_id') and h.get('retrieval_slot', 'main') == 'main']
     if not formal: return
     with store.connect() as db:
         db.execute('BEGIN IMMEDIATE'); _chain(db)

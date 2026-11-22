@@ -11,9 +11,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 import test_experience_loop as fixtures
-from xiaoba_agentos.experience_loop import record_application, record_delivery
+from xiaoba_agentos.experience_loop import record_application, record_delivery as _record_delivery
 from xiaoba_agentos.memory import MemoryBridge
 from xiaoba_agentos.review_flow import reconcile_failed_reuses, reconcile_validated_reuses
+
+
+def record_delivery(store, value):
+    from xiaoba_agentos.delivery import user_decision
+    return _record_delivery(store, value, authority=user_decision(value, channel="cli_user_declaration", explicit=True))
+
 
 
 class Card52ReuseTests(unittest.TestCase):
@@ -41,7 +47,12 @@ class Card52ReuseTests(unittest.TestCase):
         value = self.application(c)
         task_id = task_id or self.store.submit('TEST actual formal use', 1)
         with self.store.connect() as db:
-            db.execute('UPDATE tasks SET result=? WHERE id=?', (('TEST cites ' + c['task_id']) if cited else 'TEST no citation', task_id))
+            result = ('TEST cites ' + c['task_id']) if cited else 'TEST no citation'
+            sha = hashlib.sha256(result.encode()).hexdigest()
+            snapshot = json.dumps({'task_purpose':'user_task'}, sort_keys=True, separators=(',', ':'))
+            db.execute('UPDATE tasks SET result=?,status=?,provenance_json=?,execution_snapshot_json=?,execution_snapshot_hash=? WHERE id=?',
+                       (result, 'completed', json.dumps({'result_sha256':sha}), snapshot, hashlib.sha256(snapshot.encode()).hexdigest(), task_id))
+            self.store._append_event_tx(db, task_id, 'task.completed', {'result_sha256':sha})
         value['real_task']['id'] = task_id
         value['candidate_sha256'] = c['source_sha256']
         value['reuse_assessment'] = {'outcome': mode, 'changed': 'TEST adjusted step' if mode != 'unchanged' else '',
@@ -122,12 +133,15 @@ class Card52ReuseTests(unittest.TestCase):
                     path.write_bytes(old)
         self.assertEqual(1, self.event_count('memory.reuse_scoring_skipped'))
 
-    def test_withdrawal_and_reacceptance_never_subtract_or_double_score(self):
+    def test_withdrawal_reverses_and_new_explicit_acceptance_scores_once(self):
         c = self.formal(); app = self.app(c); record_application(self.store, app); self.deliver(app)
         self.deliver(app, message_id='TEST-withdraw', user_message='撤回验收', decision='withdraw')
+        self.assertEqual(0, self.projection(c)['score'])
+        self.deliver(app, message_id='TEST-withdraw-again', user_message='撤回验收', decision='withdraw')
+        self.assertEqual(1, self.event_count('memory.reuse_reversed'))
         self.deliver(app, message_id='TEST-reaccept')
         self.assertEqual(1, self.projection(c)['score'])
-        self.assertEqual(1, self.event_count('memory.reuse_scored'))
+        self.assertEqual(2, self.event_count('memory.reuse_scored'))
 
     def test_different_tasks_accumulate_permanently_and_last_use_advances(self):
         c = self.formal()
@@ -209,13 +223,16 @@ class Card52ReuseTests(unittest.TestCase):
         bad, good = self.formal(), self.formal()
         bad_app = self.app(bad); good_app = self.app(good, task_id=bad_app['real_task']['id'])
         with self.store.connect() as db:
-            db.execute('UPDATE tasks SET result=? WHERE id=?', (bad['task_id']+' '+good['task_id'], bad_app['real_task']['id']))
+            result = bad['task_id']+' '+good['task_id']; sha=hashlib.sha256(result.encode()).hexdigest()
+            db.execute('UPDATE tasks SET result=?,provenance_json=? WHERE id=?',
+                       (result, json.dumps({'result_sha256':sha}), bad_app['real_task']['id']))
+            self.store._append_event_tx(db, bad_app['real_task']['id'], 'task.completed', {'result_sha256':sha})
         bad_app.pop('reuse_assessment')
         for app in (bad_app, good_app): record_application(self.store, app)
         self.deliver(good_app)
         self.assertEqual(0, self.projection(bad)['score'])
-        self.assertEqual(1, self.projection(good)['score'])
-        self.assertEqual(1, self.event_count('memory.reuse_scoring_skipped'))
+        self.assertEqual(1, self.projection(good)['score'], self.events('memory.reuse_scoring_skipped'))
+        self.assertEqual(1, self.event_count('memory.reuse_scoring_skipped'), self.events('memory.reuse_scoring_skipped'))
 
     def test_missing_source_after_application_does_not_undo_delivery(self):
         c = self.formal(); app = self.app(c); record_application(self.store, app)
@@ -301,19 +318,22 @@ class Card52ReuseTests(unittest.TestCase):
             attach_delivery_tx(self.store, db, c['task_id'], 'TEST-mixed-binding', [pending, registered])
         self.assertEqual(1, self.event_count('memory.delivery_attached'))
 
-    def test_malformed_score_history_stops_all_sources_and_is_visible_in_doctor(self):
+    def test_malformed_score_history_isolated_and_visible_in_doctor(self):
         from xiaoba_agentos.health import doctor
         bad, good = self.formal(), self.formal()
         a = self.app(bad); b = self.app(good, task_id=a['real_task']['id'])
         with self.store.connect() as db:
-            db.execute('UPDATE tasks SET result=? WHERE id=?', (bad['task_id']+' '+good['task_id'], a['real_task']['id']))
+            result = bad['task_id']+' '+good['task_id']; sha=hashlib.sha256(result.encode()).hexdigest()
+            db.execute('UPDATE tasks SET result=?,provenance_json=? WHERE id=?',
+                       (result, json.dumps({'result_sha256':sha}), a['real_task']['id']))
+            self.store._append_event_tx(db, a['real_task']['id'], 'task.completed', {'result_sha256':sha})
         for app in (a, b): record_application(self.store, app)
         self.store.append_event(bad['task_id'], 'memory.reuse_scored', {'TEST_malformed': True})
         self.deliver(a)
         self.assertEqual(1, self.event_count('task.delivery_recorded'))
-        self.assertEqual(1, self.event_count('memory.reuse_scored'))  # only the injected malformed event
-        self.assertEqual({bad['task_id'], good['task_id']}, {
-            e['source_task_id'] for e in self.events('memory.reuse_scoring_skipped')})
+        self.assertEqual(3, self.event_count('memory.reuse_scored'))
+        self.assertEqual(1, self.projection(bad)['score'])
+        self.assertEqual(1, self.projection(good)['score'])
         self.cfg.raw['memory'].update(knowlp_python=sys.executable, knowlp_module=__file__)
         self.cfg.raw['integrations']['node_command'] = sys.executable
         with patch('xiaoba_agentos.health.SkillRegistry') as skills, patch('xiaoba_agentos.health.KnowledgeCatalog') as knowledge:
@@ -322,7 +342,7 @@ class Card52ReuseTests(unittest.TestCase):
             result = doctor(self.cfg, self.store)
         self.assertTrue(result['event_chain']['ok'])
         self.assertFalse(result['reuse_scores']['ok'])
-        self.assertTrue(any('复用分' in w and '全局' in w for w in result['warnings']))
+        self.assertTrue(any('复用分' in w for w in result['warnings']))
 
     def test_formal_source_up_to_retrieval_limit_can_be_registered(self):
         c = self.formal(); path = Path(c['published_path'])
@@ -343,7 +363,10 @@ class Card52ReuseTests(unittest.TestCase):
         cited, uncited = self.formal(), self.formal()
         a = self.app(cited); b = self.app(uncited, task_id=a['real_task']['id'])
         with self.store.connect() as db:
-            db.execute('UPDATE tasks SET result=? WHERE id=?', ('TEST cites '+cited['task_id'], a['real_task']['id']))
+            result='TEST cites '+cited['task_id']; sha=hashlib.sha256(result.encode()).hexdigest()
+            db.execute('UPDATE tasks SET result=?,provenance_json=? WHERE id=?',
+                       (result,json.dumps({'result_sha256':sha}),a['real_task']['id']))
+            self.store._append_event_tx(db,a['real_task']['id'],'task.completed',{'result_sha256':sha})
         for source, app in ((cited, a), (uncited, b)):
             self.store.record_memory_reuse(a['real_task']['id'], source['task_id'], source['published_path'])
             record_application(self.store, app)

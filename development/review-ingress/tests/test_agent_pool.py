@@ -461,6 +461,10 @@ class PoolHttpTests(fixtures.FixtureMixin,unittest.TestCase):
         self.assertNotIn(b'<iframe',mounted.body)
         self.assertNotIn(b'tabAgents',mounted.body)
         self.assertEqual(mounted.body.count(b'id="apDrawer"'),1)
+        page = mounted.body.decode()
+        self.assertIn('aria-describedby="apTimeoutHelp"', page)
+        self.assertIn('留空时任务掉线时限为 300 秒', page)
+        self.assertIn('节点测活留空时限 90 秒。填写后，测活使用填入的时限，最多 300 秒。', page)
         # 派工审查在抽屉里选审查类型：不选不派工，接口也不再接受第 1 版。
         for marker in (b'id="apReviewType"',b'value="new_experience"',b'value="revalidation"',
                        b'value="reuse_change"',b'id="apDispatchGo"'):

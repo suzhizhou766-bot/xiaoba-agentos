@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from fixtures_review import _admit_authored_candidate
 import test_memory_publication_regressions as memory_fixture
 import test_switch_release as release_fixture
 from xiaoba_agentos.memory import MemoryBridge
@@ -17,6 +18,8 @@ switch = release_fixture.switch
 
 def approve_fixture(store, candidate):
     """Synthetic user decisions on a temporary DB, never production approval."""
+    if store.value_candidate_status(candidate['task_id'], candidate['evidence_sha256']) == 'awaiting_value_review':
+        candidate = _admit_authored_candidate(store, candidate)
     for stage in ('delivery', 'final'):
         store.review_memory(candidate['task_id'], stage, 'approve', 'isolated fixture', candidate['evidence_sha256'])
 
@@ -36,7 +39,8 @@ class PublicationRecoveryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.config, self.store, self.bridge, self.catalog = memory_fixture.PublicationRegressionsTest().fixture(Path(self.temp.name))
-        self.candidate = self.store.create_authored_candidate('中断发布', '隔离发布恢复正文。', self.bridge.outbox, author='fixture')
+        self.candidate = self.store.create_authored_candidate('中断发布', '隔离发布恢复正文。', self.bridge.outbox,
+                                                              author='fixture', experience_kind='rule')
 
     def test_bottom_level_refuses_pending_before_vault_write(self):
         before = self.catalog.read_bytes()
@@ -47,7 +51,7 @@ class PublicationRecoveryTests(unittest.TestCase):
         self.assertEqual([], list(self.catalog.parent.glob('经验/*.md')))
 
     def test_bottom_level_checks_actual_bytes_even_without_expected_hash(self):
-        candidate = self.candidate
+        candidate = _admit_authored_candidate(self.store, self.candidate)
         registered = self.bridge.outbox / 'registered.md'
         registered.write_bytes(Path(candidate['staged_path']).read_bytes())
         self.store.stage_memory_candidate(candidate['task_id'], str(registered), candidate['evidence_sha256'])

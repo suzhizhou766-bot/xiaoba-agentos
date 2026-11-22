@@ -40,11 +40,7 @@ class ReceiptContractV2Tests(unittest.TestCase):
         self.native.initialize()
         self.store = ReviewStore(self.native, self.root / 'memory-outbox')
         self.inbox = DecisionInbox()
-        self.candidate = self.native.create_authored_candidate(
-            '方法夹具', '隔离测试，非真实经验。', self.root / 'memory-outbox',
-            author='test', experience_kind='method')
-        self.native.review_memory(self.candidate['task_id'], 'delivery', 'approve',
-                                  '仅测试初审', self.candidate['evidence_sha256'])
+        self.candidate = fixtures.FixtureMixin.make_method_candidate(self)
         for reviewer, kind, ref in [('fixture-dsh', 'dsh', 'fixture-source-a'),
                                      ('fixture-peer', 'peer', 'fixture-source-b')]:
             self.store.register_source({'reviewer_id': reviewer, 'kind': kind,
@@ -113,10 +109,20 @@ class ReceiptContractV2Tests(unittest.TestCase):
         res = self.store.receive(bad_receipt)
         self.assertEqual(res['status'], 'invalid')
         self.assertIn('缺少评分', res['reason'])
+        self.assertEqual('NEEDS_INFO', res['verdict'])
         with self.assertRaisesRegex(ValueError, '失效回执不能确认来源'):
             self.store.attest(res['id'], res['digest'], '核对测试')
         stored = self.store.get(req['id'])
         self.assertEqual(stored['state'], 'waiting_receipts')
+        self.assertEqual('NEEDS_INFO', stored['receipts'][0]['verdict'])
+        corrected = self.v2_receipt(assignment, receipt_id='corrected-' + assignment['id'])
+        accepted = self.store.receive(corrected)
+        self.assertEqual('identity_pending', accepted['status'])
+        self.store.attest(accepted['id'], accepted['digest'], '核对补全回执来源')
+        other = req['assignments'][1]
+        accepted = self.store.receive(self.v2_receipt(other))
+        self.store.attest(accepted['id'], accepted['digest'], '核对另一侧来源')
+        self.assertEqual('pending_center', self.store.get(req['id'])['state'])
 
     def test_v2_score_eleven_rejected(self):
         req = self.v2_request()
@@ -312,9 +318,15 @@ class Card1FollowupsTests(unittest.TestCase):
             s = self.store.source(db, 'node-gated-test')
             self.assertTrue(self.pool.runtime.readiness(db, s)['ready'])
 
-        candidate = self.native.create_authored_candidate(
-            '测试经验2', '正文', self.root / 'memory-outbox', author='test', experience_kind='method')
-        self.native.review_memory(candidate['task_id'], 'delivery', 'approve', '初审', candidate['evidence_sha256'])
+        task = self.native.submit('测试 legacy 接口候选', 2)
+        self.native.complete_manually(task, '仅测试：legacy 候选来源任务已完成')
+        path = (self.root.resolve() / 'memory-outbox' / f'{task}.md').resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('正文', encoding='utf-8')
+        candidate_hash = __import__('hashlib').sha256(path.read_bytes()).hexdigest()
+        self.native.stage_memory_candidate(task, str(path), candidate_hash, [])
+        candidate = {'task_id': task, 'staged_path': str(path), 'evidence_sha256': candidate_hash}
+        self.native.review_memory(task, 'delivery', 'approve', '初审', candidate_hash)
 
         req = self.store.create(
             candidate['task_id'], 'fixture-dsh', 'node-gated-test',

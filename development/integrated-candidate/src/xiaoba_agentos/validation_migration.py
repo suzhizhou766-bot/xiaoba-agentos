@@ -126,7 +126,15 @@ def apply_validation_schema_migration(
         conn, should_close = _resolve_connection(target)
     now = time.time()
     try:
+        # SQLite serializes migrations across processes. Acquire the write lock
+        # before every authoritative schema/existence check, not after them.
+        if not dry_run:
+            if conn.in_transaction:
+                raise ValueError("validation migration requires its own transaction")
+            conn.execute("BEGIN IMMEDIATE")
         if is_validation_extension_installed(conn):
+            if not dry_run:
+                conn.execute("COMMIT")
             return {
                 "ok": True,
                 "already_installed": True,
@@ -151,7 +159,6 @@ def apply_validation_schema_migration(
                 ],
             }
 
-        conn.execute("BEGIN IMMEDIATE")
         conn.execute(
             """CREATE TABLE IF NOT EXISTS experience_validation_meta (
                 key TEXT PRIMARY KEY,
@@ -243,6 +250,24 @@ def rollback_validation_schema_migration(
     conn, should_close = _resolve_connection(target)
     try:
         conn.execute("BEGIN IMMEDIATE")
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        # Version/install metadata is expected; unknown metadata or business
+        # rows must be preserved and handled by forward recovery.
+        if "experience_validation_meta" in tables:
+            keys = {row[0] for row in conn.execute(
+                "SELECT key FROM experience_validation_meta"
+            ).fetchall()}
+            if keys - {"version", "installed_at"}:
+                raise ValueError("validation extension has non-installation metadata; DROP rollback is forbidden")
+        for table in ("experience_validation_lineages", "experience_validation_records"):
+            if table in tables and conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():
+                raise ValueError("validation extension has business rows; DROP rollback is forbidden")
+        if "events" in tables:
+            used = conn.execute("""SELECT 1 FROM events WHERE
+                event_type LIKE 'memory.validation_%' OR event_type LIKE 'memory.trial_%'
+                OR event_type='memory.execution_receipt' LIMIT 1""").fetchone()
+            if used:
+                raise ValueError("validation audit events exist; DROP rollback is forbidden")
         conn.execute("DROP TABLE IF EXISTS experience_validation_records")
         conn.execute("DROP TABLE IF EXISTS experience_validation_lineages")
         conn.execute("DROP TABLE IF EXISTS experience_validation_meta")

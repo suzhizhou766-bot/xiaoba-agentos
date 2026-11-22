@@ -123,6 +123,17 @@ class CenterTests(unittest.TestCase):
             except core.Conflict as exc:nested.append(str(exc))
             return original(package,ticket)
         self.driver.apply=apply;self.publish(a);self.assertEqual(self.driver.calls,1);self.assertTrue(nested)
+    def test_spec_root_fallback_and_readonly_guard(self):
+        packaged_repo=self.root/'packaged';packaged_repo.mkdir()
+        spec_root=self.root/'packaged-center';(spec_root/'modules/example').mkdir(parents=True)
+        (spec_root/'modules/example/SPEC.md').write_text('# Packaged Spec\n',encoding='utf-8')
+        self.catalog.write_text(json.dumps({'schema_version':1,'modules':[{'id':'example','title':'Example','spec_path':'development/architecture-center/modules/example/SPEC.md','editable_prefixes':['development/example/'],'nodes':['example']}]}))
+        ro=core.Center(packaged_repo,self.root/'ro-work',self.catalog,spec_root=spec_root,readonly_reason='当前为只读模式，需要 --repo-root')
+        self.assertFalse(ro.state()['writable'])
+        self.assertEqual('readonly_specs',ro.state()['mode'])
+        spec=ro.module('example');self.assertEqual('# Packaged Spec\n',spec['body'])
+        with self.assertRaisesRegex(ValueError,'--repo-root'):
+            ro.create('example','# Edit\n',spec['sha256'],'goal','v1.6.16','src')
 
 class NativeBridgeTests(unittest.TestCase):
     def test_subprocess_protocol_and_actual_readback_required(self):
