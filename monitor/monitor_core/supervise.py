@@ -136,7 +136,11 @@ class ManagedProcess:
             proc.wait(timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
-            proc.wait(5)
+            try:
+                proc.wait(5)
+            except subprocess.TimeoutExpired:
+                # SIGKILL 后仍未退出（卡在内核态等），记下来但不让看护进程跟着崩。
+                logs.event(self.logger, self.name, "kill timeout", "error", pid=proc.pid)
         except OSError:
             pass
 

@@ -57,9 +57,15 @@ class GoldenPathTest(unittest.TestCase):
             CANDIDATE / "src/xiaoba_agentos/review_ui_assets",
             src / "src/xiaoba_agentos/review_ui_assets", dirs_exist_ok=True,
         )
+        sys.path.insert(0, str(CANDIDATE / "src"))
+        from xiaoba_agentos.review_ui_install import ASSETS as CANDIDATE_ASSETS, TARGETS, resolve_asset_path
+        for asset in TARGETS:
+            dst_asset = src / "src/xiaoba_agentos/review_ui_assets" / asset
+            if not dst_asset.is_file():
+                shutil.copyfile(resolve_asset_path(CANDIDATE_ASSETS, asset), dst_asset)
         for script in ("submit_release_acceptance.py", "release_preflight.py", "create_manifest.py"):
             shutil.copyfile(CANDIDATE / "scripts" / script, src / "scripts" / script)
-        for mod in ("config.py", "release.py", "review_ui_install.py"):
+        for mod in ("config.py", "release.py", "repo_paths.py", "review_ui_install.py"):
             shutil.copyfile(CANDIDATE / "src/xiaoba_agentos" / mod,
                             src / "src/xiaoba_agentos" / mod)
         (src / "src/xiaoba_agentos/__init__.py").write_text("", encoding="utf-8")

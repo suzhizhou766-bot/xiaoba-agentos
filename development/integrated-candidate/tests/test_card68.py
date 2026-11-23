@@ -14,7 +14,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 CANDIDATE = Path(__file__).resolve().parents[1]
 _INGRESS = REPO / "development" / "review-ingress"
-_MONITOR = REPO / "architecture-package-20261027" / "shared" / "工具" / "小八监看"
+_MONITOR = REPO / "monitor"
 for _path in (CANDIDATE / "src", _INGRESS, _MONITOR):
     text = str(_path)
     if text not in sys.path:

@@ -36,7 +36,7 @@ DEFAULTS = {
         # 用来发现“旧服务又被启动了”，此时改为使用它而不重复拉起。
         "port": 8797,
         "script": "integrations/review-center/server.py",  # 相对 agentos_project
-        "python": "/usr/bin/python3",
+        "python": "/Users/suzhizhou/Documents/私人助理/配置/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14",  # 统一解释器
         "start_timeout_seconds": 150,
     },
     "keypool": {
@@ -44,6 +44,15 @@ DEFAULTS = {
         "port": 8780,
         "file": "keypool.json",  # 节点与 Key 存在这里（权限 600，不进版本历史）
         "usage_dir": "run/keypool-usage",  # 用量记录（每次请求一行元数据，不含内容与 Key；留 90 天）
+    },
+    "taskcards": {
+        # 任务卡页：扫描这些目录里的“卡N-标题.md”；发卡、回执、核对登记在 ledger（JSONL，只追加）里。
+        # 宿主 Agent 用 tools/taskcard.py 登记。receipt_root 下文件名带“回执”和“卡N”的 .md/.txt 会被自动发现。
+        # 默认用相对监看中心根目录的路径（resolve 后落到私人助理/工作区/…）；monitor.json 可写绝对路径覆盖，线上行为不变。
+        "dirs": ["../../工作区/小八架构修复-20261030/任务卡"],
+        "ledger": "../../工作区/任务卡台账.jsonl",
+        "receipt_root": "../../工作区",
+        "receipt_depth": 3,
     },
     "watchdog": {
         "backoff_seconds": [1, 2, 5, 10, 30],
@@ -89,28 +98,14 @@ def resolve(config, relative):
 WORKER_PLIST = Path.home() / "Library" / "LaunchAgents" / "com.xiaoba.agentos.plist"
 
 
+from .agentos_config import agentos_runtime
+from .agentos_config import agentos_config_path as _agentos_config_path
+from .agentos_config import worker_config_path as _worker_config_path
+
+
 def worker_config_path(plist=None):
-    """Worker 的 LaunchAgent 里写的 XIAOBA_CONFIG：Worker 实际使用的那份配置。"""
-    try:
-        with open(plist or WORKER_PLIST, "rb") as handle:
-            value = (plistlib.load(handle).get("EnvironmentVariables") or {}).get("XIAOBA_CONFIG")
-        return Path(value) if value else None
-    except (OSError, ValueError, plistlib.InvalidFileException):
-        return None
+    return _worker_config_path(plist or WORKER_PLIST)
 
 
 def agentos_config_path(config):
-    """裁决后端与运行总览用哪份 AgentOS 配置。
-
-    顺序：monitor.json 明确指定 → 环境变量 XIAOBA_CONFIG → 与 Worker 的 LaunchAgent 一致 → 项目默认。
-    默认跟随 Worker，这样裁决与 Worker 永远是同一份配置，不会各用各的。
-    """
-    explicit = config.get("agentos_config") or os.environ.get("XIAOBA_CONFIG")
-    if explicit:
-        return Path(explicit)
-    worker = worker_config_path()
-    if worker and worker.is_file():
-        return worker
-    project = Path(config["agentos_project"])
-    override = project / ".runtime" / "model-overrides" / "agentos-agy-flash-high.json"
-    return override if override.exists() else project / "config" / "agentos.json"
+    return _agentos_config_path(config, worker_plist=WORKER_PLIST)

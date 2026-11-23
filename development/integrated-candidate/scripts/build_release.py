@@ -858,7 +858,7 @@ def run_full_tests(source_root: Path, *, parallel_suites: bool = False) -> int:
         and repo_root is not None
         and (repo_root / "development/review-ingress/tests").is_dir()
         and (repo_root / "development/architecture-center/tests").is_dir()
-        and (repo_root / "architecture-package-20261027/shared/工具/小八监看/tests").is_dir()
+        and (repo_root / "monitor/tests").is_dir()
     ):
         from run_parallel_suites import run_suites_parallel
         report = run_suites_parallel(repo_root, python_exe=CORE_PYTHON)

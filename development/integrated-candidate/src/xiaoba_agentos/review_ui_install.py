@@ -22,6 +22,46 @@ TARGETS = {
     "server.py": ("project", "integrations/review-center/server.py"),
     "xiaoba-monitor.html": ("assistant", "工具/小八监看/xiaoba-monitor.html"),
 }
+# W3-M1: Monitor-owned assets live ONCE in top-level monitor/ (and are projected into
+# review_ui_assets/ automatically during release packaging).
+MONITOR_ASSET_SOURCES = {
+    "agentos_config.py": "monitor_core/agentos_config.py",
+    "monitor_config.py": "monitor_core/config.py",
+    "monitor_overview.py": "monitor_core/modules/overview.py",
+    "monitor_review.py": "monitor_core/modules/review.py",
+    "monitor_web.py": "monitor_core/web.py",
+    "xiaoba-monitor.html": "xiaoba-monitor.html",
+}
+
+
+def resolve_asset_path(assets, asset_name):
+    """Resolve an asset file, preferring local materialized copy then canonical monitor/ source."""
+    assets_dir = Path(assets)
+    direct = assets_dir / asset_name
+    if direct.is_symlink():
+        raise ValueError("symlink in UI asset source: " + str(direct))
+    if direct.is_file():
+        return direct
+    mon_rel = MONITOR_ASSET_SOURCES.get(asset_name)
+    if mon_rel is not None:
+        # 1) Packaged sibling projection (release package: src/xiaoba_monitor_shared/...)
+        src_dir = assets_dir.resolve().parents[1] if len(assets_dir.resolve().parents) >= 2 else None
+        if src_dir is not None:
+            projected = src_dir / "xiaoba_monitor_shared" / mon_rel
+            if projected.is_symlink():
+                raise ValueError("symlink in projected monitor asset: " + str(projected))
+            if projected.is_file():
+                return projected
+        # 2) Authoritative dev monorepo source (repo/monitor/...)
+        from .repo_paths import resolve_monitor_root, resolve_repo_root_from_src
+        repo_root = resolve_repo_root_from_src(assets_dir.resolve().parent)
+        if repo_root is not None:
+            canonical = resolve_monitor_root(repo_root) / mon_rel
+            if canonical.is_symlink():
+                raise ValueError("symlink in canonical monitor asset: " + str(canonical))
+            if canonical.is_file():
+                return canonical
+    return direct
 
 
 def sha(data):
@@ -51,7 +91,7 @@ def prepare(project, assistant, assets=ASSETS):
                 break
             if parent.is_symlink():
                 raise ValueError("symlink in UI target path")
-        new = (assets / entry["asset"]).read_bytes()
+        new = resolve_asset_path(assets, entry["asset"]).read_bytes()
         if sha(new) != entry["after_sha256"]:
             raise ValueError("UI asset hash mismatch")
         old = current(target)

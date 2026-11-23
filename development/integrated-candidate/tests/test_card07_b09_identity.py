@@ -17,6 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from xiaoba_agentos.health import monitor_database_identity  # noqa: E402
+from xiaoba_agentos.repo_paths import resolve_monitor_root  # noqa: E402
+from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path  # noqa: E402
 
 from fixtures_review import _config  # noqa: E402
 
@@ -31,7 +33,7 @@ class B09IdentityTest(unittest.TestCase):
         self.monitor_json = self.root / "monitor.json"
         shared = self.root / "monitor_core/agentos_config.py"
         shared.parent.mkdir()
-        source = Path(__file__).resolve().parents[1]/"src/xiaoba_agentos/review_ui_assets/agentos_config.py"
+        source = resolve_asset_path(UI_ASSETS, "agentos_config.py")
         shared.write_bytes(source.read_bytes())
         self.empty_env = {}
         self.no_plist = self.root / "no-worker.plist"
@@ -126,7 +128,13 @@ class B09IdentityTest(unittest.TestCase):
         self.assertFalse(result["identities"]["review_backend"]["alive"])
 
     def test_shared_precedence_relative_paths_and_missing_plist_target(self):
-        from xiaoba_agentos.review_ui_assets.agentos_config import agentos_config_path
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "c07_shared_agentos_config", resolve_asset_path(UI_ASSETS, "agentos_config.py")
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        agentos_config_path = mod.agentos_config_path
         settings = {"root":str(self.root), "agentos_project":str(self.project)}
         env_config = self.config.path
         plist = self.root / "worker.plist"
@@ -183,8 +191,8 @@ class B09IdentityTest(unittest.TestCase):
     def test_monitor_installed_resolver_matches_asset_and_runtime(self):
         import importlib.util
         core=Path(__file__).resolve().parents[1]
-        mon=core.parents[1]/'architecture-package-20261027/shared/工具/小八监看'
-        asset=core/'src/xiaoba_agentos/review_ui_assets/agentos_config.py'
+        mon=resolve_monitor_root(core.parents[1])
+        asset=resolve_asset_path(UI_ASSETS, 'agentos_config.py')
         self.assertEqual(asset.read_bytes(),(mon/'monitor_core/agentos_config.py').read_bytes())
         spec=importlib.util.spec_from_file_location('c07_installed_config',mon/'monitor_core/agentos_config.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -196,7 +204,7 @@ class B09IdentityTest(unittest.TestCase):
 
     def test_monitor_invalid_config_is_unavailable_without_fallback_database(self):
         core=Path(__file__).resolve().parents[1]
-        mon=core.parents[1]/'architecture-package-20261027/shared/工具/小八监看'
+        mon=resolve_monitor_root(core.parents[1])
         sys.path.insert(0,str(mon))
         from monitor_core.modules.overview import Monitor
         invalid=self.root/'invalid.json';invalid.write_text('{}')

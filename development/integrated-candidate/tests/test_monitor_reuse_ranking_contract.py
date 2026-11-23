@@ -6,7 +6,7 @@ from pathlib import Path
 
 CORE = Path(__file__).resolve().parents[1]
 REPO_ROOT = CORE.parents[1]
-MONITOR = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看"
+MONITOR = REPO_ROOT / "monitor"
 sys.path[:0] = [str(CORE / "src"), str(MONITOR)]
 
 from monitor_core.modules.overview import permanent_total_ranking

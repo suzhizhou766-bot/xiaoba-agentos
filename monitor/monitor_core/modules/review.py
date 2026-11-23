@@ -15,6 +15,8 @@
   - 它只监听本机一个每次临时分配的内部端口，没有自己的网页；旧的 8797 地址不再存在；
   - 监看中心被强行结束后重新起来时，会认出并重新接管上一次留下的后端；
   - 监看中心关闭时，后端一并关闭。
+  端口监听检测不可用时（找不到 lsof、被拒或超时），认不出上一次留下的后端：不认领、不结束任何进程，
+  也不另起一个新后端（避免两个后端同时改写待审队列），只把原因写进健康状态，页面能看到；检测恢复后自动接管。
 兼容：如果旧的独立裁决服务（legacy_port，默认 8797）又被别人启动了，就直接使用它，不重复拉起，
 避免两个后端同时改写第二大脑的待审队列。
 """
@@ -27,6 +29,7 @@ import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -34,6 +37,7 @@ from .. import config as cfg
 from ..supervise import Backoff, Breaker, ManagedProcess
 from ..web import Route
 from . import Module
+from .portprobe import LISTENING, UNAVAILABLE, listener_pids
 
 UUID_RE = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
 
@@ -55,6 +59,28 @@ RETAINED_ACTIONS = {"trash": "--trash", "confirm_deleted": "--confirm-deleted"}
 def short(value, limit=160):
     text = str(value or "").replace("\n", " ").strip()
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def legacy_port_decision(previous, previous_alive, legacy_alive, probe_warning, manage, script_exists):
+    """卡 07 C07-02：把 review.py 的旧端口（默认 8797）分支的判定抽成纯函数，便于反例验证。
+
+    背景与解释（不是错误复用，未证实前不得盲目删除兼容）：
+      - 自 v1.5.5 起裁决后端由监看中心拉起在每次临时分配的端口；monitor.json 的
+        review.port（默认 8797）只是“旧独立服务端口”，用于发现别人是否又启动了旧服务。
+      - 若旧服务确实在 legacy_port 上监听，继续使用它可以避免两个后端同时改写第二大脑
+        待审队列导致脑裂；这是为防双写而保留的兼容探测，不是把 8797 当默认后端。
+      - 默认态（legacy_port 上没有服务）应走“自己拉起临时端口”；探测不可用时不另起。
+    返回动作字符串：adopt / use_legacy / defer_probe / spawn / missing_script / idle。
+    """
+    if previous and previous_alive:
+        return "adopt"
+    if probe_warning:
+        return "defer_probe"
+    if legacy_alive:
+        return "use_legacy"
+    if manage:
+        return "spawn" if script_exists else "missing_script"
+    return "idle"
 
 
 class ReviewModule(Module):
@@ -84,6 +110,7 @@ class ReviewModule(Module):
         self.state_file = cfg.resolve(ctx.config, "run") / "review-backend.json"
         self._stop = threading.Event()
         self._thread = None
+        self.probe_warning = ""       # 端口监听检测不可用时的说明，只在健康状态里给人看
 
     @property
     def base(self):
@@ -118,22 +145,38 @@ class ReviewModule(Module):
             sock.bind(("127.0.0.1", 0))
             return sock.getsockname()[1]
 
+    def _note_unavailable(self, detail, where):
+        """检测不可用：记一条可读警告（同一原因只记一次），保留给页面显示。"""
+        if self.probe_warning != detail:
+            self.ctx.log(self.id, "listener detection unavailable; " + where, "warning", detail=detail)
+        self.probe_warning = detail
+
     def _listener_pid(self, port):
-        try:
-            out = subprocess.run(["/usr/sbin/lsof", "-nP", "-tiTCP:%d" % port, "-sTCP:LISTEN"],
-                                 capture_output=True, text=True, timeout=5).stdout.split()
-            return int(out[0]) if out else None
-        except (OSError, ValueError, subprocess.SubprocessError):
+        """port 上的监听进程号：确认没有监听返回 None，有监听返回第一个，检测不可用记警告并返回 None。"""
+        state, pids, detail = listener_pids(port)
+        if state == UNAVAILABLE:
+            self._note_unavailable(detail, "cannot tell who listens on port %d" % port)
             return None
+        self.probe_warning = ""
+        return pids[0] if pids else None
 
     def _previous_backend(self):
-        """上一次运行时由监看中心拉起、现在仍在监听的后端：返回 (pid, port)，没有则 None。"""
+        """上一次运行时由监看中心拉起、现在仍在监听的后端：返回 (pid, port)，没有则 None。
+
+        端口监听检测不可用时返回 None 并把原因写进 self.probe_warning：不认领——不确定它还在不在。
+        """
+        self.probe_warning = ""
         try:
             record = json.loads(self.state_file.read_text(encoding="utf-8"))
             pid, port = int(record["pid"]), int(record["port"])
         except (OSError, ValueError, KeyError, TypeError):
             return None
-        return (pid, port) if pid == self._listener_pid(port) else None
+        state, pids, detail = listener_pids(port)
+        if state == UNAVAILABLE:
+            self._note_unavailable(detail, "not adopting a previous backend on port %d" % port)
+            return None
+        self.probe_warning = ""
+        return (pid, port) if state == LISTENING and pids[0] == pid else None
 
     def _record_backend(self):
         # 等后端真正起来后记下它的进程号与端口，供监看中心重启后认领
@@ -189,18 +232,25 @@ class ReviewModule(Module):
                     self.mode = "idle"
             if self.mode == "idle":
                 previous = self._previous_backend()
-                if previous and self._alive(previous[1]):
+                previous_alive = bool(previous and self._alive(previous[1]))
+                legacy_alive = False if previous_alive else self._alive(self.legacy_port)
+                decision = legacy_port_decision(previous, previous_alive, legacy_alive,
+                                                self.probe_warning, self.manage, self.script.is_file())
+                if decision == "adopt":
                     self.adopted_pid, self.port = previous
                     self.mode = "adopted"
                     self.ctx.log(self.id, "re-adopted backend started by a previous run", pid=previous[0], port=previous[1])
-                elif self._alive(self.legacy_port):
+                elif decision == "use_legacy":
                     self.port, self.mode = self.legacy_port, "external"
                     self.ctx.log(self.id, "legacy standalone review service is running; using it", "warning", port=self.port)
-                elif self.manage:
-                    if not self.script.is_file():
-                        self.ctx.log(self.id, "backend script missing", "error", script=str(self.script))
-                    else:
-                        self._spawn()
+                elif decision == "defer_probe":
+                    # 端口监听检测不可用：上一次留下的后端可能还在监听，认不出它就绝不另起一个
+                    self.ctx.log(self.id, "listener detection unavailable; not starting a backend", "warning",
+                                 detail=self.probe_warning)
+                elif decision == "missing_script":
+                    self.ctx.log(self.id, "backend script missing", "error", script=str(self.script))
+                elif decision == "spawn":
+                    self._spawn()
             self._stop.wait(10)
 
     def reset(self):
@@ -209,21 +259,25 @@ class ReviewModule(Module):
 
     def health(self):
         if self.mode == "external":
-            return {"status": "warn", "mode": "external",
-                    "detail": "旧的独立裁决服务（端口 %d）又在运行，当前使用它；停用它后监看中心会自动接管" % self.port}
-        if self.mode == "adopted":
-            return {"status": "ok", "mode": "managed", "detail": "由监看中心运行（重启后重新接管）", "pid": self.adopted_pid}
-        if self.mode == "managed" and self.process:
-            status = self.process.status()
-            state = status["state"]
-            mapped = {"running": "ok", "starting": "starting", "backoff": "warn", "failed": "failed"}.get(state, "warn")
+            status = {"status": "warn", "mode": "external",
+                      "detail": "旧的独立裁决服务（端口 %d）又在运行，当前使用它；停用它后监看中心会自动接管" % self.port}
+        elif self.mode == "adopted":
+            status = {"status": "ok", "mode": "managed", "detail": "由监看中心运行（重启后重新接管）", "pid": self.adopted_pid}
+        elif self.mode == "managed" and self.process:
+            info = self.process.status()
+            mapped = {"running": "ok", "starting": "starting", "backoff": "warn", "failed": "failed"}.get(info["state"], "warn")
             detail = {"running": "由监看中心运行", "starting": "正在启动（发布校验与第二大脑同步，约需几十秒）",
-                      "backoff": "已退出，等待自动重启", "failed": status["error"] or "已停止自动重启"}.get(state, state)
-            return {"status": mapped, "mode": "managed", "detail": detail, "pid": status["pid"],
-                    "restarts": status["restarts"]}
-        if not self.script.is_file():
-            return {"status": "failed", "mode": self.mode, "detail": "找不到裁决后端：%s" % self.script}
-        return {"status": "starting", "mode": self.mode, "detail": "正在连接裁决后端"}
+                      "backoff": "已退出，等待自动重启", "failed": info["error"] or "已停止自动重启"}.get(info["state"], info["state"])
+            status = {"status": mapped, "mode": "managed", "detail": detail, "pid": info["pid"],
+                      "restarts": info["restarts"]}
+        elif not self.script.is_file():
+            status = {"status": "failed", "mode": self.mode, "detail": "找不到裁决后端：%s" % self.script}
+        else:
+            status = {"status": "starting", "mode": self.mode, "detail": "正在连接裁决后端"}
+        if self.probe_warning:
+            status["detail"] = "%s；%s" % (status["detail"], self.probe_warning)
+            status["warning"] = self.probe_warning   # 端口监听检测不可用：页面正文里要看得见
+        return status
 
     # ---- 与后端通信 ----
     def call(self, path, body=None, csrf=None, timeout=10, port=None):
@@ -271,11 +325,33 @@ class ReviewModule(Module):
         return [
             Route("GET", "/api/review/state", lambda req: self.state(), "read"),
             Route("GET", "/api/review/candidate", self.candidate, "read"),
+            Route("GET", "/api/review/deliveries", lambda req: self.deliveries(), "read"),
+            Route("GET", "/api/review/delivery", self.delivery_get, "read"),
+            Route("POST", "/api/review/delivery", self.delivery_post, "write"),
             Route("POST", "/api/review/decisions", self.decisions, "write"),
             Route("POST", "/api/review/sync", self.sync, "write"),
             Route("GET", "/api/review/retained", self.retained, "read"),
             Route("POST", "/api/review/retained/resolve", self.retained_resolve, "write"),
         ]
+
+    def deliveries(self):
+        return self.call("/api/deliveries", timeout=25)
+
+    def delivery_get(self, req):
+        task_id = req.param("id")
+        if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 256:
+            return 400, {"ok": False, "error": "任务编号无效"}
+        qs = "id=" + urllib.parse.quote(task_id.strip(), safe="")
+        ver = req.param("version")
+        if isinstance(ver, str) and ver.strip() and len(ver) <= 256:
+            qs += "&version=" + urllib.parse.quote(ver.strip(), safe="")
+        return self.call("/api/delivery?" + qs, timeout=25)
+
+    def delivery_post(self, req):
+        body = req.json()
+        if not isinstance(body, dict) or body.get("user_selected") is not True:
+            return 400, {"ok": False, "error": "需要本次明确选择交付或撤回"}
+        return self._post("/api/delivery", body, timeout=90)
 
     def candidate(self, req):
         task_id = req.param("id")

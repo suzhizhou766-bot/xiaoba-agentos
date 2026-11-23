@@ -158,8 +158,6 @@ class StageTests(unittest.TestCase):
         self.assertIn("npm run build", health["detail"])
 
 
-
-
 class ComposeTests(StageTests):
     """用 Key 池模型写最终提示词：假的 Key 池，不发任何真实请求。"""
 
@@ -235,3 +233,5 @@ class ComposeTests(StageTests):
 
 if __name__ == "__main__":
     unittest.main()
+
+

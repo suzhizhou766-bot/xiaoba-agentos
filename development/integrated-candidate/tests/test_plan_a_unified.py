@@ -14,7 +14,7 @@ from types import SimpleNamespace
 CANDIDATE = Path(__file__).resolve().parents[1]
 REPO_ROOT = CANDIDATE.parents[1]
 INGRESS = CANDIDATE.parent / "review-ingress"
-MONITOR_ROOT = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看"
+MONITOR_ROOT = REPO_ROOT / "monitor"
 
 for p in (str(CANDIDATE / "src"), str(INGRESS), str(CANDIDATE / "scripts"), str(MONITOR_ROOT)):
     if p not in sys.path:

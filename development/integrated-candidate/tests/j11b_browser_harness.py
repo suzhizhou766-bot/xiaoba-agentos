@@ -289,7 +289,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="j11b-browser-") as temp:
         root = Path(temp).resolve()
         config, store, candidate, task_id, center = _fixture(root)
-        html = (ASSETS / "xiaoba-monitor.html").read_text(encoding="utf-8")
+        from xiaoba_agentos.review_ui_install import resolve_asset_path
+        page_path = resolve_asset_path(ASSETS, "xiaoba-monitor.html")
+        html = page_path.read_text(encoding="utf-8")
         html = f'<meta name="xiaoba-page-token" content="{TOKEN}">\n' + html
         request_count = 0
         stop_event = __import__("threading").Event()
@@ -396,7 +398,7 @@ def main() -> int:
             http.server_close()
             result = _status(store, candidate["task_id"], task_id, request_count, port)
             result.update({"url": url, "config_path": str(config.path), "runtime_dir": str(config.runtime_dir),
-                           "candidate_page_sha256": hashlib.sha256((ASSETS / "xiaoba-monitor.html").read_bytes()).hexdigest(),
+                           "candidate_page_sha256": hashlib.sha256(page_path.read_bytes()).hexdigest(),
                            "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S")})
             evidence_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             print(json.dumps({"event": "HARNESS_STOPPED", **result}, ensure_ascii=False), flush=True)

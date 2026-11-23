@@ -27,7 +27,7 @@ LIST_LIMITS = (50, 1000)   # status 只返回最近的若干条任务；冻结�
 # 命令行拒绝恢复时给出的英文原因，换成给人看的说法；认不出的原样显示。顺序即匹配顺序。
 REFUSALS = (
     ("no current healthy probe", "needs_probe",
-     "失败的那一侧现在没有新鲜的合格探测结果。请先重新“上班”做一次真实探测，通过后再回来恢复"),
+     "失败的节点还没有在冻结之后重新测试通过。请先到 Agent 池给它点“测试运行”，通过后再回来恢复"),
     ("explicit freeze hash is required", "hash_mismatch", "没有带上冻结哈希"),
     ("freeze hash mismatch", "hash_mismatch", "冻结哈希与当前记录不一致，任务可能已被重新冻结，请刷新后核对"),
     ("task is not frozen", "not_frozen", "这个任务已经不在冻结状态"),
@@ -60,6 +60,7 @@ class FrozenModule(Module):
         return [
             Route("GET", "/api/review/frozen", self.listing, "read"),
             Route("POST", "/api/review/frozen/resume", self.resume, "write"),
+            Route("POST", "/api/review/frozen/abandon", self.abandon, "write"),
         ]
 
     # ---- 调用小八入口 ----
@@ -155,17 +156,25 @@ class FrozenModule(Module):
             return "not_found", "小八里找不到这个任务"
         return "blocked", short(raw or error or "命令行拒绝了这次恢复", 300)
 
+    def abandon(self, req):
+        """放弃一个冻结任务：同样一次一个、带页面上显示的冻结哈希，由命令行结束任务。"""
+        return self._act(req, "task-abandon", "放弃",
+                         lambda result: result.get("status") == "failed" and result.get("abandoned") is True)
+
     def resume(self, req):
+        return self._act(req, "task-resume", "恢复", lambda result: result.get("status") == "retry")
+
+    def _act(self, req, command, verb, succeeded):
         body = req.json()
         task_id, freeze_hash = body.get("taskId"), body.get("freezeHash")
         if any(key in body for key in ("items", "tasks", "taskIds")) or isinstance(task_id, (list, dict)):
-            return 400, {"ok": False, "error": "一次只能恢复一个任务"}
+            return 400, {"ok": False, "error": "一次只能%s一个任务" % verb}
         if not isinstance(task_id, str) or not task_id:
             return 400, {"ok": False, "error": "请求无效：需要指明一个任务"}
         if not isinstance(freeze_hash, str) or not HASH_RE.match(freeze_hash):
             return 400, {"ok": False, "error": "请求无效：需要带上页面上显示的冻结哈希"}
         if not self._resume_lock.acquire(blocking=False):   # 前一个没结束不接下一个
-            return 409, {"ok": False, "kind": "busy", "error": "上一个恢复还没有结束，请等它返回后再操作"}
+            return 409, {"ok": False, "kind": "busy", "error": "上一个操作还没有结束，请等它返回后再操作"}
         try:
             rows, _, _, error = self._frozen_raw()
             if rows is None:
@@ -177,10 +186,12 @@ class FrozenModule(Module):
             if str(target.get("freeze_hash") or "") != freeze_hash:
                 return 409, {"ok": False, "kind": "hash_mismatch",
                              "error": "冻结哈希与当前记录不一致，任务可能已被重新冻结，请刷新后核对"}
-            code, result, error = self._cli(["task-resume", str(target["id"]), "--freeze-hash", freeze_hash], timeout=120)
-            ok = code == 0 and isinstance(result, dict) and result.get("status") == "retry"
-            self.ctx.log(self.id, "frozen task resumed by user" if ok else "frozen task resume refused",
+            code, result, error = self._cli([command, str(target["id"]), "--freeze-hash", freeze_hash], timeout=120)
+            ok = code == 0 and isinstance(result, dict) and succeeded(result)
+            self.ctx.log(self.id, "frozen task %s by user: %s" % (command, "done" if ok else "refused"),
                          "info" if ok else "warning", task=task_id[:8])
+            if ok and command == "task-abandon":
+                return 200, {"ok": True, "status": "failed", "taskId": task_id, "abandoned": True, "result": result}
             if ok:
                 return 200, {"ok": True, "status": "retry", "taskId": task_id,
                              "resumeGeneration": result.get("resume_generation"),
@@ -188,7 +199,7 @@ class FrozenModule(Module):
                              "outputBudgetExhausted": result.get("output_budget_exhausted") is True,
                              "warning": result.get("warning") or "", "result": result}
             kind, label = self._refusal(result, error)
-            return 409, {"ok": False, "kind": kind, "error": "没有恢复：%s" % label, "result": result,
+            return 409, {"ok": False, "kind": kind, "error": "没有%s：%s" % (verb, label), "result": result,
                          "detail": "" if result else short(error, 300)}
         finally:
             self._resume_lock.release()

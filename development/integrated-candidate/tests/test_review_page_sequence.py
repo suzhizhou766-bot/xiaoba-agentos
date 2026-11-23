@@ -7,9 +7,13 @@ import re
 import shutil
 import subprocess
 import unittest
+import sys
 from pathlib import Path
 
-PAGE = Path(__file__).resolve().parents[1] / "src/xiaoba_agentos/review_ui_assets/xiaoba-monitor.html"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path
+
+PAGE = resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html")
 
 
 def render_list_source(html: str) -> str:

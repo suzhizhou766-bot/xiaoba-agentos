@@ -143,7 +143,7 @@ class App:
         if route.guard == "post":
             return None
         if not secrets.compare_digest(headers.get("X-Xiaoba-Token", ""), ctx.page_token):
-            return "请从本机监看页面确认提交"
+            return "监看服务已重启或页面会话已过期，请按 Command+R 刷新页面后重试"
         if not headers.get("Content-Type", "").startswith("application/json"):
             return "无效请求"
         return None

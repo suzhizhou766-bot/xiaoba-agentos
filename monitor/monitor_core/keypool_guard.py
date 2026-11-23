@@ -106,8 +106,8 @@ BLOCK_RULES = [
     ("reverse-shell", "反弹 shell", re.compile(
         r"(?is)(?:bash|sh)\s+-i\s*>?&?\s*/dev/tcp/"
         r"|/dev/(?:tcp|udp)/\d{1,3}(?:\.\d{1,3}){3}/\d+"
-        r"|nc\b[^\n]*\s-[a-z]*e[a-z]*\s"
-        r"|socat\b[^\n]*exec")),
+        r"|\bnc\b[^\n]*\s-[a-z]*e[a-z]*\s"   # 词边界：不让 async、rsync、func 这类以 nc 结尾的词误中
+        r"|\bsocat\b[^\n]*exec")),
     ("credential-exfil", "读取凭据后外发", re.compile(
         r"(?is)(?:cat|cp|tar|zip|scp|curl|rsync|xxd|openssl|base64)\b[^\n]{0,200}"
         r"(?:\.ssh/|id_rsa|\.aws/credentials|\.config/gcloud|\.netrc|\.docker/config|"
@@ -116,7 +116,9 @@ BLOCK_RULES = [
     ("persistence", "写入开机自启", re.compile(
         r"(?is)(?:>>?|tee)\s*[^\n]{0,80}(?:/LaunchAgents/|/LaunchDaemons/|crontab\b|/etc/cron|"
         r"\.zshrc|\.bashrc|\.bash_profile|\.profile|/etc/rc\.|systemd/system)"
-        r"|crontab\s+-\b|launchctl\s+(?:load|bootstrap)\b")),
+        r"|crontab\s+-\b"
+        # launchctl 后面要跟着真实参数（域、路径、变量或 .plist）：说明文字里提到这个命令不拦
+        r"|\blaunchctl\s+(?:load|bootstrap)\s+(?:-[A-Za-z]+\s+)*[\"']?(?:gui/|user/|system\b|~|/|\$|[\w.-]+\.plist\b)")),
     ("disable-guard", "关闭系统防护", re.compile(
         r"(?is)spctl\s+--master-disable|csrutil\s+disable|xattr\s+-[a-z]*d[a-z]*\s+com\.apple\.quarantine"
         r"|chmod\s+-R?\s*777\s+/|defaults\s+write[^\n]*GatekeeperEnabled")),
@@ -132,13 +134,36 @@ WARN_RULES = [
 ]
 
 
+SNIPPET_CONTEXT = 30   # 命中片段前后各带多少字
+SNIPPET_MAX = 160
+
+
+def _snippet(text, pattern):
+    """命中位置附近的一小段原文，用于事件记录，便于事后分辨真篡改还是误拦。
+    先对整段打码再截取，避免截断的密钥因长度不够而漏打码。"""
+    masked = mask_text_secrets(text)
+    match = pattern.search(masked)
+    if not match:
+        return ""
+    start, end = max(0, match.start() - SNIPPET_CONTEXT), min(len(masked), match.end() + SNIPPET_CONTEXT)
+    piece = masked[start:end].replace("\r", "").replace("\n", " ⏎ ")
+    if len(piece) > SNIPPET_MAX:
+        piece = piece[:SNIPPET_MAX] + "…"
+    return ("…" if start else "") + piece + ("…" if end < len(masked) else "")
+
+
 def scan_commands(text):
-    """对一段命令/参数文本按规则匹配。返回 (blocks, warns)，元素为 {"rule","label"}。"""
+    """对一段命令/参数文本按规则匹配。返回 (blocks, warns)，元素为 {"rule","label","snippet"}。"""
     if not text:
         return [], []
-    blocks = [{"rule": rid, "label": label} for rid, label, pat in BLOCK_RULES if pat.search(text)]
-    warns = [{"rule": rid, "label": label} for rid, label, pat in WARN_RULES if pat.search(text)]
-    return blocks, warns
+
+    def hits(rules):
+        out = []
+        for rid, label, pat in rules:
+            if pat.search(text):
+                out.append({"rule": rid, "label": label, "snippet": _snippet(text, pat)})
+        return out
+    return hits(BLOCK_RULES), hits(WARN_RULES)
 
 
 # 工具调用里哪些字段像“要执行的东西”：命令、脚本、路径、URL
@@ -167,9 +192,10 @@ def judge_tools(tool_calls, declared_tools=None):
     declared = set(declared_tools or [])
     for name, arguments in tool_calls:
         if declared and name and name not in declared:
-            findings.append({"tool": name, "rule": "undeclared-tool", "label": "调用了未声明的工具（疑似被篡改）",
-                             "severity": "block"})
-            block = True
+            # 只告警不拦：模型编错工具名很常见（如多 Agent 团队里编出 team_task_complete），客户端不认识的工具本来就不会执行；
+            # 拦下会丢掉整条回复、打断那一轮。中转站塞进来的危险命令由下面的命令规则拦。
+            findings.append({"tool": name, "rule": "undeclared-tool", "label": "调用了本次请求未声明的工具",
+                             "severity": "warn"})
         blocks, warns = scan_commands(tool_text(name, arguments))
         for b in blocks:
             findings.append({"tool": name or "?", **b, "severity": "block"})

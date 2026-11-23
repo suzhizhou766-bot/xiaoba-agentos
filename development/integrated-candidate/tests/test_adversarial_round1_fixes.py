@@ -144,7 +144,7 @@ class Finding1ManifestProjectionTests(unittest.TestCase):
             ri = repo / "development/review-ingress"
             ac = repo / "development/architecture-center"
             iface = repo / "development/interface"
-            mon = repo / "architecture-package-20261027/shared/工具/小八监看"
+            mon = repo / "monitor"
             for d in (ic / "src/xiaoba_agentos", ic / "docs", ic / "scripts",
                       ri / "xiaoba_review", ri / "tests",
                       ac / "tests", ac / "web",
@@ -216,7 +216,7 @@ class Finding1ManifestProjectionTests(unittest.TestCase):
             ri = repo / "development/review-ingress"
             ac = repo / "development/architecture-center"
             iface = repo / "development/interface"
-            mon = repo / "architecture-package-20261027/shared/工具/小八监看"
+            mon = repo / "monitor"
             for d in (ic / "src/xiaoba_agentos", ic / "docs", ic / "scripts",
                       ri / "xiaoba_review", ri / "tests",
                       ac / "modules/task-planning", ac / "tests", ac / "web",
@@ -348,7 +348,7 @@ class Finding1ManifestProjectionTests(unittest.TestCase):
             self.assertEqual(pkg_center, packaged_paths["spec_root"])
             self.assertIsNotNone(packaged_paths["readonly_reason"])
 
-            monitor_root = str(REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看")
+            monitor_root = str(REPO_ROOT / "monitor")
             arch_spec = importlib.util.spec_from_file_location(
                 "xiaoba_arch_pkg_test", pkg_center / "__init__.py", submodule_search_locations=[str(pkg_center)],
             )
@@ -490,7 +490,7 @@ class Finding3And4DeliverySecurityAndWithdrawalTests(unittest.TestCase):
         from xiaoba_agentos.reuse_scores import projection_tx
         from xiaoba_agentos.store import EventStore
 
-        mon_dir = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看"
+        mon_dir = REPO_ROOT / "monitor"
         if str(mon_dir) not in sys.path:
             sys.path.insert(0, str(mon_dir))
         from monitor_core.modules import overview as overview_mod
@@ -846,7 +846,7 @@ class Finding6And7HostManifestAndMonitorReversalTests(unittest.TestCase):
         from xiaoba_agentos.reuse_scores import projection_tx
         from xiaoba_agentos.store import EventStore
 
-        mon_dir = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看"
+        mon_dir = REPO_ROOT / "monitor"
         if str(mon_dir) not in sys.path:
             sys.path.insert(0, str(mon_dir))
         from monitor_core.modules import overview as overview_mod
@@ -957,8 +957,9 @@ class Finding6And7HostManifestAndMonitorReversalTests(unittest.TestCase):
                     "source_sha256": hex_c,
                 })
 
-            bundled_ov_path = ROOT / "src/xiaoba_agentos/review_ui_assets/monitor_overview.py"
-            shared_ov_path = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看/monitor_core/modules/overview.py"
+            from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path
+            bundled_ov_path = resolve_asset_path(UI_ASSETS, "monitor_overview.py")
+            shared_ov_path = REPO_ROOT / "monitor/monitor_core/modules/overview.py"
             self.assertEqual(shared_ov_path.read_bytes(), bundled_ov_path.read_bytes())
 
             self.assertTrue(store.verify_event_chain()["ok"])
@@ -1049,7 +1050,7 @@ class Round3AdversarialFixesTests(unittest.TestCase):
         from xiaoba_agentos.reuse_scores import projection_tx
         from xiaoba_agentos.store import EventStore
 
-        mon_dir = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看"
+        mon_dir = REPO_ROOT / "monitor"
         if str(mon_dir) not in sys.path:
             sys.path.insert(0, str(mon_dir))
         from monitor_core.modules import overview as overview_mod

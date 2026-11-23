@@ -1,0 +1,18 @@
+{
+  "candidate_base": "4b340f9e0d29914cc0a47e92caa95c5b67247fe2",
+  "candidate_source_manifest_sha256": "8979e53a51b6f082499c92b2445b6d170580d0e5a0b2fad66cf7bebec8304f4a",
+  "predecessor_source_manifest_sha256": "4ad41515bf772287fe7517f83c33ec00c0123bfcaf79cfeccbe63b95db5d2461",
+  "first_install_policy": {
+    "monitor_core/lifecycle.py": {
+      "install": "first_install",
+      "mode": "0o644"
+    }
+  },
+  "authorized_source_files": {
+    "monitor/monitor_core/lifecycle.py": "7b3fdd11a75cbaeba6fc2aa0d1d9147b4df38d5219f59b8a9e30a6c64368a8bd",
+    "monitor/monitor_core/modules/system.py": "26a66740f1f317c50a8c9a127b9b407e4a1bd39c8c208fa0cf4288b794de020f",
+    "monitor/xiaoba_monitor.py": "93310442719a37533ad46dd2fbd368378cae062edd076675814863b546dc3879",
+    "monitor/启动监看中心.command": "77af8b535b8047868c85f3467b31166e3881d53cb937439edce48ede708d60cd",
+    "monitor/关闭监看中心.command": "2f4cf9dfc4f984088598116c5a522f2c5e6dd4df44e88c221eb8cda384a97b7d"
+  }
+}

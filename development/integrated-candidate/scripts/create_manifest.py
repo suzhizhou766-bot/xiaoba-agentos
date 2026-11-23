@@ -57,10 +57,29 @@ def _walk_regular_files(base: Path) -> list[Path]:
     return found
 
 
+def _resolve_monitor_source(repo_dir: Path) -> tuple[Path, tuple[Path, ...]]:
+    """W3-M2/M3: Canonical top-level monitor/ directory."""
+    canonical = repo_dir / "monitor"
+    return canonical, (canonical,)
+
+
+# W3-M1: Monitor-owned UI assets live ONCE in canonical monitor/ and are projected into
+# review_ui_assets/ automatically by create_manifest & build_release.
+_MONITOR_UI_PROJECTIONS: tuple[tuple[str, str], ...] = (
+    ("monitor_core/agentos_config.py", "src/xiaoba_agentos/review_ui_assets/agentos_config.py"),
+    ("monitor_core/config.py", "src/xiaoba_agentos/review_ui_assets/monitor_config.py"),
+    ("monitor_core/modules/overview.py", "src/xiaoba_agentos/review_ui_assets/monitor_overview.py"),
+    ("monitor_core/modules/review.py", "src/xiaoba_agentos/review_ui_assets/monitor_review.py"),
+    ("monitor_core/web.py", "src/xiaoba_agentos/review_ui_assets/monitor_web.py"),
+    ("xiaoba-monitor.html", "src/xiaoba_agentos/review_ui_assets/xiaoba-monitor.html"),
+)
+
+
 def projected_sources(root: Path) -> list[tuple[Path, str]]:
     """Project sibling runtime/test directories of the integration worktree into packaged paths."""
     dev_dir = root.parent
     repo_dir = dev_dir.parent
+    mon_dir, mon_guards = _resolve_monitor_source(repo_dir)
     specs = (
         (
             dev_dir / "review-ingress/xiaoba_review",
@@ -78,14 +97,9 @@ def projected_sources(root: Path) -> list[tuple[Path, str]]:
             (dev_dir / "architecture-center",),
         ),
         (
-            repo_dir / "architecture-package-20261027/shared/工具/小八监看",
+            mon_dir,
             "src/xiaoba_monitor_shared",
-            (
-                repo_dir / "architecture-package-20261027",
-                repo_dir / "architecture-package-20261027/shared",
-                repo_dir / "architecture-package-20261027/shared/工具",
-                repo_dir / "architecture-package-20261027/shared/工具/小八监看",
-            ),
+            mon_guards,
         ),
     )
     active: list[tuple[Path, str]] = []
@@ -129,6 +143,11 @@ def projected_files(root: Path) -> list[tuple[Path, str]]:
                 (dev_dir / "interface", dev_dir / "interface/SKILL.md"),
             )
         )
+    # W3-M1: project single-source monitor UI assets into review_ui_assets/ automatically
+    mon_dir, mon_guards = _resolve_monitor_source(dev_dir.parent)
+    for mon_rel, dst_rel in _MONITOR_UI_PROJECTIONS:
+        src_path = mon_dir / mon_rel
+        file_specs.append((src_path, dst_rel, (*mon_guards, src_path)))
     active: list[tuple[Path, str]] = []
     for src_file, dst_rel, guards in file_specs:
         packaged = root / dst_rel

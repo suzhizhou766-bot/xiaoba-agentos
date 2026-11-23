@@ -249,7 +249,7 @@ class FrozenTests(unittest.TestCase):
 
     def test_refusals_are_passed_through_and_never_retried(self):
         cases = (
-            ("failed Agent has no current healthy probe; run session-start first", "needs_probe", "上班"),
+            ("failed Agent has no current healthy probe; 请先在 Agent 池重新测试失败的节点", "needs_probe", "测试运行"),
             ("frozen execution receipt is missing", "evidence_gap", "执行回执"),
             ("frozen execution receipt hash mismatch", "evidence_gap", "执行回执"),
             ("execution snapshot changed while task was frozen", "evidence_gap", "执行快照"),
@@ -269,6 +269,28 @@ class FrozenTests(unittest.TestCase):
             self.assertIn(words, data["error"])
             self.assertEqual(data["result"], result)               # 命令行说了什么，原样带给页面
             self.assertEqual(len(self.calls("task-resume")), 1)    # 被拒绝后不自动重试
+
+    def abandon(self, body, headers=None):
+        code, _, raw = fetch("POST", self.base + "/api/review/frozen/abandon",
+                             dict(self.page_headers) if headers is None else headers, body, timeout=20)
+        return code, json.loads(raw)
+
+    def test_abandon_passes_one_task_with_its_hash_to_the_cli(self):
+        self.arrange([task(ID_A)], resume={"task_id": ID_A, "status": "failed", "abandoned": True})
+        code, data = self.abandon({"taskId": ID_A, "freezeHash": HASH_A})
+        self.assertEqual(200, code, data)
+        self.assertTrue(data["ok"])
+        self.assertEqual([["--config", str(self.root / "agentos.json"), "task-abandon", ID_A, "--freeze-hash", HASH_A]],
+                         [row for row in self.calls() if row[2] == "task-abandon"])
+
+    def test_abandon_is_refused_with_a_stale_hash_or_from_another_page(self):
+        self.arrange([task(ID_A)], resume={"task_id": ID_A, "status": "failed", "abandoned": True})
+        code, data = self.abandon({"taskId": ID_A, "freezeHash": HASH_B})
+        self.assertEqual(409, code)
+        self.assertEqual("hash_mismatch", data["kind"])
+        code, _ = self.abandon({"taskId": ID_A, "freezeHash": HASH_A}, headers={"Content-Type": "application/json"})
+        self.assertNotEqual(200, code)
+        self.assertEqual([], self.calls("task-abandon"))
 
     def test_unreadable_cli_output_is_an_error_not_a_success(self):
         self.arrange([task(ID_A)], garbage='{"error": "release_unverified"}')

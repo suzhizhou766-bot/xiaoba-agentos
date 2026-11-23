@@ -20,8 +20,11 @@ from pathlib import Path
 INGRESS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = INGRESS_DIR.parents[1]
 REVIEW_PKG = INGRESS_DIR / "xiaoba_review"
-MONITOR_DIR = REPO_ROOT / "architecture-package-20261027/shared/工具/小八监看"
+MONITOR_DIR = REPO_ROOT / "monitor"
 UI_ASSETS = REPO_ROOT / "development/integrated-candidate/src/xiaoba_agentos/review_ui_assets"
+if str(REPO_ROOT / "development/integrated-candidate/src") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "development/integrated-candidate/src"))
+from xiaoba_agentos.review_ui_install import resolve_asset_path  # noqa: E402
 
 
 class W2GMonitorSecurityUiTests(unittest.TestCase):
@@ -194,7 +197,7 @@ eval(src);
 
         for path in (
             MONITOR_DIR / "xiaoba-monitor.html",
-            UI_ASSETS / "xiaoba-monitor.html",
+            resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html"),
         ):
             html = path.read_text(encoding="utf-8")
             m = re.search(r'<details[^>]*id="legacyAgentsPanel"[^>]*>', html)
@@ -203,14 +206,14 @@ eval(src);
             self.assertIn('id="agentRows"', html)
             self.assertNotRegex(html, r'id="legacyAgentsPanel"[^>]*\bon\w+=')
 
-        # Asset mirrors stay byte-identical
+        # W3-M1 single-source verification: resolve_asset_path resolves directly to canonical monitor/
         self.assertEqual(
-            (MONITOR_DIR / "xiaoba-monitor.html").read_bytes(),
-            (UI_ASSETS / "xiaoba-monitor.html").read_bytes(),
+            (MONITOR_DIR / "xiaoba-monitor.html").resolve(),
+            resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html").resolve(),
         )
         self.assertEqual(
-            (MONITOR_DIR / "monitor_core/web.py").read_bytes(),
-            (UI_ASSETS / "monitor_web.py").read_bytes(),
+            (MONITOR_DIR / "monitor_core/web.py").resolve(),
+            resolve_asset_path(UI_ASSETS, "monitor_web.py").resolve(),
         )
 
 

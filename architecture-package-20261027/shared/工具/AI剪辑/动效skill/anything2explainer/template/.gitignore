@@ -1,7 +1,0 @@
-node_modules/
-build*/
-renders/
-fin_frames/
-stills/
-public/assets/*/audio.wav
-audio/cache/

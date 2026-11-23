@@ -4,6 +4,8 @@
 """
 import http.client
 import http.server
+import contextlib
+import io
 import json
 import os
 import socket
@@ -93,6 +95,15 @@ class FakeUpstream:
                     self.end_headers()
                     self.wfile.write(data)
                     return
+                if upstream.mode == "301":
+                    data = b"<html>301 Moved Permanently</html>"
+                    self.send_response(301)
+                    self.send_header("Location", "https://moved.example/v1" + self.path)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
                 if upstream.mode in ("429", "401"):
                     data = b'{"error":"nope"}'
                     self.send_response(int(upstream.mode))
@@ -108,8 +119,14 @@ class FakeUpstream:
                     self.end_headers()
                     events = upstream.events or [b"data: {\"i\": %d}\n\n" % i for i in range(3)] + [b"data: [DONE]\n\n"]
                     for event in events:
-                        self.wfile.write(event)
-                        self.wfile.flush()
+                        if isinstance(event, (int, float)):   # 数字：停这么多秒再发下一段（模拟上游不出字）
+                            time.sleep(event)
+                            continue
+                        try:
+                            self.wfile.write(event)
+                            self.wfile.flush()
+                        except OSError:                       # Key 池已经放弃这个节点、断开了
+                            break
                         time.sleep(0.05)
                     self.close_connection = True
                     return
@@ -700,8 +717,6 @@ class ModuleTests(unittest.TestCase):
         self.assertEqual(state["nodes"], [])
 
 
-
-
 class DualRouteTests(ProxyCase):
     """一个节点两个 Key：套餐 Key 与余额 Key。"""
 
@@ -844,6 +859,56 @@ class DualRouteTests(ProxyCase):
         self.assertEqual(a.auth, ["Bearer plan-a", "Bearer pay-a", "Bearer pay-a", "Bearer pay-a"])
         node = self.node()
         self.assertEqual((node["cooldownLeft"], node["inflight"]), (0, 0))
+
+
+class BalanceEndpointTests(ProxyCase):
+    """GET /user/balance：DeepSeek 格式的全池余额合计，给只认 DeepSeek 余额接口的客户端（如 DSH 的余额挂件）用。"""
+
+    hint = DualRouteTests.hint
+
+    def balance(self, path="/user/balance", key=MASTER):
+        status, data = call(self.port, path, key=key, method="GET")
+        return status, json.loads(data.decode("utf-8"))
+
+    def test_sums_fresh_readings_of_enabled_nodes_in_deepseek_format(self):
+        a, b, c = self.upstream(), self.upstream(), self.upstream()
+        self.start([{"id": "a", "name": "A", "baseUrl": a.url, "key": "plan-a", "payKey": "pay-a"},
+                    {"id": "b", "name": "B", "baseUrl": b.url, "key": "kb"},
+                    {"id": "c", "name": "C", "baseUrl": c.url, "key": "kc", "enabled": False}])
+        self.assertTrue(self.hint("a", plan=10.5, pay=2.25))
+        self.assertTrue(self.hint("b", plan=0, pay=7.1234))
+        self.assertTrue(self.hint("c", plan=100, pay=100))        # 停用的节点不算：这笔钱池子用不到
+        for path in ("/user/balance", "/v1/user/balance"):
+            status, body = self.balance(path)
+            self.assertEqual(status, 200)
+            self.assertTrue(body["is_available"])
+            self.assertEqual(body["balance_infos"], [{"currency": "CNY", "total_balance": "19.8734",
+                                                      "granted_balance": "10.5000", "topped_up_balance": "9.3734"}])
+            self.assertEqual(body["key_pool"], {"nodes": 2, "fresh": 2, "plan_missing": 0})
+        self.assertEqual((a.hits, b.hits, c.hits), (0, 0, 0))     # 不转发给任何节点
+
+    def test_needs_the_master_key(self):
+        a = self.upstream()
+        self.start([{"id": "a", "name": "A", "baseUrl": a.url, "key": "ka"}])
+        self.hint("a", plan=1, pay=1)
+        self.assertEqual(self.balance(key="bad")[0], 401)
+        self.assertEqual(self.balance(key=None)[0], 401)
+        self.assertEqual(a.hits, 0)
+
+    def test_stale_or_partial_readings(self):
+        a, b = self.upstream(), self.upstream()
+        self.start([{"id": "a", "name": "A", "baseUrl": a.url, "key": "ka"},
+                    {"id": "b", "name": "B", "baseUrl": b.url, "key": "kb"}])
+        self.assertEqual(self.balance()[0], 503)                  # 还没有任何读数：报错，不报 0
+        self.hint("a", pay=3)                                     # 套餐接口失败时监看中心只送按量
+        self.hint("b", plan=5, pay=1)
+        self.server.pool.nodes["b"].hint["at"] -= 10000           # 过期的读数不算
+        status, body = self.balance()
+        self.assertEqual((status, body["balance_infos"][0]["total_balance"]), (200, "3.0000"))
+        self.assertEqual(body["key_pool"], {"nodes": 2, "fresh": 1, "plan_missing": 1})
+        self.hint("a", plan=0, pay=0)
+        self.assertFalse(self.balance()[1]["is_available"])
+        self.assertEqual(a.hits + b.hits, 0)
 
 
 class StatsRouteTests(ModuleTests):
@@ -1114,6 +1179,49 @@ class ContentFilterTests(ProxyCase):
         self.assertNotIn("k1", target.read_text(encoding="utf-8"))
 
 
+class RedirectAndErrorLogTests(ProxyCase):
+    """3xx 不当成功转给客户端；上游报错正文写进日志并给 Key 打码。"""
+
+    def test_redirect_fails_over_and_stops_the_moved_node(self):
+        moved, good = self.upstream("301"), self.upstream()
+        self.start([{"id": "m", "name": "M", "baseUrl": moved.url, "key": "k1"},
+                    {"id": "g", "name": "G", "baseUrl": good.url, "key": "k2"}])
+        pool = self.server.pool
+        pool.nodes["m"].last_used, pool.nodes["g"].last_used = 0, 9e12   # 让搬家的先被选中
+        code, data = call(self.port)
+        self.assertEqual(code, 200)
+        self.assertEqual((moved.hits, good.hits), (1, 1))
+        node = {n["id"]: n for n in self.state()["nodes"]}["m"]
+        self.assertEqual(node["breaker"], "open")   # 立刻停用，不等连续失败
+        self.assertIn("moved.example", node["lastError"])
+        call(self.port)
+        self.assertEqual(moved.hits, 1)   # 停用期间不再分到它
+
+    def test_redirect_on_the_only_node_is_a_clear_502_not_the_raw_redirect(self):
+        moved = self.upstream("301")
+        self.start([{"id": "m", "name": "M", "baseUrl": moved.url, "key": "k1"}])
+        code, data = call(self.port)
+        self.assertEqual(code, 502)
+        self.assertIn(b"redirected", data)
+        self.assertIn(b"moved.example", data)
+
+    def test_upstream_error_body_is_logged_with_keys_masked(self):
+        bad = self.upstream()
+        bad.deny["secret-key-123"] = (400, "bad request for key secret-key-123: max_tokens too large")
+        self.start([{"id": "b", "name": "B", "baseUrl": bad.url, "key": "secret-key-123"}])
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            code, data = call(self.port)
+        self.assertEqual(code, 400)
+        self.assertIn(b"max_tokens too large", data)   # 客户端照样拿到原话
+        log = buf.getvalue()
+        self.assertIn("upstream error: B", log)
+        self.assertIn("status=400", log)
+        self.assertIn("max_tokens too large", log)
+        self.assertNotIn("secret-key-123", log)
+        self.assertIn("sec***", log)
+
+
 class StreamFirstEventTests(ProxyCase):
     """流式回复 200，但第一条事件就是上游的错误（比如 RequestBurstTooFast）：客户端还没收到东西，换节点重发。"""
 
@@ -1183,6 +1291,87 @@ class StreamFirstEventTests(ProxyCase):
         self.assertIsNone(kp.stream_error(b"event: message_start\ndata: {\"type\":\"message_start\"}\n\n"))
         self.assertIn("RequestBurstTooFast", kp.stream_error(self.BURST))
         self.assertIsNotNone(kp.stream_error(b'{"error":{"message":"busy"}}'))   # 没按 SSE 回，直接给 JSON 错误
+
+
+class StreamTimeoutTests(ProxyCase):
+    """2026-10-23：中转站回了响应头和一条只带角色的事件，然后几百秒不出字。首段 180 秒、断流 120 秒（用户定）。"""
+
+    ROLE = b'data: {"choices":[{"index":0,"delta":{"role":"assistant"}}]}\n\n'
+
+    @staticmethod
+    def content(text):
+        return b'data: {"choices":[{"index":0,"delta":{"content":"%s"}}]}\n\n' % text
+
+    def stream_call(self, timeout=10):
+        return call(self.port, body={"model": "m1", "messages": [], "stream": True}, timeout=timeout)
+
+    def test_role_only_event_then_silence_fails_over_before_anything_reaches_the_client(self):
+        bad, good = self.upstream("stream"), self.upstream("stream")
+        bad.events = [self.ROLE, 3.0, self.content(b"late"), b"data: [DONE]\n\n"]
+        self.start([{"id": "b", "name": "B", "baseUrl": bad.url, "key": "k1"},
+                    {"id": "g", "name": "G", "baseUrl": good.url, "key": "k2"}], firstByteTimeoutSeconds=0.8)
+        pool = self.server.pool
+        pool.nodes["b"].last_used, pool.nodes["g"].last_used = 0, 9e12
+        code, data = self.stream_call()
+        self.assertEqual(code, 200)
+        self.assertNotIn(b"late", data)
+        self.assertNotIn(b'"role"', data)                 # 坏节点的角色事件没有漏给客户端
+        self.assertIn(b'data: {"i": 0}', data)
+        self.assertEqual((bad.hits, good.hits), (1, 1))
+        self.assertIn("首段", {n["id"]: n for n in self.state()["nodes"]}["b"]["lastError"])
+
+    def test_every_node_without_content_gives_a_clear_timeout_error(self):
+        a, b = self.upstream("stream"), self.upstream("stream")
+        a.events = b.events = [self.ROLE, 3.0, b"data: [DONE]\n\n"]
+        self.start([{"id": "a", "name": "A", "baseUrl": a.url, "key": "k1"},
+                    {"id": "b", "name": "B", "baseUrl": b.url, "key": "k2"}], firstByteTimeoutSeconds=0.5)
+        code, data = self.stream_call()
+        self.assertEqual(code, 504)
+        self.assertIn(b"no content within", data)
+        self.assertEqual((a.hits, b.hits), (1, 1))       # 每个节点只试一次，不无限重试
+
+    def test_silence_after_content_is_cut_with_an_error_event(self):
+        bad, good = self.upstream("stream"), self.upstream("stream")
+        bad.events = [self.content(b"part1"), 3.0, self.content(b"part2"), b"data: [DONE]\n\n"]
+        self.start([{"id": "b", "name": "B", "baseUrl": bad.url, "key": "k1"},
+                    {"id": "g", "name": "G", "baseUrl": good.url, "key": "k2"}], streamIdleTimeoutSeconds=0.6)
+        pool = self.server.pool
+        pool.nodes["b"].last_used, pool.nodes["g"].last_used = 0, 9e12
+        code, data = self.stream_call()
+        self.assertEqual(code, 200)
+        self.assertIn(b"part1", data)
+        self.assertNotIn(b"part2", data)
+        self.assertIn(b"mid-stream", data)               # 客户端收到一条明确的错误，不是悄悄断开
+        self.assertEqual(good.hits, 0)                   # 正文已经发出去了，不能换节点重发
+        self.assertIn("断流", {n["id"]: n for n in self.state()["nodes"]}["b"]["lastError"])
+
+    def test_largest_gap_between_chunks_is_recorded(self):
+        s = self.upstream("stream")
+        s.events = [self.content(b"a"), 0.4, self.content(b"b"), b"data: [DONE]\n\n"]
+        self.start([{"id": "s", "name": "S", "baseUrl": s.url, "key": "k"}])
+        code, _ = self.stream_call()
+        self.assertEqual(code, 200)
+        event = self.state()["events"][-1]
+        self.assertGreaterEqual(event["gap"], 300)
+
+    def test_zero_or_missing_settings_use_the_built_in_waits(self):
+        self.assertEqual((180.0, 120.0), kp.stream_waits({"firstByteTimeoutSeconds": 0, "streamIdleTimeoutSeconds": 0}))
+        self.assertEqual((180.0, 120.0), kp.stream_waits({}))
+        self.assertEqual((30.0, 5.0), kp.stream_waits({"firstByteTimeoutSeconds": 30, "streamIdleTimeoutSeconds": 5}))
+        self.assertEqual((180, 120), (kp.DEFAULT_SETTINGS["firstByteTimeoutSeconds"],
+                                      kp.DEFAULT_SETTINGS["streamIdleTimeoutSeconds"]))
+
+    def test_content_detection(self):
+        self.assertFalse(kp.event_has_content(b"", b'{"choices":[{"delta":{"role":"assistant"}}]}'))
+        self.assertFalse(kp.event_has_content(b"", b'{"choices":[{"delta":{"content":""}}]}'))
+        self.assertFalse(kp.event_has_content(b"message_start", b'{"type":"message_start"}'))
+        self.assertTrue(kp.event_has_content(b"", b'{"choices":[{"delta":{"reasoning_content":"x"}}]}'))
+        self.assertTrue(kp.event_has_content(b"", b'{"choices":[{"delta":{},"finish_reason":"stop"}]}'))
+        self.assertTrue(kp.event_has_content(b"content_block_delta", b'{"type":"content_block_delta"}'))
+        self.assertTrue(kp.event_has_content(b"", b"[DONE]"))
+        self.assertTrue(kp.event_has_content(b"", b'{"error":{"message":"busy"}}'))
+        self.assertTrue(kp.event_has_content(b"", b'{"i": 0}'))          # 认不出的格式不拦着
+        self.assertTrue(kp.event_has_content(b"", b'{"choices":[],"usage":{"total_tokens":3}}'))
 
 
 class StationLimitTests(ProxyCase):
@@ -1299,3 +1488,5 @@ class StationSettingsTests(ModuleTests):
 
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -56,7 +56,8 @@ class ReviewUIInstallTest(unittest.TestCase):
         # 改了页面却没重算清单，发版安装时才会报 “UI asset hash mismatch”。
         manifest = json.loads((ui.ASSETS / "manifest.json").read_text())
         for entry in manifest["files"]:
-            self.assertEqual(ui.sha((ui.ASSETS / entry["asset"]).read_bytes()), entry["after_sha256"], entry["asset"])
+            asset_path = ui.resolve_asset_path(ui.ASSETS, entry["asset"])
+            self.assertEqual(ui.sha(asset_path.read_bytes()), entry["after_sha256"], entry["asset"])
 
     def test_drift_is_refused_before_any_write(self):
         changed = self.assistant / ui.TARGETS["xiaoba-monitor.html"][1]

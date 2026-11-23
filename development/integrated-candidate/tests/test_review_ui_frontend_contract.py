@@ -8,11 +8,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path
 
-PAGE = (Path(__file__).resolve().parents[1]
-        / "src/xiaoba_agentos/review_ui_assets/xiaoba-monitor.html")
+PAGE = resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html")
 
 
 def extract_function(source, name):

@@ -63,7 +63,16 @@ def monitor_database_identity(
     Missing optional monitor installation is unavailable, not a daily-task gate.
     A configured monitor with a different database/config is a real mismatch.
     """
-    from .review_ui_assets.agentos_config import agentos_config_path
+    from .review_ui_install import ASSETS as _UI_ASSETS, resolve_asset_path as _resolve_ui_asset
+    canonical = _resolve_ui_asset(_UI_ASSETS, "agentos_config.py")
+    if (_UI_ASSETS / "agentos_config.py").is_file():
+        from .review_ui_assets.agentos_config import agentos_config_path
+    else:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location("xiaoba_agentos._canonical_agentos_config", canonical)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        agentos_config_path = _mod.agentos_config_path
     monitor_json = Path(monitor_json) if monitor_json else (
         Path(config.memory["obsidian_vault"]).expanduser().resolve().parent / "工具/小八监看/monitor.json")
     out = {"ok": False, "status": "unavailable", "monitor_json": str(monitor_json),
@@ -73,7 +82,6 @@ def monitor_database_identity(
         return out
     issues = []
     shared = monitor_json.parent / "monitor_core/agentos_config.py"
-    canonical = Path(__file__).with_name("review_ui_assets") / "agentos_config.py"
     try:
         matches = shared.read_bytes() == canonical.read_bytes()
     except OSError:

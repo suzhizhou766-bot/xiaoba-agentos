@@ -33,7 +33,7 @@ roots = {
     'core': source / 'development/integrated-candidate/tests',
     'ingress': source / 'development/review-ingress/tests',
     'architecture': source / 'development/architecture-center/tests',
-    'monitor': source / 'architecture-package-20261027/shared/工具/小八监看/tests',
+    'monitor': source / 'monitor/tests',
 }
 root = roots[suite]
 if not root.is_dir():

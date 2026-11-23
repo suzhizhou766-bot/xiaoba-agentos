@@ -211,7 +211,7 @@ from pathlib import Path
 from types import SimpleNamespace
 root = Path(sys.argv[2]).resolve(); repo = Path(sys.argv[3]); phase = sys.argv[1]
 sys.path[:0] = [str(repo/'development/integrated-candidate/src'),
-                str(repo/'architecture-package-20261027/shared/工具/小八监看'),
+                str(repo/'monitor'),
                 str(repo/'development/review-ingress')]
 sys.dont_write_bytecode = True
 from xiaoba_agentos.store import EventStore
@@ -395,7 +395,7 @@ from pathlib import Path
 from types import SimpleNamespace
 root = Path(sys.argv[1]).resolve(); repo = Path(sys.argv[2])
 sys.path[:0] = [str(repo/'development/integrated-candidate/src'),
-                str(repo/'architecture-package-20261027/shared/工具/小八监看'),
+                str(repo/'monitor'),
                 str(repo/'development/review-ingress')]
 from xiaoba_agentos.store import EventStore
 from xiaoba_agentos import workday_ledger as ledger

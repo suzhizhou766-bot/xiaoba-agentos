@@ -18,7 +18,7 @@ HEAD_BYTES = 16 * 1024      # 回复开头留多少用来找 token 数（Anthrop
 TAIL_BYTES = 48 * 1024      # 回复结尾留多少（OpenAI 流式把用量放在最后一块）
 WHOLE_BYTES = 512 * 1024    # 小于这个的回复整段保留
 FIELDS = ("t", "node", "name", "route", "model", "asked", "path", "stream", "status", "ok", "attempt",
-          "ms", "ttfb", "total", "in", "out", "cache")
+          "ms", "ttfb", "total", "in", "out", "cache", "gap")   # gap：流式回复两段数据之间最长隔了多少毫秒
 _write_lock = threading.Lock()
 
 

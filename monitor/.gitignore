@@ -1,6 +1,8 @@
 # 运行时产物与本机密钥不进版本历史
 keypool.json
 keypool.json.tmp-*
+keypool-approved.json
+keypool-approved.json.tmp-*
 monitor.log
 logs/
 run/

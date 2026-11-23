@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Key 池代理：把多个中转站的 API Key 合并成一个 Key（由监看中心拉起并看护）。
 
-只用标准库，兼容 macOS 自带的 /usr/bin/python3（3.9）。只监听 127.0.0.1。
+只用标准库，兼容 3.9；生产用统一解释器 配置/ 下的 3.14.7。只监听 127.0.0.1。
 
   - 客户端用合并 Key（Authorization: Bearer 或 x-api-key）访问本代理，路径原样转发，
     OpenAI 格式（/v1/chat/completions 等）与 Anthropic 格式（/v1/messages）都适用；
@@ -10,9 +10,11 @@
   - 流式（SSE）响应边收边转；
   - 配置文件（keypool.json）由监看中心写，本代理只读，文件一变就自动重新加载；
   - /_admin/state 给监看中心读实时数据，要带本次启动的管理令牌（环境变量 KEYPOOL_ADMIN_TOKEN）。
+  - GET /user/balance（或 /v1/user/balance）由代理自己回答：DeepSeek 格式的全池余额合计，同样要合并 Key。
 """
 import argparse
 import collections
+import hashlib
 import http.server
 import json
 import os
@@ -41,8 +43,10 @@ DEFAULT_SETTINGS = {
     "authFailCooldownSeconds": 300,  # 401 / 403（Key 失效、余额不足）后冷却
     "networkFailCooldownSeconds": 60,
     "timeoutSeconds": 300,          # 等上游的超时（首字节与流式两段之间都算）
-    "firstByteTimeoutSeconds": 0,   # 流式请求等响应头最多多久；0 = 和 timeoutSeconds 一样
-    "streamIdleTimeoutSeconds": 0,  # 流式回复两段之间最多断流多久；0 = 和 timeoutSeconds 一样
+    # 流式请求：从发出到收到第一段带内容的数据最多等多久，没到就换下一个节点；0 = 用内置的 180 秒
+    "firstByteTimeoutSeconds": 180,
+    # 流式请求：开始转发后两段之间最多断流多久，超了就断开并给客户端一条错误；0 = 用内置的 120 秒
+    "streamIdleTimeoutSeconds": 120,
     # 熔断：偶发一次失败不停节点。连续失败够数、或最近的错误率过高才停（冷却时长仍用上面三个）；
     # 冷却结束后先放一个请求试探，连续成功够数才算恢复，试探失败立刻再停
     "breakerFailures": 3,           # 连续失败几次后停；1 = 失败一次就停（旧行为）
@@ -103,12 +107,103 @@ def station_of(base_url):
     return urllib.parse.urlsplit(str(base_url or "")).netloc.lower()
 
 
+def site_of(base_url):
+    """节点的站点：协议 ＋ 域名 ＋ 端口。同站换路径不算换站；协议、域名或端口变了才算（卡 19）。"""
+    parts = urllib.parse.urlsplit(str(base_url or ""))
+    host = (parts.hostname or "").lower()
+    if not host:
+        return ""
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    scheme = (parts.scheme or "").lower()
+    if port is None:
+        port = {"http": 80, "https": 443}.get(scheme)
+    return "%s://%s:%d" % (scheme or "?", host, port) if port is not None else "%s://%s" % (scheme or "?", host)
+
+
+def key_digest(key):
+    """一把 Key 的不可逆摘要：只用来判断“这把 Key 有没有变”，不落 Key 本身；空 Key 是空串。"""
+    key = str(key or "")
+    if not key:
+        return ""
+    return hashlib.sha256(("1\0%s" % key).encode("utf-8")).hexdigest()
+
+
+def key_digests(key, pay_key):
+    """一个节点两路 Key 各自的摘要：{"plan": 套餐 Key, "pay": 按量 Key}。两把分开记，才分得清哪把换过。"""
+    return {"plan": key_digest(key), "pay": key_digest(pay_key)}
+
+
+KEY_LABELS = {"plan": "套餐 Key", "pay": "按量 Key"}
+BIND_OK, BIND_GRANT, BIND_HOLD = "ok", "grant", "hold"
+
+
+def binding_state(record, site, digests, store_exists=False):
+    """这个节点的每把 Key 能不能发往当前站点：Key 只发往获准站点，地址换站就停用，等用户重新填 Key。
+
+    record 是这个节点在获准站点文件里的记录，没有 Key 本身：
+    新格式 {"keys": {"plan": {"site": 站点, "digest": 摘要}, "pay": {...}}}——每把 Key 各记各的获准站点；
+    旧格式 {"site": 站点, "keys": "<两把 Key 合起来的摘要>"}——分不清哪把换过，只认“站点没变”。
+    digests 是当前配置里两把 Key 的摘要（key_digests 的结果）。
+    返回 (状态, 原因)：ok＝可以发；grant＝有 Key 变了或第一次见，按当前站点记下授权；
+    hold＝有非空的 Key 没换而站点变了（原因里写明是哪一类，不写 Key 本身），停用、不发请求。
+    store_exists 表示获准站点文件已经在：这之后的陌生节点（比如改了节点编号的配置）不再白送一次授权。
+    """
+    if not site:
+        return BIND_HOLD, "节点地址无效"
+    if record is None:
+        if not store_exists:
+            return BIND_GRANT, ""
+        return BIND_HOLD, "还没有这个节点的获准记录，重新填写 Key 才能恢复"
+    stored = record.get("keys")
+    old_site = str(record.get("site") or "")
+    if isinstance(stored, str):   # 旧格式：两把 Key 合成一个摘要，换站时分不清哪把换过，只能保守停用
+        if old_site != site:
+            return BIND_HOLD, "地址从 %s 换到 %s，旧记录分不清哪把 Key 换过，重新填写 Key 才能恢复" % (old_site or "未记录", site)
+        return BIND_GRANT, ""     # 站点没变：照常，顺便升级成逐把的新格式
+    rows = stored if isinstance(stored, dict) else {}
+    current = digests or {}
+    held, grants = [], False
+    for slot in ("plan", "pay"):
+        digest = str(current.get(slot) or "")
+        if not digest:
+            continue              # 这一路没有 Key：没有东西会从这一路发出去
+        row = rows.get(slot) if isinstance(rows.get(slot), dict) else {}
+        row_site, row_digest = str(row.get("site") or ""), str(row.get("digest") or "")
+        if row_site == site and row_digest == digest:
+            continue              # 这把 Key 已经获准发往这个站点
+        if row_digest == digest and row_site:
+            held.append(KEY_LABELS[slot])   # 同一把 Key、站点变了：没换的 Key 不能跟着走
+            continue
+        grants = True             # 这把 Key 换了（或第一次见）：按当前站点授权
+    if held:
+        return BIND_HOLD, "地址从 %s 换到 %s，%s 没换，旧 Key 已停用" % (old_site or "未记录", site, "、".join(held))
+    return (BIND_GRANT if grants else BIND_OK), ""
+
+
 def join_url(base, path):
     base = base.rstrip("/")
     # baseUrl 可以写成 https://x.com 或 https://x.com/v1，避免拼出 /v1/v1
     if base.endswith("/v1") and (path == "/v1" or path.startswith("/v1/") or path.startswith("/v1?")):
         return base + path[3:]
     return base + path
+
+
+STREAM_FIRST_CONTENT_SECONDS = 180   # 2026-10-23 用户定：首段 180 秒、断流 120 秒
+STREAM_IDLE_SECONDS = 120
+
+
+def stream_waits(settings):
+    """流式请求的 (首段最多等多久, 转发后断流最多多久)。设置里写 0 或没写都用内置值。
+
+    不跟 timeoutSeconds 走：10-23 实测中转站会先回响应头和一条不带内容的事件，然后几百秒不出字，
+    原来要等满 300 秒才放弃；10-15 至 10-23 成功的流式请求首段最长 290 秒，5084 次里只有 8 次过 120 秒。
+    """
+    first = float(settings.get("firstByteTimeoutSeconds") or 0) or STREAM_FIRST_CONTENT_SECONDS
+    idle = float(settings.get("streamIdleTimeoutSeconds") or 0) or STREAM_IDLE_SECONDS
+    return first, idle
 
 
 def set_read_timeout(response, seconds):
@@ -154,12 +249,16 @@ class Node:
         self.route_error = {}    # 线路 → 最近一次被拒的说明
         self.hint = None         # 监看中心送来的余额读数 {"plan", "pay", "at"}
         self.last_route = ""     # 最近一次成功走的是哪一路
+        self.reauth = False      # 地址换到别的站点、Key 没换：旧 Key 停用，等用户重新填 Key
+        self.reauth_reason = ""
         self.apply(spec)
 
     def apply(self, spec):
         self.name = str(spec.get("name") or self.id)
         self.base_url = str(spec.get("baseUrl") or "").rstrip("/")
         self.station = station_of(self.base_url)
+        self.site = site_of(self.base_url)   # Key 绑定的站点；路径变了不算换站
+        self.reauth, self.reauth_reason = False, ""   # 能不能发由 Pool 每次重载按获准站点重新判定
         keys = (str(spec.get("key") or ""), str(spec.get("payKey") or ""))
         if keys != (getattr(self, "key", None), getattr(self, "pay_key", None)):
             self.route_down, self.route_error = {}, {}  # 换了 Key：之前的暂停不再作数
@@ -196,6 +295,9 @@ class Node:
     # ---- 双路：套餐 Key 与余额 Key ----
     def route_key(self, route):
         return self.pay_key if route == "pay" else self.key
+
+    def key_digests(self):
+        return key_digests(self.key, self.pay_key)
 
     def order(self):
         routes = ("pay", "plan") if self.pay_first else ROUTES
@@ -335,13 +437,13 @@ class Station:
 BURST_WORDS = (b"burst", b"too fast", b"rate_limit", b"rate limit", b"too many requests", b"overloaded", b"busy")
 
 
-def first_event(buf):
-    """SSE 里第一条有内容的事件 (event 名, data)；还没收全返回 None。注释行（: keep-alive）和空事件跳过。"""
+def iter_events(buf):
+    """SSE 里已经收全的事件，依次给出 (event 名, data)。注释行（: keep-alive）和空事件跳过。"""
     text = buf.replace(b"\r\n", b"\n")
     while True:
         end = text.find(b"\n\n")
         if end < 0:
-            return None
+            return
         block, text = text[:end], text[end + 2:]
         name, data = b"", []
         for line in block.split(b"\n"):
@@ -354,20 +456,80 @@ def first_event(buf):
             elif field == b"data":
                 data.append(value)
         if name or data:
-            return name, b"\n".join(data)
+            yield name, b"\n".join(data)
 
 
-def peek_first_event(upstream, limit=65536):
-    """先读到流式回复的第一条事件（最多 limit 字节，或读到头）。读走的部分之后用 _Replay 接回去。"""
+def first_event(buf):
+    """SSE 里第一条有内容的事件 (event 名, data)；还没收全返回 None。注释行（: keep-alive）和空事件跳过。"""
+    return next(iter_events(buf), None)
+
+
+# Anthropic 流里不带正文的事件：开头、心跳。其余（content_block_*、message_delta、message_stop、error）都算有进展。
+_EMPTY_ANTHROPIC_EVENTS = {"message_start", "ping"}
+_DELTA_FIELDS = ("content", "reasoning_content", "reasoning", "text", "thinking", "tool_calls", "function_call")
+
+
+def event_has_content(name, data):
+    """这一条事件是不是上游真的开始回答了。
+
+    只带角色、空 delta、心跳不算（2026-10-23 实测：中转站先回一条 role 事件，之后几百秒不出字）；
+    正文、思考、工具调用、结束标记、错误、[DONE]、解析不了的 data 都算，交给后面照常处理。
+    """
+    if name == b"error" or data.strip() == b"[DONE]":
+        return True
+    try:
+        parsed = json.loads(data.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return True
+    if not isinstance(parsed, dict):
+        return True
+    if parsed.get("error"):
+        return True
+    kind = parsed.get("type")
+    if isinstance(kind, str) and kind and "choices" not in parsed:
+        return kind not in _EMPTY_ANTHROPIC_EVENTS
+    choices = parsed.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return True     # 认不出的格式、只带用量的收尾块：都算，只把认得出的空事件挡在外面
+    for choice in choices:
+        if not isinstance(choice, dict):
+            return True
+        if choice.get("finish_reason") or choice.get("text"):
+            return True
+        delta = choice.get("delta") or choice.get("message") or {}
+        if isinstance(delta, dict) and any(delta.get(key) for key in _DELTA_FIELDS):
+            return True
+    return False
+
+
+class FirstContentTimeout(Exception):
+    """流式回复在限定时间内没有出现带内容的数据。"""
+
+
+def peek_first_content(upstream, deadline, limit=1024 * 1024):
+    """读到流里第一条带内容的事件为止（最多 limit 字节），读走的部分之后用 _Replay 接回去。
+
+    deadline 是绝对时间：到点还没等到就抛 FirstContentTimeout，调用方换下一个节点重发，客户端什么都没收到。
+    """
     reader = getattr(upstream, "read1", None) or upstream.read
     buf = b""
     while len(buf) < limit:
-        chunk = reader(65536)
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            raise FirstContentTimeout()
+        set_read_timeout(upstream, remaining)
+        try:
+            chunk = reader(65536)
+        except (socket.timeout, TimeoutError) as exc:
+            raise FirstContentTimeout() from exc
         if not chunk:
             break
         buf += chunk
-        if first_event(buf) is not None:
+        events = list(iter_events(buf))
+        if any(event_has_content(name, data) for name, data in events):
             break
+        if not events and buf.strip() and not buf.lstrip().startswith((b"data", b"event", b":", b"id", b"retry")):
+            break   # 不是 SSE（比如直接给一段 JSON 错误）：不再等，交给后面判断
     return buf
 
 
@@ -375,19 +537,24 @@ def stream_error(head):
     """流的首段是不是上游的错误：是就返回错误原文，不是返回 None。
 
     认两种写法：OpenAI 格式的 data 里顶层带 error；Anthropic 格式的 event: error（data 里 type 为 error）。
-    上游没按 SSE 回、直接给一段 JSON 错误的也算。
+    上游没按 SSE 回、直接给一段 JSON 错误的也算。只带角色、心跳这类不带内容的事件之后才来的错误也认
+    （首段现在读到第一条带内容的事件为止），看到第一条带内容的事件就停。
     """
-    event = first_event(head)
-    name, data = event if event else (b"", head.strip())
-    if not data and name != b"error":
-        return None
-    try:
-        parsed = json.loads(data.decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
-        parsed = None
-    is_error = name == b"error" or (isinstance(parsed, dict) and (
-        parsed.get("type") == "error" or (parsed.get("error") is not None and "choices" not in parsed)))
-    return data.decode("utf-8", "replace") if is_error else None
+    events = list(iter_events(head)) or [(b"", head.strip())]
+    for name, data in events:
+        if not data and name != b"error":
+            continue
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            parsed = None
+        is_error = name == b"error" or (isinstance(parsed, dict) and (
+            parsed.get("type") == "error" or (parsed.get("error") is not None and "choices" not in parsed)))
+        if is_error:
+            return data.decode("utf-8", "replace")
+        if event_has_content(name, data):
+            return None
+    return None
 
 
 class _Replay:
@@ -417,6 +584,97 @@ class _Replay:
         return getattr(self._upstream, name)
 
 
+class Approvals:
+    """获准站点：每个节点的 Key 只发往记下的那个站点（scheme ＋ host ＋ port）。
+
+    文件放在 keypool.json 旁边，权限 600，内容只有站点和 Key 摘要，没有 Key 本身：
+    监看中心在用户保存节点（填了 Key）时写入，代理读它决定能不能发，也在旧配置第一次加载时记回去。
+    两边都只做“读出来、改一个节点、原子替换”，写入很少；丢了记录最坏也只是要用户重新填一次 Key。
+    """
+
+    def __init__(self, path):
+        self.path = str(path)
+        self.lock = threading.Lock()
+
+    def exists(self):
+        return os.path.exists(self.path)
+
+    def load(self):
+        try:
+            with open(self.path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            return {}
+        rows = data.get("nodes") if isinstance(data, dict) else None
+        if not isinstance(rows, dict):
+            return {}
+        return {str(k): v for k, v in rows.items() if isinstance(v, dict)}
+
+    def write(self, rows):
+        tmp = "%s.tmp-%d" % (self.path, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump({"nodes": rows}, handle, ensure_ascii=False, indent=1, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.path)
+
+    def grant(self, node_id, site, digests, slots=None):
+        """把这几路 Key 记成获准发往这个站点；返回 False 表示写不进去。
+
+        digests 是节点两把 Key 各自的摘要（key_digests 的结果）；slots 是这次要记的哪几路
+        （None＝非空的都记，代理重载时用；模块只在用户重填了 Key 的那几路记）。
+        没提到的路保持原样——用户只重填了一把时，另一把还记着旧站点，照样停用。
+        遇到旧格式记录先摊成逐把的：没被这次重填的路，仍按旧站点的站点记着（换站后照样停用）。
+        """
+        if not node_id or not site:
+            return False
+        current = {slot: str((digests or {}).get(slot) or "") for slot in ("plan", "pay")}
+        take = [slot for slot in ("plan", "pay") if current[slot] and (slots is None or slot in slots)]
+        if not take and all(current.values()):
+            return False      # 要记哪几路却一路都没给出摘要：调用方搞错了，别写坏文件
+        if not take:
+            return True       # 这个节点没有 Key：没有东西会发出去，也不用记
+        with self.lock:
+            rows = self.load()
+            record = rows.get(str(node_id))
+            keys = record.get("keys") if isinstance(record, dict) else None
+            if not isinstance(keys, dict):
+                legacy_site = str(record.get("site") or "") if isinstance(record, dict) else ""
+                keys = {slot: {"site": legacy_site, "digest": digest}
+                        for slot, digest in current.items() if digest}   # 旧格式摊开：没重填的路仍记旧站点
+            changed = False
+            for slot in take:
+                if keys.get(slot) != {"site": site, "digest": current[slot]}:
+                    keys[slot] = {"site": site, "digest": current[slot]}
+                    changed = True
+            for slot in ("plan", "pay"):
+                if not current[slot] and slot in keys:
+                    keys.pop(slot)    # 这把 Key 已经清掉：记录跟着清，免得以后同编号的 Key 被旧站点记录放行
+                    changed = True
+            if not changed and isinstance(record, dict) and isinstance(record.get("keys"), dict):
+                return True   # 一样，不用写
+            rows[str(node_id)] = {"keys": keys}
+            try:
+                self.write(rows)
+            except OSError:
+                return False
+            return True
+
+    def drop(self, node_id):
+        """节点删掉了：它的获准记录也一起删，免得留着旧记录给以后同编号的节点作数。"""
+        with self.lock:
+            rows = self.load()
+            if str(node_id) not in rows:
+                return True
+            rows.pop(str(node_id), None)
+            try:
+                self.write(rows)
+            except OSError:
+                return False
+            return True
+
+
 class Pool:
     def __init__(self, path, usage_dir=None):
         self.path = path
@@ -425,6 +683,8 @@ class Pool:
         self.lock = threading.Condition()
         self.nodes = collections.OrderedDict()
         self.stations = {}              # 中转站名 → Station（限速与在途数，整个站共用）
+        self.approvals = Approvals(os.path.join(os.path.dirname(os.path.abspath(path)) or ".", "keypool-approved.json"))
+        self.approval_error = ""        # 获准站点记不下来时在这里说明（不改节点的可发状态）
         self.master_keys = []
         self.published_models = []      # 对外公布的模型清单（客户端读 /v1/models 时看到的）；空表示公布全部
         self.settings = dict(DEFAULT_SETTINGS)
@@ -460,6 +720,9 @@ class Pool:
         keys = [k for k in (keys if isinstance(keys, list) else [keys]) if isinstance(k, str) and k]
         settings = dict(DEFAULT_SETTINGS)
         settings.update({k: v for k, v in (data.get("settings") or {}).items() if k in DEFAULT_SETTINGS})
+        approvals = self.approvals.load()   # Key 只发往记下的站点
+        known = self.approvals.exists()
+        grants = []
         with self.lock:
             fresh = collections.OrderedDict()
             for spec in data.get("nodes") or []:
@@ -470,6 +733,11 @@ class Pool:
                     node.apply(spec)
                 else:
                     node = Node(spec)
+                digests = node.key_digests()
+                state, reason = binding_state(approvals.get(node.id), node.site, digests, known)
+                node.reauth, node.reauth_reason = state == BIND_HOLD, reason
+                if state == BIND_GRANT:
+                    grants.append((node.id, node.site, digests))
                 fresh[node.id] = node
             self.nodes = fresh
             limits = data.get("stations") if isinstance(data.get("stations"), dict) else {}
@@ -482,13 +750,20 @@ class Pool:
             self.mtime = mtime
             self.load_error = ""
             self.lock.notify_all()
+        # 记下这次成立的授予（旧配置第一次加载、用户重新填了 Key）。文件写不进去时只说一声，不打断节点。
+        for node_id, site, digests in grants:
+            if self.approvals.grant(node_id, site, digests):
+                self.approval_error = ""
+            else:
+                self.approval_error = "记不下获准站点（%s），下次重载会要求重新授权" % self.approvals.path
 
     # ---- 调度 ----
     def served(self, model, pin=None):
         """池里（指定了节点就只看那个节点）有没有哪一路确实有这个模型。有的话只分给这些线路，不让别的线路拿替代模型顶上。"""
         with self.lock:
             return bool(model) and any(n.serves(r, model) for n in self.nodes.values()
-                                       if n.enabled and (pin is None or pin in (n.id, n.name)) for r in n.order())
+                                       if n.enabled and not n.reauth
+                                       and (pin is None or pin in (n.id, n.name)) for r in n.order())
 
     def published(self):
         """对外公布的模型清单；没有设置时是所有启用线路的模型合在一起。一个都不知道时返回 None。"""
@@ -497,14 +772,15 @@ class Pool:
                 return list(self.published_models)
             names = set()
             for node in self.nodes.values():
-                if node.enabled:
+                if node.enabled and not node.reauth:
                     known = set(node.models if node.key else []) | set(node.pay_models if node.pay_key else [])
                     names |= known | {k for k, v in node.aliases.items() if not known or v in known}
             return sorted(names) or None
 
     def _pick(self, tried, pin=None, model=None, strict=False):
         now, ttl = time.time(), self.hint_ttl()
-        free = [n for n in self.nodes.values() if n.enabled and not n.quarantined and n.id not in tried
+        free = [n for n in self.nodes.values() if n.enabled and not n.quarantined and not n.reauth
+                and n.id not in tried
                 and (pin is None or pin in (n.id, n.name)) and n.route(now, ttl, model=model, strict=strict)
                 and (n.max_concurrency is None or n.inflight < n.max_concurrency)
                 and self.stations[n.station].open(now)]   # 整个站的并发、间隔、被限流后的暂停
@@ -534,7 +810,8 @@ class Pool:
                     self._take(node)
                     return node
                 now, ttl = time.time(), self.hint_ttl()
-                left = [n for n in self.nodes.values() if n.enabled and not n.quarantined and n.id not in tried
+                left = [n for n in self.nodes.values() if n.enabled and not n.quarantined and not n.reauth
+                        and n.id not in tried
                         and (pin is None or pin in (n.id, n.name)) and n.route(now, ttl, model=model, strict=strict)]
                 remaining = deadline - time.time()
                 if not left or remaining <= 0:
@@ -631,6 +908,23 @@ class Pool:
         except OSError:
             pass   # 已经存过一份，或者写不进去：诊断功能不影响转发
 
+    def log_upstream_error(self, node, route, path, status, text):
+        """把上游的报错正文写进 keypool.log：一行，最多 400 字，Key 打码。只留在本机日志里。"""
+        try:
+            body = (text or b"").decode("utf-8", "replace")
+        except Exception:
+            body = repr(text)[:400]
+        for secret in [k for n in self.nodes.values() for k in (n.key, n.pay_key) if k] + list(self.master_keys):
+            if secret and len(secret) >= 8:
+                body = body.replace(secret, secret[:3] + "***")
+        body = " ".join(body.split())[:400]
+        try:
+            sys.stderr.write("%s upstream error: %s %s %s status=%s %s\n" % (
+                time.strftime("%Y-%m-%d %H:%M:%S"), node.name, route or "-", path, status, body))
+            sys.stderr.flush()
+        except Exception:
+            pass
+
     def mark_fail(self, node, status, detail, force=False):
         """force：不必等连续失败够数，立刻停（比如双路节点两个 Key 都被拒，再试也是一样）。"""
         settings = self.settings
@@ -696,7 +990,7 @@ class Pool:
         return buffered
 
     def record(self, node, status, ms, model, stream, attempt, ok, ttfb=None, total=None, path=None, buffered=False,
-               route=None, asked=None, usage=None):
+               route=None, asked=None, usage=None, gap=None):
         now = time.time()
         if self.usage_dir and node:     # 用量记录：只有元数据，不含请求与回复内容
             usage = usage or {}
@@ -705,7 +999,7 @@ class Pool:
                     "t": round(now, 3), "node": node.id, "name": node.name, "route": route if node.dual() else None,
                     "model": model, "asked": asked, "path": path, "stream": bool(stream), "status": status, "ok": bool(ok),
                     "attempt": attempt, "ms": ms, "ttfb": ttfb, "total": total if total is not None else ms,
-                    "in": usage.get("in"), "out": usage.get("out"), "cache": usage.get("cache")})
+                    "in": usage.get("in"), "out": usage.get("out"), "cache": usage.get("cache"), "gap": gap})
                 self.usage_error = ""
             except OSError as exc:
                 self.usage_error = "用量记录写不进去：%s" % exc
@@ -715,7 +1009,7 @@ class Pool:
                                 "nodeName": node.name if node else None, "status": status, "ms": ms,
                                 "ttfb": ttfb, "total": total, "path": path, "buffered": buffered,
                                 "model": model, "asked": asked, "stream": stream, "attempt": attempt, "ok": ok,
-                                "route": route if node and node.dual() else None})
+                                "route": route if node and node.dual() else None, "gap": gap})
             minute = int(now // 60)
             bucket = self.minutes.setdefault(minute, [0, 0])
             bucket[0 if ok else 1] += 1
@@ -757,6 +1051,21 @@ class Pool:
             return {"counts": dict(self.sec_counts),
                     "events": [e for e in self.sec_events if e["seq"] > since][-80:]}
 
+    def balance_summary(self):
+        """全池余额合计（元），给 DeepSeek 格式的 /user/balance 用：只算启用节点里没过期的读数。
+        没有任何读数返回 None。套餐 = granted_balance，按量 = topped_up_balance。"""
+        now, ttl = time.time(), self.hint_ttl()
+        with self.lock:
+            enabled = [n for n in self.nodes.values() if n.enabled and not n.reauth]
+            readings = [h for h in (n._reading(now, ttl) for n in enabled) if h]
+        if not readings:
+            return None
+        plan = sum(h["plan"] for h in readings if h.get("plan") is not None)
+        pay = sum(h["pay"] for h in readings if h.get("pay") is not None)
+        return {"plan": round(plan, 4), "pay": round(pay, 4), "total": round(plan + pay, 4),
+                "nodes": len(enabled), "fresh": len(readings),
+                "planMissing": sum(1 for h in readings if h.get("plan") is None)}
+
     # ---- 给监看中心的实时数据 ----
     def state(self, since=0):
         now, ttl = time.time(), self.hint_ttl()
@@ -767,6 +1076,8 @@ class Pool:
             for node in self.nodes.values():
                 if not node.enabled:
                     status = "disabled"
+                elif node.reauth:
+                    status = "reauth"   # 地址换到别的站点、Key 没换：旧 Key 停用，不发请求
                 elif node.quarantined:
                     status = "quarantined"
                 elif node.cooldown_until > now:
@@ -785,6 +1096,7 @@ class Pool:
                     "ttfbMs": node.ttfb_ms, "totalMs": node.total_ms, "streams": node.streams,
                     "buffered": node.buffered, "lastBuffered": node.last_buffered,
                     "quarantined": node.quarantined, "quarantineReason": node.quarantine_reason or None,
+                    "reauth": node.reauth, "reauthReason": node.reauth_reason or None,
                     "blockedCount": node.blocked_count,
                     "rpm": rpm_by_node.get(node.id, 0), "lastUsed": node.last_used or None,
                     "dual": node.dual(), "route": node.route(now, ttl) if node.enabled else None,
@@ -801,7 +1113,7 @@ class Pool:
             return {
                 "ok": True, "pid": os.getpid(), "startedAt": self.started_at, "seq": self.seq,
                 "configError": self.load_error or None, "hasMasterKey": bool(self.master_keys),
-                "usageError": self.usage_error or None,
+                "usageError": self.usage_error or None, "approvalError": self.approval_error or None,
                 "totals": {"inflight": sum(n.inflight for n in self.nodes.values()), "rpm": len(recent),
                            "successRate": round(good * 100.0 / (good + bad), 1) if good + bad else None,
                            "requests10m": good + bad,
@@ -910,6 +1222,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except ValueError as exc:
             self.close_connection = True
             return self.client_error(413, str(exc))
+        if (self.command == "GET" and path.split("?")[0].rstrip("/") in ("/user/balance", "/v1/user/balance")
+                and not self.headers.get("X-KeyPool-Node")):
+            return self.send_balance()
         if (self.command == "GET" and path.split("?")[0].rstrip("/") in ("/v1/models", "/models")
                 and not self.headers.get("X-KeyPool-Node")):
             # 模型列表由 Key 池自己回答：转给某一个节点的话，客户端只能看到那一路的模型
@@ -921,6 +1236,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                             "first_id": names[0] if names else None,
                                             "last_id": names[-1] if names else None})
         self.forward(body, use_x_api_key)
+
+    def send_balance(self):
+        """DeepSeek 官方 /user/balance 的格式，金额是全池合计；读数来自监看中心的余额查询，不另外请求上游。"""
+        summary = self.pool.balance_summary()
+        if summary is None:
+            return self.client_error(503, "Key 池还没有余额读数（监看中心没开，或节点没填余额查询会话）", "service_unavailable")
+        def money(value):
+            return "%.4f" % value
+        return self.send_json(200, {
+            "is_available": summary["total"] > 0,
+            "balance_infos": [{"currency": "CNY", "total_balance": money(summary["total"]),
+                               "granted_balance": money(summary["plan"]), "topped_up_balance": money(summary["pay"])}],
+            # 以下是 Key 池自己加的：读数覆盖了几个启用节点，几个只有按量部分（套餐接口失败）
+            "key_pool": {"nodes": summary["nodes"], "fresh": summary["fresh"], "plan_missing": summary["planMissing"]},
+        })
 
     def read_body_quietly(self):
         try:
@@ -940,7 +1270,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         asked = model if isinstance(model, str) and model else None  # 客户端要的模型；model 之后记的是实际发给节点的
         settings = pool.settings
         retry_on = set(settings["retryOnStatus"])
-        enabled = [n for n in pool.nodes.values() if n.enabled]
+        enabled = [n for n in pool.nodes.values() if n.enabled and not n.reauth]
         max_attempts = int(settings["maxAttempts"]) or len(enabled)
         max_attempts = max(1, min(max_attempts, len(enabled) or 1))
         pin = (self.headers.get("X-KeyPool-Node") or "").strip() or None
@@ -1000,11 +1330,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     sys.stderr.flush()
             try:
                 wait = float(settings["timeoutSeconds"])
-                first_wait = float(settings.get("firstByteTimeoutSeconds") or 0) if stream else 0
-                idle_wait = float(settings.get("streamIdleTimeoutSeconds") or 0) if stream else 0
+                first_wait, idle_wait = stream_waits(settings) if stream else (0, 0)
                 upstream = self.open_upstream(node, send_body, use_x_api_key, first_wait or wait, node.route_key(route))
-                if stream and (idle_wait or wait) != (first_wait or wait):
-                    set_read_timeout(upstream, idle_wait or wait)   # 响应头到了：之后按“两段之间断流多久”算
             except Exception as exc:  # 连不上、超时、TLS 等
                 pool.release(node)
                 detail = getattr(exc, "reason", None) or exc
@@ -1017,6 +1344,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             status = upstream.status if hasattr(upstream, "status") else upstream.code
             first_ms = int((time.time() - started) * 1000)
             has_more = attempt < max_attempts and any(n.enabled and n.id not in tried for n in pool.nodes.values())
+            if status >= 300:
+                # 不是成功的回答：先读出报错正文记进日志（打码），再接回去，下面各分支照常读
+                try:
+                    text = upstream.read(65536)
+                except Exception:
+                    text = b""
+                pool.log_upstream_error(node, route, path, status, text)
+                upstream = _Replay(upstream, text)
+            if 300 <= status < 400:
+                # 重定向多半是站点换了地址。不跟着跳（会把 Key 发到新地址）：立刻停用这个节点，换别的节点；地址由人确认后再改
+                location = (upstream.headers.get("Location") or "?")[:160]
+                upstream.close()
+                pool.release(node)
+                pool.mark_fail(node, status, "上游重定向到 %s：站点可能换了地址，人工确认后再改节点地址" % location, force=True)
+                pool.record(node, status, first_ms, model, stream, attempt, False, route=route, path=path, asked=asked)
+                last = (502, None, json.dumps({"error": {"message": "upstream %s redirected (%d) to %s; check the node address"
+                                                         % (node.name, status, location), "type": "upstream_error"}},
+                                              ensure_ascii=False).encode("utf-8"))
+                continue
             if status == 429:
                 try:
                     text = upstream.read(65536)
@@ -1103,10 +1449,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 upstream = _Replay(upstream, text)
             stream_failed = None   # 流的首段就是上游错误时，记下错误原文
             if stream and status < 400:
-                # 先读到第一条事件再开始转发：这时客户端还什么都没收到，首段是错误就能悄悄换节点重发
+                # 先读到第一条带内容的事件再开始转发：这时客户端还什么都没收到，首段是错误、
+                # 或者从发出起 first_wait 秒都没有内容，就能悄悄换节点重发
                 try:
-                    head = peek_first_event(upstream)
-                except Exception as exc:  # 等第一条事件时超时或断开：和连不上一样换节点
+                    head = peek_first_content(upstream, started + first_wait)
+                    set_read_timeout(upstream, idle_wait)   # 开始转发：之后按“两段之间断流多久”算
+                except FirstContentTimeout:
+                    waited = time.time() - started
+                    upstream.close()
+                    pool.release(node)
+                    detail = "首段 %d 秒内没有内容（只等到响应头或不带内容的事件），换下一个节点" % first_wait
+                    sys.stderr.write("%s first content timeout: node=%s route=%s waited=%.0fs path=%s\n" % (
+                        time.strftime("%Y-%m-%d %H:%M:%S"), node.name, route, waited, path))
+                    sys.stderr.flush()
+                    pool.mark_fail(node, "network", detail)
+                    pool.record(node, "network", int(waited * 1000), model, stream, attempt, False,
+                                route=route, path=path, asked=asked)
+                    last = (504, None, json.dumps({"error": {
+                        "message": "key-pool: upstream %s sent no content within %d s (last node tried)"
+                                   % (node.name, first_wait), "type": "upstream_timeout"}},
+                        ensure_ascii=False).encode("utf-8"))
+                    continue
+                except Exception as exc:  # 等第一条事件时断开：和连不上一样换节点
                     upstream.close()
                     pool.release(node)
                     pool.mark_fail(node, "network", "等流的首段时出错：%s" % exc)
@@ -1118,6 +1482,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     continue
                 stream_failed = stream_error(head)
                 if stream_failed is not None:
+                    pool.log_upstream_error(node, route, path, "stream", head)
                     lowered = head.lower()
                     detail = "流的首段是上游错误：" + stream_failed[:160]
                     if any(word in lowered for word in CONTENT_WORDS):
@@ -1154,11 +1519,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             first_chunk, verdict = None, None
             tap = stats.UsageTap() if pool.usage_dir and ok else None
             do_inspect = inspectable and ok
+            self._last_chunk_at, self.max_gap_ms = None, 0
             try:
                 if do_inspect:
                     first_chunk, verdict = self.relay_inspected(upstream, status, api, declared, model, tap)
                 else:
                     first_chunk = self.relay(upstream, status, tap)
+            except (socket.timeout, TimeoutError):
+                # 已经转发了一部分，没法悄悄换节点重发：断开，并在流里给客户端一条明确的错误
+                self.close_connection = True
+                ok = False
+                waited = time.time() - (self._last_chunk_at or started)
+                if stream:
+                    sys.stderr.write("%s stream idle timeout: node=%s route=%s waited=%.0fs path=%s\n" % (
+                        time.strftime("%Y-%m-%d %H:%M:%S"), node.name, route, waited, path))
+                    sys.stderr.flush()
+                    pool.mark_fail(node, "network", "转发中断流超过 %d 秒，已断开" % idle_wait)
+                if stream and not upstream.headers.get("Content-Length"):   # 分块转发的流才能补一条错误事件
+                    notice = ("data: " + json.dumps({"error": {
+                        "message": "key-pool: upstream %s sent nothing for %d s mid-stream; connection closed"
+                                   % (node.name, idle_wait), "type": "upstream_timeout"}}, ensure_ascii=False)
+                              + "\n\n").encode("utf-8")
+                    try:
+                        self.wfile.write(b"%x\r\n" % len(notice) + notice + b"\r\n0\r\n\r\n")
+                        self.wfile.flush()
+                    except OSError:
+                        pass
             except Exception:
                 self.close_connection = True
                 ok = False
@@ -1175,7 +1561,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except Exception:
                         usage = None
                 pool.record(node, status, first_ms, model, stream, attempt, ok, ttfb_ms, total_ms, path, buffered, route,
-                            asked=asked, usage=usage)
+                            asked=asked, usage=usage, gap=self.max_gap_ms if stream else None)
                 if do_inspect:
                     pool.sec_counts["checked"] += 1
                     if verdict and verdict.get("block"):
@@ -1217,6 +1603,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except urllib.error.HTTPError as exc:  # 4xx/5xx 也是“上游的回答”，交给调用方判断
             return exc
 
+    def note_chunk(self):
+        """记下两段上游数据之间最长隔了多久（毫秒），写进用量记录，供以后调断流超时用。"""
+        now = time.time()
+        last = getattr(self, "_last_chunk_at", None)
+        if last is not None:
+            self.max_gap_ms = max(getattr(self, "max_gap_ms", 0), int((now - last) * 1000))
+        self._last_chunk_at = now
+
     def relay(self, upstream, status, tap=None):
         self.send_response(status)
         length = upstream.headers.get("Content-Length")
@@ -1242,6 +1636,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             chunk = reader(65536)
             if not chunk:
                 break
+            self.note_chunk()
             if first_chunk is None:
                 first_chunk = time.time()
             if tap:
@@ -1283,6 +1678,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 chunk = reader(65536)
                 if not chunk:
                     break
+                self.note_chunk()
                 if tap:
                     tap.feed(chunk)
                 write_chunk(insp.feed(chunk))

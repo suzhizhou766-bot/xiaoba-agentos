@@ -12,18 +12,18 @@ from pathlib import Path
 import unittest
 
 REPO = Path(__file__).resolve().parents[3]
-PACKAGE = REPO / 'architecture-package-20261027'
+MONITOR = REPO / 'monitor'
 sys.path[:0] = [str(REPO / 'development/integrated-candidate/src'),
-                str(PACKAGE / 'shared/工具/小八监看'), str(Path(__file__).resolve().parents[1])]
+                str(MONITOR), str(Path(__file__).resolve().parents[1])]
 sys.dont_write_bytecode = True
 
 from monitor_core.web import Response  # noqa: E402
+from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path  # noqa: E402
 from xiaoba_review.monitor import OpenReviewModule  # noqa: E402
 
 NATIVE_JS = Path(__file__).resolve().parents[1] / 'xiaoba_review' / 'agent-pool-native.js'
-AUTHORITATIVE_HTML = PACKAGE / 'shared/工具/小八监看/xiaoba-monitor.html'
-INGRESS_HTML = (REPO / 'development/integrated-candidate/src/xiaoba_agentos'
-                / 'review_ui_assets/xiaoba-monitor.html')
+AUTHORITATIVE_HTML = MONITOR / 'xiaoba-monitor.html'
+INGRESS_HTML = resolve_asset_path(UI_ASSETS, 'xiaoba-monitor.html')
 
 
 class TopoInjectionTests(unittest.TestCase):

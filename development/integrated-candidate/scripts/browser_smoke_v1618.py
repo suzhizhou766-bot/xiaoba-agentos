@@ -486,13 +486,18 @@ eval(src);
 
 
 def _check_ui_assets_and_optional_live(candidate_root: Path, live_url: Optional[str]) -> dict[str, Any]:
+    src_dir = str(candidate_root / "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    from xiaoba_agentos.review_ui_install import resolve_asset_path
+
     assets_dir = candidate_root / "src" / "xiaoba_agentos" / "review_ui_assets"
     manifest = json.loads((assets_dir / "manifest.json").read_text(encoding="utf-8"))
     mismatches: list[str] = []
     for entry in manifest.get("files", []):
         asset = entry.get("asset")
         expected = entry.get("after_sha256")
-        fp = assets_dir / str(asset)
+        fp = resolve_asset_path(assets_dir, str(asset))
         if not fp.is_file():
             mismatches.append(f"{asset}:missing")
         elif _sha256_file(fp) != expected:
@@ -532,7 +537,7 @@ def run_browser_smoke(
 
     candidate = Path(candidate_root).resolve()
     repo_root = candidate.parents[1]
-    monitor_dir = repo_root / "architecture-package-20261027" / "shared" / "工具" / "小八监看"
+    monitor_dir = repo_root / "monitor"
     review_pkg = repo_root / "development" / "review-ingress" / "xiaoba_review"
     html_bytes = (monitor_dir / "xiaoba-monitor.html").read_bytes()
 

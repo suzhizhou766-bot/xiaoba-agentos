@@ -27,7 +27,7 @@ import hashlib, json, os, signal, sqlite3, sys
 from pathlib import Path
 root = Path(sys.argv[2]); repo = Path(sys.argv[3]); phase = sys.argv[1]
 sys.path[:0] = [str(repo/'development/integrated-candidate/src'),
-                str(repo/'architecture-package-20261027/shared/工具/小八监看'),
+                str(repo/'monitor'),
                 str(repo/'development/review-ingress')]
 sys.dont_write_bytecode = True
 from types import SimpleNamespace
@@ -518,7 +518,7 @@ import json, os, signal, sys, time
 from pathlib import Path
 root = Path(sys.argv[2]); repo = Path(sys.argv[3]); phase = sys.argv[1]
 sys.path[:0] = [str(repo/'development/integrated-candidate/src'),
-                str(repo/'architecture-package-20261027/shared/工具/小八监看'),
+                str(repo/'monitor'),
                 str(repo/'development/review-ingress')]
 sys.dont_write_bytecode = True
 from types import SimpleNamespace

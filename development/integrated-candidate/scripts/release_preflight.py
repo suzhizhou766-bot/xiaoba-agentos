@@ -37,7 +37,7 @@ for _path in (str(_SCRIPTS), str(_ROOT / "src")):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 from create_manifest import MANIFEST_NAME, collect_entries, manifest_digest, split_manifest_entries  # noqa: E402
-from xiaoba_agentos.review_ui_install import TARGETS  # noqa: E402
+from xiaoba_agentos.review_ui_install import TARGETS, resolve_asset_path  # noqa: E402
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _VERSION_RE = re.compile(r"^\s*version\s*=\s*[\"'](\d+\.\d+\.\d+)[\"']", re.MULTILINE)
@@ -176,7 +176,11 @@ def check_ui_manifest(
         if (entry.get("base"), entry.get("relative")) != TARGETS.get(asset):
             _issue(report, "ui_manifest_target", f"UI 资产 {asset} 声明了不支持的安装目标")
             continue
-        asset_path = assets / asset
+        try:
+            asset_path = resolve_asset_path(assets, asset)
+        except ValueError as exc:
+            _issue(report, "ui_asset_missing", f"UI 资产文件不可用：{asset}（{exc}）")
+            continue
         if not asset_path.is_file() or asset_path.is_symlink():
             _issue(report, "ui_asset_missing", f"UI 资产文件不可用：{asset}")
             continue

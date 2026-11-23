@@ -211,6 +211,33 @@ class SystemTests(AppCase):
         code, headers, _ = fetch("GET", self.base + "/", {"Host": "localhost:%d" % self.port})
         self.assertEqual((code, headers.get("Location")), (302, self.base + "/"))
 
+    def test_homepage_sends_csp_allowing_inline_and_same_origin(self):
+        code, headers, body = fetch("GET", self.base + "/")
+        csp = headers.get("Content-Security-Policy", "")
+        self.assertEqual(code, 200)
+        self.assertTrue(csp, "主页必须发送 Content-Security-Policy")
+        self.assertIn("script-src", csp)
+        self.assertIn("'unsafe-inline'", csp)
+        self.assertIn("connect-src", csp)
+        self.assertIn("http://127.0.0.1:%d/" % self.port, csp)
+        self.assertIn("frame-src", csp)
+        self.assertIn("http://127.0.0.1:%d/director/" % self.port, csp)
+        self.assertIn("http://127.0.0.1:%d/stage/" % self.port, csp)
+        self.assertIn("https://fonts.googleapis.com", csp)
+        self.assertIn("https://fonts.gstatic.com", csp)
+        self.assertIn(self.ctx.page_token.encode(), body)
+        directives = {
+            parts[0]: parts[1:]
+            for directive in csp.split(";")
+            if (parts := directive.split())
+        }
+        for asset in ("agent-pool.js", "agent-pool-native.js", "open-review-native.js"):
+            self.assertIn(self.base + "/" + asset, directives["script-src"])
+        self.assertIn(self.base + "/agent-pool.css", directives["style-src"])
+        for directive in ("script-src", "style-src"):
+            self.assertNotIn(self.base + "/", directives[directive])
+            self.assertNotIn("'self'", directives[directive])
+
     def test_health_lists_modules(self):
         code, _, body = fetch("GET", self.base + "/api/health")
         data = json.loads(body)

@@ -11,12 +11,11 @@ import threading
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-PACKAGE = REPO / 'architecture-package-20261027'
 CORE = HERE.parent if (HERE.parent / 'xiaoba_agentos').is_dir() else REPO / 'development/integrated-candidate/src'
 MONITOR = (
     HERE.parent / 'xiaoba_monitor_shared'
     if (HERE.parent / 'xiaoba_monitor_shared').is_dir()
-    else PACKAGE / 'shared/工具/小八监看'
+    else REPO / 'monitor'
 )
 
 
@@ -53,7 +52,7 @@ def resolve_runtime_paths(here: Path = HERE, repo_root_arg: Path | None = None) 
     monitor_source = (
         here.parent / 'xiaoba_monitor_shared'
         if (here.parent / 'xiaoba_monitor_shared').is_dir()
-        else repo_root / 'architecture-package-20261027/shared/工具/小八监看'
+        else repo_root / 'monitor'
     )
     return {
         'repo_root': repo_root,
