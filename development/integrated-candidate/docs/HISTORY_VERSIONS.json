@@ -407,6 +407,18 @@
       "files_manifest_sha256": "以本候选FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本候选SOURCE_MANIFEST.json为准",
       "file_disposition": "候选记录（夹具示例）：基于本机v1.6.16 r9；日期作隔离示例，尚未发布；不创建备份，切换由用户在终端按授权执行。"
+    },
+    {
+      "version": "v1.6.18",
+      "release_date": "2026-11-23",
+      "status": "candidate",
+      "summary": "监看安全与前端体验收口（DOM 令牌启动清除、监看重启后 403 Command+R 友好提示、抽屉 300/90 秒双口径对齐、旧 6 列历史线路表默认折叠）；核心价值待审受控派审与只读 CLI --json/权限对齐；Wave 1 三则实测缺陷修复（回执证据锚点兼容、敏感词误杀收窄、cli_failed 退出码可观测）；第二大脑当前态与 RELEASE.json 全面去旧双后台残留；发版静态预检、并行 4 套回归、审查失败分级隔离重试与增量收敛熔断、5 路径 30 秒内前端冒烟。核心数据库结构版本保持 7，不新增切换步骤；前置源码清单哈希绑定已上线 v1.6.17。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.17；不创建备份，切换与 UI 同步由用户在终端按授权执行。"
     }
   ]
 }

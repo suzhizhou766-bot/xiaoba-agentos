@@ -133,7 +133,7 @@ class Finding1ManifestProjectionTests(unittest.TestCase):
         self.assertEqual(
             {
                 "agentos_config.py", "monitor_config.py", "monitor_overview.py", "monitor_review.py",
-                "workflow_query.py", "review_action.py", "server.py", "xiaoba-monitor.html",
+                "monitor_web.py", "workflow_query.py", "review_action.py", "server.py", "xiaoba-monitor.html",
             },
             set(TARGETS),
         )

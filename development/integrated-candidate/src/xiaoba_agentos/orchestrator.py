@@ -339,6 +339,19 @@ class Orchestrator:
         self.memory = MemoryBridge(config, store)
         self.circuit_breaker = CircuitBreaker(threshold=2)
 
+    def dispatch_pending_value_reviews(self, *, runner=None, limit: int = 1) -> Dict[str, Any]:
+        """W2-H2: 旁路受控自动派发待价值评分项（开关可控、同哈希至多一次、异常不反噬主业务）。"""
+        try:
+            from .value_queue import auto_dispatch_pending_value_reviews
+            return auto_dispatch_pending_value_reviews(self.config, self.store, runner=runner, limit=limit)
+        except Exception as exc:
+            return {
+                "enabled": bool(self.config.worker.get("auto_dispatch_value_review", False)),
+                "dispatched": [],
+                "skipped": 0,
+                "error": str(exc)[:240],
+            }
+
     def _fail_task(self, task: Dict[str, Any], error: str) -> str:
         return self.store.fail(task["id"], error, expected_attempt=int(task["attempts"]))
 
@@ -722,6 +735,11 @@ class Orchestrator:
                 check_inactivity(self.store)
             except (ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
                 return {"status": "idle", "formal_review_warning": str(exc)}
+            if bool(self.config.worker.get("auto_dispatch_value_review", False)):
+                return {
+                    "status": "idle",
+                    "value_review_auto_dispatch": self.dispatch_pending_value_reviews(),
+                }
             return {"status": "idle"}
         release_binding = release_binding_status(self.config)
         if not release_binding.get("ok", False):
@@ -780,7 +798,10 @@ class Orchestrator:
             roster = worker_roster(self.config, self.store)
             if roster["mode"] == "mock_disabled":
                 return {"status": "blocked_configuration", "error": "没有启用任何主后台 Agent；任务队列未被消费"}
-            return {"status": "idle", "review_nodes": roster.get("report")}
+            idle_result: Dict[str, Any] = {"status": "idle", "review_nodes": roster.get("report")}
+            if bool(worker.get("auto_dispatch_value_review", False)):
+                idle_result["value_review_auto_dispatch"] = self.dispatch_pending_value_reviews()
+            return idle_result
         enabled = list(roster["agents"])
         # Mock fixtures still exercise the old cover path. A real config never
         # reaches it: local CLI agents are not a dispatch list.

@@ -663,3 +663,183 @@ def pending_items(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
                 item["queue_error"] = assessment_errors[key]["queue_error"]
             pending.append(item)
     return sorted(pending + blocked, key=lambda item: item["sequence"])
+
+
+def value_dispatch_request_id(candidate_id: str, candidate_sha256: str) -> str:
+    """Deterministic request_id matching xiaoba_review/monitor.py value-review dispatch."""
+    import uuid
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            "xiaoba:value-review:" + str(candidate_id) + ":" + str(candidate_sha256),
+        )
+    )
+
+
+def record_value_dispatch_event(
+    store,
+    candidate_id: str,
+    candidate_sha256: str,
+    request_id: str,
+    status: str,
+    reason: str = "",
+) -> Dict[str, Any]:
+    """Append a versioned memory.value_review_dispatch event through EventStore."""
+    payload = _dispatch_payload({
+        "version": 1,
+        "candidate_sha256": candidate_sha256,
+        "request_id": request_id,
+        "status": status,
+        "reason": str(reason or "")[:512],
+    })
+    with store.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        event_id = store._append_event_tx(conn, candidate_id, "memory.value_review_dispatch", payload)
+    return {"event_id": event_id, **payload}
+
+
+def _default_value_review_runner(config, store, item: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+    """Invoke live xiaoba_review pool backend for a single pending value review item."""
+    from xiaoba_review.agent_pool import AgentPool
+    from xiaoba_review.backends import BackendRunner
+    from xiaoba_review.store import ReviewStore
+
+    candidate_id = item["task_id"]
+    candidate_sha256 = item["candidate_sha256"]
+    review_store = ReviewStore(config.runtime_dir / "agentos.sqlite3")
+    pool = AgentPool(review_store)
+    backends = BackendRunner(review_store, pool=pool)
+
+    with store.read_only() as conn:
+        existing = conn.execute("SELECT 1 FROM ri_requests WHERE id=?", (request_id,)).fetchone()
+    if existing:
+        request = review_store.get(request_id)
+    else:
+        prepared = pool.runtime.prepare(["review", "review_2"], candidate_id=candidate_id)
+        if prepared.get("route") != "run":
+            questions = prepared.get("questions") or []
+            reason = prepared.get("reason") or (questions[0].get("question") if questions else "")
+            if not reason:
+                reason = "Agent 池当前不能派工，已转人工待办"
+            return {"status": "blocked", "reason": str(reason)[:512]}
+        pair = prepared["selections"]
+        request = review_store.create(
+            candidate_id,
+            pair["review"],
+            pair["review_2"],
+            "新经验价值评分：两名独立审查节点分别给出 0–10 分、重复经验标识、判断依据，并引用候选材料；核心按 6/4 规则自动结算，不代表用户批准。",
+            [{"ref": item["staged_path"], "sha256": candidate_sha256}],
+            request_id=request_id,
+            dsh_channel="backend_adapter",
+            peer_channel="backend_adapter",
+            review_type="new_experience",
+            value_review=True,
+        )
+    receipts = request["receipts"]
+    for assignment in request["assignments"]:
+        if not assignment["active"]:
+            continue
+        latest = next((r for r in reversed(receipts) if r["assignment_id"] == assignment["id"]), None)
+        if latest and latest["status"] == "valid":
+            continue
+        backends.execute(assignment["id"], require_test=True)
+    still_pending = any(
+        row["task_id"] == candidate_id and row["candidate_sha256"] == candidate_sha256
+        for row in store.value_review_queue()
+    )
+    if still_pending:
+        return {
+            "status": "waiting_receipts",
+            "reason": "两份有效价值评分回执尚未齐备；候选仍留在待价值评分队列。",
+        }
+    return {"status": "completed", "reason": ""}
+
+
+def dispatch_value_review_item(
+    config,
+    store,
+    candidate_id: str,
+    candidate_sha256: Optional[str] = None,
+    *,
+    runner=None,
+) -> Dict[str, Any]:
+    """Controlled single-item value-review dispatcher (CLI & Worker shared)."""
+    items = store.value_review_queue()
+    item = next(
+        (
+            row for row in items
+            if row.get("task_id") == candidate_id
+            and (candidate_sha256 is None or row.get("candidate_sha256") == candidate_sha256)
+            and row.get("queue_status") == "awaiting_value_review"
+        ),
+        None,
+    )
+    if item is None:
+        raise ValueError("候选已变化或不在待价值评分队列")
+    sha = item["candidate_sha256"]
+    request_id = value_dispatch_request_id(candidate_id, sha)
+    record_value_dispatch_event(store, candidate_id, sha, request_id, "started", "")
+    try:
+        outcome = (
+            runner(item, request_id)
+            if runner is not None
+            else _default_value_review_runner(config, store, item, request_id)
+        )
+        status = str((outcome or {}).get("status") or "failed")
+        reason = str((outcome or {}).get("reason") or "")[:512]
+        if status == "completed":
+            return {"ok": True, "task_id": candidate_id, "candidate_sha256": sha,
+                    "request_id": request_id, "status": "completed", "reason": reason}
+        if status not in {"blocked", "started", "failed", "waiting_receipts"}:
+            status = "failed"
+        record_value_dispatch_event(store, candidate_id, sha, request_id, status, reason)
+        return {"ok": False, "task_id": candidate_id, "candidate_sha256": sha,
+                "request_id": request_id, "status": status, "reason": reason}
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"[:512]
+        try:
+            record_value_dispatch_event(store, candidate_id, sha, request_id, "failed", reason)
+        except Exception:
+            pass
+        return {"ok": False, "task_id": candidate_id, "candidate_sha256": sha,
+                "request_id": request_id, "status": "failed", "reason": reason}
+
+
+def auto_dispatch_pending_value_reviews(
+    config,
+    store,
+    *,
+    runner=None,
+    limit: int = 1,
+) -> Dict[str, Any]:
+    """Switch-controlled, once-per-SHA256 value-review auto-dispatch; never fails caller."""
+    worker = getattr(config, "worker", None) or {}
+    if not bool(worker.get("auto_dispatch_value_review", False)):
+        return {"enabled": False, "dispatched": [], "skipped": 0}
+    try:
+        queue = store.value_review_queue()
+    except Exception as exc:
+        return {"enabled": True, "dispatched": [], "skipped": 0, "error": str(exc)[:240]}
+    eligible = [
+        item for item in queue
+        if item.get("queue_status") == "awaiting_value_review"
+        and (item.get("dispatch") or {}).get("status") == "not_started"
+    ]
+    skipped = len(queue) - len(eligible)
+    dispatched = []
+    for item in eligible[: max(1, int(limit))]:
+        try:
+            dispatched.append(
+                dispatch_value_review_item(
+                    config, store, item["task_id"], item["candidate_sha256"], runner=runner,
+                )
+            )
+        except Exception as exc:
+            dispatched.append({
+                "ok": False,
+                "task_id": item.get("task_id"),
+                "candidate_sha256": item.get("candidate_sha256"),
+                "status": "failed",
+                "reason": str(exc)[:240],
+            })
+    return {"enabled": True, "dispatched": dispatched, "skipped": skipped}

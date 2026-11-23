@@ -90,7 +90,9 @@ button,select,input{font:inherit;color:inherit}
 .pill.ok{color:var(--ok)} .pill.busy{color:var(--accent)} .pill.warn{color:var(--warn)} .pill.down,.pill.error{color:var(--crit)} .pill.idle{color:var(--idle)}
 
 /* 下方 */
-.lower{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px}
+.lower{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.legacy-agents-fold summary{cursor:pointer;list-style:none}
+.legacy-agents-fold summary::-webkit-details-marker{display:none}
 @media (max-width:980px){.lower{grid-template-columns:minmax(0,1fr)}}
 .table-scroll{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:620px}
@@ -1138,15 +1140,6 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
 
   <section class="lower">
     <div class="panel">
-      <div class="panel-head"><h2>后台 Agent</h2><div class="spacer"></div><span class="foot" id="agentSummary"></span></div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Agent</th><th>状态</th><th>提供方 · 模型</th><th>当前任务</th><th class="r">累计运行</th><th class="r">最近探针</th></tr></thead>
-          <tbody id="agentRows"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="panel">
       <div class="panel-head">
         <h2>审计事件流</h2><div class="spacer"></div>
         <div class="log-tools" role="group" aria-label="按级别筛选">
@@ -1157,6 +1150,15 @@ html.embedded,html.see-through{background:transparent}html.embedded body,html.se
       </div>
       <ul id="log"></ul>
     </div>
+    <details class="panel legacy-agents-fold" id="legacyAgentsPanel">
+      <summary class="panel-head"><h2>历史线路资料（只读存档 · 已由上方 Agent 池取代）</h2><div class="spacer"></div><span class="foot" id="agentSummary"></span></summary>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Agent</th><th>状态</th><th>提供方 · 模型</th><th>当前任务</th><th class="r">累计运行</th><th class="r">最近探针</th></tr></thead>
+          <tbody id="agentRows"></tbody>
+        </table>
+      </div>
+    </details>
   </section>
 
   <section class="panel" style="margin-top:14px">
@@ -1847,8 +1849,10 @@ function modelNote(a){
   return note?`<br><span class="step">${esc(note)}</span>`:"";
 }
 function renderAgents(){
+  const rows=$("agentRows"), sum=$("agentSummary");
+  if(!rows) return;
   const list=State.agents||[];
-  $("agentRows").innerHTML = list.map(a=>`<tr class="click" data-id="${esc(a.id)}">
+  rows.innerHTML = list.map(a=>`<tr class="click" data-id="${esc(a.id)}">
     <td><b>${esc(a.name||a.id)}</b><br><span class="step num">${esc(a.key||"")}</span></td>
     <td><span class="pill ${esc(a.status)}">${STATUS_TEXT[a.status]||esc(a.status)}</span></td>
     <td>${esc(a.modelNow||a.model||"—")}${modelNote(a)}</td>
@@ -1856,9 +1860,9 @@ function renderAgents(){
     <td class="r num">${a.runs!=null?fmt.int(a.runs):"—"}</td>
     <td class="r num">${fmt.stamp(a.probeAt)}</td></tr>`).join("");
   const c=s=>list.filter(a=>a.status===s).length;
-  $("agentSummary").textContent = `执行中 ${c("busy")} · 正常 ${c("ok")} · 已禁用 ${c("disabled")}`;
+  if(sum) sum.textContent = `执行中 ${c("busy")} · 正常 ${c("ok")} · 已禁用 ${c("disabled")}`;
 }
-$("agentRows").addEventListener("click",e=>{ const tr=e.target.closest("tr[data-id]"); if(tr&&NODE[tr.dataset.id]) select(tr.dataset.id); });
+if($("agentRows")) $("agentRows").addEventListener("click",e=>{ const tr=e.target.closest("tr[data-id]"); if(tr&&NODE[tr.dataset.id]) select(tr.dataset.id); });
 
 // 裁决中心待审队列（只展示；裁决仍在裁决中心页面里由用户做）
 function renderReview(){

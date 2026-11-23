@@ -702,8 +702,22 @@ def vault_actions(layout: Layout, previous: Path) -> list:
                 require(original.endswith(b'\n') and current.startswith(original),
                         f'generated note was edited; refusing overwrite: {rel}')
                 # Preserve appended human content byte-for-byte; never fuzzy-merge edited bodies.
+                # W2-I1: strip only the obsolete auto-carried 2026-10-10 legacy confirmation tail on 系统当前态.md.
                 require(payload.endswith(b'\n'), 'generated note must end with newline')
-                payload += current[len(original):]
+                appendix = current[len(original):]
+                if rel == '60_当前上下文/系统当前态.md':
+                    text_app = appendix.decode('utf-8', errors='replace')
+                    if (
+                        '## 2026-10-10 上线确认' in text_app
+                        and 'c38573ad09256300bd1cccc498ff461b606ad5ebd99beace336154d69ec4a8d3' in text_app
+                    ):
+                        cleaned = re.sub(
+                            r'\n*## 2026-10-10 上线确认[\s\S]*?(?=\n## |\Z)',
+                            '',
+                            text_app,
+                        )
+                        appendix = (cleaned.lstrip('\n') + ('\n' if cleaned.strip() and not cleaned.endswith('\n') else '')).encode('utf-8') if cleaned.strip() else b''
+                payload += appendix
         actions.append((destination, payload, live, None))
     return actions
 

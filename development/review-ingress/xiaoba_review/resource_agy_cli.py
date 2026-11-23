@@ -68,10 +68,11 @@ class AgyCliResource(CliWorklogResource):
         if returncode == 0 and self._result_status() == 'SUCCESS':
             raise InteractiveError('receipt_missing',
                 'AGY本轮已结束，但没有写出合格的任务卡回执；不自动重试。')
-        # Only a short class survives; the raw text is never returned or stored.
+        # W1-Bug-3: 保留退出码与脱敏短诊断类，原始输出绝不返出或落盘。
         detail = _redact_error(stderr or stdout or 'agy cli failed')
         failure = InteractiveError('cli_failed',
             'AGY调用未完成本次任务；不自动重试、不换模型、不换后台。')
         failure.failure_class = 'transient' if _is_transient_cli_error(detail) else 'permanent'
+        failure.exit_code = returncode
         raise failure
 

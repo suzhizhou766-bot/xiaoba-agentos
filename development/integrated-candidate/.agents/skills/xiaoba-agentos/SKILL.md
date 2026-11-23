@@ -1,9 +1,9 @@
 ---
 name: xiaoba-agentos
-description: 小八 AgentOS v1.6.17 的工作入口。审查和协作只由用户在 Agent 池里设定，没有默认审查节点。用于小八上下班、任务状态与恢复、记忆审核、索引和发布检查；普通问答不强制调用后台。
+description: 小八 AgentOS v1.6.18 的工作入口。审查和协作只由用户在 Agent 池里设定，没有默认审查节点。用于小八上下班、任务状态与恢复、记忆审核、索引和发布检查；普通问答不强制调用后台。
 ---
 
-# 小八 AgentOS v1.6.17
+# 小八 AgentOS v1.6.18
 
 审查和协作只来自 Agent 池里用户打开的节点。要审查的任务需要至少两份彼此独立的合格结论才进入本地确定性裁判。独立性看入口程序和模型。宿主可以补一票，条件写在 `docs/STANDBY_POLICY.md`。发布验收也收“1 个池节点＋1 个宿主”，宿主票只认 `task-host-complete` 的结算记录，两票不能都是宿主，见 `docs/OPERATIONS.md`“发布验收的宿主补票”。配置模板不带默认节点。模型由用户写在节点上；小八不替用户改模型，也不读取各家桌面。
 
@@ -11,9 +11,13 @@ description: 小八 AgentOS v1.6.17 的工作入口。审查和协作只由用�
 
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
+VERIFY_RELEASE="$HOME/.agents/skills/xiaoba-agentos/scripts/verify-release"
 "$XIAOBA" doctor --json
 "$XIAOBA" status --json --limit 10
+"$VERIFY_RELEASE"
 ```
+
+> 说明：`verify-release` 是与 `xiaoba` 同目录的独立脚本（不是 `xiaoba` 的子命令），请直接运行 `"$VERIFY_RELEASE"`；所有常用只读查询子命令（如 `doctor`、`status`、`review-list`、`memory-value-list`、`memory-retrieve`、`memory-trial-status`、`show` 等）均兼容 `--json` 参数。
 
 入口先验证活动配置、不可变发布及源码哈希，再调用同一发布的 CLI；失败停止，不用旧入口绕过。发布索引是 `/Users/suzhizhou/Documents/小八AgentOS/.runtime/releases/index.json`。当前 Vault 物理目录是 `/Users/suzhizhou/Documents/私人助理/第二大脑`，目录名不含版本号，不随版本变化，其笔记属于 v1.4 树格式族，正文声明的当前软件版本随每次发布更新，以 `60_当前上下文/系统当前态.md` 为准。
 

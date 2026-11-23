@@ -20,9 +20,13 @@ only a well-formed hash that wrongly points at the current tree itself.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
+import os
 import re
+import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -216,6 +220,172 @@ def check_reviewer_conflict(
         _issue(report, "reviewer_author_conflict", "审查员与作者/执行者重叠：" + ", ".join(conflicts))
 
 
+FORBIDDEN_RELEASE_PROSE = (
+    "AGY+DSH双后台",
+    "候选未发布",
+    "尚未正式发布",
+)
+
+
+def check_syntax_and_bytecode(report: dict[str, Any], root: Path) -> None:
+    """W2-J1: deterministic AST syntax check (.py), bash -n (.sh), and zero .pyc check."""
+    py_errors: list[str] = []
+    sh_errors: list[str] = []
+    pyc_files: list[str] = []
+    checked_py = 0
+    checked_sh = 0
+
+    scan_dirs = [root / name for name in ("src", "scripts", "bin") if (root / name).is_dir()]
+    review_dir = root.parent / "review-ingress" / "xiaoba_review"
+    if review_dir.is_dir():
+        scan_dirs.append(review_dir)
+
+    for base in scan_dirs:
+        for dp, dns, fns in os.walk(base, followlinks=False):
+            dns[:] = [d for d in sorted(dns) if d != ".git"]
+            for fn in sorted(fns):
+                fp = Path(dp) / fn
+                if fp.is_symlink():
+                    continue
+                if fn.endswith((".pyc", ".pyo")):
+                    pyc_files.append(str(fp))
+                elif fn.endswith(".py"):
+                    checked_py += 1
+                    try:
+                        ast.parse(fp.read_text(encoding="utf-8"), filename=str(fp))
+                    except (SyntaxError, UnicodeDecodeError, OSError) as exc:
+                        py_errors.append(f"{fp.name}: {exc}")
+                elif fn.endswith(".sh"):
+                    checked_sh += 1
+                    proc = subprocess.run(["bash", "-n", str(fp)], capture_output=True, text=True, check=False)
+                    if proc.returncode != 0:
+                        sh_errors.append(f"{fp.name}: {(proc.stderr or proc.stdout).strip()[:200]}")
+
+    report["checks"]["syntax_and_bytecode"] = {
+        "checked_py": checked_py,
+        "checked_sh": checked_sh,
+        "py_errors": py_errors,
+        "sh_errors": sh_errors,
+        "pyc_files": pyc_files,
+    }
+    if py_errors:
+        _issue(report, "python_syntax_error", "Python 语法检查失败：" + "；".join(py_errors[:5]))
+    if sh_errors:
+        _issue(report, "shell_syntax_error", "Shell 语法检查失败：" + "；".join(sh_errors[:5]))
+    if pyc_files:
+        _issue(report, "bytecode_pollution", f"源码树存在 {len(pyc_files)} 个 .pyc/.pyo 字节码残留：" + ", ".join(pyc_files[:5]))
+
+
+def check_forbidden_release_prose(report: dict[str, Any], root: Path, expected_version: Optional[str]) -> None:
+    """W2-J1: verify release-facing current-state docs contain zero stale draft/legacy phrases."""
+    hits: list[str] = []
+    targets: list[Path] = []
+    interface_skill = root.parent / "interface" / "SKILL.md"
+    if interface_skill.is_file():
+        targets.append(interface_skill)
+    if expected_version:
+        ver_tag = expected_version if str(expected_version).startswith("v") else f"v{expected_version}"
+        rel_doc = root / "docs" / f"RELEASE_{ver_tag.upper()}.md"
+        if rel_doc.is_file():
+            targets.append(rel_doc)
+    for path in targets:
+        try:
+            txt = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for phrase in FORBIDDEN_RELEASE_PROSE:
+            if phrase in txt:
+                hits.append(f"{path.name}:{phrase}")
+    report["checks"]["forbidden_prose"] = {"checked_files": [p.name for p in targets], "hits": hits}
+    if hits:
+        _issue(report, "forbidden_release_prose", "发布正文残留过时/未发布禁词：" + ", ".join(hits))
+
+
+def check_pool_nodes_live(report: dict[str, Any], pool_db: Optional[Path]) -> None:
+    """W2-J1: optional read-only check that >=2 enabled pool review nodes have valid config/models."""
+    if pool_db is None:
+        report["checks"]["pool_nodes"] = {"checked": False}
+        return
+    if not pool_db.is_file():
+        _issue(report, "pool_db_missing", f"Agent 池数据库不可读：{pool_db}")
+        report["checks"]["pool_nodes"] = {"checked": True, "ok": False}
+        return
+    enabled_review = []
+    problems = []
+    conn = sqlite3.connect(pool_db.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        rows = conn.execute("SELECT id, data FROM ri_sources").fetchall()
+        for sid, raw in rows:
+            try:
+                source = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(source, dict):
+                continue
+            node = source.get("node") if isinstance(source.get("node"), dict) else source
+            kind = str(source.get("kind") or node.get("kind") or "")
+            if node.get("removed") or not node.get("enabled"):
+                continue
+            if node.get("agent_type") == "workbuddy":
+                problems.append(f"{node.get('name') or sid}: 已退役 workbuddy 引擎")
+                continue
+            if kind in ("review", "both", "dsh", "peer") and node.get("interface") != "tmux":
+                entry = str(node.get("entry") or "").strip()
+                if not entry:
+                    problems.append(f"{node.get('name') or sid}: 缺少调用入口")
+                    continue
+                test_info = node.get("test") if isinstance(node.get("test"), dict) else {}
+                enabled_review.append({
+                    "id": sid,
+                    "name": node.get("name"),
+                    "model": node.get("model"),
+                    "test_status": test_info.get("status"),
+                })
+    except sqlite3.Error as exc:
+        _issue(report, "pool_db_error", f"读取 Agent 池失败：{exc}")
+        report["checks"]["pool_nodes"] = {"checked": True, "ok": False}
+        return
+    finally:
+        conn.close()
+    report["checks"]["pool_nodes"] = {
+        "checked": True,
+        "enabled_review_count": len(enabled_review),
+        "nodes": enabled_review,
+        "problems": problems,
+    }
+    if problems:
+        _issue(report, "pool_node_invalid", "Agent 池节点配置异常：" + "；".join(problems))
+    if len(enabled_review) < 2:
+        _issue(report, "pool_reviewers_insufficient", f"当前启用审查节点仅 {len(enabled_review)} 个，少于 2 个")
+
+
+def check_deferred_items(report: dict[str, Any], deferred_ledger: Optional[Path]) -> None:
+    """W2-J1: reconcile deferred items so nothing is silently dropped across releases."""
+    if deferred_ledger is None:
+        report["checks"]["deferred_items"] = {"checked": False}
+        return
+    try:
+        data = json.loads(deferred_ledger.read_text(encoding="utf-8"))
+        items = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            raise ValueError("items 必须是数组")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _issue(report, "deferred_ledger_invalid", f"推迟项台账无法读取：{exc}")
+        report["checks"]["deferred_items"] = {"checked": True, "ok": False}
+        return
+    incomplete = []
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            incomplete.append(f"#{idx}: 非对象")
+            continue
+        missing = [k for k in ("id", "reason", "target_version", "owner") if not str(item.get(k) or "").strip()]
+        if missing:
+            incomplete.append(f"{item.get('id') or idx}: 缺 {'/'.join(missing)}")
+    report["checks"]["deferred_items"] = {"checked": True, "count": len(items), "incomplete": incomplete}
+    if incomplete:
+        _issue(report, "deferred_items_incomplete", "推迟项对账缺失必填字段：" + "；".join(incomplete[:5]))
+
+
 def preflight(
     source_root: Path,
     *,
@@ -226,6 +396,8 @@ def preflight(
     reviewers: Iterable[str] = (),
     authors: Iterable[str] = (),
     executors: Iterable[str] = (),
+    pool_db: Optional[Path] = None,
+    deferred_ledger: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Return one report listing every issue. Read-only; never dispatches."""
     root = Path(source_root).resolve()
@@ -235,6 +407,10 @@ def preflight(
     check_deployment(report, root, predecessor_sha256)
     check_ui_manifest(report, root, project=project, assistant=assistant)
     check_reviewer_conflict(report, reviewers=reviewers, authors=authors, executors=executors)
+    check_syntax_and_bytecode(report, root)
+    check_forbidden_release_prose(report, root, expected_version)
+    check_pool_nodes_live(report, pool_db)
+    check_deferred_items(report, deferred_ledger)
     report["report_sha256"] = hashlib.sha256(
         json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -251,6 +427,8 @@ def main(argv=None) -> int:
     parser.add_argument("--reviewer", action="append", default=[])
     parser.add_argument("--author", action="append", default=[])
     parser.add_argument("--executor", action="append", default=[])
+    parser.add_argument("--pool-db", type=Path, default=None)
+    parser.add_argument("--deferred-ledger", type=Path, default=None)
     args = parser.parse_args(argv)
     report = preflight(
         args.agentos_root,
@@ -261,6 +439,8 @@ def main(argv=None) -> int:
         reviewers=args.reviewer,
         authors=args.author,
         executors=args.executor,
+        pool_db=args.pool_db,
+        deferred_ledger=args.deferred_ledger,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["ok"] else 1

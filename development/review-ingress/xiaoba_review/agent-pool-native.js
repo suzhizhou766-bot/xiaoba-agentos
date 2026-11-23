@@ -26,7 +26,6 @@
   column.addEventListener('scroll',drawRoutes);window.addEventListener('resize',drawRoutes);
   const title=topo.closest('.panel')?.querySelector('.panel-head h2');if(title)title.textContent='实时架构拓扑 · 后台节点可管理';
   const flow=topo.closest('.panel')?.querySelector('.flow');if(flow)flow.textContent='审查和协作只派给这里开启并通过测试的节点。没有默认名单。';
-  const tableHeading=document.getElementById('agentRows')?.closest('.panel')?.querySelector('h2');if(tableHeading)tableHeading.textContent='历史线路资料';
   function element(tag,text,parent){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(parent)parent.append(n);return n;}
   function action(parent,text,fn,cls){const b=element('button',text,parent);b.type='button';b.className=cls;b.addEventListener('click',async()=>{b.disabled=true;try{await fn();}catch(error){pool.report(error);}finally{b.disabled=false;}});return b;}
   pool.watch((state,writable)=>{

@@ -30,6 +30,13 @@
       "after_sha256": "07d4e48f33d22b584d46eeb74d63b29574e1fedeb70291ec71201399b820f622"
     },
     {
+      "asset": "monitor_web.py",
+      "base": "assistant",
+      "relative": "工具/小八监看/monitor_core/web.py",
+      "before_sha256": "18476caeeef51f384a730fca91c8ddf43500571f0bec90fb8f906a495d884555",
+      "after_sha256": "ee70eb1afba2f5c787d8e41e2587b56e5c48907b00289f302e04be1e70438345"
+    },
+    {
       "asset": "workflow_query.py",
       "base": "project",
       "relative": "integrations/review-center/workflow_query.py",
@@ -54,8 +61,8 @@
       "asset": "xiaoba-monitor.html",
       "base": "assistant",
       "relative": "工具/小八监看/xiaoba-monitor.html",
-      "before_sha256": "506f113864a9e90f3a4e45f16cdf56b0db525cb389518735a83e01ffa9538b24",
-      "after_sha256": "961c174d5b0af58c7fe681d5aac57b0ca4bad64ccd8a587f1165641604bea3bf"
+      "before_sha256": "961c174d5b0af58c7fe681d5aac57b0ca4bad64ccd8a587f1165641604bea3bf",
+      "after_sha256": "0e32d85948f1616da6b1e9dba77286e0e6f7325d205ae0991a48c19430f9dbb9"
     }
   ]
 }

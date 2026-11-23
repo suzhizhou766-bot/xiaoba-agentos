@@ -16,6 +16,7 @@ TARGETS = {
     "monitor_config.py": ("assistant", "工具/小八监看/monitor_core/config.py"),
     "monitor_overview.py": ("assistant", "工具/小八监看/monitor_core/modules/overview.py"),
     "monitor_review.py": ("assistant", "工具/小八监看/monitor_core/modules/review.py"),
+    "monitor_web.py": ("assistant", "工具/小八监看/monitor_core/web.py"),
     "workflow_query.py": ("project", "integrations/review-center/workflow_query.py"),
     "review_action.py": ("project", "integrations/review-center/review_action.py"),
     "server.py": ("project", "integrations/review-center/server.py"),

@@ -4,6 +4,9 @@
   const byId=id=>document.getElementById(id),drawer=byId('apDrawer');
   if(!drawer)return;
   const token=drawer.dataset.pageToken;
+  delete drawer.dataset.pageToken;
+  drawer.removeAttribute('data-page-token');
+  const TOKEN_EXPIRED_HINT='监看服务已重启，请按 Command+R 刷新页面后重试';
   let state=null,selected=null,mode=null,pendingAdd=null,pendingDispatch=null,removeConfirm=false,returnFocus=null,drawerSignature=null;
   const watchers=[];
   let previewOpen=false,previewTimer=null,previewAbort=null,previewGeneration=0;
@@ -17,7 +20,13 @@
     message.scrollIntoView({block:'nearest'});
     message.focus({preventScroll:true});
   }
-  async function api(path,value,signal){const response=await fetch('/api/agent-pool/'+path,value===undefined?{cache:'no-store',signal}:{method:'POST',cache:'no-store',signal,headers:{'Content-Type':'application/json','X-Xiaoba-Token':token},body:JSON.stringify(value)});const data=await response.json();if(!response.ok||!data.ok)throw Error(data.error||'节点操作失败');return data;}
+  async function api(path,value,signal){
+    const response=await fetch('/api/agent-pool/'+path,value===undefined?{cache:'no-store',signal}:{method:'POST',cache:'no-store',signal,headers:{'Content-Type':'application/json','X-Xiaoba-Token':token},body:JSON.stringify(value)});
+    const data=await response.json().catch(()=>({}));
+    if(response.status===403&&(!data.error||data.error==='请从本机监看页面确认提交'||data.error.includes('Command+R')||data.error.includes('过期')||data.error.includes('重启')))throw Error(TOKEN_EXPIRED_HINT);
+    if(!response.ok||!data.ok)throw Error(data.error||'节点操作失败');
+    return data;
+  }
   function button(parent,text,action,cls){const b=el('button',text,parent);b.type='button';if(cls)b.className=cls;b.addEventListener('click',async()=>{b.disabled=true;try{await action();}catch(error){reportError(error);}finally{b.disabled=false;}});return b;}
   function close(){stopPreview();previewOpen=false;selected=null;mode=null;drawer.hidden=true;byId('apScrim').hidden=true;returnFocus?.focus();}
   function open(next,node){
@@ -81,7 +90,7 @@
       return;
     }
     const dl=el('dl',undefined,root);
-    for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',(node.model||'由 CLI 当前配置决定')+(node.agent_type==='dsh'?' · 由 DSH 桌面配置决定':'')],...(node.interface==='cli'?[['掉线时限',(node.no_progress_seconds||300)+' 秒'],...(node.reasoning_effort?[['思考强度',node.reasoning_effort]]:[])]:[]),['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
+    for(const [label,value] of [['Agent',node.agent],['调用方式',{cli:'CLI',desktop:'桌面端',web:'Web'}[node.interface]||'旧来源，资料尚未登记'],['调用入口',node.entry||'未登记'],['模型',(node.model||'由 CLI 当前配置决定')+(node.agent_type==='dsh'?' · 由 DSH 桌面配置决定':'')],...(node.interface==='cli'?[['掉线时限',node.no_progress_seconds?node.no_progress_seconds+' 秒':'任务默认 300 秒 / 测活默认 90 秒'],...(node.reasoning_effort?[['思考强度',node.reasoning_effort]]:[])]:[]),['当前状态',node.enabled?'已开启':'已关闭']]){el('dt',label,dl);el('dd',value,dl);}
     el('p',node.backend_available?'已接入本机调用器，按节点填写的入口与模型配置派发任务。':'主入口按任务卡中的入口和模型调用；本服务未接入此节点的自动调用器。',root).className='ap-note';
     if(node.execution_mode==='native_interactive_serial')el('p','同一交互会话逐条执行任务卡，过程与回执写入当日Markdown；终端只供查看进度。',root).className='ap-note';
     const readiness=node.readiness||{},labels={disabled:'已关闭',removed:'已移除',missing_configuration:'资料待补齐',adapter_required:'调用器待接入',entry_changed_or_unavailable:'入口待核对',entry_unavailable:'入口不存在或不可执行',test_required:'尚未通过当前配置的测试',test_evidence_invalid:'测试证据无效',native_confirmation_required:'等待你确认AGY原生工作区',testing:'正在测试',tested:'测试通过，可直接运行',engine_retired:'内置引擎已退役，请改成 WorkBuddy CLI（CodeBuddy）'};

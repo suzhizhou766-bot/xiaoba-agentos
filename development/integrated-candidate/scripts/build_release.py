@@ -849,9 +849,24 @@ def release_tier_record(previous_release: Optional[Path], source_root: Path) -> 
     return record
 
 
-def run_full_tests(source_root: Path) -> int:
+def run_full_tests(source_root: Path, *, parallel_suites: bool = False) -> int:
     """Patch tier has no reviewers: the build itself runs the whole suite on the manifest-verified source."""
     run_verify([CORE_PYTHON, "-B", "scripts/create_manifest.py", "--verify"], source_root)
+    repo_root = source_root.parents[1] if len(source_root.parents) >= 2 else None
+    if (
+        parallel_suites
+        and repo_root is not None
+        and (repo_root / "development/review-ingress/tests").is_dir()
+        and (repo_root / "development/architecture-center/tests").is_dir()
+        and (repo_root / "architecture-package-20261027/shared/工具/小八监看/tests").is_dir()
+    ):
+        from run_parallel_suites import run_suites_parallel
+        report = run_suites_parallel(repo_root, python_exe=CORE_PYTHON)
+        if not report.get("ok"):
+            raise RuntimeError(
+                f"parallel 4-suite run failed: failures={report.get('failures')} errors={report.get('errors')}"
+            )
+        return int(report["tests_run"])
     env = dict(os.environ, PYTHONPATH="src:tests", PYTHONDONTWRITEBYTECODE="1")
     completed = subprocess.run(
         [CORE_PYTHON, "-m", "unittest", "discover", "-s", "tests", "-t", "tests", "-p", "test_*.py"],
@@ -862,6 +877,68 @@ def run_full_tests(source_root: Path) -> int:
     if completed.returncode != 0 or not ran or not lines or lines[-1] != "OK":
         raise RuntimeError("patch-tier build requires the full test suite to pass: " + (lines[-1] if lines else "no output"))
     return int(ran.group(1))
+
+
+def _release_provider_names(acceptance_evidence: Optional[dict[str, Any]]) -> list[str]:
+    """W2-I2: derive actual pool/host reviewer identities from acceptance evidence instead of legacy hardcoded names."""
+    if isinstance(acceptance_evidence, dict):
+        pool_labels: dict[str, str] = {}
+        for node in acceptance_evidence.get("pool_nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            nid = str(node.get("node_id") or "").strip()
+            indep = node.get("independence")
+            if nid and isinstance(indep, list) and indep:
+                pool_labels[nid] = " / ".join(str(x).strip() for x in indep if str(x).strip())
+        names: list[str] = []
+        for item in acceptance_evidence.get("conclusions") or []:
+            if not isinstance(item, dict):
+                continue
+            nid = str(item.get("node_id") or "").strip()
+            label = (
+                str(item.get("model") or "").strip()
+                or pool_labels.get(nid, "")
+                or nid
+                or str(item.get("host_id") or "").strip()
+            )
+            if label and label not in names:
+                names.append(label)
+        if names:
+            return names
+    return ["AgentPool"]
+
+
+def stamp_release_docs(
+    source_root: Path,
+    *,
+    version: str,
+    verified_date: str,
+    review_nodes: Iterable[str] = (),
+) -> list[str]:
+    """W2-I2: update release status & pool node names in RELEASE_V*.md / README.md before manifest freeze."""
+    ver_tag = version if version.startswith("v") else f"v{version}"
+    nodes_text = " + ".join(n for n in review_nodes if n) or "Agent 池独立审查节点"
+    touched: list[str] = []
+    replacements = (
+        ("候选未发布", f"已正式发布（{verified_date}）"),
+        ("尚未正式发布", f"已正式发布（{verified_date}）"),
+        ("AGY+DSH双后台", f"插件化 Agent 池（{nodes_text}）"),
+    )
+    candidates = [
+        source_root / "README.md",
+        source_root / "docs" / f"RELEASE_{ver_tag.upper()}.md",
+    ]
+    for path in candidates:
+        if not path.is_file() or path.is_symlink():
+            continue
+        original = path.read_text(encoding="utf-8")
+        updated = original
+        for old, new in replacements:
+            updated = updated.replace(old, new)
+        if updated != original:
+            path.write_text(updated, encoding="utf-8")
+            touched.append(str(path.relative_to(source_root)))
+    return touched
 
 
 def _assemble_package(
@@ -970,7 +1047,7 @@ def _assemble_package(
         "version": args.version,
         "status": "verified_immutable_release" if args.acceptance_complete else "release_candidate",
         "verified_date": args.verified_date,
-        "release_origin": f"{declared_version}_agy_dsh_current_only",
+        "release_origin": f"{declared_version}_agent_pool_current_only",
         "agentos_source_manifest_sha256": sha256(agentos_target / "SOURCE_MANIFEST.json"),
         "second_brain_manifest_sha256": sha256(brain_manifest),
         "interface_manifest_sha256": sha256(interface_manifest),
@@ -980,7 +1057,7 @@ def _assemble_package(
         "second_brain_markdown_files": sum(1 for path in files(brain_target) if path.suffix == ".md"),
         "contents": {
             "agentos": "Complete AgentOS source for this release",
-            "second_brain": f"Single-root {declared_version} current AGY+DSH Obsidian memory tree",
+            "second_brain": f"Single-root {declared_version} current Agent-Pool Obsidian memory tree",
             "interface": "Current xiaoba-agentos entrypoint and release verifier",
             "runtime_data_included": False,
             "credentials_included": False,
@@ -993,7 +1070,7 @@ def _assemble_package(
             "result": args.test_result,
         },
         "acceptance": {
-            "provider_priority": ["Antigravity", "DeepSeekHarness"],
+            "provider_priority": _release_provider_names(acceptance_evidence),
             "skill_registry": "content_not_in_package",
             "knowledge_catalog": "content_not_in_package",
             "second_brain_tree": "passed",
@@ -1022,11 +1099,20 @@ def _assemble_package(
 
 def build(args: argparse.Namespace) -> dict:
     source_root = args.agentos_root.resolve()
+    # W2-J1: deterministic syntax & bytecode preflight gate before packaging
+    from release_preflight import check_syntax_and_bytecode, _new_report
+    syntax_report = _new_report()
+    check_syntax_and_bytecode(syntax_report, source_root)
+    if not syntax_report["ok"]:
+        raise RuntimeError(
+            "release preflight failed: " + "; ".join(i["message"] for i in syntax_report["issues"])
+        )
     acceptance_evidence = None
     tier_record = release_tier_record(getattr(args, "previous_release", None), source_root)
     patch_tier = tier_record is not None and tier_record["tier"] == "patch"
     if args.acceptance_complete and patch_tier:
-        if args.test_result != "passed" or run_full_tests(source_root) != args.test_count:
+        parallel = bool(getattr(args, "parallel_suites", False))
+        if args.test_result != "passed" or run_full_tests(source_root, parallel_suites=parallel) != args.test_count:
             raise RuntimeError("patch-tier build: declared test count/result differs from the actual full run")
     elif args.acceptance_complete:
         if args.acceptance_database is None or not args.acceptance_task_id:
@@ -1107,6 +1193,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Root of the previous verified immutable release package; its own tool decides this build's tier.",
     )
     parser.add_argument("--known-external-issue", action="append", default=[])
+    parser.add_argument("--parallel-suites", action="store_true", help="W2-J2: run all 4 suites in parallel on patch-tier builds")
     return parser
 
 

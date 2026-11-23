@@ -390,6 +390,8 @@ class CliWorklogResource:
         evidence = self._evidence(call_id)
         failure_class = getattr(exc, 'failure_class', None)
         if failure_class: evidence['failure_class'] = failure_class
+        exit_code = getattr(exc, 'exit_code', None)
+        if isinstance(exit_code, int): evidence['exit_code'] = exit_code
         return evidence
 
     def _error_tail(self):

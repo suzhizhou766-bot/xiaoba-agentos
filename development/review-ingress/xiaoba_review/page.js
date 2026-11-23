@@ -1,6 +1,9 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const token = document.querySelector('meta[name="xiaoba-page-token"]').content;
+const tokenMeta = document.querySelector('meta[name="xiaoba-page-token"]');
+const token = tokenMeta ? tokenMeta.content : '';
+if (tokenMeta) tokenMeta.remove();
+const TOKEN_EXPIRED_HINT = '监看服务已重启，请按 Command+R 刷新页面后重试';
 let snapshot;
 let pendingRequest;
 // 页面每 5 秒重画一次，发送文本和粘贴框的内容要留在重画之外，否则原文会丢。
@@ -8,7 +11,7 @@ const manualSendTexts=new Map(),manualPasteDrafts=new Map();
 const labels = {waiting_receipts:'等待独立回执',pending_center:'材料齐备 · 等待裁决中心确认',submitted:'裁决材料中心已接收 · 待用户裁决',stale:'原卡或初审版本已变化',invalidated:'操作者已标记证据失效'};
 function el(tag, value, parent) {const node=document.createElement(tag);if(value!==undefined)node.textContent=value;if(parent)parent.append(node);return node;}
 function note(error) {$('message').textContent=error ? String(error.message||error) : '';}
-async function api(path, data) {const response=await fetch('/api/open-review/'+path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Xiaoba-Token':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'请求失败');return result;}
+async function api(path, data) {const response=await fetch('/api/open-review/'+path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Xiaoba-Token':token},body:JSON.stringify(data)});const result=await response.json().catch(()=>({}));if(response.status===403&&(!result.error||result.error==='请从本机监看页面确认提交'||result.error.includes('Command+R')||result.error.includes('过期')||result.error.includes('重启')))throw Error(TOKEN_EXPIRED_HINT);if(!response.ok||!result.ok)throw Error(result.error||'请求失败');return result;}
 function action(parent, title, handler) {const b=el('button',title,parent);b.type='button';b.addEventListener('click',async()=>{b.disabled=true;try{note('');await handler();await refresh();}catch(e){note(e);}finally{b.disabled=false;}});return b;}
 function download(name, value) {const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function template(card) {const receipt={};for(const key of ['review_request_id','assignment_id','reviewer_role','plan_revision','reviewer_id','source_ref','candidate_sha256','input_digest','card_digest'])receipt[key]=card[key];const isV2=(card.receipt_contract?.version||1)>=2;return {...receipt,receipt_id:crypto.randomUUID(),verdict:'NEEDS_INFO',findings:'',evidence_refs:[],...(isV2?{review_type:card.review_type||'new_experience',score:8,applicability:'',duplicate_of:null}:{}),started_at:null,finished_at:null};}

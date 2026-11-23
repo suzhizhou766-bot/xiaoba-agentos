@@ -1476,6 +1476,13 @@ def build_parser() -> argparse.ArgumentParser:
     review_list.add_argument("--stage", choices=("delivery", "final", "all"), default="all")
     review_list.add_argument("--date")
     sub.add_parser("memory-value-list", help="列出尚待独立价值评分的经验准备项；不读取正文")
+    value_dispatch = sub.add_parser(
+        "memory-value-dispatch",
+        help="受控派发待价值评分队列（单条或批量；同一候选正文哈希自动派发至多一次，失败转人工待办）",
+    )
+    value_dispatch.add_argument("--task-id", help="指定待评分候选 task_id；省略时按队列顺序处理")
+    value_dispatch.add_argument("--all", dest="dispatch_all", action="store_true", help="处理队列中所有尚未派发的待评项")
+    value_dispatch.add_argument("--json", action="store_true")
     review = sub.add_parser("review")
     review.add_argument("task_id")
     review.add_argument("--stage", choices=("delivery", "final"), required=True)
@@ -1611,6 +1618,20 @@ def build_parser() -> argparse.ArgumentParser:
     demo = sub.add_parser("demo")
     # 策略进化的那半圈循环已随功能退役，默认题面只说剩下的一半。
     demo.add_argument("--prompt", default="验证小八 AgentOS 的生产循环")
+    # W2-H4: 常用只读查询子命令统一兼容 --json 参数，避免传 --json 时报 unrecognized arguments。
+    for cmd_name in (
+        "capability-verify", "handoff-status", "receipt-log",
+        "show", "review-list", "review-packet", "repair-status",
+        "memory-value-list", "memory-retrieve", "memory-retained-list",
+        "memory-trial-status", "memory-trial-match", "memory-pending-index",
+        "memory-pending-read", "task-delivery-view",
+        "skill-verify", "skill-list", "skill-match",
+        "knowledge-verify", "knowledge-list", "knowledge-retrieve",
+        "workday-read",
+    ):
+        sub_parser = sub.choices.get(cmd_name)
+        if sub_parser is not None and "--json" not in sub_parser._option_string_actions:
+            sub_parser.add_argument("--json", action="store_true", help="以 JSON 格式输出（默认即 JSON，兼容显式传参）")
     return parser
 
 
@@ -1729,7 +1750,8 @@ def main(argv: Optional[list] = None) -> int:
             "knowledge-verify", "knowledge-list", "knowledge-retrieve", "content-notes-sync",
             "skill-review-prompt", "skill-publish", "knowledge-index-rebuild",
             "memory-retrieve", "memory-retained-list", "memory-retained-resolve",
-            "review-list", "memory-trial-status", "memory-trial-match", "review-ui-install",
+            "memory-value-list", "memory-value-dispatch", "repair-status", "workday-read",
+            "review-list", "review-packet", "memory-trial-status", "memory-trial-match", "review-ui-install",
             "memory-pending-index", "memory-pending-read", "memory-application-record", "memory-delivery-record", "task-result-register", "task-delivery", "task-delivery-view", "memory-validation-basis-propose", "memory-validation-basis-revoke", "memory-revision-submit", "memory-revision-resubmit", "memory-formal-call",
         }
         read_only_or_managed = read_only_or_managed or (args.command == "intake" and bool(args.delivery_receipt))
@@ -2506,6 +2528,31 @@ def main(argv: Optional[list] = None) -> int:
             return 2
         _print({"status": "ok", "count": len(items), "items": items}, True)
         return 0
+    if args.command == "memory-value-dispatch":
+        if not store.schema_status()["ok"]:
+            print("数据库需要先迁移", file=sys.stderr)
+            return 1
+        from .value_queue import dispatch_value_review_item
+        try:
+            if args.task_id:
+                res = dispatch_value_review_item(config, store, args.task_id)
+                _print({"status": "ok" if res.get("ok") else res.get("status", "failed"), "results": [res]}, True)
+                return 0 if res.get("ok") else 1
+            queue = [
+                item for item in store.value_review_queue()
+                if item.get("queue_status") == "awaiting_value_review"
+                and (item.get("dispatch") or {}).get("status") == "not_started"
+            ]
+            targets = queue if args.dispatch_all else queue[:1]
+            results = [
+                dispatch_value_review_item(config, store, item["task_id"], item["candidate_sha256"])
+                for item in targets
+            ]
+            _print({"status": "ok", "count": len(results), "results": results}, True)
+            return 0
+        except ValueError as exc:
+            _print({"status": "blocked", "error": str(exc)}, True)
+            return 2
     if args.command == "review-list":
         if not store.schema_status()["ok"]:
             print("数据库需要先迁移", file=sys.stderr)

@@ -116,7 +116,7 @@ STATIC_NODES = [{'path': '00_小八AgentOS.md',
   'parent': '',
   'authority': True,
   'title': '小八 AgentOS {version}',
-  'body': '本 Vault 是 AGY+DSH {version} 当前知识入口。仅活动且有证据的规则参与检索，软件版本发布不替代用户对经验的两阶段审批。目录名与根笔记文件名不含版本号，不随版本变化，不得再改名，以免破坏 '
+  'body': '本 Vault 是小八 AgentOS {version}（插件化 Agent 池）当前知识入口。仅活动且有证据的规则参与检索，软件版本发布不替代用户对经验的两阶段审批。目录名与根笔记文件名不含版本号，不随版本变化，不得再改名，以免破坏 '
           'Obsidian 绑定。',
   'children': ['10_治理与裁决', '20_能力与技能', '30_方法与知识', '40_工作流', '50_资产与索引', '60_当前上下文', '70_复利规则']},
  {'path': '10_治理与裁决.md',
@@ -192,8 +192,8 @@ STATIC_NODES = [{'path': '00_小八AgentOS.md',
   'parent': 'current',
   'authority': True,
   'title': '系统当前态',
-  'last_verified': '2026-10-11',
-  'body': '- 活动方案：小八 AgentOS {version}，AGY+DSH双后台，成功门槛2。\n'
+  'last_verified': '{verified_date}',
+  'body': '- 活动方案：小八 AgentOS {version}，插件化 Agent 池（审查与协作节点均由用户在 Agent 池配置，无默认固定名单），审查独立结论门槛 2。\n'
           '- 唯一跨 Agent '
           '入口：`~/.agents/skills/xiaoba-agentos/scripts/xiaoba`。Codex技能发现入口：`~/.codex/skills/xiaoba-agentos`。\n'
           '- 运行源码：`/Users/suzhizhou/Documents/小八AgentOS`；不可变发布内容由 `.runtime/releases/index.json` 的当前指针指定，具体目录以 '
@@ -249,9 +249,32 @@ def _render(node: dict, source_path: str = "") -> str:
     return render(node, source_path, VERSION)
 
 
-def build(agentos_root: Path, published_agentos_root: Path | None = None) -> dict:
+def _resolve_verified_date(agentos_root: Path, explicit: str | None = None) -> str:
+    if explicit and re.fullmatch(r"\d{4}-\d{2}-\d{2}", explicit.strip()):
+        return explicit.strip()
+    history_path = agentos_root / "docs" / "HISTORY_VERSIONS.json"
+    if history_path.is_file():
+        try:
+            records = json.loads(history_path.read_text(encoding="utf-8")).get("records") or []
+            dates = [
+                str(r.get("release_date") or "").strip()
+                for r in records
+                if isinstance(r, dict) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(r.get("release_date") or "").strip())
+            ]
+            if dates:
+                return sorted(dates)[-1]
+        except (OSError, json.JSONDecodeError):
+            pass
+    return DATE
+
+
+def build(agentos_root: Path, published_agentos_root: Path | None = None, *, verified_date: str | None = None) -> dict:
     """只生成规则与发布状态两类笔记。published_agentos_root 仅为兼容既有调用而保留，不再使用。"""
     nodes = json.loads(json.dumps(STATIC_NODES))
+    resolved_date = _resolve_verified_date(agentos_root, verified_date)
+    for node in nodes:
+        if node.get("last_verified") == "{verified_date}":
+            node["last_verified"] = resolved_date
     _merge_extra_nodes(nodes, agentos_root)
     history_path = agentos_root / "docs" / "HISTORY_VERSIONS.json"
     if history_path.is_file():
@@ -262,7 +285,7 @@ def build(agentos_root: Path, published_agentos_root: Path | None = None) -> dic
         nodes.append({
             "path": "历史版本记录.md", "id": "release-history", "type": "branch",
             "parent": "root", "authority": False, "title": "历史版本记录",
-            "body": "当前正式方案为 {version}（AGY+DSH）。旧版说明已退出活动知识树并保留私有归档。以下记录版本边界；现场健康以最新检查为准。",
+            "body": "当前正式方案为 {version}（插件化 Agent 池）。旧版说明已退出活动知识树并保留私有归档。以下记录版本边界；现场健康以最新检查为准。",
             "children": ["历史版本记录/" + item["version"] for item in history],
         })
         for item in history:
@@ -353,10 +376,11 @@ def main() -> int:
     parser.add_argument("--agentos-root", type=Path, required=True)
     parser.add_argument("--published-agentos-root", type=Path)
     parser.add_argument("--target", type=Path, required=True)
+    parser.add_argument("--verified-date", default=None)
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
     published_root = args.published_agentos_root.resolve() if args.published_agentos_root else None
-    rendered = build(args.agentos_root.resolve(), published_root)
+    rendered = build(args.agentos_root.resolve(), published_root, verified_date=args.verified_date)
     problems = validate(rendered)
     if problems:
         raise SystemExit("\n".join(problems))

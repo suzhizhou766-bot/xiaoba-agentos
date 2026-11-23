@@ -632,10 +632,25 @@ class MemoryBridge:
         patterns = {
             # 只有头不算泄露：审查正文可能引用规则本身，要跟着密钥正文才拦。
             "private_key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s*[A-Za-z0-9+/=]{16,}",
-            "authorization": r"(?i)authorization\s*[:=]\s*[^\n]{8,}",
+            # W1-Bug-2 (+v1.6.18-r2): 拦截真实凭据形态（含带前缀字段与含符号密码），
+            # 排除中文技术论述、函数调用与合成测试桩；真实 sk-/ghp_/JWT/ya29/AKIA 等仍由下方专用规则兜底拦截。
+            "authorization": (
+                r"(?i)(?<![A-Za-z0-9_])authorization\s*[:=]\s*[\"']?"
+                r"(?:(?:bearer|basic|token|digest)[ \t]+)?"
+                r"(?!demo[-_]|test[-_]|mock[-_]|sample[-_]|wrong[-_]|example[-_]|placeholder)"
+                r"(?![^\s\"'`]*\()"
+                r"[^\s\"'`()\[\]{}<>,;\u4e00-\u9fff]{8,}[\"']?(?![\w(])"
+            ),
             "oauth_token": r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|oauth[_-]?token)\s*[:=]\s*[\"']?[^\s\"']{8,}",
-            "secret_field": r"(?i)(?:api[_-]?key|secret[_-]?key|client[_-]?secret|password|passwd)\s*[:=]\s*[\"']?[^\s\"']{8,}",
-            "environment_secret": r"(?im)^[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*[^\s]{8,}$",
+            "secret_field": (
+                r"(?i)(?<![A-Za-z0-9_])(?:[A-Za-z0-9_-]+[_-])?"
+                r"(?:x-api-key|api[_-]?key|secret[_-]?key|client[_-]?secret|password|passwd)"
+                r"\s*[:=]\s*[\"']?"
+                r"(?!demo[-_]|test[-_]|mock[-_]|sample[-_]|wrong[-_]|example[-_]|placeholder)"
+                r"(?![^\s\"'`]*\()"
+                r"[^\s\"'`()\[\]{}<>,;\u4e00-\u9fff]{8,}[\"']?(?![\w(])"
+            ),
+            "environment_secret": r"(?im)^[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*[^\s()]{8,}$",
             "known_token_prefix": r"(?i)\b(?:sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{12,}|xox[baprs]-[a-z0-9-]{12,})\b",
             "bearer_jwt": r"(?i)\bbearer[ \t]+[a-z0-9_-]{8,}={0,2}\.[a-z0-9_-]{8,}={0,2}\.[a-z0-9_-]{8,}={0,2}(?![a-z0-9_.=-])",
             "google_oauth_token": r"(?i)(?<![a-z0-9_-])ya29\.[a-z0-9_-]{20,}(?![a-z0-9_-])",
