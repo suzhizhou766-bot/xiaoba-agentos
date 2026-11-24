@@ -419,6 +419,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.17；不创建备份，切换与 UI 同步由用户在终端按授权执行。"
+    },
+    {
+      "version": "v1.6.19",
+      "release_date": "2026-11-24",
+      "status": "candidate",
+      "summary": "Wave 3 单源架构收敛与 Wave 4 长期可维护性重构：顶层 monitor/ 确立为唯一监看权威源码，构包与清单自动投影至 review_ui_assets/ 与 xiaoba_monitor_shared/，消除历史快照目录与重复源码；收编 75P/75Q/75R 发版编排工具至 scripts/release_pipeline/ 并新增仓库入口 START_HERE.md；新增初审别名 initial（完全兼容旧名 delivery）、显式区分 legacy_reuse_count 与 formal_reuse_score、CLI 帮助四类分组；历史只读兼容统一收口至 legacy_compat.py，明确 Schema 7 六张退役表占位定案；模块化拆分 cli.py（cli_groups/ 四模块）、orchestrator.py run_once()（四阶段方法）、store.py（四 Mixin 模块）与 xiaoba_review/review_store.py（store.py 保持同对象别名）；拆出监看前端外链脚本 monitor-keypool.js 与 monitor-review-center.js 并由 SystemModule 精确同源 CSP 放行（UI 清单增至 12 项），monitor_core/lifecycle.py 显式冻结。数据库结构版本保持 7，不新增切换步骤；前置源码清单哈希绑定已上线 v1.6.18。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.18；不创建备份，切换与 UI 同步由用户在终端按授权执行。"
     }
   ]
 }
