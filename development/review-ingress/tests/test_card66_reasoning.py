@@ -1,7 +1,7 @@
 """Card66: optional reasoning_effort on pool nodes and vendor CLI argv."""
 import unittest
 
-from xiaoba_review.agent_pool import REASONING_EFFORT, digest, node_state
+from xiaoba_review.agent_pool import REASONING_EFFORT, digest, node_state, resource_plan
 from xiaoba_review.node_runtime import spec
 from xiaoba_review.resource_vendor_cli import CodeBuddyCliResource, QoderCliResource
 from xiaoba_review.store import canonical
@@ -85,6 +85,78 @@ class ReasoningEffortTests(CliFixture, unittest.TestCase):
         self.assertEqual(set(_QODER_EFFORTS), set(REASONING_EFFORT['qoder']))
         self.assertEqual({k: set(v) for k, v in CLI_REASONING_EFFORTS.items()}, {k: set(v) for k, v in REASONING_EFFORT.items()})
         self.assertIn('xhigh', REASONING_EFFORT['qoder']); self.assertIn('high', REASONING_EFFORT['codebuddy'])
+
+    def _add_enabled(self, agent_type, effort=None, node_id='C66-NODE'):
+        source = self._add(agent_type, effort, node_id)
+        return self.pool.change(source['reviewer_id'], node_state(source)['revision'], 'toggle', enabled=True)
+
+    def test_resource_plan_preserves_reasoning_effort_matching_spec(self):
+        # v1.6.20 热修：卡 66 在 spec() 加入 reasoning_effort 时遗漏了 resource_plan()，
+        # 导致设置思考强度的节点执行开放审查/价值评分任务卡必报“冻结任务卡与当前节点配置不符”。
+        qoder = self._add_enabled('qoder', 'xhigh', 'C66-RP-QODER')
+        cb = self._add_enabled('codebuddy', 'high', 'C66-RP-CB')
+        unset = self._add_enabled('qoder', None, 'C66-RP-UNSET')
+        for source, expected_effort in ((qoder, 'xhigh'), (cb, 'high'), (unset, None)):
+            plan = resource_plan(source)
+            cur = spec(source)
+            self.assertEqual(expected_effort, plan.get('reasoning_effort'))
+            self.assertEqual(expected_effort, cur.get('reasoning_effort'))
+            for key, value in cur.items():
+                if key != 'kind':
+                    self.assertEqual(value, plan.get(key), f"mismatch on key {key}")
+
+    def test_frozen_card_allows_matching_effort_and_blocks_modified_or_cleared_effort(self):
+        import hashlib
+        from unittest.mock import patch
+
+        qoder = self._add_enabled('qoder', 'xhigh', 'C66-EXEC-QODER')
+        cb = self._add_enabled('codebuddy', 'high', 'C66-EXEC-CB')
+        self.store.outbox_root.mkdir(parents=True, exist_ok=True)
+        ev = self.store.outbox_root / 'candidate-v1620.md'
+        ev.write_text('# candidate\n', encoding='utf-8')
+        ev_sha = hashlib.sha256(ev.read_bytes()).hexdigest()
+        tid = self.native.submit('TEST v1620 effort review', 1)
+        self.native.complete_manually(tid, 'TEST result')
+        self.native.stage_memory_candidate(tid, str(ev), ev_sha)
+        created = self.store.create(
+            tid, qoder['reviewer_id'], cb['reviewer_id'], 'TEST effort card',
+            [{'ref': str(ev), 'sha256': ev_sha}],
+            dsh_channel='backend_adapter', peer_channel='backend_adapter',
+            review_type='new_experience',
+        )
+        asg_id = next(a['id'] for a in created['assignments'] if a['source_id'] == qoder['reviewer_id'])
+        card = next(a['card'] for a in created['assignments'] if a['id'] == asg_id)
+        self.assertEqual('xhigh', card['resource_plan'].get('reasoning_effort'))
+
+        # Matching effort passes the spec-vs-resource_plan gate (fails only at stubbed adapter run, not config mismatch)
+        stub_adapter = type('StubAdapter', (), {
+            'supports_resource_plan': True,
+            'run': lambda _self, _card: (_ for _ in ()).throw(RuntimeError('REACHED_ADAPTER_OK')),
+        })()
+        with patch('xiaoba_review.node_runtime.readiness', return_value={'ready': True}), \
+             patch.object(self.backends, 'adapter_for', return_value=stub_adapter):
+            with self.assertRaisesRegex(RuntimeError, 'REACHED_ADAPTER_OK'):
+                self.backends.execute(asg_id)
+
+        # Clearing reasoning_effort after card freeze must still be rejected as config mismatch
+        with self.store.transaction() as db:
+            row = self.store.source(db, qoder['reviewer_id'])
+            row['node'].pop('reasoning_effort', None)
+            db.execute('UPDATE ri_sources SET data=? WHERE id=?', (canonical(row), qoder['reviewer_id']))
+        with patch('xiaoba_review.node_runtime.readiness', return_value={'ready': True}), \
+             patch.object(self.backends, 'adapter_for', return_value=stub_adapter):
+            with self.assertRaisesRegex(ValueError, '冻结任务卡与当前节点配置不符'):
+                self.backends.execute(asg_id)
+
+        # Changing reasoning_effort after card freeze (xhigh -> high) must also be rejected
+        with self.store.transaction() as db:
+            row = self.store.source(db, qoder['reviewer_id'])
+            row['node']['reasoning_effort'] = 'high'
+            db.execute('UPDATE ri_sources SET data=? WHERE id=?', (canonical(row), qoder['reviewer_id']))
+        with patch('xiaoba_review.node_runtime.readiness', return_value={'ready': True}), \
+             patch.object(self.backends, 'adapter_for', return_value=stub_adapter):
+            with self.assertRaisesRegex(ValueError, '冻结任务卡与当前节点配置不符'):
+                self.backends.execute(asg_id)
 
 
 if __name__ == '__main__':

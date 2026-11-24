@@ -176,7 +176,9 @@ class BackendRegistry:
                     raise ValueError('节点尚未通过当前入口和模型的测试，不能直接运行')
                 from .node_runtime import spec
                 current_spec=spec(source)
-                if any(card.get('resource_plan',{}).get(k)!=v for k,v in current_spec.items() if k!='kind'):
+                frozen_plan=card.get('resource_plan',{})
+                if (any(frozen_plan.get(k)!=v for k,v in current_spec.items() if k!='kind')
+                        or frozen_plan.get('reasoning_effort')!=current_spec.get('reasoning_effort')):
                     raise ValueError('冻结任务卡与当前节点配置不符，不能改用当前入口执行旧任务')
             if card['channel'] != 'backend_adapter':
                 raise ValueError('本卡使用外部交接通道')

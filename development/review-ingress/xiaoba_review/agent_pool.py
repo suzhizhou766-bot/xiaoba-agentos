@@ -39,8 +39,12 @@ def resource_plan(source):
         raise ValueError('tmux上下文不隔离，只能作为协作员，不能独立审查')
     if not state.get('entry'):
         return None  # Existing four-field sources retain their old contract.
-    return {k:state[k] for k in ('revision','name','agent','interface','entry','model')} | ({'agent_type':state['agent_type']} if 'agent_type' in state else {}) | {
-        'node_id':source['reviewer_id'],'source_ref':source['source_ref']}
+    return (
+        {k: state[k] for k in ('revision', 'name', 'agent', 'interface', 'entry', 'model')}
+        | ({'agent_type': state['agent_type']} if 'agent_type' in state else {})
+        | ({'reasoning_effort': state['reasoning_effort']} if 'reasoning_effort' in state else {})
+        | {'node_id': source['reviewer_id'], 'source_ref': source['source_ref']}
+    )
 
 
 def independence(source):

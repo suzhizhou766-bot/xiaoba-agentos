@@ -431,6 +431,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.18；不创建备份，切换与 UI 同步由用户在终端按授权执行。"
+    },
+    {
+      "version": "v1.6.20",
+      "release_date": "2026-11-24",
+      "status": "candidate",
+      "summary": "热修（卡 66 思考强度遗漏修复）：修复 agent_pool.resource_plan() 生成开放审查与待价值评分冻结任务卡时漏写 reasoning_effort 导致设置了思考强度的节点（如 CodeBuddy=high、Qoder=xhigh）执行必报“冻结任务卡与当前节点配置不符”的缺陷；同步加固 backends.execute() 双向核对，确保冻结后修改或清空思考强度仍被严格拦截。新增 2 项回归测试覆盖 resource_plan 与 execute 门禁。无 UI 资产变更，数据库结构版本保持 7，不新增切换步骤；前置源码清单哈希绑定已上线 v1.6.19。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.19；不创建备份，切换由用户在终端按授权执行。"
     }
   ]
 }
