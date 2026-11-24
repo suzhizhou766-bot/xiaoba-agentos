@@ -82,8 +82,8 @@
       "asset": "monitor-review-center.js",
       "base": "assistant",
       "relative": "工具/小八监看/monitor-review-center.js",
-      "before_sha256": null,
-      "after_sha256": "94ab2cab27e5cf499d4587ad21dfd70b815dbded52d96757013c75dc4ec25844"
+      "before_sha256": "94ab2cab27e5cf499d4587ad21dfd70b815dbded52d96757013c75dc4ec25844",
+      "after_sha256": "eb7f2924cd877a2d3b6f32331fdfa4c5df70f7530ce41097d90e1b1fb14ebf87"
     }
   ]
 }

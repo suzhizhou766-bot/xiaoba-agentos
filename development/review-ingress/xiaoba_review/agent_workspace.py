@@ -204,17 +204,12 @@ class AgentWorkspace:
                     rtype_ok = rtype in {'new_experience', 'revalidation', 'reuse_change'}
                     app_ok = isinstance(app, str) and bool(app.strip())
                     card_evidence = card_data.get('evidence_refs', [])
-                    def match_ref(r):
-                        if isinstance(r, str):
-                            return bool(r.strip()) and any(c.get('ref') == r for c in card_evidence if isinstance(c, dict))
-                        if isinstance(r, dict):
-                            ref_val = r.get('ref')
-                            sha_val = r.get('sha256')
-                            return (bool(ref_val and isinstance(ref_val, str) and ref_val.strip()) and
-                                    bool(sha_val and isinstance(sha_val, str) and sha_val.strip()) and
-                                    any(c.get('ref') == ref_val and c.get('sha256') == sha_val for c in card_evidence if isinstance(c, dict)))
-                        return False
-                    refs_ok = bool(refs) and all(match_ref(r) for r in refs)
+                    from .workday import normalize_review_evidence_refs, verified_staged_evidence_map
+                    staged_map = verified_staged_evidence_map(root, record, card_data)
+                    _, invalid_refs, matched_card = normalize_review_evidence_refs(
+                        refs, card_evidence, staged_refs=staged_map
+                    )
+                    refs_ok = bool(refs) and not invalid_refs and (matched_card or not card_evidence)
                     v2_ok = rtype_ok and score_ok and app_ok and refs_ok
 
                 review_qualified = bool(status_ok and no_failure and has_verdict and has_refs and v2_ok)

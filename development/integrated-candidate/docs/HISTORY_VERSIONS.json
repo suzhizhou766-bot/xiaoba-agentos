@@ -443,6 +443,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.19；不创建备份，切换由用户在终端按授权执行。"
+    },
+    {
+      "version": "v1.6.21",
+      "release_date": "2026-11-24",
+      "status": "candidate",
+      "summary": "热修（隔离只读副本证据引用映射与派工状态文案优化）：修复 CLI 审查节点遵循派工卡约束如实引用隔离区只读副本（任务记录/<记录>/材料/...）时被 parse_review_receipt() 与 agent_workspace.workday_inputs() 误拒为“证据引用未匹配任务卡”的缺陷；在 workday.py 统一归口 SHA-256 校验后的只读副本路径映射（兼容绝对/相对路径、反引号与中英文行号后缀），同时保护未列于 card.evidence_refs、篡改/符号链接及仅引用派工卡的反伪造边界，并覆盖 CliWorklogResource.run() 与 run_task()。同步将监看中心待价值评分 started 状态标签由“派工中断或待续”修正为更准确的“评分进行中或待续”（仅更新 1 项 UI 资产 monitor-review-center.js）。数据库结构版本保持 7，不新增切换步骤；前置源码清单哈希绑定已上线 v1.6.20。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.20；不创建备份，切换、UI 同步与监看中心重启由用户在终端按授权执行。"
     }
   ]
 }

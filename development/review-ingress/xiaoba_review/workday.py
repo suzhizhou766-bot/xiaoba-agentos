@@ -173,3 +173,175 @@ def verify_worklog(root, evidence):
         raise ValueError('worklog rewritten')
     if sha(read_regular(root/evidence['task_card']) or b'')!=evidence['task_card_sha256']:
         raise ValueError('worklog card changed')
+
+
+_PAREN_LINE_ANCHOR_RE = re.compile(r'\s*[（(]L?\d+(?:[-–—]L?\d+)?[）)]$')
+_HASH_LINE_ANCHOR_RE = re.compile(r'#L?\d+(?:[-–—]L?\d+)?$')
+_COLON_LINE_ANCHOR_RE = re.compile(r':L?\d+(?:[-–—]L?\d+)?$')
+
+
+def strip_ref_anchor(ref):
+    if not isinstance(ref, str):
+        return ref
+    text = ref.strip()
+    text = _PAREN_LINE_ANCHOR_RE.sub('', text).strip()
+    if len(text) >= 2 and text[0] == '`' and text[-1] == '`':
+        text = text[1:-1].strip()
+    text = _PAREN_LINE_ANCHOR_RE.sub('', text).strip()
+    text = _HASH_LINE_ANCHOR_RE.sub('', text).strip()
+    if '/' in text:
+        text = _COLON_LINE_ANCHOR_RE.sub('', text).strip()
+    return text
+
+
+def is_dispatch_card_ref(ref):
+    if not isinstance(ref, str):
+        return False
+    base = Path(strip_ref_anchor(ref)).name
+    return base.startswith('派工卡-') and base.endswith('.md')
+
+
+def staged_evidence_map(declared, staged, *, workspace_root=None, record_dir=None):
+    """Map SHA-256-verified staged read-only copies back to their canonical declared paths."""
+    mapping = {}
+    bases = [Path(b) for b in (workspace_root, record_dir) if b is not None]
+
+    def register(path_obj, canonical_ref):
+        mapping[str(path_obj)] = canonical_ref
+        try:
+            resolved = path_obj.resolve()
+            mapping[str(resolved)] = canonical_ref
+        except OSError:
+            resolved = None
+        for base in bases:
+            base_variants = [base]
+            try:
+                resolved_base = base.resolve()
+                if resolved_base != base:
+                    base_variants.append(resolved_base)
+            except OSError:
+                pass
+            for candidate in (path_obj, resolved):
+                if candidate is None:
+                    continue
+                for base_variant in base_variants:
+                    try:
+                        mapping[str(candidate.relative_to(base_variant))] = canonical_ref
+                    except ValueError:
+                        pass
+
+    for item, target in zip(declared, staged):
+        canonical_ref = item.get('path') if isinstance(item, dict) else None
+        if not isinstance(canonical_ref, str) or not canonical_ref:
+            continue
+        path = Path(target)
+        register(path, canonical_ref)
+        if path.is_dir() and not path.is_symlink():
+            for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
+                for name in list(dirnames):
+                    if (Path(dirpath) / name).is_symlink():
+                        dirnames.remove(name)
+                for fn in filenames:
+                    child = Path(dirpath) / fn
+                    if not child.is_symlink():
+                        register(child, canonical_ref)
+    return mapping
+
+
+def verified_staged_evidence_map(root, record, card_data):
+    """Build staged->canonical map for a saved review record only after verifying SHA-256."""
+    if not isinstance(card_data, dict):
+        return {}
+    record_dir = Path(root) / '任务记录' / record
+    staged_dir = record_dir / '材料'
+    if not staged_dir.is_dir() or staged_dir.is_symlink():
+        return {}
+    from xiaoba_agentos.task_context import material_digest
+    declared, seen = [], set()
+    for item in card_data.get('material_files') or []:
+        if isinstance(item, dict) and isinstance(item.get('path'), str) and item['path'] and item['path'] not in seen:
+            seen.add(item['path'])
+            declared.append({'path': item['path'], 'sha256': item.get('sha256')})
+    for item in card_data.get('evidence_refs') or []:
+        if (isinstance(item, dict) and isinstance(item.get('ref'), str)
+                and os.path.isabs(item['ref']) and item['ref'] not in seen):
+            seen.add(item['ref'])
+            declared.append({'path': item['ref'], 'sha256': item.get('sha256')})
+    if not declared:
+        return {}
+    verified_declared, verified_staged, names = [], [], set()
+    for item in declared:
+        name = Path(item['path']).name
+        while name in names:
+            name += '-2'
+        names.add(name)
+        target = staged_dir / name
+        expected = item.get('sha256')
+        if not expected or not target.exists() or target.is_symlink():
+            continue
+        try:
+            if material_digest(target) != expected:
+                continue
+        except OSError:
+            continue
+        verified_declared.append(item)
+        verified_staged.append(target)
+    return staged_evidence_map(
+        verified_declared, verified_staged,
+        workspace_root=Path(root), record_dir=record_dir,
+    )
+
+
+def normalize_review_evidence_refs(refs, card_evidence, *, staged_refs=None):
+    """Validate and canonicalize review evidence_refs against card_evidence.
+
+    Accepts exact card refs, line-anchored refs, SHA-256-verified staged read-only
+    material copies (mapped back to canonical card refs), and supplemental
+    派工卡-*.md refs (which never substitute for real candidate evidence).
+    """
+    card_evidence = card_evidence or []
+    card_refs = {c.get('ref') for c in card_evidence if isinstance(c, dict) and isinstance(c.get('ref'), str)}
+    staged_map = staged_refs or {}
+    normalized_refs = []
+    invalid_refs = []
+    matched_card_evidence = False
+
+    def resolve_ref(cleaned):
+        if cleaned in card_refs:
+            return cleaned
+        mapped = staged_map.get(cleaned)
+        if mapped is None and cleaned.startswith('./'):
+            mapped = staged_map.get(cleaned[2:])
+        if isinstance(mapped, str) and mapped in card_refs:
+            return mapped
+        return None
+
+    for r in refs:
+        if isinstance(r, str):
+            cleaned = strip_ref_anchor(r)
+            canonical_ref = resolve_ref(cleaned)
+            if canonical_ref is not None:
+                if canonical_ref not in normalized_refs:
+                    normalized_refs.append(canonical_ref)
+                matched_card_evidence = True
+            elif is_dispatch_card_ref(cleaned):
+                # 派工卡引用允许作为补充上下文，但不能单独替代任务卡证据引用。
+                continue
+            else:
+                invalid_refs.append(r)
+        elif isinstance(r, dict):
+            cleaned_ref = strip_ref_anchor(r.get('ref'))
+            canonical_ref = resolve_ref(cleaned_ref) if isinstance(cleaned_ref, str) else None
+            if canonical_ref is not None and any(
+                c.get('ref') == canonical_ref and c.get('sha256') == r.get('sha256')
+                for c in card_evidence if isinstance(c, dict)
+            ):
+                normalized_item = {**r, 'ref': canonical_ref}
+                if normalized_item not in normalized_refs:
+                    normalized_refs.append(normalized_item)
+                matched_card_evidence = True
+            else:
+                invalid_refs.append(str(r.get('ref') or r))
+        else:
+            invalid_refs.append(str(r))
+    return normalized_refs, invalid_refs, matched_card_evidence

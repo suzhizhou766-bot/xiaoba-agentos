@@ -276,7 +276,7 @@ class Card59PolicyTests(unittest.TestCase):
             ('assistant', '工具/小八监看/monitor_core/modules/system.py'): '26a66740f1f317c50a8c9a127b9b407e4a1bd39c8c208fa0cf4288b794de020f',
             ('assistant', '工具/小八监看/monitor_core/web.py'): '18476caeeef51f384a730fca91c8ddf43500571f0bec90fb8f906a495d884555',
             ('assistant', '工具/小八监看/monitor-keypool.js'): None,
-            ('assistant', '工具/小八监看/monitor-review-center.js'): None,
+            ('assistant', '工具/小八监看/monitor-review-center.js'): '94ab2cab27e5cf499d4587ad21dfd70b815dbded52d96757013c75dc4ec25844',
         }, {key: value for key, value in current_before.items() if key not in expected_before})
 
     def test_B3_release_tool_declares_marker(self):

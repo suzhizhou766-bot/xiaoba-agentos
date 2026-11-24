@@ -20,8 +20,8 @@ from test_switch_release import Fixture, seal, switch, write
 
 ROOT = Path(__file__).resolve().parents[1]
 
-LIVE_V1619_SOURCE_MANIFEST_SHA256 = 'adafe3b2f2d9804164d7b06947ea56f4e83640657faff0cb0dc42a238e0c3fd8'
-STALE_V1618_SOURCE_MANIFEST_SHA256 = '5bbc6c9be717c962554b71d504a2fb66c3e0aa477f74a9fe7f89198966fcfd70'
+LIVE_V1620_SOURCE_MANIFEST_SHA256 = 'dd51a05c4a49503a6ca0a128cb0a37ac0c7ca8fc978806ac2453f6463a567ddf'
+STALE_V1619_SOURCE_MANIFEST_SHA256 = 'adafe3b2f2d9804164d7b06947ea56f4e83640657faff0cb0dc42a238e0c3fd8'
 RECORDED_STEPS = {
     '0002-skills-root': ('v1.6.1', '71ca23fde7feb9d89db4345f264b728332901c38caaed9d6a4f7101b6b78ed48'),
     '0003-skills-index': ('v1.6.1', '05eecdb2dc836a7e1ab0e95343002b598d209bb5c6cc5cdf2ffa8a20498ded61'),
@@ -79,25 +79,25 @@ class DeploymentPredecessorBindingTest(unittest.TestCase):
         config['skills'] = {'root_dir': str(assistant / 'skills'), 'index_path': str(assistant / 'skills/index.json')}
         config['knowledge'] = {'index_path': str(assistant / '系统/价值文件索引/index.json')}
         write(self.layout.config, switch.encoded(config))
-        return ({'version': 'v1.6.19', 'database_schema_version': 7,
-                 'agentos_source_manifest_sha256': LIVE_V1619_SOURCE_MANIFEST_SHA256},
-                {'version': 'v1.6.20', 'database_schema_version': 7})
+        return ({'version': 'v1.6.20', 'database_schema_version': 7,
+                 'agentos_source_manifest_sha256': LIVE_V1620_SOURCE_MANIFEST_SHA256},
+                {'version': 'v1.6.21', 'database_schema_version': 7})
 
     def test_repository_declaration_binds_the_live_release_and_keeps_executed_steps(self):
         declaration = self.declaration()
         # 抄录的常量必须仍然等于仓库声明本身，否则这个测试测的是别的东西。
-        self.assertEqual(LIVE_V1619_SOURCE_MANIFEST_SHA256, declaration['from_source_manifest_sha256'])
+        self.assertEqual(LIVE_V1620_SOURCE_MANIFEST_SHA256, declaration['from_source_manifest_sha256'])
         self.assertEqual(sorted(RECORDED_STEPS), sorted(step['id'] for step in declaration['steps']))
         for step in declaration['steps']:
             self.assertEqual(RECORDED_STEPS[step['id']][1], switch.digest(switch.encoded(step)),
                              f"{step['id']} 与线上已执行记录不同，预检会报 executed step has been modified")
         old, new = self.scene(declaration)
         spec = switch.checked_spec(self.layout, old, new)
-        self.assertEqual(LIVE_V1619_SOURCE_MANIFEST_SHA256, spec['from_source_manifest_sha256'])
+        self.assertEqual(LIVE_V1620_SOURCE_MANIFEST_SHA256, spec['from_source_manifest_sha256'])
 
     def test_declaration_still_bound_to_the_previous_release_is_rejected(self):
         declaration = self.declaration()
-        declaration['from_source_manifest_sha256'] = STALE_V1618_SOURCE_MANIFEST_SHA256
+        declaration['from_source_manifest_sha256'] = STALE_V1619_SOURCE_MANIFEST_SHA256
         old, new = self.scene(declaration)
         with self.assertRaisesRegex(switch.SwitchError, 'deployment predecessor binding mismatch'):
             switch.checked_spec(self.layout, old, new)

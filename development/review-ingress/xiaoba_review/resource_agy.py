@@ -29,7 +29,12 @@ from xiaoba_agentos.output_hygiene import contains_non_answer_markers, detect_re
 from .agent_workspace import AgentWorkspace, WorkspaceError
 from .terminal_preview import TerminalPreview
 from .terminal_screen import TerminalScreen
-from .workday import WorkdayReceipts
+from .workday import (
+    WorkdayReceipts,
+    is_dispatch_card_ref as _is_dispatch_card_ref,
+    normalize_review_evidence_refs,
+    strip_ref_anchor as _strip_ref_anchor,
+)
 
 
 ANSI = re.compile(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[()][A-Z0-9]|\x1b[=>]')
@@ -66,23 +71,7 @@ REVIEW_RUN_INSTRUCTION = (
 )
 
 
-_LINE_ANCHOR_RE = re.compile(r'#L?\d+(?:-L?\d+)?$')
-
-
-def _strip_ref_anchor(ref):
-    if not isinstance(ref, str):
-        return ref
-    return _LINE_ANCHOR_RE.sub('', ref.strip())
-
-
-def _is_dispatch_card_ref(ref):
-    if not isinstance(ref, str):
-        return False
-    base = Path(_strip_ref_anchor(ref)).name
-    return base.startswith('派工卡-') and base.endswith('.md')
-
-
-def parse_review_receipt(value, card, evidence):
+def parse_review_receipt(value, card, evidence, *, staged_refs=None):
     verdict = value['metadata'].get('审查结论') or value['metadata'].get('verdict')
     refs = value.get('evidence_refs') or []
     contract = card.get('receipt_contract', {})
@@ -109,29 +98,9 @@ def parse_review_receipt(value, card, evidence):
                 score = None
         card_evidence = card.get('evidence_refs', [])
         card_refs = {c.get('ref') for c in card_evidence if isinstance(c, dict) and isinstance(c.get('ref'), str)}
-        normalized_refs = []
-        invalid_refs = []
-        matched_card_evidence = False
-        for r in refs:
-            if isinstance(r, str):
-                cleaned = _strip_ref_anchor(r)
-                if cleaned in card_refs:
-                    normalized_refs.append(cleaned)
-                    matched_card_evidence = True
-                elif _is_dispatch_card_ref(cleaned):
-                    # 派工卡引用允许作为补充上下文，但不能单独替代任务卡证据引用。
-                    continue
-                else:
-                    invalid_refs.append(r)
-            elif isinstance(r, dict):
-                cleaned_ref = _strip_ref_anchor(r.get('ref'))
-                if any(c.get('ref') == cleaned_ref and c.get('sha256') == r.get('sha256') for c in card_evidence if isinstance(c, dict)):
-                    normalized_refs.append({**r, 'ref': cleaned_ref})
-                    matched_card_evidence = True
-                else:
-                    invalid_refs.append(str(r.get('ref') or r))
-            else:
-                invalid_refs.append(str(r))
+        normalized_refs, invalid_refs, matched_card_evidence = normalize_review_evidence_refs(
+            refs, card_evidence, staged_refs=staged_refs
+        )
         valid_refs = not invalid_refs and (matched_card_evidence or not card_refs)
         missing_parts = []
         if review_type not in {'new_experience', 'revalidation', 'reuse_change'}:

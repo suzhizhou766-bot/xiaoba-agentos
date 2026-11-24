@@ -261,7 +261,7 @@ const esc = value => String(value ?? "").replace(/[&<>\"]/g, ch => ({{"&":"&amp;
         setup = r"""
 const TOKEN = "TEST_PAGE_TOKEN";
 let valueQueueBusy = false;
-const VALUE_DISPATCH_LABEL={not_started:"尚未派工",blocked:"等待审查节点",started:"派工中断或待续",failed:"评分失败",waiting_receipts:"等待双审回执"};
+const VALUE_DISPATCH_LABEL={not_started:"尚未派工",blocked:"等待审查节点",started:"评分进行中或待续",failed:"评分失败",waiting_receipts:"等待双审回执"};
 const queue = [
   {task_id:"blocked-task",candidate_sha256:"a".repeat(64),dispatch:{status:"blocked",reason:"没有可用审查节点"}},
   {task_id:"failed-task",candidate_sha256:"b".repeat(64),dispatch:{status:"failed",reason:"评分执行失败"}},

@@ -22,7 +22,7 @@ from .resource_agy import (
     REVIEW_RUN_INSTRUCTION, parse_review_receipt
 )
 from .terminal_preview import TerminalPreview
-from .workday import WorkdayReceipts
+from .workday import WorkdayReceipts, staged_evidence_map, strip_ref_anchor
 
 
 ANTI_DRIFT = '只执行这张卡；不要检索旧任务记录、其它日期的工作日志或小八源码。'
@@ -551,7 +551,7 @@ class CliWorklogResource:
         return staged
 
     def _turn(self, instruction, context, timeout=None, kind='review', record_id=None,
-              step_code=None, task_id=None, health_only=False):
+              step_code=None, task_id=None, health_only=False, staged_refs_out=None):
         with self._serial:
             if self._retired:
                 raise InteractiveError('session_closed', f'{self.label}节点已停用，本会话不再接收任务。')
@@ -566,6 +566,13 @@ class CliWorklogResource:
                     value, evidence = prior
                     if value is None:
                         raise InteractiveError('work_step_failed', '原任务步骤已失败并留有记录，不自动重跑。')
+                    if staged_refs_out is not None:
+                        from .workday import verified_staged_evidence_map
+                        from .agent_workspace import checksum
+                        prior_record = 'work-' + checksum(str(record_id or task_id).encode())[:24]
+                        staged_refs_out.update(
+                            verified_staged_evidence_map(self.workspace.path, prior_record, materials)
+                        )
                     return value, dict(evidence, replayed=True)
             self.resource_identity()
             record = None
@@ -578,6 +585,11 @@ class CliWorklogResource:
                 record = self.workspace.begin(kind, record_id or task_id, payload)
                 materials, media_packet = self._prepare_review_materials(materials) if kind == 'review' else (materials, None)
                 staged = self._stage_materials(record, materials, deny_video=kind == 'review')
+                if staged_refs_out is not None and staged:
+                    staged_refs_out.update(staged_evidence_map(
+                        self.declared_materials(materials), staged,
+                        workspace_root=directory, record_dir=directory / '任务记录' / record,
+                    ))
                 media_readback = self._media_readback(materials, staged, media_packet)
                 ticket = self.workday.prepare(record, task_id, step_code, instruction, materials,
                     review=kind == 'review', health_only=health_only, staged=staged)
@@ -645,22 +657,42 @@ class CliWorklogResource:
         return evidence
 
     def run(self, card):
+        staged_refs = {}
         value, evidence = self._turn(REVIEW_RUN_INSTRUCTION,
             json.dumps(card, ensure_ascii=False), record_id=card.get('assignment_id'),
             task_id=card.get('task_id') or card.get('review_request_id'),
-            step_code=card.get('step_code'))
-        return parse_review_receipt(value, card, evidence)
+            step_code=card.get('step_code'), staged_refs_out=staged_refs)
+        return parse_review_receipt(value, card, evidence, staged_refs=staged_refs)
 
     def run_task(self, task_id, step_code, instruction, materials, attempt=0):
         if not isinstance(instruction, str) or not instruction.strip():
             raise ValueError('需要明确授权的工作内容和范围')
         # 用户恢复冻结任务后，失败那一侧要重跑：每次恢复开一条新记录，不复用失败记录。
         record_id = task_id + '-' + step_code + ('-resume%d' % attempt if attempt else '')
+        staged_refs = {}
         value, evidence = self._turn(instruction, json.dumps(materials, ensure_ascii=False),
-            kind='work', task_id=task_id, step_code=step_code, record_id=record_id)
+            kind='work', task_id=task_id, step_code=step_code, record_id=record_id,
+            staged_refs_out=staged_refs)
+        raw_refs = value.get('evidence_refs', [])
+        if staged_refs and isinstance(raw_refs, list):
+            normalized = []
+            for r in raw_refs:
+                if isinstance(r, str):
+                    mapped = staged_refs.get(strip_ref_anchor(r))
+                    item = mapped if isinstance(mapped, str) else r
+                elif isinstance(r, dict) and isinstance(r.get('ref'), str):
+                    mapped = staged_refs.get(strip_ref_anchor(r['ref']))
+                    item = {**r, 'ref': mapped} if isinstance(mapped, str) else r
+                else:
+                    item = r
+                if item not in normalized:
+                    normalized.append(item)
+            refs = normalized
+        else:
+            refs = raw_refs
         return {'task_id': task_id, 'step_code': step_code, 'status': value['status'],
                 'body': value['body'], 'metadata': value.get('metadata', {}),
-                'evidence_refs': value.get('evidence_refs', []),
+                'evidence_refs': refs,
                 'execution_evidence': evidence, 'score_assigned': False}
 
 

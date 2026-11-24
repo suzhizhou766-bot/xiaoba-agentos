@@ -49,7 +49,7 @@ const ReviewCenter = (() => {
   }
 
   let valueQueueBusy=false;
-  const VALUE_DISPATCH_LABEL={not_started:"尚未派工",blocked:"等待审查节点",started:"派工中断或待续",failed:"评分失败",waiting_receipts:"等待双审回执"};
+  const VALUE_DISPATCH_LABEL={not_started:"尚未派工",blocked:"等待审查节点",started:"评分进行中或待续",failed:"评分失败",waiting_receipts:"等待双审回执"};
   async function refreshValueQueue(preserveMessage=false){
     if(valueQueueBusy) return;
     valueQueueBusy=true;
