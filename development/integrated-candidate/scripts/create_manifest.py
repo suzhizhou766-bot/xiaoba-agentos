@@ -63,15 +63,18 @@ def _resolve_monitor_source(repo_dir: Path) -> tuple[Path, tuple[Path, ...]]:
     return canonical, (canonical,)
 
 
-# W3-M1: Monitor-owned UI assets live ONCE in canonical monitor/ and are projected into
+# W3-M1 / W4-P4: Monitor-owned UI assets live ONCE in canonical monitor/ and are projected into
 # review_ui_assets/ automatically by create_manifest & build_release.
 _MONITOR_UI_PROJECTIONS: tuple[tuple[str, str], ...] = (
     ("monitor_core/agentos_config.py", "src/xiaoba_agentos/review_ui_assets/agentos_config.py"),
     ("monitor_core/config.py", "src/xiaoba_agentos/review_ui_assets/monitor_config.py"),
     ("monitor_core/modules/overview.py", "src/xiaoba_agentos/review_ui_assets/monitor_overview.py"),
     ("monitor_core/modules/review.py", "src/xiaoba_agentos/review_ui_assets/monitor_review.py"),
+    ("monitor_core/modules/system.py", "src/xiaoba_agentos/review_ui_assets/monitor_system.py"),
     ("monitor_core/web.py", "src/xiaoba_agentos/review_ui_assets/monitor_web.py"),
     ("xiaoba-monitor.html", "src/xiaoba_agentos/review_ui_assets/xiaoba-monitor.html"),
+    ("monitor-keypool.js", "src/xiaoba_agentos/review_ui_assets/monitor-keypool.js"),
+    ("monitor-review-center.js", "src/xiaoba_agentos/review_ui_assets/monitor-review-center.js"),
 )
 
 

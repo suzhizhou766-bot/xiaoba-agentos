@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .config import AgentConfig
+from .legacy_compat import (
+    LEGACY_AGENT_NAMES,
+    WORKBUDDY_RETIRED_CODE,
+    WORKBUDDY_RETIRED_MESSAGE,
+)
 from .validation_evidence import independence_key
 
 ROLE_REVIEW = "review"
@@ -30,7 +35,6 @@ _STORED_ROLE = {
     "collaborate": ROLE_COLLABORATE,
     "both": ROLE_BOTH,
 }
-LEGACY_AGENT_NAMES = frozenset({"agy_review", "dsh_review", "qoder_review"})
 SHORTAGE = "当前开启并通过测试的独立审查节点不足 2 个，这次不派审查"
 SAME_ENTRY = "同一入口程序和同一模型不能算两份独立审查，这次不派审查"
 ASK_HOST = "Agent 池审查员全部不可用。可以改由宿主审查，并标明“无独立审查”；不会回退到任何预设后台。"
@@ -39,14 +43,6 @@ NO_INDEPENDENT = "无独立审查"
 NO_COLLAB = "没有协作节点，这次不排队"
 AWAITING_HOST = "这次没有需要审查的经验，留给宿主完成。"
 DEFAULT_NO_PROGRESS_SECONDS = 300
-# 卡 45（v1.6.9）：内置 WorkBuddy 引擎退役。类型 "workbuddy" 只保留用于识别旧节点
-# 数据；新建节点不再提供该类型，旧节点的测试运行与派活一律返回这个错误码与提示。
-# CodeBuddy CLI（"codebuddy"）不受影响，调用方式与参数保持原样。
-WORKBUDDY_RETIRED_CODE = "engine_retired"
-WORKBUDDY_RETIRED_MESSAGE = (
-    "内置 WorkBuddy 引擎已退役，请把这个节点的类型改成 WorkBuddy CLI（CodeBuddy），"
-    "入口填 codebuddy 的路径，再测试运行。"
-)
 _CLI_TYPES = ("agy", "dsh", "qoder", "workbuddy", "codebuddy", "codex", "claude", "other")
 _ENTRY_TYPES = {
     "agy": "agy", "antigravity": "agy", "dsh": "dsh", "qoder": "qoder",

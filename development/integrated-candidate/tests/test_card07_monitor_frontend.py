@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path
 
 PAGE = resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html")
+REVIEW_JS = resolve_asset_path(UI_ASSETS, "monitor-review-center.js")
 
 
 def extract_function(source, name):
@@ -36,7 +37,8 @@ def extract_top_function(source, name):
 class Card07FrontendTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = PAGE.read_text(encoding="utf-8")
+        cls.html = PAGE.read_text(encoding="utf-8")
+        cls.source = cls.html + "\n" + REVIEW_JS.read_text(encoding="utf-8")
         cls.node = shutil.which("node")
 
     def run_node(self, script):
@@ -215,9 +217,9 @@ async function run(fetchResult){
     def test_topo_anchor_is_single_and_unchanged(self):
         # C07-01：锚点必须在权威页面里唯一且不被删改；agent-pool-native.js 由 mount_pool
         # 以该锚点为字节注入点带入，静态页面本身不应包含第二段脚本引用（否则重复注入）。
-        self.assertEqual(self.source.count('id="topo"'), 1)
-        self.assertIn('<svg id="topo"', self.source)
-        self.assertNotIn("agent-pool-native.js", self.source,
+        self.assertEqual(self.html.count('id="topo"'), 1)
+        self.assertIn('<svg id="topo"', self.html)
+        self.assertNotIn("agent-pool-native.js", self.html,
                          "静态页不得自带 native 脚本，避免 mount_pool 注入后重复/重叠")
 
 

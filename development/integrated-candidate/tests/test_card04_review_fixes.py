@@ -223,7 +223,11 @@ class Card04ReviewFixes(unittest.TestCase):
         self.assertEqual(row["status"], "pending")
         self.assertTrue(str(row["last_error"]).startswith("awaiting_host:"))
         self.assertIsNone(row["lease_until"])
-        cli_src = (Path(__file__).resolve().parents[1] / "src/xiaoba_agentos/cli.py").read_text()
+        pkg = Path(__file__).resolve().parents[1] / "src/xiaoba_agentos"
+        cli_src = "\n".join(
+            (pkg / rel).read_text(encoding="utf-8")
+            for rel in ("cli.py", "cli_groups/daily_ops.py", "cli_groups/maintenance_ops.py")
+        )
         self.assertIn('"awaiting_host"', cli_src)
         self.assertIn('"ask_user"', cli_src)
         self.assertIn('"blocked_review_nodes"', cli_src)

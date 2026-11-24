@@ -333,7 +333,11 @@ class PageShowsWaitingForReauthorizationTests(unittest.TestCase):
     """页面上要看得见“等待重新授权”，不能只有一个内部状态码。"""
 
     def test_status_text_and_node_hint_exist(self):
-        text = (Path(__file__).resolve().parent.parent / "xiaoba-monitor.html").read_text(encoding="utf-8")
+        monitor_dir = Path(__file__).resolve().parent.parent
+        text = (monitor_dir / "xiaoba-monitor.html").read_text(encoding="utf-8")
+        keypool_js = monitor_dir / "monitor-keypool.js"
+        if keypool_js.is_file():
+            text += "\n" + keypool_js.read_text(encoding="utf-8")
         # 页面文案随 review-ui-install 管理的 html 走；卡 60 保留仓库页时可能尚未合并 Key 绑定 UI。
         needles = (
             'reauth:["warn","等待重新授权"]',

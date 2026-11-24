@@ -36,8 +36,8 @@ IS_DEV_WORKTREE = (REPO_ROOT / ".git").exists() and (REPO_ROOT / "development" /
 
 
 class Wave3SingleSourceTests(unittest.TestCase):
-    def test_all_nine_targets_resolve_and_exist(self):
-        self.assertEqual(9, len(TARGETS))
+    def test_all_twelve_targets_resolve_and_exist(self):
+        self.assertEqual(12, len(TARGETS))
         for asset in TARGETS:
             path = resolve_asset_path(ASSETS, asset)
             self.assertTrue(path.is_file(), f"missing resolved asset {asset} -> {path}")

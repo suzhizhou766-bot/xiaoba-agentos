@@ -193,7 +193,9 @@ def dispatch(request: Dict[str, Any], store: EventStore, config: Any) -> Dict[st
         if not isinstance(packet, dict):
             return _envelope(False, error="packet must be a JSON object")
         task_id = str(packet.get("candidate_id") or packet.get("task_id") or "").strip()
-        stage = str(packet.get("stage") or "delivery").strip()
+        stage_raw = str(packet.get("stage") or "delivery").strip()
+        from .store import REVIEW_STAGE_ALIASES
+        stage = REVIEW_STAGE_ALIASES.get(stage_raw, stage_raw)
         decision = str(packet.get("decision") or "").strip()
         note = str(packet.get("user_note") or packet.get("note") or "").strip()
         requested_mode = str(packet.get("mode") or "review_only").strip()

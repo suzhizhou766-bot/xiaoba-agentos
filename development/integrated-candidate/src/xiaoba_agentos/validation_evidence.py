@@ -403,8 +403,9 @@ def task_evidence(conn, candidate, approved, record):
     if verdicts is None:
         # Only legacy local-agent tasks require the historical judge record.
         # Dynamic pool and host-complemented reviews prove their actual bound votes.
-        judge = conn.execute("SELECT payload_json FROM events WHERE task_id=? AND event_type='judge.decided' ORDER BY sequence DESC LIMIT 1", (task_id,)).fetchone()
-        if not judge or json.loads(judge[0]).get("successful_agents", 0) < 2:
+        from .legacy_compat import read_latest_judge_event
+        judge_payload = read_latest_judge_event(conn, task_id)
+        if not judge_payload or judge_payload.get("successful_agents", 0) < 2:
             raise ValueError("缺少原生双审裁判记录")
         names = {a["name"] for a in snapshot.get("agents", []) if a.get("enabled")}
         if len(names) < 2:

@@ -73,9 +73,11 @@ class TopoInjectionTests(unittest.TestCase):
 
     def test_j11c_evidence_confirmation_interaction_is_present(self):
         html = AUTHORITATIVE_HTML.read_text(encoding='utf-8')
+        review_js = (MONITOR / 'monitor-review-center.js').read_text(encoding='utf-8')
+        combined = html + '\n' + review_js
         for marker in ('rc-basis-confirm', 'validation_basis_confirmation',
                        'syncBasisConfirmationState', 'renderBasisConfirmations'):
-            self.assertIn(marker, html, 'J11c 人工依据确认交互不得被覆盖：' + marker)
+            self.assertIn(marker, combined, 'J11c 人工依据确认交互不得被覆盖：' + marker)
 
 
 if __name__ == '__main__':

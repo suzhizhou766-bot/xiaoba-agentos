@@ -1,5 +1,12 @@
 # v1.6.18 运维
 
+### 术语消歧对照表（W4-O1 / W4-O2）
+| 术语/字段 | 含义 | 不要混淆成 |
+|---|---|---|
+| `review --stage initial`（旧名 `delivery` 100% 兼容） | **经验初审**：用户把待沉淀经验送去隔离验证前的第一关 | `task-delivery` / `memory-delivery-record`（真实任务的用户成品交付事件） |
+| `formal_reuse_score`（事件账本 `memory.reuse_scored` 投影） | **正式经验复用永久总分**：仅在用户明确交付且结论引用源经验时记账 | `legacy_reuse_count`（旧表 `memory_candidates.reuse_count` 历史列，仅作历史兼容展示） |
+| `xiaoba --help` 4 组命令导航 | 按「日常 8 命令 / 经验裁决与记忆 / 内部维护与发版 / 已退役占位」分组 | 不会改变任何既有子命令名称 |
+
 ```sh
 XIAOBA="$HOME/.agents/skills/xiaoba-agentos/scripts/xiaoba"
 "$XIAOBA" doctor --json
@@ -282,3 +289,9 @@ xiaoba submit "验收说明" --memory-kind audit --work-task WORK_TASK \
 裁决中心一批展示名称、最后调用时间、计时起点、当前间隔与永久分。本批“保留”对应 approve：整批记为已撤回、重新计时并升档；“删除（退役归档）”对应 reject：整批源笔记移出Vault至 `memory-retired/<源ID>-<SHA>.md`，摘链接、重建校验索引，数据库记退役，原字节可找回，不硬删除。两种操作均为用户手动决定，不由计时检查触发。
 
 浏览器显示、审查回执版本与最终操作绑定；旧快照、正文漂移、最新回执未核验、作者／执行者身份冲突均拒绝发布。普通文件／索引异常会回滚DB与文件，失败产生的新文件移至运行目录 `_待删/` 并记说明；不生成备份。跨SQLite与文件系统没有跨进程崩溃事务：进程被强制终止时可能留下待核对文件，重试遇到冲突会停止并要求人工核对，不覆盖或删除保留版本。不把此限制称为端到端崩溃恢复通过。
+
+## Schema 7 策略进化退役表与历史兼容边界（Wave 4 Q1 / Q2 / Q3）
+
+- **Schema 7 六张退役表维持原状占位（W4-Q3）**：`strategies`、`strategy_audit`、`evaluations`、`evaluation_cases`、`evaluation_runs`、`promotion_gates` 六张表随 2026-10-11 策略进化退役后不再有任何业务读写，但**刻意保留建表占位、不做高风险删表迁移**，确保 Schema 7 指纹与历史库升级零风险。
+- **历史只读兼容单一出口（W4-Q1）**：历史 `judge.decided`、`standby.substituted` 与历史具名审查节点（清单见 `legacy_compat.LEGACY_AGENT_NAMES`）的只读兼容入口统一收敛至 `xiaoba_agentos/legacy_compat.py`；生产 Agent 池模式（`pool`）不触发旧替补写入，同时保证线上全量历史事件链完整回放。
+- **退役组件防复活（W4-Q2）**：`WorkBuddy` 内置引擎、`Headroom` 自动重启与独立 `8797` 裁决端口均已登记在 `legacy_compat.RETIRED_COMPONENTS` 并由自动化反例测试锁定拒派/停用行为。

@@ -16,21 +16,27 @@ TARGETS = {
     "monitor_config.py": ("assistant", "工具/小八监看/monitor_core/config.py"),
     "monitor_overview.py": ("assistant", "工具/小八监看/monitor_core/modules/overview.py"),
     "monitor_review.py": ("assistant", "工具/小八监看/monitor_core/modules/review.py"),
+    "monitor_system.py": ("assistant", "工具/小八监看/monitor_core/modules/system.py"),
     "monitor_web.py": ("assistant", "工具/小八监看/monitor_core/web.py"),
     "workflow_query.py": ("project", "integrations/review-center/workflow_query.py"),
     "review_action.py": ("project", "integrations/review-center/review_action.py"),
     "server.py": ("project", "integrations/review-center/server.py"),
     "xiaoba-monitor.html": ("assistant", "工具/小八监看/xiaoba-monitor.html"),
+    "monitor-keypool.js": ("assistant", "工具/小八监看/monitor-keypool.js"),
+    "monitor-review-center.js": ("assistant", "工具/小八监看/monitor-review-center.js"),
 }
-# W3-M1: Monitor-owned assets live ONCE in top-level monitor/ (and are projected into
+# W3-M1 / W4-P4: Monitor-owned assets live ONCE in top-level monitor/ (and are projected into
 # review_ui_assets/ automatically during release packaging).
 MONITOR_ASSET_SOURCES = {
     "agentos_config.py": "monitor_core/agentos_config.py",
     "monitor_config.py": "monitor_core/config.py",
     "monitor_overview.py": "monitor_core/modules/overview.py",
     "monitor_review.py": "monitor_core/modules/review.py",
+    "monitor_system.py": "monitor_core/modules/system.py",
     "monitor_web.py": "monitor_core/web.py",
     "xiaoba-monitor.html": "xiaoba-monitor.html",
+    "monitor-keypool.js": "monitor-keypool.js",
+    "monitor-review-center.js": "monitor-review-center.js",
 }
 
 

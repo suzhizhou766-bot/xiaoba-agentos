@@ -231,12 +231,20 @@ class SystemTests(AppCase):
             for directive in csp.split(";")
             if (parts := directive.split())
         }
-        for asset in ("agent-pool.js", "agent-pool-native.js", "open-review-native.js"):
+        for asset in (
+            "agent-pool.js", "agent-pool-native.js", "open-review-native.js",
+            "monitor-keypool.js", "monitor-review-center.js",
+        ):
             self.assertIn(self.base + "/" + asset, directives["script-src"])
         self.assertIn(self.base + "/agent-pool.css", directives["style-src"])
         for directive in ("script-src", "style-src"):
             self.assertNotIn(self.base + "/", directives[directive])
             self.assertNotIn("'self'", directives[directive])
+        for asset in ("monitor-keypool.js", "monitor-review-center.js"):
+            sc, sh, sb = fetch("GET", self.base + "/" + asset)
+            self.assertEqual(sc, 200)
+            self.assertIn("javascript", sh.get("Content-Type", ""))
+            self.assertTrue(len(sb) > 1000)
 
     def test_health_lists_modules(self):
         code, _, body = fetch("GET", self.base + "/api/health")

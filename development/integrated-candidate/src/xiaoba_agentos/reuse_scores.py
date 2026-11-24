@@ -115,30 +115,42 @@ def score_events_tx(conn):
 
 
 def projection_tx(conn):
-    """Net permanent contributions; malformed rows are isolated and reportable."""
+    """Net permanent contributions (formal_reuse_score); malformed rows are isolated."""
     scores, active, reversed_ids, _ = score_events_tx(conn)
     result = {}
     for event_id, event in scores.items():
-        v = event['value']; item = result.setdefault(v['source_task_id'], {'score': 0, 'last_used_at': None})
+        v = event['value']
+        item = result.setdefault(
+            v['source_task_id'],
+            {'score': 0, 'formal_reuse_score': 0, 'last_used_at': None},
+        )
         if event_id not in reversed_ids:
             item['score'] += v['score']
+            item['formal_reuse_score'] = item['score']
         item['last_used_at'] = max(item['last_used_at'] or v['used_at'], v['used_at'])
     return result
 
 
 def snapshot_tx(conn):
-    """Read-only monitor contract; net accepted uses and per-event diagnostics."""
+    """Read-only monitor contract; net accepted uses (formal_reuse_score) and diagnostics."""
     from .store import EventStore
     if not EventStore.verify_event_chain_tx(conn)['ok']:
-        return {'ok': False, 'available': False, 'version': 1, 'scores': {}, 'items': [], 'problems': [{'reason': 'event chain is invalid'}]}
+        return {
+            'ok': False, 'available': False, 'version': 1, 'metric': 'formal_reuse_score',
+            'scores': {}, 'items': [], 'problems': [{'reason': 'event chain is invalid'}],
+        }
     scores, _, reversed_ids, problems = score_events_tx(conn)
     totals = projection_tx(conn)
     for source_id, value in totals.items():
         value['use_count'] = sum(1 for event_id, event in scores.items()
                                  if event['value']['source_task_id'] == source_id and event_id not in reversed_ids)
-    return {'ok': not problems, 'available': True, 'version': 1, 'scores': totals,
-            'items': [dict(value, source_task_id=source_id, used=value['use_count'])
-                      for source_id, value in totals.items()], 'problems': problems}
+    return {
+        'ok': not problems, 'available': True, 'version': 1, 'metric': 'formal_reuse_score',
+        'scores': totals,
+        'items': [dict(value, source_task_id=source_id, used=value['use_count'])
+                  for source_id, value in totals.items()],
+        'problems': problems,
+    }
 
 
 def ledger_check(store):

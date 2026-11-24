@@ -291,6 +291,8 @@ def main() -> int:
         config, store, candidate, task_id, center = _fixture(root)
         from xiaoba_agentos.review_ui_install import resolve_asset_path
         page_path = resolve_asset_path(ASSETS, "xiaoba-monitor.html")
+        keypool_js = resolve_asset_path(ASSETS, "monitor-keypool.js").read_bytes()
+        review_js = resolve_asset_path(ASSETS, "monitor-review-center.js").read_bytes()
         html = page_path.read_text(encoding="utf-8")
         html = f'<meta name="xiaoba-page-token" content="{TOKEN}">\n' + html
         request_count = 0
@@ -327,6 +329,10 @@ def main() -> int:
                 path = urlparse(self.path)
                 if path.path == "/":
                     return self.reply(200, html.encode("utf-8"), "text/html; charset=utf-8")
+                if path.path == "/monitor-keypool.js":
+                    return self.reply(200, keypool_js, "application/javascript; charset=utf-8")
+                if path.path == "/monitor-review-center.js":
+                    return self.reply(200, review_js, "application/javascript; charset=utf-8")
                 if path.path == "/api/review/state":
                     value = center.state()
                     value.pop("csrf", None)

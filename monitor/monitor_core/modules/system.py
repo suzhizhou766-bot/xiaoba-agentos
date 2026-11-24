@@ -1,11 +1,15 @@
 """系统模块：主页面、存活探针、各模块健康状况。"""
 import html
+from pathlib import Path
 import subprocess
 import time
 
 from .. import VERSION, config as cfg
 from ..web import Response, Route
 from . import Module
+
+_PAGE_SCRIPTS = ("monitor-keypool.js", "monitor-review-center.js")
+_MONITOR_ROOT = Path(__file__).resolve().parents[2]
 
 
 class SystemModule(Module):
@@ -16,12 +20,12 @@ class SystemModule(Module):
         self.page = cfg.resolve(ctx.config, ctx.config["page_file"])
         self.revision = self._revision()
         self.warnings = []   # 最近一次读到的模块警告，正文提示条用它（不是只在标签悬浮提示里）
-        # Keep the page policy strict while allowing the release-owned pool assets it injects.
+        # Keep the page policy strict while allowing the release-owned pool and split monitor assets.
         own = "http://127.0.0.1:%d/" % ctx.port
         stage = "http://127.0.0.1:%d/stage/" % ctx.port
         director = "http://127.0.0.1:%d/director/" % ctx.port
         pool_scripts = " ".join(own + path for path in (
-            "agent-pool.js", "agent-pool-native.js", "open-review-native.js"))
+            "agent-pool.js", "agent-pool-native.js", "open-review-native.js", *_PAGE_SCRIPTS))
         pool_style = own + "agent-pool.css"
         self.csp = (
             "default-src 'none'; script-src 'unsafe-inline' %s %s; "
@@ -44,10 +48,25 @@ class SystemModule(Module):
         return [
             Route("GET", "/", self.index, "page"),
             Route("GET", "/index.html", self.index, "page"),
+            Route("GET", "/monitor-keypool.js", lambda req: self._page_script("monitor-keypool.js"), "page"),
+            Route("GET", "/monitor-review-center.js", lambda req: self._page_script("monitor-review-center.js"), "page"),
             Route("GET", "/healthz", self.healthz, "page"),
             Route("GET", "/api/health", self.api_health, "read"),
             Route("GET", "/api/modules", self.api_modules, "read"),
         ]
+
+    def _page_script(self, name):
+        if name not in _PAGE_SCRIPTS:
+            return Response(404, b"not found", "text/plain; charset=utf-8")
+        for candidate in (self.page.parent / name, _MONITOR_ROOT / name):
+            if candidate.is_symlink():
+                return Response(404, ("拒绝读取符号链接脚本：%s" % name).encode("utf-8"), "text/plain; charset=utf-8")
+            if candidate.is_file():
+                try:
+                    return Response(200, candidate.read_bytes(), "application/javascript; charset=utf-8")
+                except OSError:
+                    break
+        return Response(404, ("找不到脚本文件：%s" % name).encode("utf-8"), "text/plain; charset=utf-8")
 
     def index(self, req):
         ctx = self.ctx

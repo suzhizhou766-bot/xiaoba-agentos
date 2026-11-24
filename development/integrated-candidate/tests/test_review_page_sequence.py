@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path
 
 PAGE = resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html")
+REVIEW_JS = resolve_asset_path(UI_ASSETS, "monitor-review-center.js")
 
 
 def render_list_source(html: str) -> str:
@@ -25,19 +26,20 @@ def render_list_source(html: str) -> str:
 class ReviewPageSequenceTest(unittest.TestCase):
     def setUp(self):
         self.html = PAGE.read_text(encoding="utf-8")
+        self.js = REVIEW_JS.read_text(encoding="utf-8")
 
     def test_badge_style_is_shipped(self):
         self.assertIn(".rc-seq{position:absolute;top:9px;left:12px", self.html)
         self.assertIn(".rc-item{position:relative;padding-top:32px}", self.html)
 
     def test_numbers_come_from_the_full_queue_not_the_filtered_list(self):
-        source = render_list_source(self.html)
+        source = render_list_source(self.js)
         self.assertRegex(source, r"new Map\(state\.items\.map\(\(x,i\)=>\[x\.task_id,i\+1\]\)\)")
         self.assertNotRegex(source, r"(?<!state\.)items\.map\(\(x,i\)")
 
     @unittest.skipUnless(shutil.which("node"), "node 不可用时只做静态检查")
     def test_search_keeps_queue_numbers(self):
-        source = render_list_source(self.html)
+        source = render_list_source(self.js)
         script = """
 const els={rcSearch:{value:process.argv[1]||""},rcList:{innerHTML:"",querySelector:()=>null}};
 const $=id=>els[id]; const esc=s=>String(s); const day=()=>"d";

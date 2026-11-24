@@ -182,25 +182,29 @@ def code_fingerprint(source_root: Path) -> str:
 def packaged_database_schema_version(agentos_root: Path) -> int:
     """数据库结构版本只从这棵树自己声明的常量读，不写死；读不到可用整数就拒绝构包。"""
     import ast
-    source = agentos_root / "src" / "xiaoba_agentos" / "store.py"
-    if source.is_symlink() or not source.is_file():
-        raise RuntimeError(f"database schema source is unavailable: {source}")
-    try:
-        tree = ast.parse(source.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError, UnicodeDecodeError) as exc:
-        raise RuntimeError(f"database schema source cannot be parsed: {source}: {exc}") from exc
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == "DATABASE_SCHEMA_VERSION"):
+    pkg_dir = agentos_root / "src" / "xiaoba_agentos"
+    primary = pkg_dir / "store.py"
+    if primary.is_symlink() or not primary.is_file():
+        raise RuntimeError(f"database schema source is unavailable: {primary}")
+    for source in (primary, pkg_dir / "store_events.py", pkg_dir / "store_common.py"):
+        if source != primary and (source.is_symlink() or not source.is_file()):
             continue
         try:
-            value = ast.literal_eval(node.value)
-        except (SyntaxError, TypeError, ValueError):
-            value = None
-        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-            return value
-    raise RuntimeError(f"source does not declare a usable database schema version: {source}")
+            tree = ast.parse(source.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+            raise RuntimeError(f"database schema source cannot be parsed: {source}: {exc}") from exc
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id == "DATABASE_SCHEMA_VERSION"):
+                continue
+            try:
+                value = ast.literal_eval(node.value)
+            except (SyntaxError, TypeError, ValueError):
+                value = None
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+    raise RuntimeError(f"source does not declare a usable database schema version: {primary}")
 
 
 def run_verify(command: list[str], cwd: Path) -> None:

@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_path
 
 PAGE = resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html")
+KEYPOOL_JS = resolve_asset_path(UI_ASSETS, "monitor-keypool.js")
+REVIEW_JS = resolve_asset_path(UI_ASSETS, "monitor-review-center.js")
 
 
 def extract_function(source, name):
@@ -28,7 +30,7 @@ def extract_function(source, name):
 class ReviewUiFrontendContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = PAGE.read_text(encoding="utf-8")
+        cls.source = PAGE.read_text(encoding="utf-8") + "\n" + REVIEW_JS.read_text(encoding="utf-8")
         cls.node = shutil.which("node")
 
     def run_node(self, script):
@@ -541,6 +543,8 @@ process.stdout.write(JSON.stringify({{collapsed,searched}}));
 const fs=require("fs");
 const html=fs.readFileSync({json.dumps(str(PAGE))},"utf8");
 const scripts=[...html.matchAll(/<script[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(match=>match[1]).filter(text=>text.trim());
+scripts.push(fs.readFileSync({json.dumps(str(KEYPOOL_JS))},"utf8"));
+scripts.push(fs.readFileSync({json.dumps(str(REVIEW_JS))},"utf8"));
 if(!scripts.length) throw new Error("no inline scripts found");
 scripts.forEach((script,index)=>new Function(script));
 process.stdout.write(JSON.stringify({{parsed:scripts.length}}));

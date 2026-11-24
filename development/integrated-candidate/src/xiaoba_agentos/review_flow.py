@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .config import AppConfig
 from .memory import MemoryBridge, MemoryRecoveryError
-from .store import EventStore
+from .store import EventStore, REVIEW_STAGE_ALIASES
 
 
 def candidate_sha256(candidate: Dict[str, Any]) -> str:
@@ -333,6 +333,7 @@ def execute_review(
     publication, reuse reconciliation, and retirement behave identically no
     matter which entry point delivered the decision.
     """
+    stage = REVIEW_STAGE_ALIASES.get(stage, stage)
     retirement = None
     current_candidate = store.get_memory_candidate(task_id)
     if not current_candidate:

@@ -31,3 +31,15 @@ Worker、候选、双审、冻结恢复、审计链与可回滚发布的职责�
 
 
 新增经验分类与受控验证的运行契约及验收条件见 docs/EXPERIENCE_TRIALS.md；技术审计仅结算审计回执，方法必须真实新执行与独立双审后用户终审。历史候选不批量迁移。
+
+## Schema 7 退役占位表与历史只读兼容（Wave 4 Q1 / Q2 / Q3）
+
+- **Schema 7 六张策略进化退役表维持原状占位**：2026-10-11 策略进化退役后，Schema 7 中的 6 张历史表（`strategies`、`strategy_audit`、`evaluations`、`evaluation_cases`、`evaluation_runs`、`promotion_gates`）保持原样建表占位且**零读写**，**不做高风险删表迁移**，以避免破坏 Schema 指纹与线上库零停机升级兼容性（由底线 B12 测试永久看守）。
+- **历史事件链只读兼容收口**：旧版 `judge.decided`、`standby.substituted` 与历史具名审查节点（清单见 `legacy_compat.LEGACY_AGENT_NAMES`）的只读兼容入口统一收拢至 `xiaoba_agentos/legacy_compat.py`，生产 Agent 池模式（`roster_mode == "pool"`）彻底禁止旧替补写入，同时保证线上全量历史事件链 100% 完好回放。
+- **退役组件防复活边界**：内置 `WorkBuddy` 引擎（`engine_retired`）、`Headroom` 自动重启、独立 `8797` 裁决网页端口及同伴自动修复均已在 `legacy_compat.RETIRED_COMPONENTS` 登记为退役态，仅保留明确拒绝提示与防复活反例测试。
+
+## 核心模块拆分与冻结边界（Wave 4 P1–P4）
+
+- **CLI 与核心引擎模块化**：`xiaoba_agentos/cli.py` 按四类命令组拆分为 `cli_groups/{parser_spec,daily_ops,memory_ops,maintenance_ops}.py`；`Orchestrator.run_once()` 拆分为四个生命周期阶段方法；`EventStore` 按事件链 / 任务状态 / 记忆裁决拆分为 `store_{common,events,tasks,memory}.py`，`xiaoba_review/review_store.py` 作为接入层唯一写边界权威模块（`xiaoba_review/store.py` 为同对象模块别名）。
+- **监看前端脚本拆出**：`monitor/xiaoba-monitor.html` 中超千行的 Key 池拓扑与裁决中心脚本已原样拆出为同源外链 `monitor/monitor-keypool.js` 与 `monitor/monitor-review-center.js`，由 `SystemModule` 精确白名单路由与严格同源 CSP 放行。
+- **`monitor_core/lifecycle.py` 显式冻结**：`monitor/monitor_core/lifecycle.py` 涉及进程托管、PID 锁与守护重启，为防止非必要运维风险，**现阶段显式冻结（零改动）**，待未来进程托管需求变更时再专项规划。

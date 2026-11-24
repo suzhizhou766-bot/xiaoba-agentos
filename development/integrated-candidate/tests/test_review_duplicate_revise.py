@@ -16,6 +16,7 @@ from xiaoba_agentos.review_ui_install import ASSETS as UI_ASSETS, resolve_asset_
 from xiaoba_agentos.store import EventStore
 
 PAGE = resolve_asset_path(UI_ASSETS, "xiaoba-monitor.html")
+REVIEW_JS = resolve_asset_path(UI_ASSETS, "monitor-review-center.js")
 
 
 def render_list_source(html: str) -> str:
@@ -97,7 +98,7 @@ class DuplicateReviseStoreTest(unittest.TestCase):
 
 class ReturnedRevisionPageTest(unittest.TestCase):
     def setUp(self):
-        self.html = PAGE.read_text(encoding="utf-8")
+        self.html = PAGE.read_text(encoding="utf-8") + "\n" + REVIEW_JS.read_text(encoding="utf-8")
 
     @unittest.skipUnless(shutil.which("node"), "node 不可用时只做静态检查")
     def test_returned_item_notice_and_last_time_are_rendered_in_list(self):

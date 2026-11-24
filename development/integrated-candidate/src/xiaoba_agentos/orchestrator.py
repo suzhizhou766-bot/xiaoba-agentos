@@ -29,7 +29,13 @@ from .recovery import classify_failure, sanitize_diagnostic_text
 from .circuit_breaker import CircuitBreaker
 from .task_context import render_context
 from .store import EventStore
-from .standby_health import EXTERNAL_FAILURES, coverable_health, health_evidence
+from .legacy_compat import (
+    EXTERNAL_FAILURES,
+    allow_legacy_standby_cover,
+    coverable_health,
+    health_evidence,
+    read_prior_standby_substitution,
+)
 from .workflow import agent_prompt, contribution_records, validate_plan
 
 
@@ -576,18 +582,7 @@ class Orchestrator:
         keeps a retried or resumed round from announcing the same cover twice.
         """
         with self.store.read_only() as conn:
-            row = conn.execute(
-                "SELECT payload_json FROM events WHERE task_id=? "
-                "AND event_type='standby.substituted' ORDER BY sequence LIMIT 1",
-                (task_id,),
-            ).fetchone()
-        if row is None:
-            return None
-        try:
-            payload = json.loads(row["payload_json"] or "{}")
-        except (TypeError, ValueError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
+            return read_prior_standby_substitution(conn, task_id)
 
     def _standby_substitution(
         self,
@@ -715,14 +710,41 @@ class Orchestrator:
         return record
 
     def run_once(self, preflight_when_idle: bool = True) -> Dict[str, Any]:
-        """Run one worker poll.
+        """Run one worker poll across 4 explicit lifecycle stages (W4-P2).
 
-        With preflight_when_idle=False an empty queue returns "idle" before
-        the release hash, audit-chain and route checks run. Every gate still
-        runs, unchanged and in the same order, before any task is leased. The
-        long-running worker passes False and re-runs the full preflight on its
-        heartbeat so a blocked or degraded state is still reported while idle.
+        1. ``_stage_preflight_and_claim``: idle refresh, release/chain gates, roster & lease.
+        2. ``_stage_prepare_and_execute``: snapshot/capability gates, budget, parallel agent runs.
+        3. ``_stage_cover_and_validate``: standby cover (mock-only), leak quarantine, receipt gates.
+        4. ``_stage_judge_and_settle``: deterministic judge, constraint hold, atomic completion.
         """
+        early, claim = self._stage_preflight_and_claim(preflight_when_idle)
+        if early is not None:
+            return early
+        assert claim is not None
+        prior_substitution = self._prior_substitution(claim["task"]["id"])
+        state: Dict[str, Any] = {
+            "substitution": None,
+            "prior_substitution": prior_substitution,
+        }
+
+        def task_result(payload: Dict[str, Any]) -> Dict[str, Any]:
+            """Every result this round returns goes through here, so every one
+            names the task's cover (this attempt's, else an earlier one's)."""
+            return {**payload, "standby_substitution": state["substitution"] or state["prior_substitution"]}
+
+        early, exec_ctx = self._stage_prepare_and_execute(claim, state, task_result)
+        if early is not None:
+            return early
+        assert exec_ctx is not None
+        early = self._stage_cover_and_validate(claim, exec_ctx, state, task_result)
+        if early is not None:
+            return early
+        return self._stage_judge_and_settle(claim, exec_ctx, state, task_result)
+
+    def _stage_preflight_and_claim(
+        self, preflight_when_idle: bool
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """Stage 1/4: Idle maintenance, release/chain verification, roster selection, and lease claim."""
         has_work = self.store.has_runnable_work()
         if not preflight_when_idle and not has_work:
             # Derived views only refresh on an already-idle, no-model cycle.
@@ -734,24 +756,24 @@ class Orchestrator:
             try:
                 check_inactivity(self.store)
             except (ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
-                return {"status": "idle", "formal_review_warning": str(exc)}
+                return ({"status": "idle", "formal_review_warning": str(exc)}), None
             if bool(self.config.worker.get("auto_dispatch_value_review", False)):
-                return {
+                return ({
                     "status": "idle",
                     "value_review_auto_dispatch": self.dispatch_pending_value_reviews(),
-                }
-            return {"status": "idle"}
+                }), None
+            return ({"status": "idle"}), None
         release_binding = release_binding_status(self.config)
         if not release_binding.get("ok", False):
-            return {
+            return ({
                 "status": "blocked_configuration",
                 "error": "活动源码未绑定到已验证不可变发布；任务队列未被消费",
                 "release_binding": release_binding,
-            }
+            }), None
         worker = self.config.worker
         event_chain = self.store.verify_event_chain()
         if not event_chain["ok"]:
-            return {"status": "blocked_configuration", "error": "审计链校验失败；任务队列未被消费", "event_chain": event_chain}
+            return ({"status": "blocked_configuration", "error": "审计链校验失败；任务队列未被消费", "event_chain": event_chain}), None
         self.store.recover_expired()
         # Dispatch comes from the Agent pool. Config agents are historical
         # route notes, except an all-mock roster kept for existing unit tests.
@@ -794,18 +816,18 @@ class Orchestrator:
             skipped.append(hold)
         if nxt is None:
             if skipped:
-                return {**skipped[0], "skipped": skipped}
+                return ({**skipped[0], "skipped": skipped}), None
             roster = worker_roster(self.config, self.store)
             if roster["mode"] == "mock_disabled":
-                return {"status": "blocked_configuration", "error": "没有启用任何主后台 Agent；任务队列未被消费"}
+                return ({"status": "blocked_configuration", "error": "没有启用任何主后台 Agent；任务队列未被消费"}), None
             idle_result: Dict[str, Any] = {"status": "idle", "review_nodes": roster.get("report")}
             if bool(worker.get("auto_dispatch_value_review", False)):
                 idle_result["value_review_auto_dispatch"] = self.dispatch_pending_value_reviews()
-            return idle_result
+            return (idle_result), None
         enabled = list(roster["agents"])
         # Mock fixtures still exercise the old cover path. A real config never
         # reaches it: local CLI agents are not a dispatch list.
-        if roster["mode"] == "mock":
+        if allow_legacy_standby_cover(roster["mode"]):
             standby_agents = [agent for agent in self.config.agents if agent.enabled and agent.standby]
             standby = standby_agents[0] if standby_agents else None
         else:
@@ -813,13 +835,13 @@ class Orchestrator:
         primaries = enabled
         required = int(worker.get("minimum_successful_agents", 2))
         if roster["mode"] == "mock" and len(enabled) < required:
-            return {
+            return ({
                 "status": "blocked_configuration",
                 "error": f"启用的测试夹具只有 {len(enabled)} 个，少于 {required} 个；任务队列未被消费",
-            }
+            }), None
         local_readiness = local_cli_readiness(self.config, enabled if roster["mode"] != "pool" else [])
         if not local_readiness["ok"]:
-            return {"status": "blocked_configuration", "error": "；".join(local_readiness["problems"]), "local_cli_routes": local_readiness}
+            return ({"status": "blocked_configuration", "error": "；".join(local_readiness["problems"]), "local_cli_routes": local_readiness}), None
         probed = list(enabled) + ([standby] if standby is not None else [])
         enabled_names = [agent.name for agent in probed]
         health_rows = {
@@ -848,28 +870,45 @@ class Orchestrator:
             can_cover = (standby_usable and len(unhealthy_primaries) == 1
                          and coverable_health(health_rows.get(unhealthy_primaries[0]['agent'])))
             if len(unhealthy_primaries) > (1 if can_cover else 0):
-                return {
+                return ({
                     "status": "degraded_health",
                     "error": "后台 Agent 实际推理健康门禁未通过；任务队列未被消费",
                     "agents": unhealthy,
-                }
+                }), None
         task = self.store.lease_next(int(worker["lease_seconds"]), task_id=nxt["id"])
         if not task:
-            return {"status": "idle"}
+            return ({"status": "idle"}), None
+        return None, {
+            "task": task,
+            "roster": roster,
+            "worker": worker,
+            "enabled": enabled,
+            "primaries": primaries,
+            "standby": standby,
+            "standby_usable": standby_usable,
+            "health_rows": health_rows,
+            "unhealthy_primaries": unhealthy_primaries,
+            "skipped": skipped,
+            "NO_INDEPENDENT": NO_INDEPENDENT,
+        }
 
-        # Every result for a leased task retains its current or earlier cover,
-        # including early failures and lease_lost (round 34). This is reporting
-        # only: it must never settle, substitute or write after lease loss.
-        substitution: Optional[Dict[str, Any]] = None
-        # A historical cover remains reportable even if the standby has since
-        # been disabled. Reading history does not enable or dispatch a standby.
-        prior_substitution = self._prior_substitution(task["id"])
-
-        def task_result(payload: Dict[str, Any]) -> Dict[str, Any]:
-            """Every result this round returns goes through here, so every one
-            names the task's cover (this attempt's, else an earlier one's)."""
-            return {**payload, "standby_substitution": substitution or prior_substitution}
-
+    def _stage_prepare_and_execute(
+        self,
+        claim: Dict[str, Any],
+        state: Dict[str, Any],
+        task_result: Any,
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """Stage 2/4: Snapshot & capability gates, reusable-run check, budget, and parallel execution."""
+        task = claim["task"]
+        roster = claim["roster"]
+        worker = claim["worker"]
+        enabled = list(claim["enabled"])
+        standby = claim["standby"]
+        standby_usable = claim["standby_usable"]
+        health_rows = claim["health_rows"]
+        unhealthy_primaries = claim["unhealthy_primaries"]
+        substitution = state["substitution"]
+        prior_substitution = state["prior_substitution"]
         try:
             _snap = json.loads(task.get("execution_snapshot_json") or "{}")
         except (TypeError, json.JSONDecodeError):
@@ -878,7 +917,7 @@ class Orchestrator:
             validate_plan(self.config, self.store, task, _snap)
         except (ValueError, KeyError, OSError) as exc:
             self._fail_task(task, "invalid collaboration evidence: " + str(exc))
-            return task_result({"status": "failed", "task_id": task["id"], "errors": [str(exc)]})
+            return (task_result({"status": "failed", "task_id": task["id"], "errors": [str(exc)]})), None
         workflow = _snap.get("workflow", {})
         host_review = bool(roster.get("host"))
         _req_caps = list(_snap.get("required_capabilities") or [])
@@ -888,23 +927,23 @@ class Orchestrator:
             _gate_agents, _gate_reason = web_capable_agents(_gate_agents, CapabilityRegistry(), needs_web=True)
             if not _gate_agents:
                 self._fail_task(task, _gate_reason or "missing native_web_search")
-                return task_result({
+                return (task_result({
                     "status": "blocked",
                     "reason": _gate_reason or "no web-capable agent",
                     "capability": "native_web_search",
                     "task_id": task["id"],
-                })
+                })), None
         if _req_caps:
             _gate_agents, _missing = capable_agents(_gate_agents, CapabilityRegistry(), _req_caps)
             if not _gate_agents:
                 _lacked = sorted({tok for _, toks in _missing for tok in toks})
                 self._fail_task(task, "missing capability: " + ", ".join(_lacked))
-                return task_result({
+                return (task_result({
                     "status": "blocked",
                     "reason": "missing capability: " + ", ".join(_lacked),
                     "capability": _lacked[0] if _lacked else "unknown",
                     "task_id": task["id"],
-                })
+                })), None
         enabled = _gate_agents
 
         latest = self.store.latest_agent_runs(task["id"])
@@ -939,7 +978,7 @@ class Orchestrator:
                 # other primary here, and its record names that side. Covering
                 # this one too would reuse a record about the wrong agent, so
                 # the task freezes instead (STANDBY_POLICY: "已用过一次备用").
-                return self._freeze_for_recovery(
+                return (self._freeze_for_recovery(
                     task,
                     [
                         AgentResult(agent.name, latest[agent.name]["output"],
@@ -960,7 +999,7 @@ class Orchestrator:
                         "health_already_recorded": True,
                     }],
                     prior_substitution,
-                )
+                )), None
             if not _reusable_run(latest.get(replaced_name), task, host_review=host_review):
                 position = next(
                     index for index, agent in enumerate(enabled) if agent.name == replaced_name
@@ -970,7 +1009,7 @@ class Orchestrator:
                 # must not be dispatched -- but the cover was already announced
                 # once for this task, so the earlier record is carried instead of
                 # a duplicate event and notification.
-                substitution = prior_substitution if prior_substitution is not None else (
+                substitution = state['substitution'] = prior_substitution if prior_substitution is not None else (
                     self._record_substitution(
                         task["id"],
                         {**_substitution_payload(
@@ -1024,9 +1063,9 @@ class Orchestrator:
         if len(results) + len(candidates) < minimum:
             error = "; ".join(errors) or "可用 Agent 数不足，无法达到成功门槛"
             if results and failures:
-                return self._freeze_for_recovery(task, results, failures, substitution or prior_substitution)
+                return (self._freeze_for_recovery(task, results, failures, substitution or prior_substitution)), None
             self._fail_task(task, error)
-            return task_result({"status": "failed", "task_id": task["id"], "errors": errors or [error]})
+            return (task_result({"status": "failed", "task_id": task["id"], "errors": errors or [error]})), None
 
         default_budget = int(worker["max_attempts"]) * len(enabled)
         base_invocation_budget = int(worker.get("max_agent_invocations_per_task", default_budget))
@@ -1049,7 +1088,7 @@ class Orchestrator:
                 },
             )
             self._fail_task(task, error)
-            return task_result({"status": "failed", "task_id": task["id"], "errors": [error]})
+            return (task_result({"status": "failed", "task_id": task["id"], "errors": [error]})), None
         candidates = candidates[:remaining_budget]
 
         task_context = ""
@@ -1072,7 +1111,7 @@ class Orchestrator:
             ]
         except (TypeError, ValueError) as exc:
             self._fail_task(task, "invalid frozen context: " + str(exc))
-            return task_result({"status": "failed", "task_id": task["id"], "errors": ["invalid frozen context"]})
+            return (task_result({"status": "failed", "task_id": task["id"], "errors": ["invalid frozen context"]})), None
         if "execution_snapshot_json" in task and task.get("execution_snapshot_json"):
             fallback_context = "\n\n".join(value for value in (task_context, snapshot_skill_context, snapshot_context) if value)
         else:
@@ -1105,12 +1144,63 @@ class Orchestrator:
                     failures.append(_failure_record(name, safe_error, exc, classify_failure(exc)))
 
         if not self.store.owns_lease(task["id"], task["attempts"]):
-            return task_result({"status": "lease_lost", "task_id": task["id"],
-                    "error": "Execution ownership lost; no substitution or settlement performed"})
+            return (task_result({"status": "lease_lost", "task_id": task["id"],
+                    "error": "Execution ownership lost; no substitution or settlement performed"})), None
+        state["substitution"] = substitution
+        return None, {
+            "_snap": _snap,
+            "workflow": workflow,
+            "host_review": host_review,
+            "_req_caps": _req_caps,
+            "_needs_web": _needs_web,
+            "enabled": enabled,
+            "results": results,
+            "errors": errors,
+            "failures": failures,
+            "minimum": minimum,
+            "invocation_budget": invocation_budget,
+            "task_context": task_context,
+            "snapshot_context": snapshot_context,
+            "snapshot_skill_context": snapshot_skill_context,
+            "snapshot_agent_contexts": snapshot_agent_contexts,
+            "memory_source_task_ids": memory_source_task_ids,
+            "fallback_context": fallback_context,
+        }
 
-        # Mid-round cover. The leak scan runs over this round's answers first
-        # because a quarantined answer is not a fault the standby may cover; the
-        # substitute's own answer is appended below and meets the same scan.
+    def _stage_cover_and_validate(
+        self,
+        claim: Dict[str, Any],
+        exec_ctx: Dict[str, Any],
+        state: Dict[str, Any],
+        task_result: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """Stage 3/4: Mid-round cover, reasoning-leak quarantine, retry/freeze, and receipt gates."""
+        task = claim["task"]
+        roster = claim["roster"]
+        worker = claim["worker"]
+        primaries = claim["primaries"]
+        standby = claim["standby"]
+        standby_usable = claim["standby_usable"]
+        health_rows = claim["health_rows"]
+        skipped = claim["skipped"]
+        _snap = exec_ctx["_snap"]
+        workflow = exec_ctx["workflow"]
+        host_review = exec_ctx["host_review"]
+        _req_caps = exec_ctx["_req_caps"]
+        _needs_web = exec_ctx["_needs_web"]
+        enabled = exec_ctx["enabled"]
+        results = exec_ctx["results"]
+        errors = exec_ctx["errors"]
+        failures = exec_ctx["failures"]
+        minimum = exec_ctx["minimum"]
+        invocation_budget = exec_ctx["invocation_budget"]
+        task_context = exec_ctx["task_context"]
+        snapshot_context = exec_ctx["snapshot_context"]
+        snapshot_skill_context = exec_ctx["snapshot_skill_context"]
+        snapshot_agent_contexts = exec_ctx["snapshot_agent_contexts"]
+        fallback_context = exec_ctx["fallback_context"]
+        substitution = state["substitution"]
+        prior_substitution = state["prior_substitution"]
         leaked = [item.agent for item in results if detect_reasoning_leak(item.output)]
         if len(results) < minimum:
             decision = self._standby_substitution(
@@ -1154,7 +1244,7 @@ class Orchestrator:
                 if not self.store.owns_lease(task["id"], task["attempts"]):
                     return task_result({"status": "lease_lost", "task_id": task["id"],
                             "error": "Execution ownership lost; no substitution or settlement performed"})
-                substitution = self._record_substitution(
+                substitution = state['substitution'] = self._record_substitution(
                     task["id"],
                     decision[1],
                     model=str(
@@ -1182,7 +1272,7 @@ class Orchestrator:
             else:
                 clean_results.append(result)
         if quarantined:
-            results = clean_results
+            results = exec_ctx['results'] = clean_results
             self.store.append_event(
                 task["id"], "output_hygiene.quarantined", {"candidates": quarantined}
             )
@@ -1290,7 +1380,25 @@ class Orchestrator:
                                           expected_attempt=task["attempts"])
             return task_result({"status": "awaiting_host", "task_id": task["id"], "host": True,
                                 "label": roster.get("label"), "skipped": skipped})
+        state["substitution"] = substitution
+        exec_ctx["results"] = results
+        return None
 
+    def _stage_judge_and_settle(
+        self,
+        claim: Dict[str, Any],
+        exec_ctx: Dict[str, Any],
+        state: Dict[str, Any],
+        task_result: Any,
+    ) -> Dict[str, Any]:
+        """Stage 4/4: Deterministic adjudication, constraint hold, memory staging, and final settlement."""
+        task = claim["task"]
+        roster = claim["roster"]
+        NO_INDEPENDENT = claim["NO_INDEPENDENT"]
+        results = exec_ctx["results"]
+        memory_source_task_ids = exec_ctx["memory_source_task_ids"]
+        substitution = state["substitution"]
+        prior_substitution = state["prior_substitution"]
         winner, scores = DeterministicJudge.choose(task["prompt"], results)
         breakdown = DeterministicJudge.explain(task["prompt"], results)
         detection = detect_output_constraint_state(task["prompt"])

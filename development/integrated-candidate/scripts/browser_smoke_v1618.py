@@ -80,7 +80,10 @@ def _start_local_smoke_server(monitor_dir: Path, state: _SmokeState):
             own = f"http://127.0.0.1:{state.port}/"
             stage = own + "stage/"
             director = own + "director/"
-            pool_scripts = " ".join(own + p for p in ("agent-pool.js", "agent-pool-native.js", "open-review-native.js"))
+            pool_scripts = " ".join(own + p for p in (
+                "agent-pool.js", "agent-pool-native.js", "open-review-native.js",
+                "monitor-keypool.js", "monitor-review-center.js",
+            ))
             pool_style = own + "agent-pool.css"
             csp = (
                 f"default-src 'none'; script-src 'unsafe-inline' {stage} {pool_scripts}; "
@@ -92,6 +95,11 @@ def _start_local_smoke_server(monitor_dir: Path, state: _SmokeState):
 
             def _overview(_req):
                 return mon_web.Response(200, state.html_bytes, "text/html; charset=utf-8", csp=csp)
+
+            def _monitor_script(name: str):
+                def _handler(_req):
+                    return mon_web.Response(200, (monitor_dir / name).read_bytes(), "application/javascript; charset=utf-8")
+                return _handler
 
             def _pool_list(_req):
                 return (200, {
@@ -136,6 +144,8 @@ def _start_local_smoke_server(monitor_dir: Path, state: _SmokeState):
 
             return [
                 mon_web.Route("GET", "/", _overview, guard="page"),
+                mon_web.Route("GET", "/monitor-keypool.js", _monitor_script("monitor-keypool.js"), guard="page"),
+                mon_web.Route("GET", "/monitor-review-center.js", _monitor_script("monitor-review-center.js"), guard="page"),
                 mon_web.Route("GET", "/api/agent-pool/state", _pool_list, guard="read"),
                 mon_web.Route("POST", "/api/agent-pool/toggle", _pool_write, guard="write"),
                 mon_web.Route("POST", "/api/agent-pool/edit", _pool_write, guard="write"),
@@ -168,7 +178,9 @@ def _start_local_smoke_server(monitor_dir: Path, state: _SmokeState):
     return srv, f"http://127.0.0.1:{port}"
 
 
-def _check_overview_csp_and_legacy_fold(node_bin: str, base_url: str, review_pkg: Path) -> dict[str, Any]:
+def _check_overview_csp_and_legacy_fold(
+    node_bin: str, base_url: str, review_pkg: Path, monitor_dir: Path
+) -> dict[str, Any]:
     with urllib.request.urlopen(base_url + "/", timeout=5) as resp:
         html = resp.read().decode("utf-8")
         csp = resp.headers.get("Content-Security-Policy", "")
@@ -176,16 +188,29 @@ def _check_overview_csp_and_legacy_fold(node_bin: str, base_url: str, review_pkg
 
     # Verify all external <script src=...> in overview HTML are allowed by SystemModule CSP
     script_srcs = re.findall(r"<script\b[^>]*\bsrc=[\"']([^\"']+)[\"']", html, re.I)
+    allowed_names = (
+        "/stage/", "agent-pool.js", "agent-pool-native.js", "open-review-native.js",
+        "monitor-keypool.js", "monitor-review-center.js",
+    )
     unallowed_scripts = [
         src for src in script_srcs
-        if not any(allowed in src for allowed in ("/stage/", "agent-pool.js", "agent-pool-native.js", "open-review-native.js"))
+        if not any(allowed in src for allowed in allowed_names)
     ]
-    # Verify zero unsafe-eval calls and valid JS syntax in all bundled review JS files
-    js_files = ("agent-pool.js", "agent-pool-native.js", "page.js", "open-review-native.js")
+    # Verify extracted monitor scripts are served cleanly over same-origin HTTP
+    split_script_http_ok = True
+    for name in ("monitor-keypool.js", "monitor-review-center.js"):
+        with urllib.request.urlopen(base_url + "/" + name, timeout=5) as sresp:
+            ctype = sresp.headers.get("Content-Type", "")
+            if sresp.status != 200 or "javascript" not in ctype or not sresp.read():
+                split_script_http_ok = False
+    # Verify zero unsafe-eval calls and valid JS syntax in all bundled review & monitor JS files
+    js_targets = (
+        [(name, review_pkg / name) for name in ("agent-pool.js", "agent-pool-native.js", "page.js", "open-review-native.js")]
+        + [(name, monitor_dir / name) for name in ("monitor-keypool.js", "monitor-review-center.js")]
+    )
     syntax_errors: list[str] = []
     unsafe_eval_hits: list[str] = []
-    for name in js_files:
-        fp = review_pkg / name
+    for name, fp in js_targets:
         if not fp.is_file():
             continue
         code = fp.read_text(encoding="utf-8")
@@ -204,6 +229,7 @@ def _check_overview_csp_and_legacy_fold(node_bin: str, base_url: str, review_pkg
 
     ok = (
         status == 200
+        and split_script_http_ok
         and "default-src 'none'" in csp
         and "unsafe-eval" not in csp
         and not unallowed_scripts
@@ -215,6 +241,7 @@ def _check_overview_csp_and_legacy_fold(node_bin: str, base_url: str, review_pkg
     return {
         "ok": ok,
         "http_status": status,
+        "split_script_http_ok": split_script_http_ok,
         "csp_present": "default-src 'none'" in csp and "unsafe-eval" not in csp,
         "unallowed_scripts": unallowed_scripts,
         "unsafe_eval_hits": unsafe_eval_hits,
@@ -545,7 +572,7 @@ def run_browser_smoke(
     state = _SmokeState(initial_token, html_bytes)
     srv, base_url = _start_local_smoke_server(monitor_dir, state)
     try:
-        p1 = _check_overview_csp_and_legacy_fold(node_bin, base_url, review_pkg)
+        p1 = _check_overview_csp_and_legacy_fold(node_bin, base_url, review_pkg, monitor_dir)
         p2, p3 = _check_pool_drawer_and_403(node_bin, base_url, review_pkg, state, initial_token)
         p4 = _check_review_queue_page(node_bin, base_url, review_pkg, state.page_token)
         p5 = _check_ui_assets_and_optional_live(candidate, live_url)

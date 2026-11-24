@@ -30,6 +30,13 @@
       "after_sha256": "07d4e48f33d22b584d46eeb74d63b29574e1fedeb70291ec71201399b820f622"
     },
     {
+      "asset": "monitor_system.py",
+      "base": "assistant",
+      "relative": "工具/小八监看/monitor_core/modules/system.py",
+      "before_sha256": "26a66740f1f317c50a8c9a127b9b407e4a1bd39c8c208fa0cf4288b794de020f",
+      "after_sha256": "1d13459d34ab7fad6943f0a33221cf0fea252431c6d4e933548966a54af2f497"
+    },
+    {
       "asset": "monitor_web.py",
       "base": "assistant",
       "relative": "工具/小八监看/monitor_core/web.py",
@@ -61,8 +68,22 @@
       "asset": "xiaoba-monitor.html",
       "base": "assistant",
       "relative": "工具/小八监看/xiaoba-monitor.html",
-      "before_sha256": "961c174d5b0af58c7fe681d5aac57b0ca4bad64ccd8a587f1165641604bea3bf",
-      "after_sha256": "0e32d85948f1616da6b1e9dba77286e0e6f7325d205ae0991a48c19430f9dbb9"
+      "before_sha256": "0e32d85948f1616da6b1e9dba77286e0e6f7325d205ae0991a48c19430f9dbb9",
+      "after_sha256": "8f9772a6368418b6d2b6ffe6115cb6ccf03ac8dc5cede7dcff87bb5e215db6ac"
+    },
+    {
+      "asset": "monitor-keypool.js",
+      "base": "assistant",
+      "relative": "工具/小八监看/monitor-keypool.js",
+      "before_sha256": null,
+      "after_sha256": "7cf3683dd406dbd6b1de21cc4f46478f2cff8b85e377ca46528a841ea70f5d93"
+    },
+    {
+      "asset": "monitor-review-center.js",
+      "base": "assistant",
+      "relative": "工具/小八监看/monitor-review-center.js",
+      "before_sha256": null,
+      "after_sha256": "94ab2cab27e5cf499d4587ad21dfd70b815dbded52d96757013c75dc4ec25844"
     }
   ]
 }
