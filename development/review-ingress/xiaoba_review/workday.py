@@ -104,7 +104,12 @@ class WorkdayReceipts:
             '\n文件已存在时完整保留原文，只在末尾追加。'+details+
             '\n回执按下面最小格式写入文件，正文用自然语言或Markdown，不要求JSON：\n\n'+marker+
             '\n任务ID: '+task_id+'\n步骤码: '+step_code+'\n状态: completed\n'+
-            ('审查结论: PASS 或 FAIL 或 NEEDS_INFO\n证据引用: 实际检查的证据（可重复此行）\n审查类型: new_experience 或 revalidation 或 reuse_change\n评分: 0–10 的数\n适用条件: 适用条件与限制说明\n重复经验: 可空\n' if review else '')+
+            ('审查结论: PASS 或 FAIL 或 NEEDS_INFO\n'
+             '证据引用: 仅逐字填写任务卡 evidence_refs 原路径或上方「材料副本（只读）」里的完整文件路径，只写路径不要加文字说明或括号备注（可重复此行）\n'
+             '审查类型: new_experience 或 revalidation 或 reuse_change\n'
+             '评分: 0–10 的数\n'
+             '适用条件: 适用条件与限制说明\n'
+             '重复经验: 无重复请留空或只写“无”；仅确有重复时填写重复经验 ID\n' if review else '')+
             '---\n'+body_template+'\n'+done+
             '\n\n最后的done行必须在正文和文件内容全部写完后才写入；它是本轮文件回执完成信号。'
             '不用在终端复述完整结果，也不用等待终端动画结束。\n')
@@ -178,6 +183,79 @@ def verify_worklog(root, evidence):
 _PAREN_LINE_ANCHOR_RE = re.compile(r'\s*[（(]L?\d+(?:[-–—]L?\d+)?[）)]$')
 _HASH_LINE_ANCHOR_RE = re.compile(r'#L?\d+(?:[-–—]L?\d+)?$')
 _COLON_LINE_ANCHOR_RE = re.compile(r':L?\d+(?:[-–—]L?\d+)?$')
+_PATH_PREFIX_BOUNDARY = set(' \t\r\n`\'\"(（[【:：,，;；、')
+_PATH_SUFFIX_BOUNDARY = set(' \t\r\n`\'\"()（）[]【】#:,，;；。、')
+_DISPATCH_CARD_ABS_RE = re.compile(
+    r'(?:^|(?<=[\s`\'\"(（\[【:：,，;；、]))'
+    r'(?P<path>/[^\s`\'\"()（）\[\]【】,:;，；。、]*派工卡-[^\s`\'\"()（）\[\]【】,:;，；。、/]+\.md)'
+    r'(?:(?:#|:)L?\d+(?:[-–—]L?\d+)?)?'
+    r'(?=$|[\s`\'\"()（）\[\]【】,:;，；。、])'
+)
+_UNLISTED_ABS_PATH_RE = re.compile(
+    r'(?:^|[\s`\'\"(（\[【:：,，;；、])/[A-Za-z0-9._~\u4e00-\u9fff-]'
+)
+
+
+def _extract_annotated_refs(text, known_abs_map):
+    """Extract verified allowlisted absolute paths from a prose-annotated ref line.
+
+    Returns (canonical_refs, has_dispatch_card) only when every filesystem-like
+    absolute path in `text` is either in `known_abs_map` or a 派工卡-*.md file.
+    Any unlisted path or unverified suffix (e.g. `.bak`) fails closed.
+    """
+    if not isinstance(text, str) or '/' not in text:
+        return [], False
+    spans = []
+    found_canonical = []
+    # Match longest allowlisted absolute paths first, verifying strict token boundaries.
+    for raw_path in sorted(known_abs_map, key=len, reverse=True):
+        start = 0
+        plen = len(raw_path)
+        while True:
+            idx = text.find(raw_path, start)
+            if idx < 0:
+                break
+            end = idx + plen
+            if any(not (end <= s or idx >= e) for s, e in spans):
+                start = idx + 1
+                continue
+            prev_ok = idx == 0 or text[idx - 1] in _PATH_PREFIX_BOUNDARY
+            next_ok = end == len(text) or text[end] in _PATH_SUFFIX_BOUNDARY
+            if prev_ok and next_ok:
+                span_end = end
+                anchor = re.match(r'(?:#|:)L?\d+(?:[-–—]L?\d+)?', text[end:])
+                if anchor:
+                    after_anchor = end + anchor.end()
+                    if after_anchor == len(text) or text[after_anchor] in _PATH_SUFFIX_BOUNDARY:
+                        span_end = after_anchor
+                spans.append((idx, span_end))
+                canonical_ref = known_abs_map[raw_path]
+                if canonical_ref not in found_canonical:
+                    found_canonical.append(canonical_ref)
+                start = span_end
+            else:
+                start = idx + 1
+    has_dispatch = False
+    for match in _DISPATCH_CARD_ABS_RE.finditer(text):
+        idx, end = match.start(), match.end()
+        if any(not (end <= s or idx >= e) for s, e in spans):
+            continue
+        spans.append((idx, end))
+        has_dispatch = True
+    if not found_canonical and not has_dispatch:
+        return [], False
+    spans.sort()
+    pieces = []
+    cursor = 0
+    for s, e in spans:
+        pieces.append(text[cursor:s])
+        pieces.append(' ')
+        cursor = e
+    pieces.append(text[cursor:])
+    remainder = ''.join(pieces)
+    if _UNLISTED_ABS_PATH_RE.search(remainder):
+        return [], False
+    return found_canonical, has_dispatch
 
 
 def strip_ref_anchor(ref):
@@ -306,6 +384,11 @@ def normalize_review_evidence_refs(refs, card_evidence, *, staged_refs=None):
     invalid_refs = []
     matched_card_evidence = False
 
+    known_abs_map = {ref: ref for ref in card_refs if ref.startswith('/')}
+    for staged_key, canonical_val in staged_map.items():
+        if isinstance(staged_key, str) and staged_key.startswith('/') and isinstance(canonical_val, str) and canonical_val in card_refs:
+            known_abs_map.setdefault(staged_key, canonical_val)
+
     def resolve_ref(cleaned):
         if cleaned in card_refs:
             return cleaned
@@ -328,7 +411,16 @@ def normalize_review_evidence_refs(refs, card_evidence, *, staged_refs=None):
                 # 派工卡引用允许作为补充上下文，但不能单独替代任务卡证据引用。
                 continue
             else:
-                invalid_refs.append(r)
+                extracted, has_dispatch = _extract_annotated_refs(r, known_abs_map)
+                if extracted:
+                    for item_ref in extracted:
+                        if item_ref not in normalized_refs:
+                            normalized_refs.append(item_ref)
+                    matched_card_evidence = True
+                elif has_dispatch:
+                    continue
+                else:
+                    invalid_refs.append(r)
         elif isinstance(r, dict):
             cleaned_ref = strip_ref_anchor(r.get('ref'))
             canonical_ref = resolve_ref(cleaned_ref) if isinstance(cleaned_ref, str) else None

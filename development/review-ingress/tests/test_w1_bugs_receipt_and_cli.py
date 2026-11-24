@@ -102,6 +102,54 @@ class W1BugsIngressTests(unittest.TestCase):
         self.assertEqual(strip_ref_anchor("/tmp/a.md:1-44"), "/tmp/a.md")
         self.assertEqual(strip_ref_anchor("`/tmp/a.md`（L1–L44）"), "/tmp/a.md")
 
+    def test_annotated_staged_and_dispatch_card_refs_extract_canonical_path(self):
+        """Prose-annotated lines containing only verified staged/dispatch paths normalize cleanly."""
+        card = self._sample_card()
+        staged_abs = "/tmp/ws/CodeBuddy/任务记录/review-123/材料/ba304a1e.md"
+        staged_refs = {staged_abs: "/tmp/outbox/ba304a1e.md"}
+        val = self._sample_value([
+            "派工卡 /tmp/ws/CodeBuddy/任务记录/review-123/派工卡-dbaaa803.md（第3–6行任务ID、第78–81行 review_type/审查角色/评分口径）",
+            f"候选材料副本 {staged_abs}（全文19行，与卡内 body 第14行一致）",
+        ])
+        parsed = parse_review_receipt(val, card, {"call_id": "c6"}, staged_refs=staged_refs)
+        self.assertEqual(parsed["verdict"], "PASS")
+        self.assertEqual(parsed["evidence_refs"], ["/tmp/outbox/ba304a1e.md"])
+
+    def test_annotated_ref_rejects_unlisted_extra_path_suffix_extension_and_pathless_prose(self):
+        """Security boundary: annotated lines still fail closed on extra paths, .bak suffix, dispatch-only, or pathless prose."""
+        card = self._sample_card()
+        staged_abs = "/tmp/ws/CodeBuddy/任务记录/review-123/材料/ba304a1e.md"
+        staged_refs = {staged_abs: "/tmp/outbox/ba304a1e.md"}
+        bad_cases = [
+            [f"候选材料副本 {staged_abs} 与 /etc/passwd"],
+            [f"候选材料副本 {staged_abs}.bak（备注）"],
+            ["派工卡 /tmp/ws/CodeBuddy/任务记录/review-123/派工卡-dbaaa803.md（第3–6行）"],
+            ["材料副本第1–45行，与派工卡第14行 body 字段逐段比对一致"],
+        ]
+        for refs in bad_cases:
+            with self.subTest(refs=refs):
+                with self.assertRaises(ReviewReceiptError) as ctx:
+                    parse_review_receipt(self._sample_value(refs), card, {"call_id": "c7"}, staged_refs=staged_refs)
+                self.assertIn("证据引用未匹配任务卡", str(ctx.exception))
+
+    def test_review_dispatch_card_explicitly_instructs_bare_evidence_path_and_duplicate_blank(self):
+        """Review dispatch card explicitly instructs bare file paths for 证据引用 and blank/无 for 重复经验."""
+        from xiaoba_review.workday import WorkdayReceipts
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = {
+                "kind": "review",
+                "reviewer_id": "node-q",
+                "source_ref": "agent-entry:q-test",
+                "node": {"name": "Qoder-Prompt", "entry": "/bin/echo", "model": "Qwen-Test"},
+            }
+            aw = AgentWorkspace(root, source)
+            rec = aw.begin("review", "asg-prompt-1", {"task_id": "t1", "step_code": "REVIEW-01"})
+            ticket = WorkdayReceipts(aw).prepare(rec, "t1", "REVIEW-01", "review", {"body": "x"}, review=True)
+            card_text = ticket["card"].read_text(encoding="utf-8")
+            self.assertIn("只写路径不要加文字说明或括号备注", card_text)
+            self.assertIn("无重复请留空或只写“无”", card_text)
+
     def test_cli_run_and_workday_inputs_accept_verified_staged_copy_and_reject_tampered_copy(self):
         """End-to-end: CliWorklogResource.run normalizes verified 材料/ copy and workday_inputs agrees."""
         with tempfile.TemporaryDirectory() as tmp:

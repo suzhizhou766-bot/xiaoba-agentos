@@ -455,6 +455,18 @@
       "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
       "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
       "file_disposition": "基于已上线v1.6.20；不创建备份，切换、UI 同步与监看中心重启由用户在终端按授权执行。"
+    },
+    {
+      "version": "v1.6.22",
+      "release_date": "2026-11-24",
+      "status": "candidate",
+      "summary": "热修（审查派工卡证据引用模板明确化与带注释合法路径安全提取）：修复 workday.py 派工卡模板中“证据引用: 实际检查的证据”与“重复经验: 可空”表述模糊导致部分审查节点（如 Qoder、CodeBuddy）写出纯中文描述句或给真实路径加前缀/括号注释而被拒的问题；模板明确要求证据引用仅逐字写文件路径、无重复时留空或填“无”，同时在 normalize_review_evidence_refs() 中新增受控的 _extract_annotated_refs()，仅当行内全部绝对路径均属于本轮已校验白名单或派工卡且无未列路径/后缀篡改时才提取规范路径。新增 3 项回归测试覆盖正反例与模板约束。无 UI 资产变更，数据库结构版本保持 7，不新增切换步骤；前置源码清单哈希绑定已上线 v1.6.21。",
+      "tests": {
+        "source": "以本版RELEASE.json同源验收记录为准"
+      },
+      "files_manifest_sha256": "以本版FILES.sha256为准，避免自引用",
+      "source_manifest_sha256": "以本版SOURCE_MANIFEST.json为准",
+      "file_disposition": "基于已上线v1.6.21；不创建备份，切换与监看中心重启由用户在终端按授权执行。"
     }
   ]
 }
